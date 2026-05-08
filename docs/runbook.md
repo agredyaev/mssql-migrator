@@ -12,15 +12,17 @@ This document explains how to operate `rmig` after a failed migration, failed va
 - Failure handling for `rmig validate`
 - Operational use of `rmig baseline`
 - Operational use of `rmig repair-checksum`
+- Report files in `reports/migration-report.*` and `reports/validation-report.*`
 
 ## System Context
 
 The runbook applies when `rmig` has already built a report or has partially changed SQL Server state.
 It assumes the operator can read `./reports` and can run the CLI against the target database.
+See `README.md` for the CLI wrapper contract.
 
 ## Interfaces And Boundaries
 
-- Inputs: `reports/migration-report.json`, `reports/validation-report.json`, SQL Server error text, `--env`, `--confirm`
+ - Inputs: `reports/migration-report.json`, `reports/migration-report.txt`, `reports/validation-report.json`, `reports/validation-report.txt`, SQL Server error text, `--env`, `--confirm`
 - Outputs: repaired metadata rows, rerun plan artifacts, rerun validation results
 - Ownership boundaries: SQL fixes belong in Git; metadata repair belongs to the controlled CLI path
 
@@ -29,11 +31,13 @@ It assumes the operator can read `./reports` and can run the CLI against the tar
 - Applied `V` scripts are not edited in place.
 - `baseline` and `repair-checksum` require `--confirm`.
 - `repair-checksum` is only for already applied scripts.
+- `migrate` requires an approved plan file.
+- `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
 
 ## Nominal Flow
 
 1. Read the report file in `./reports`.
-2. Identify the failing script or metadata row.
+2. Identify the failing script, failed check, or metadata row.
 3. Fix the SQL or metadata issue in the correct Git path.
 4. Re-run the relevant command.
 
@@ -42,6 +46,7 @@ It assumes the operator can read `./reports` and can run the CLI against the tar
 - Migration failure: stop, inspect the report, and fix forward with a new `V` script or corrected `R` script.
 - Metadata failure after SQL success: stop deployment and inspect database state before retrying.
 - Validation failure: fix the broken object or check script, then re-run `validate`.
+- Plan drift after approval: regenerate `plan` before retrying `migrate`.
 
 ## Verification And Validation
 
@@ -56,6 +61,7 @@ It assumes the operator can read `./reports` and can run the CLI against the tar
 - `baseline`: use once per existing database after the target version is confirmed.
 - `repair-checksum`: use only when the stored checksum must match the applied script.
 - After either metadata repair path, re-run `plan`.
+- If SQL succeeded but metadata repair is unsafe or blocked, stop and escalate with the report files and database state snapshot.
 
 ## Open Issues And Non-Goals
 

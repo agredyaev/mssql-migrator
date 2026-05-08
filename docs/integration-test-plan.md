@@ -11,15 +11,17 @@ This document defines the required live SQL Server checks for `rmig`.
 - Disposable SQL Server database only
 - `plan`, `migrate`, `validate`, `baseline`, and `repair-checksum`
 - Metadata table `__migrator.schema_migrations`
+- Report files in `reports/migration-plan.*`, `reports/migration-report.*`, and `reports/validation-report.*`
 
 ## System Context
 
 These checks prove the tool works against a real database, not just unit tests.
 They are the gap between local compilation and production readiness.
+See `README.md` for the CLI wrapper contract.
 
 ## Interfaces And Boundaries
 
-- Inputs: SQL files in `./sql`, target database credentials, `RM_*` environment variables
+- Inputs: SQL files in `./sql/versioned`, `./sql/repeatable`, and `./sql/checks`, target database credentials, `RM_*` environment variables
 - Outputs: report files in `./reports`, metadata rows in `__migrator.schema_migrations`
 - Ownership boundaries: the test database may be destroyed between runs
 
@@ -57,6 +59,8 @@ They are the gap between local compilation and production readiness.
 - `rmig validate --env prod`
 - `rmig baseline --env prod --up-to V010 --confirm`
 - `rmig repair-checksum --env prod --script R002__views.sql --confirm`
+- Verify `reports/migration-plan.json`, `reports/migration-report.json`, and `reports/validation-report.json` after each corresponding step.
+- Retain the generated report files with the test run record until the suite is rerun or replaced.
 
 ## Operations And Recovery
 
@@ -72,5 +76,5 @@ They are the gap between local compilation and production readiness.
 
 - `README.md`
 - `docs/runbook.md`
-- `docs/implementation-plan.md`
-- `docs/deployment-readiness.md`
+- `docs/solution.md`
+- `docs/operational-contract.md`
