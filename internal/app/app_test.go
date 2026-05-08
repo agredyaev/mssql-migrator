@@ -31,6 +31,14 @@ func TestUsageIncludesV11Commands(t *testing.T) {
 	}
 }
 
+func TestUsageListsSupportedEnvironments(t *testing.T) {
+	buffer := bytes.Buffer{}
+	printUsage(&buffer)
+	if !strings.Contains(buffer.String(), "env values: pred, prod") {
+		t.Fatalf("usage missing supported environments: %s", buffer.String())
+	}
+}
+
 func TestDefaultRuntimeUsesRealMigratorHandler(t *testing.T) {
 	runtime := defaultRuntime(BuildInfo{Version: "1.0.0", Commit: "abc"})
 	handler, ok := runtime.Handler.(migrator.Handler)
@@ -76,6 +84,33 @@ func TestParseCommandConfigAllowsMissingManagedSchemasForPlan(t *testing.T) {
 	t.Setenv("RM_MANAGED_SCHEMAS", "")
 	if _, err := parseCommandConfig("plan", []string{"--env", "prod"}); err != nil {
 		t.Fatalf("unexpected plan config error: %v", err)
+	}
+}
+
+func TestParseCommandConfigAllowsPredEnvironment(t *testing.T) {
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+
+	cfg, err := parseCommandConfig("info", []string{"--env", "PRED"})
+	if err != nil {
+		t.Fatalf("unexpected config error: %v", err)
+	}
+	if cfg.Env != "pred" {
+		t.Fatalf("expected normalized env, got %q", cfg.Env)
+	}
+}
+
+func TestParseCommandConfigRejectsUnknownEnvironment(t *testing.T) {
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+
+	_, err := parseCommandConfig("info", []string{"--env", "stage"})
+	if err == nil || !strings.Contains(err.Error(), "allowed: pred, prod") {
+		t.Fatalf("expected invalid environment error, got %v", err)
 	}
 }
 
