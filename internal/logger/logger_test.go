@@ -32,3 +32,23 @@ func TestJSONLoggerWritesValidJSON(t *testing.T) {
 		t.Fatalf("secret leaked in json log: %s", payload["message"])
 	}
 }
+
+func TestRedactMasksSensitiveURLQueryValues(t *testing.T) {
+	input := "https://ci.example/run?token=abc123&sig=xyz987&ok=1"
+	got := Redact(input)
+	for _, forbidden := range []string{"token=abc123", "sig=xyz987"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("redaction leaked %q in %q", forbidden, got)
+		}
+	}
+}
+
+func TestRedactMasksQuotedAndSpacedSecrets(t *testing.T) {
+	input := "password='my secret'; token=\"abc 123\"; client_secret=top secret"
+	got := Redact(input)
+	for _, forbidden := range []string{"my secret", "abc 123", "top secret"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("redaction leaked %q in %q", forbidden, got)
+		}
+	}
+}

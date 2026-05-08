@@ -1,12 +1,14 @@
 package planner
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"reporting-db-migrations/internal/checksum"
 	"reporting-db-migrations/internal/config"
+	"reporting-db-migrations/internal/contracts"
 	"reporting-db-migrations/internal/state"
 )
 
@@ -52,6 +54,24 @@ func TestBuildBlocksChangedVersionedScript(t *testing.T) {
 	}
 	if !plan.Blocked {
 		t.Fatal("expected plan to be blocked")
+	}
+}
+
+func TestVerifyApprovedPlanRejectsDifferentPendingScripts(t *testing.T) {
+	root := t.TempDir()
+	planFile := filepath.Join(root, "plan.json")
+	approved := contracts.MigrationPlan{GitCommit: "abc", SQLDirHash: "hash", TargetEnv: "prod", TargetDatabase: "ReportingDB", ToolVersion: "4.0.0", ToolCommit: "deadbeef", PendingScripts: []contracts.ScriptResult{{Script: "V001__one.sql", Type: "versioned"}}}
+	content, err := json.Marshal(approved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(planFile, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{PlanFile: planFile, GitCommit: "abc"}
+	current := contracts.MigrationPlan{SQLDirHash: "hash", TargetEnv: "prod", TargetDatabase: "ReportingDB", ToolVersion: "4.0.0", ToolCommit: "deadbeef", PendingScripts: []contracts.ScriptResult{{Script: "V002__two.sql", Type: "versioned"}}}
+	if err := VerifyApprovedPlan(cfg, current); err == nil {
+		t.Fatal("expected pending script mismatch error")
 	}
 }
 
