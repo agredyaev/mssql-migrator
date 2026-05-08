@@ -11,9 +11,10 @@ import (
 	"reporting-db-migrations/internal/checksum"
 )
 
-var versionedPattern = regexp.MustCompile(`^V([0-9]+)__([A-Za-z0-9_\-]+)\.sql$`)
-var repeatablePattern = regexp.MustCompile(`^R([0-9]+)__([A-Za-z0-9_\-]+)\.sql$`)
-var checkPattern = regexp.MustCompile(`^C([0-9]+)__([A-Za-z0-9_\-]+)\.sql$`)
+var versionedPattern = regexp.MustCompile(`^V([0-9]{3})__([A-Za-z0-9_\-]+)\.sql$`)
+var repeatablePattern = regexp.MustCompile(`^R([0-9]{3})__([A-Za-z0-9_\-]+)\.sql$`)
+var checkPattern = regexp.MustCompile(`^C([0-9]{3})__([A-Za-z0-9_\-]+)\.sql$`)
+var scriptVersionPattern = regexp.MustCompile(`^V([0-9]{3})$`)
 
 func Discover(root string) ([]Script, []Script, []Script, error) {
 	versioned, err := discoverType(filepath.Join(root, "versioned"), ScriptTypeVersioned)
@@ -53,7 +54,13 @@ func discoverType(directory string, scriptType ScriptType) ([]Script, error) {
 		}
 		scripts = append(scripts, script)
 	}
-	sort.Slice(scripts, func(i int, j int) bool { return scripts[i].Name < scripts[j].Name })
+	sort.Slice(scripts, func(i int, j int) bool {
+		cmp := compareNumericVersion(scripts[i].Version, scripts[j].Version)
+		if cmp == 0 {
+			return scripts[i].Name < scripts[j].Name
+		}
+		return cmp < 0
+	})
 	return scripts, nil
 }
 
@@ -72,7 +79,7 @@ func ParseScript(path string, scriptType ScriptType) (Script, error) {
 		return Script{}, err
 	}
 	body := string(content)
-	return Script{Name: name, Path: path, Type: scriptType, Version: matches[1], Description: matches[2], Checksum: fileChecksum, NoTransaction: strings.Contains(body, "-- migrator: no-transaction"), RequiresApproval: strings.Contains(body, "-- migrator: requires-approval")}, nil
+	return Script{Name: name, Path: path, Type: scriptType, Version: matches[1], Description: matches[2], Checksum: fileChecksum, NoTransaction: strings.Contains(body, "-- migrator: no-transaction")}, nil
 }
 
 func matchName(name string, scriptType ScriptType) []string {
@@ -98,4 +105,42 @@ func rejectDuplicateVersions(scripts []Script) error {
 		seen[script.Version] = script.Name
 	}
 	return nil
+}
+
+func compareNumericVersion(left string, right string) int {
+	left = trimLeadingZeros(left)
+	right = trimLeadingZeros(right)
+	if len(left) != len(right) {
+		if len(left) < len(right) {
+			return -1
+		}
+		return 1
+	}
+	if left < right {
+		return -1
+	}
+	if left > right {
+		return 1
+	}
+	return 0
+}
+
+func CompareScriptVersions(left string, right string) int {
+	return compareNumericVersion(left, right)
+}
+
+func ParseScriptVersion(value string) (string, error) {
+	matches := scriptVersionPattern.FindStringSubmatch(strings.TrimSpace(value))
+	if len(matches) != 2 {
+		return "", fmt.Errorf("invalid script version: %s", value)
+	}
+	return matches[1], nil
+}
+
+func trimLeadingZeros(value string) string {
+	value = strings.TrimLeft(value, "0")
+	if value == "" {
+		return "0"
+	}
+	return value
 }

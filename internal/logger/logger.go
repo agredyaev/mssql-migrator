@@ -21,7 +21,6 @@ const (
 
 type Options struct {
 	JSON    bool
-	NoColor bool
 	Level   string
 	Writer  io.Writer
 }
@@ -82,12 +81,13 @@ func normalizeLevel(value string) Level {
 }
 
 var secretPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)(password\s*=\s*)[^;\s]+`),
-	regexp.MustCompile(`(?i)(pwd\s*=\s*)[^;\s]+`),
-	regexp.MustCompile(`(?i)(token\s*=\s*)[^;\s]+`),
-	regexp.MustCompile(`(?i)(access[_-]?token\s*=\s*)[^;\s]+`),
-	regexp.MustCompile(`(?i)(secret\s*=\s*)[^;\s]+`),
-	regexp.MustCompile(`(?i)(client_secret\s*=\s*)[^;\s]+`),
+	regexp.MustCompile(`(?i)(password\s*=\s*)("[^"]*"|'[^']*'|[^;\r\n]+)`),
+	regexp.MustCompile(`(?i)(pwd\s*=\s*)("[^"]*"|'[^']*'|[^;\r\n]+)`),
+	regexp.MustCompile(`(?i)(token\s*=\s*)("[^"]*"|'[^']*'|[^;\r\n]+)`),
+	regexp.MustCompile(`(?i)(access[_-]?token\s*=\s*)("[^"]*"|'[^']*'|[^;\r\n]+)`),
+	regexp.MustCompile(`(?i)(secret\s*=\s*)("[^"]*"|'[^']*'|[^;\r\n]+)`),
+	regexp.MustCompile(`(?i)(client_secret\s*=\s*)("[^"]*"|'[^']*'|[^;\r\n]+)`),
+	regexp.MustCompile(`(?i)([?&][^=&\s]*(?:token|secret|sig|signature)[^=&\s]*=)[^&\s]+`),
 	regexp.MustCompile(`sqlserver://([^:]+):([^@]+)@`),
 }
 

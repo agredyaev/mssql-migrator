@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"reporting-db-migrations/internal/contracts"
+	"reporting-db-migrations/internal/logger"
 	"reporting-db-migrations/internal/metadata"
 	"reporting-db-migrations/internal/parser"
 	"reporting-db-migrations/internal/state"
@@ -52,17 +53,21 @@ func (r Runner) applyScript(parent context.Context, conn *sql.Conn, script parse
 	executionErr := r.executeScript(ctx, conn, script)
 	stopProgress()
 	executionMS := int(time.Since(startedAt).Milliseconds())
-	attempt := state.Attempt{ScriptName: script.Name, ScriptType: string(script.Type), Checksum: script.Checksum, ExecutionMS: executionMS, Success: executionErr == nil, GitCommit: r.cfg.GitCommit, GitBranch: r.cfg.GitBranch, PipelineRunID: r.cfg.PipelineRunID, PipelineURL: r.cfg.PipelineURL, AppliedBy: r.cfg.Actor}
+	attempt := state.Attempt{ScriptName: script.Name, ScriptType: string(script.Type), Checksum: script.Checksum, ExecutionMS: executionMS, Success: executionErr == nil, GitCommit: r.cfg.GitCommit, GitBranch: r.cfg.GitBranch, PipelineRunID: r.cfg.PipelineRunID, PipelineURL: logger.Redact(r.cfg.PipelineURL), AppliedBy: r.cfg.Actor}
 	if executionErr != nil {
-		attempt.ErrorMessage = executionErr.Error()
-		_ = metadata.RecordAttempt(parent, conn, attempt)
+		attempt.ErrorMessage = logger.Redact(executionErr.Error())
+		if err := metadata.RecordAttempt(parent, conn, attempt); err != nil {
+			report.Result = "failed"
+			report.Failed = &contracts.Failure{Script: script.Name, Error: "critical metadata failure after failed SQL: " + logger.Redact(err.Error())}
+			return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+		}
 		report.Result = "failed"
-		report.Failed = &contracts.Failure{Script: script.Name, Error: executionErr.Error()}
+		report.Failed = &contracts.Failure{Script: script.Name, Error: logger.Redact(executionErr.Error())}
 		return fmt.Errorf("%w: %v", contracts.ErrSQLExecution, executionErr)
 	}
 	if err := metadata.RecordAttempt(parent, conn, attempt); err != nil {
 		report.Result = "failed"
-		report.Failed = &contracts.Failure{Script: script.Name, Error: "critical metadata failure after successful SQL: " + err.Error()}
+		report.Failed = &contracts.Failure{Script: script.Name, Error: "critical metadata failure after successful SQL: " + logger.Redact(err.Error())}
 		return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
 	}
 	report.Applied = append(report.Applied, contracts.ScriptResult{Script: script.Name, Type: string(script.Type), Checksum: script.Checksum, ExecutionMS: executionMS})

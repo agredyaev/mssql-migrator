@@ -25,6 +25,7 @@ type ValidationSummary struct {
 type MigrationPlan struct {
 	Tool           string    `json:"tool"`
 	ToolVersion    string    `json:"tool_version"`
+	ToolCommit     string    `json:"tool_commit"`
 	GitCommit      string    `json:"git_commit"`
 	GitBranch      string    `json:"git_branch"`
 	SQLDirHash     string    `json:"sql_dir_hash"`
@@ -43,6 +44,7 @@ type MigrationPlan struct {
 type MigrationReport struct {
 	Tool        string `json:"tool"`
 	Version     string `json:"version"`
+	ToolCommit  string `json:"tool_commit"`
 	Environment string `json:"environment"`
 	Database    string `json:"database"`
 
@@ -65,8 +67,17 @@ type MigrationReport struct {
 }
 
 type ValidationReport struct {
+	Tool        string `json:"tool"`
+	Version     string `json:"version"`
+	ToolCommit  string `json:"tool_commit"`
 	Environment string `json:"environment"`
 	Database    string `json:"database"`
+
+	GitCommit     string `json:"git_commit"`
+	GitBranch     string `json:"git_branch"`
+	PipelineRunID string `json:"pipeline_run_id"`
+	PipelineURL   string `json:"pipeline_url"`
+	Actor         string `json:"actor"`
 
 	StartedAt  time.Time `json:"started_at"`
 	FinishedAt time.Time `json:"finished_at"`

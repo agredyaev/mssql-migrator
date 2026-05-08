@@ -2,6 +2,7 @@ package planner
 
 import (
 	"fmt"
+	"reflect"
 	"time"
 
 	"reporting-db-migrations/internal/checksum"
@@ -27,7 +28,7 @@ func Build(cfg config.Config, st state.State) (contracts.MigrationPlan, error) {
 	return plan, nil
 }
 
-func VerifyApprovedPlan(cfg config.Config, current string) error {
+func VerifyApprovedPlan(cfg config.Config, current contracts.MigrationPlan) error {
 	p, err := reports.ReadPlan(cfg.PlanFile)
 	if err != nil {
 		return err
@@ -39,20 +40,29 @@ func VerifyApprovedPlan(cfg config.Config, current string) error {
 	if p.GitCommit != cfg.GitCommit {
 		mm = append(mm, "git_commit")
 	}
-	if p.SQLDirHash != current {
+	if p.SQLDirHash != current.SQLDirHash {
 		mm = append(mm, "sql_dir_hash")
 	}
-	if p.TargetEnv != cfg.Env {
+	if p.TargetEnv != current.TargetEnv {
 		mm = append(mm, "target_env")
 	}
-	if p.TargetDatabase != cfg.Database {
+	if p.TargetDatabase != current.TargetDatabase {
 		mm = append(mm, "target_database")
 	}
-	if p.ToolVersion != cfg.ToolVersion {
+	if p.ToolVersion != current.ToolVersion {
 		mm = append(mm, "tool_version")
+	}
+	if p.ToolCommit != current.ToolCommit {
+		mm = append(mm, "tool_commit")
 	}
 	if len(mm) > 0 {
 		return fmt.Errorf("plan artifact does not match current deployment input: %v", mm)
+	}
+	if !reflect.DeepEqual(p.PendingScripts, current.PendingScripts) {
+		return fmt.Errorf("approved plan pending script set does not match current deployment state")
+	}
+	if !reflect.DeepEqual(p.ChangedRepeatableScripts, current.ChangedRepeatableScripts) {
+		return fmt.Errorf("approved plan changed repeatable script set does not match current deployment state")
 	}
 	return nil
 }
@@ -61,6 +71,7 @@ func newPlan(cfg config.Config, hash string) contracts.MigrationPlan {
 	return contracts.MigrationPlan{
 		Tool:                     "rmig",
 		ToolVersion:              cfg.ToolVersion,
+		ToolCommit:               cfg.ToolCommit,
 		GitCommit:                cfg.GitCommit,
 		GitBranch:                cfg.GitBranch,
 		SQLDirHash:               hash,

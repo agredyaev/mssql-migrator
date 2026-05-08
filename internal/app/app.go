@@ -11,6 +11,7 @@ import (
 	"reporting-db-migrations/internal/config"
 	"reporting-db-migrations/internal/contracts"
 	"reporting-db-migrations/internal/logger"
+	"reporting-db-migrations/internal/migrator"
 )
 
 type BuildInfo struct {
@@ -35,8 +36,11 @@ type Runtime struct {
 }
 
 func Run(args []string, build BuildInfo) int {
-	runtime := Runtime{BuildInfo: build, Handler: NotImplementedHandler{}, Stdout: os.Stdout, Stderr: os.Stderr}
-	return runtime.Run(args)
+	return defaultRuntime(build).Run(args)
+}
+
+func defaultRuntime(build BuildInfo) Runtime {
+	return Runtime{BuildInfo: build, Handler: migrator.Handler{}, Stdout: os.Stdout, Stderr: os.Stderr}
 }
 
 func (r Runtime) Run(args []string) int {
@@ -73,13 +77,13 @@ func (r Runtime) dispatch(command string, args []string, stdout io.Writer, stder
 	cfg.ToolVersion = r.BuildInfo.Version
 	cfg.ToolCommit = r.BuildInfo.Commit
 
-	log := logger.New(logger.Options{JSON: cfg.JSONLogs, NoColor: cfg.NoColor, Level: cfg.LogLevel, Writer: stdout})
+	log := logger.New(logger.Options{JSON: cfg.JSONLogs, Level: cfg.LogLevel, Writer: stdout})
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.CommandTimeout)
 	defer cancel()
 
 	handler := r.Handler
 	if handler == nil {
-		handler = NotImplementedHandler{}
+		handler = migrator.Handler{}
 	}
 
 	switch command {
@@ -117,7 +121,6 @@ func parseCommandConfig(command string, args []string) (config.Config, error) {
 	flags.StringVar(&input.ReportDir, "report-dir", config.Getenv("RM_REPORT_DIR", "./reports"), "report output directory")
 	flags.StringVar(&input.LogLevel, "log-level", config.Getenv("RM_LOG_LEVEL", "info"), "log level")
 	flags.BoolVar(&input.JSONLogs, "json-logs", config.GetenvBool("RM_JSON_LOGS", false), "emit JSON logs")
-	flags.BoolVar(&input.NoColor, "no-color", config.GetenvBool("RM_NO_COLOR", false), "disable ANSI color output")
 	flags.StringVar(&input.CommandTimeout, "timeout", config.Getenv("RM_TIMEOUT", "900s"), "command timeout")
 	flags.StringVar(&input.ScriptTimeout, "script-timeout", config.Getenv("RM_SCRIPT_TIMEOUT", "600s"), "per-script timeout")
 	flags.StringVar(&input.LockTimeout, "lock-timeout", config.Getenv("RM_LOCK_TIMEOUT", "60s"), "SQL app lock timeout")
@@ -130,7 +133,17 @@ func parseCommandConfig(command string, args []string) (config.Config, error) {
 	if err := flags.Parse(args); err != nil {
 		return config.Config{}, err
 	}
-	return config.Load(input)
+	cfg, err := config.Load(input)
+	if err != nil {
+		return config.Config{}, err
+	}
+	if err := cfg.ValidateForCommand(command); err != nil {
+		return config.Config{}, err
+	}
+	if command == "migrate" && cfg.PlanFile == "" {
+		return config.Config{}, fmt.Errorf("--plan-file is required")
+	}
+	return cfg, nil
 }
 
 func exitCode(err error, log logger.Logger, event string) int {

@@ -3,6 +3,7 @@ package migrator
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"reporting-db-migrations/internal/checksum"
@@ -28,7 +29,10 @@ func (r Runner) prepareProtectedRun(ctx context.Context) (contracts.MigrationRep
 	}
 	if err := lock.Acquire(ctx, conn, r.cfg.LockTimeout); err != nil {
 		closeFn()
-		return report, nil, nil, fmt.Errorf("%w: %v", contracts.ErrLockTimeout, err)
+		if errors.Is(err, lock.ErrTimeout) {
+			return report, nil, nil, fmt.Errorf("%w: %v", contracts.ErrLockTimeout, err)
+		}
+		return report, nil, nil, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
 	}
 	report.SQLDirHash = hash
 	return report, conn, closeFn, nil

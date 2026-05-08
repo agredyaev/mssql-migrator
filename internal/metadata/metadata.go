@@ -70,6 +70,18 @@ ORDER BY applied_at ASC, id ASC`)
 	return state.New(attempts), nil
 }
 
+func LoadStateIfPresent(ctx context.Context, conn *sql.Conn) (state.State, error) {
+	var exists int
+	err := conn.QueryRowContext(ctx, `SELECT CASE WHEN OBJECT_ID('__migrator.schema_migrations', 'U') IS NULL THEN 0 ELSE 1 END`).Scan(&exists)
+	if err != nil {
+		return state.State{}, err
+	}
+	if exists == 0 {
+		return state.New(nil), nil
+	}
+	return LoadState(ctx, conn)
+}
+
 func RecordAttempt(ctx context.Context, execer Execer, attempt state.Attempt) error {
 	_, err := execer.ExecContext(ctx, `
 INSERT INTO __migrator.schema_migrations

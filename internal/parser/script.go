@@ -9,14 +9,13 @@ const (
 )
 
 type Script struct {
-	Name             string
-	Path             string
-	Type             ScriptType
-	Version          string
-	Description      string
-	Checksum         string
-	NoTransaction    bool
-	RequiresApproval bool
+	Name          string
+	Path          string
+	Type          ScriptType
+	Version       string
+	Description   string
+	Checksum      string
+	NoTransaction bool
 }
 
 type Batch struct {

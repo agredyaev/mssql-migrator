@@ -12,12 +12,12 @@ import (
 type Input struct {
 	Env, SQLDir, ReportDir, LogLevel, CommandTimeout, ScriptTimeout, LockTimeout, PlanFile string
 	BaselineUpTo, RepairScript                                                             string
-	JSONLogs, NoColor, SkipValidate, Confirm                                               bool
+	JSONLogs, SkipValidate, Confirm                                                        bool
 }
 
 type Config struct {
 	Env, SQLDir, ReportDir, LogLevel                        string
-	JSONLogs, NoColor, SkipValidate                         bool
+	JSONLogs, SkipValidate                                  bool
 	Confirm                                                 bool
 	CommandTimeout, ScriptTimeout, LockTimeout              time.Duration
 	PlanFile, BaselineUpTo, RepairScript                    string
@@ -76,7 +76,6 @@ func Load(input Input) (Config, error) {
 		ReportDir:      def(input.ReportDir, "./reports"),
 		LogLevel:       def(input.LogLevel, "info"),
 		JSONLogs:       input.JSONLogs,
-		NoColor:        input.NoColor,
 		SkipValidate:   input.SkipValidate,
 		Confirm:        input.Confirm,
 		CommandTimeout: commandTimeout,
@@ -87,10 +86,17 @@ func Load(input Input) (Config, error) {
 		RepairScript:   strings.TrimSpace(input.RepairScript),
 	}
 	cfg.loadEnvironment()
-	return cfg, cfg.Validate()
+	return cfg, cfg.ValidateCommon()
 }
 
 func (cfg Config) Validate() error {
+	if err := cfg.ValidateCommon(); err != nil {
+		return err
+	}
+	return cfg.ValidateManagedSchemas()
+}
+
+func (cfg Config) ValidateCommon() error {
 	missing := []string{}
 	if cfg.Env == "" {
 		missing = append(missing, "--env or RM_ENV")
@@ -107,16 +113,49 @@ func (cfg Config) Validate() error {
 	if cfg.Password == "" {
 		missing = append(missing, "RM_DB_PASSWORD")
 	}
-	if len(cfg.ManagedSchemas) == 0 {
-		missing = append(missing, "RM_MANAGED_SCHEMAS")
-	}
 	if len(missing) > 0 {
 		return fmt.Errorf("missing required config: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func (cfg Config) ValidateManagedSchemas() error {
+	if len(cfg.ManagedSchemas) == 0 {
+		return fmt.Errorf("missing required config: RM_MANAGED_SCHEMAS")
 	}
 	for _, schema := range cfg.ManagedSchemas {
 		if !managedSchemaPattern.MatchString(schema) {
 			return fmt.Errorf("invalid managed schema name: %s", schema)
 		}
+	}
+	return nil
+}
+
+func (cfg Config) ValidateGitCommit() error {
+	if strings.TrimSpace(cfg.GitCommit) == "" {
+		return fmt.Errorf("missing required config: RM_GIT_COMMIT")
+	}
+	return nil
+}
+
+func (cfg Config) ValidateForCommand(command string) error {
+	if err := cfg.ValidateCommon(); err != nil {
+		return err
+	}
+	switch command {
+	case "plan":
+		return cfg.ValidateGitCommit()
+	case "validate":
+		return cfg.ValidateManagedSchemas()
+	case "migrate":
+		if err := cfg.ValidateGitCommit(); err != nil {
+			return err
+		}
+		if !cfg.SkipValidate {
+			return cfg.ValidateManagedSchemas()
+		}
+	case "baseline", "repair-checksum":
+		return cfg.ValidateGitCommit()
 	}
 	return nil
 }
@@ -133,7 +172,7 @@ func (cfg *Config) loadEnvironment() {
 	cfg.Password = os.Getenv("RM_DB_PASSWORD")
 	cfg.Encrypt = GetenvBool("RM_DB_ENCRYPT", true)
 	cfg.TrustServerCertificate = GetenvBool("RM_DB_TRUST_SERVER_CERTIFICATE", false)
-	cfg.ManagedSchemas = splitCSV(def(os.Getenv("RM_MANAGED_SCHEMAS"), "reporting"))
+	cfg.ManagedSchemas = splitCSV(os.Getenv("RM_MANAGED_SCHEMAS"))
 	cfg.GitCommit = os.Getenv("RM_GIT_COMMIT")
 	cfg.GitBranch = os.Getenv("RM_GIT_BRANCH")
 	cfg.PipelineRunID = os.Getenv("RM_PIPELINE_RUN_ID")
