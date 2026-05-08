@@ -177,6 +177,7 @@ func exitCode(err error, log logger.Logger, event string) int {
 func printUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "Usage:")
 	fmt.Fprintln(writer, "  rmig version")
+	fmt.Fprintln(writer, "  env values: pred, prod")
 	fmt.Fprintln(writer, "  rmig info --env prod")
 	fmt.Fprintln(writer, "  rmig plan --env prod")
 	fmt.Fprintln(writer, "  rmig migrate --env prod --plan-file reports/migration-plan.json")

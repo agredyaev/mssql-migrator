@@ -30,6 +30,11 @@ type Config struct {
 
 var managedSchemaPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+var allowedEnvironments = map[string]struct{}{
+	"pred": {},
+	"prod": {},
+}
+
 func Getenv(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -71,7 +76,7 @@ func Load(input Input) (Config, error) {
 	}
 
 	cfg := Config{
-		Env:            strings.TrimSpace(input.Env),
+		Env:            normalizeEnv(input.Env),
 		SQLDir:         def(input.SQLDir, "./sql"),
 		ReportDir:      def(input.ReportDir, "./reports"),
 		LogLevel:       def(input.LogLevel, "info"),
@@ -115,6 +120,16 @@ func (cfg Config) ValidateCommon() error {
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("missing required config: %s", strings.Join(missing, ", "))
+	}
+	if err := cfg.ValidateEnvironment(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cfg Config) ValidateEnvironment() error {
+	if _, ok := allowedEnvironments[cfg.Env]; !ok {
+		return fmt.Errorf("invalid environment: %s (allowed: pred, prod)", cfg.Env)
 	}
 	return nil
 }
@@ -208,4 +223,8 @@ func def(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func normalizeEnv(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
