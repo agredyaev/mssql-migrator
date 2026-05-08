@@ -29,6 +29,7 @@ See `README.md` for the CLI wrapper contract.
 
 - The database is disposable.
 - The run is isolated from production data.
+- Use `--env pred` for this suite so plan and report artifacts are marked as pre-production runs.
 - Script names follow the `V###__name.sql`, `R###__name.sql`, and `C###__name.sql` patterns used by the parser.
 
 ## Nominal Flow
@@ -54,11 +55,11 @@ See `README.md` for the CLI wrapper contract.
 
 ## Verification And Validation
 
-- `rmig plan --env prod`
-- `rmig migrate --env prod --plan-file reports/migration-plan.json`
-- `rmig validate --env prod`
-- `rmig baseline --env prod --up-to V010 --confirm`
-- `rmig repair-checksum --env prod --script R002__views.sql --confirm`
+- `rmig plan --env pred`
+- `rmig migrate --env pred --plan-file reports/migration-plan.json`
+- `rmig validate --env pred`
+- `rmig baseline --env pred --up-to V010 --confirm`
+- `rmig repair-checksum --env pred --script R002__views.sql --confirm`
 - Verify `reports/migration-plan.json`, `reports/migration-report.json`, and `reports/validation-report.json` after each corresponding step.
 - Retain the generated report files with the test run record until the suite is rerun or replaced.
 

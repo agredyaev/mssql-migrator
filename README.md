@@ -29,6 +29,7 @@ It calls `internal/app.Run(os.Args, buildInfo)` and passes `internal/app.BuildIn
 ## System Context
 
 The expected flow is branch work on `main`, a PR to `main`, then a production pipeline that runs `rmig` against SQL Server.
+Use `--env pred` for pre-production validation runs and `--env prod` for production runs.
 The tool reads SQL files from `./sql/versioned`, `./sql/repeatable`, and `./sql/checks`, writes reports to `./reports`, and records execution history in `__migrator.schema_migrations`.
 
 ## Interfaces And Boundaries
@@ -39,13 +40,14 @@ The tool reads SQL files from `./sql/versioned`, `./sql/repeatable`, and `./sql/
 
 ## Flags And Env
 
-- Common flags: `--env`, `--sql-dir`, `--report-dir`, `--log-level`, `--json-logs`, `--timeout`, `--script-timeout`, `--lock-timeout`
+- Common flags: `--env` (`pred` or `prod`), `--sql-dir`, `--report-dir`, `--log-level`, `--json-logs`, `--timeout`, `--script-timeout`, `--lock-timeout`
 - Command flags: `--plan-file` for `migrate`, `--skip-validate` for `migrate`, `--up-to` and `--confirm` for `baseline`, `--script` and `--confirm` for `repair-checksum`
-- Supporting environment: `RM_ENV`, `RM_SQL_DIR`, `RM_REPORT_DIR`, `RM_LOG_LEVEL`, `RM_JSON_LOGS`, `RM_TIMEOUT`, `RM_SCRIPT_TIMEOUT`, `RM_LOCK_TIMEOUT`, `RM_PLAN_FILE`, `RM_SKIP_VALIDATE`, `RM_BASELINE_UP_TO`, `RM_REPAIR_SCRIPT`, `RM_CONFIRM`
+- Supporting environment: `RM_ENV` (`pred` or `prod`), `RM_SQL_DIR`, `RM_REPORT_DIR`, `RM_LOG_LEVEL`, `RM_JSON_LOGS`, `RM_TIMEOUT`, `RM_SCRIPT_TIMEOUT`, `RM_LOCK_TIMEOUT`, `RM_PLAN_FILE`, `RM_SKIP_VALIDATE`, `RM_BASELINE_UP_TO`, `RM_REPAIR_SCRIPT`, `RM_CONFIRM`
 
 ## Assumptions And Constraints
 
 - SQL Server is reachable with the configured credentials.
+- `--env` and `RM_ENV` accept only `pred` and `prod`.
 - `baseline` and `repair-checksum` require `--confirm`.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
 - Versioned scripts are applied once.

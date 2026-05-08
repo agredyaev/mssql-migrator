@@ -32,6 +32,7 @@ See `README.md` for the CLI wrapper contract.
 - The binary is built with `-ldflags` so `rmig version` reports a real commit SHA.
 - `baseline` and `repair-checksum` require `--confirm`.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
+- `--env` and `RM_ENV` accept only `pred` and `prod`.
 - `migrate` requires `--plan-file` and runs validation by default; `--skip-validate` or `RM_SKIP_VALIDATE` disables the step.
 - SQL Server credentials and secrets are provided externally.
 

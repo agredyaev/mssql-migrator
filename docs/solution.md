@@ -32,6 +32,7 @@ The selected design keeps migration history in `__migrator.schema_migrations` an
 ## Assumptions And Constraints
 
 - SQL Server is the execution target.
+- `--env` and `RM_ENV` accept only `pred` and `prod`.
 - Versioned scripts are one-time changes.
 - Repeatable scripts are tied to Git and rerun only when their checksum changes.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
