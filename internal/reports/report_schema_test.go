@@ -10,7 +10,7 @@ import (
 
 func TestMigrationPlanJSONSchemaUsesSnakeCase(t *testing.T) {
 	plan := contracts.MigrationPlan{
-		Tool:           "reporting-migrator",
+		Tool:           "rmig",
 		ToolVersion:    "4.0.0",
 		GitCommit:      "abc",
 		GitBranch:      "main",

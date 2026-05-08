@@ -59,7 +59,7 @@ func VerifyApprovedPlan(cfg config.Config, current string) error {
 
 func newPlan(cfg config.Config, hash string) contracts.MigrationPlan {
 	return contracts.MigrationPlan{
-		Tool:                     "reporting-migrator",
+		Tool:                     "rmig",
 		ToolVersion:              cfg.ToolVersion,
 		GitCommit:                cfg.GitCommit,
 		GitBranch:                cfg.GitBranch,

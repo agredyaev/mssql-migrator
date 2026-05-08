@@ -29,7 +29,7 @@ func buildDSN(cfg config.Config) string {
 	query.Set("database", cfg.Database)
 	query.Set("encrypt", fmt.Sprintf("%t", cfg.Encrypt))
 	query.Set("TrustServerCertificate", fmt.Sprintf("%t", cfg.TrustServerCertificate))
-	query.Set("app name", "reporting-migrator")
+	query.Set("app name", "rmig")
 
 	url := &url.URL{
 		Scheme:   "sqlserver",

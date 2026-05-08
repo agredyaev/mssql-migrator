@@ -16,7 +16,7 @@ go mod tidy
 gofmt -w .
 go test ./...
 go vet ./...
-go build -o reporting-migrator ./cmd/reporting-migrator
+go build -ldflags "-X main.version=0.1.0-dev -X main.commit=$(git rev-parse HEAD)" -o rmig ./cmd/rmig
 ```
 
 Then run the integration checklist in `docs/integration-test-plan.md`.

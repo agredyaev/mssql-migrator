@@ -10,11 +10,11 @@ import (
 func TestVersionCommand(t *testing.T) {
 	stdout := bytes.Buffer{}
 	runtime := Runtime{BuildInfo: BuildInfo{Version: "4.0.0", Commit: "abc"}, Stdout: &stdout}
-	code := runtime.Run([]string{"reporting-migrator", "version"})
+	code := runtime.Run([]string{"rmig", "version"})
 	if code != contracts.ExitOK {
 		t.Fatalf("unexpected exit code: %d", code)
 	}
-	if stdout.String() != "reporting-migrator 4.0.0 commit=abc\n" {
+	if stdout.String() != "rmig 4.0.0 commit=abc\n" {
 		t.Fatalf("unexpected output: %s", stdout.String())
 	}
 }

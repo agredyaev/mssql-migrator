@@ -9,17 +9,17 @@ go mod tidy
 gofmt -w .
 go test ./...
 go vet ./...
-go build -o reporting-migrator ./cmd/reporting-migrator
+go build -ldflags "-X main.version=0.1.0-dev -X main.commit=$(git rev-parse HEAD)" -o rmig ./cmd/rmig
 ```
 
 ## Commands
 
 ```bash
-reporting-migrator version
-reporting-migrator info --env prod
-reporting-migrator plan --env prod
-reporting-migrator migrate --env prod --plan-file reports/migration-plan.json
-reporting-migrator validate --env prod
-reporting-migrator baseline --env prod --up-to V010 --confirm
-reporting-migrator repair-checksum --env prod --script R002__views.sql --confirm
+rmig version
+rmig info --env prod
+rmig plan --env prod
+rmig migrate --env prod --plan-file reports/migration-plan.json
+rmig validate --env prod
+rmig baseline --env prod --up-to V010 --confirm
+rmig repair-checksum --env prod --script R002__views.sql --confirm
 ```

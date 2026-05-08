@@ -50,7 +50,7 @@ func (r Runtime) Run(args []string) int {
 
 	command := args[1]
 	if command == "version" {
-		fmt.Fprintf(stdout, "reporting-migrator %s commit=%s\n", r.BuildInfo.Version, r.BuildInfo.Commit)
+		fmt.Fprintf(stdout, "rmig %s commit=%s\n", r.BuildInfo.Version, r.BuildInfo.Commit)
 		return contracts.ExitOK
 	}
 
@@ -163,13 +163,13 @@ func exitCode(err error, log logger.Logger, event string) int {
 
 func printUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "Usage:")
-	fmt.Fprintln(writer, "  reporting-migrator version")
-	fmt.Fprintln(writer, "  reporting-migrator info --env prod")
-	fmt.Fprintln(writer, "  reporting-migrator plan --env prod")
-	fmt.Fprintln(writer, "  reporting-migrator migrate --env prod --plan-file reports/migration-plan.json")
-	fmt.Fprintln(writer, "  reporting-migrator validate --env prod")
-	fmt.Fprintln(writer, "  reporting-migrator baseline --env prod --up-to V010 --confirm")
-	fmt.Fprintln(writer, "  reporting-migrator repair-checksum --env prod --script R002__views.sql --confirm")
+	fmt.Fprintln(writer, "  rmig version")
+	fmt.Fprintln(writer, "  rmig info --env prod")
+	fmt.Fprintln(writer, "  rmig plan --env prod")
+	fmt.Fprintln(writer, "  rmig migrate --env prod --plan-file reports/migration-plan.json")
+	fmt.Fprintln(writer, "  rmig validate --env prod")
+	fmt.Fprintln(writer, "  rmig baseline --env prod --up-to V010 --confirm")
+	fmt.Fprintln(writer, "  rmig repair-checksum --env prod --script R002__views.sql --confirm")
 }
 
 func writerOrDefault(writer io.Writer, fallback io.Writer) io.Writer {

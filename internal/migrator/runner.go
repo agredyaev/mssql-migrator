@@ -108,7 +108,7 @@ func (r Runner) openReservedConnection(ctx context.Context) (*sql.Conn, func(), 
 
 func (r Runner) newMigrationReport() contracts.MigrationReport {
 	return contracts.MigrationReport{
-		Tool:          "reporting-migrator",
+		Tool:          "rmig",
 		Version:       r.cfg.ToolVersion,
 		Environment:   r.cfg.Env,
 		Database:      r.cfg.Database,
