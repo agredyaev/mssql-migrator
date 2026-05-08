@@ -1,4 +1,4 @@
-name: reporting-db-migrations
+name: rmig
 
 on:
   workflow_dispatch:
@@ -11,8 +11,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25.7'
-      - run: go mod tidy
-      - run: gofmt -w .
       - run: go test ./...
       - run: go vet ./...
       - run: go build -ldflags "-X main.version=0.1.0-dev -X main.commit=$(git rev-parse HEAD)" -o rmig ./cmd/rmig
