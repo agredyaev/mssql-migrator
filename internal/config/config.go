@@ -21,18 +21,28 @@ type Config struct {
 	Confirm                                                 bool
 	CommandTimeout, ScriptTimeout, LockTimeout              time.Duration
 	PlanFile, BaselineUpTo, RepairScript                    string
-	Server, Port, Database, User, Password                  string
+	Server, Port, Database, DBAuth, User, Password          string
 	Encrypt, TrustServerCertificate                         bool
 	ManagedSchemas                                          []string
 	GitCommit, GitBranch, PipelineRunID, PipelineURL, Actor string
 	ToolVersion, ToolCommit                                 string
 }
 
+const (
+	DBAuthSQL        = "sql"
+	DBAuthIntegrated = "integrated"
+)
+
 var managedSchemaPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 var allowedEnvironments = map[string]struct{}{
 	"pred": {},
 	"prod": {},
+}
+
+var allowedDBAuthModes = map[string]struct{}{
+	DBAuthSQL:        {},
+	DBAuthIntegrated: {},
 }
 
 func Getenv(key, fallback string) string {
@@ -102,6 +112,7 @@ func (cfg Config) Validate() error {
 }
 
 func (cfg Config) ValidateCommon() error {
+	authMode := cfg.DBAuthMode()
 	missing := []string{}
 	if cfg.Env == "" {
 		missing = append(missing, "--env or RM_ENV")
@@ -112,16 +123,21 @@ func (cfg Config) ValidateCommon() error {
 	if cfg.Database == "" {
 		missing = append(missing, "RM_DB_DATABASE")
 	}
-	if cfg.User == "" {
-		missing = append(missing, "RM_DB_USER")
-	}
-	if cfg.Password == "" {
-		missing = append(missing, "RM_DB_PASSWORD")
+	if authMode == DBAuthSQL {
+		if cfg.User == "" {
+			missing = append(missing, "RM_DB_USER")
+		}
+		if cfg.Password == "" {
+			missing = append(missing, "RM_DB_PASSWORD")
+		}
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("missing required config: %s", strings.Join(missing, ", "))
 	}
 	if err := cfg.ValidateEnvironment(); err != nil {
+		return err
+	}
+	if err := cfg.ValidateDBAuth(); err != nil {
 		return err
 	}
 	return nil
@@ -130,6 +146,13 @@ func (cfg Config) ValidateCommon() error {
 func (cfg Config) ValidateEnvironment() error {
 	if _, ok := allowedEnvironments[cfg.Env]; !ok {
 		return fmt.Errorf("invalid environment: %s (allowed: pred, prod)", cfg.Env)
+	}
+	return nil
+}
+
+func (cfg Config) ValidateDBAuth() error {
+	if _, ok := allowedDBAuthModes[cfg.DBAuthMode()]; !ok {
+		return fmt.Errorf("invalid RM_DB_AUTH: %s (allowed: sql, integrated)", strings.TrimSpace(cfg.DBAuth))
 	}
 	return nil
 }
@@ -175,14 +198,27 @@ func (cfg Config) ValidateForCommand(command string) error {
 	return nil
 }
 
+func (cfg Config) DBAuthMode() string {
+	return normalizeDBAuth(cfg.DBAuth)
+}
+
 func (cfg Config) MaskedTarget() string {
-	return fmt.Sprintf("server=%s;port=%s;database=%s;user=%s;password=***", cfg.Server, cfg.Port, cfg.Database, cfg.User)
+	target := fmt.Sprintf("server=%s;port=%s;database=%s;auth=%s", cfg.Server, cfg.Port, cfg.Database, cfg.DBAuthMode())
+	if cfg.DBAuthMode() == DBAuthIntegrated {
+		user := cfg.User
+		if user == "" {
+			user = "current-session"
+		}
+		return target + ";user=" + user
+	}
+	return target + ";user=" + cfg.User + ";password=***"
 }
 
 func (cfg *Config) loadEnvironment() {
 	cfg.Server = strings.TrimSpace(os.Getenv("RM_DB_SERVER"))
 	cfg.Port = def(os.Getenv("RM_DB_PORT"), "1433")
 	cfg.Database = strings.TrimSpace(os.Getenv("RM_DB_DATABASE"))
+	cfg.DBAuth = normalizeDBAuth(os.Getenv("RM_DB_AUTH"))
 	cfg.User = strings.TrimSpace(os.Getenv("RM_DB_USER"))
 	cfg.Password = os.Getenv("RM_DB_PASSWORD")
 	cfg.Encrypt = GetenvBool("RM_DB_ENCRYPT", true)
@@ -227,4 +263,12 @@ func def(value, fallback string) string {
 
 func normalizeEnv(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func normalizeDBAuth(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return DBAuthSQL
+	}
+	return value
 }

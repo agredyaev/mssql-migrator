@@ -34,19 +34,25 @@ The tool reads SQL files from `./sql/versioned`, `./sql/repeatable`, and `./sql/
 
 ## Interfaces And Boundaries
 
-- Inputs: `RM_DB_SERVER`, `RM_DB_PORT`, `RM_DB_DATABASE`, `RM_DB_USER`, `RM_DB_PASSWORD`, `RM_MANAGED_SCHEMAS`, `RM_GIT_COMMIT`, `RM_GIT_BRANCH`, `RM_PIPELINE_RUN_ID`, `RM_PIPELINE_URL`, `RM_ACTOR`, `--env`, `--plan-file`, `--up-to`, `--script`, `--confirm`, `--skip-validate`, SQL files in `./sql/versioned`, `./sql/repeatable`, and `./sql/checks`
+- Inputs: `RM_DB_SERVER`, `RM_DB_PORT`, `RM_DB_DATABASE`, `RM_DB_AUTH`, `RM_DB_USER`, `RM_DB_PASSWORD`, `RM_MANAGED_SCHEMAS`, `RM_GIT_COMMIT`, `RM_GIT_BRANCH`, `RM_PIPELINE_RUN_ID`, `RM_PIPELINE_URL`, `RM_ACTOR`, `RM_ENV_FILE`, `--env`, `--env-file`, `--plan-file`, `--up-to`, `--script`, `--confirm`, `--skip-validate`, SQL files in `./sql/versioned`, `./sql/repeatable`, and `./sql/checks`
 - Outputs: `reports/migration-plan.json`, `reports/migration-plan.txt`, `reports/migration-report.json`, `reports/migration-report.txt`, `reports/validation-report.json`, `reports/validation-report.txt`, metadata rows in `__migrator.schema_migrations`, exit codes, logs
 - Ownership boundaries: SQL Server access is external; `rmig` owns planning, migration, validation, and metadata writes
 
 ## Flags And Env
 
 - Common flags: `--env` (`pred` or `prod`), `--sql-dir`, `--report-dir`, `--log-level`, `--json-logs`, `--timeout`, `--script-timeout`, `--lock-timeout`
+- Optional env file flag: `--env-file` loads `RM_*` values from a dotenv-style file. The file is ignored unless `--env-file` or `RM_ENV_FILE` is set.
 - Command flags: `--plan-file` for `migrate`, `--skip-validate` for `migrate`, `--up-to` and `--confirm` for `baseline`, `--script` and `--confirm` for `repair-checksum`
-- Supporting environment: `RM_ENV` (`pred` or `prod`), `RM_SQL_DIR`, `RM_REPORT_DIR`, `RM_LOG_LEVEL`, `RM_JSON_LOGS`, `RM_TIMEOUT`, `RM_SCRIPT_TIMEOUT`, `RM_LOCK_TIMEOUT`, `RM_PLAN_FILE`, `RM_SKIP_VALIDATE`, `RM_BASELINE_UP_TO`, `RM_REPAIR_SCRIPT`, `RM_CONFIRM`
+- Supporting environment: `RM_ENV` (`pred` or `prod`), `RM_SQL_DIR`, `RM_REPORT_DIR`, `RM_LOG_LEVEL`, `RM_JSON_LOGS`, `RM_TIMEOUT`, `RM_SCRIPT_TIMEOUT`, `RM_LOCK_TIMEOUT`, `RM_PLAN_FILE`, `RM_SKIP_VALIDATE`, `RM_BASELINE_UP_TO`, `RM_REPAIR_SCRIPT`, `RM_CONFIRM`, `RM_ENV_FILE`
+- Database authentication environment: `RM_DB_AUTH` (`sql` or `integrated`). `sql` is the default and requires `RM_DB_USER` and `RM_DB_PASSWORD`. `integrated` uses Windows Integrated Security through the driver `winsspi` authenticator. `RM_DB_USER` is optional in integrated mode and can be omitted to use the current Windows session.
+- Precedence when `--env-file` or `RM_ENV_FILE` is used: CLI flags override process environment, process environment overrides `.env`, and `.env` overrides built-in defaults.
 
 ## Assumptions And Constraints
 
 - SQL Server is reachable with the configured credentials.
+- `RM_DB_AUTH=sql` requires `RM_DB_USER` and `RM_DB_PASSWORD`.
+- `RM_DB_AUTH=integrated` uses Windows Integrated Security and does not require `RM_DB_PASSWORD`.
+- `.env` loading is opt-in only. Without `--env-file` or `RM_ENV_FILE`, startup behavior stays unchanged.
 - `--env` and `RM_ENV` accept only `pred` and `prod`.
 - `baseline` and `repair-checksum` require `--confirm`.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.

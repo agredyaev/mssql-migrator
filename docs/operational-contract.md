@@ -23,6 +23,7 @@ See `README.md` for the CLI wrapper contract.
 ## Interfaces And Boundaries
 
 - Inputs: `RM_*` environment variables, SQL Server connection details, `--plan-file`, `--confirm`, `--skip-validate`, build metadata
+- Inputs: `RM_*` environment variables, optional env files selected through `--env-file` or `RM_ENV_FILE`, SQL Server connection details, `--plan-file`, `--confirm`, `--skip-validate`, build metadata
 - Outputs: logs, `reports/migration-plan.*`, `reports/migration-report.*`, `reports/validation-report.*`, SQL Server metadata rows, exit codes
 - Ownership boundaries: the repository owns `rmig`; the release pipeline owns promotion and deployment timing
 
@@ -34,7 +35,8 @@ See `README.md` for the CLI wrapper contract.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
 - `--env` and `RM_ENV` accept only `pred` and `prod`.
 - `migrate` requires `--plan-file` and runs validation by default; `--skip-validate` or `RM_SKIP_VALIDATE` disables the step.
-- SQL Server credentials and secrets are provided externally.
+- SQL Server authentication settings are provided externally. `RM_DB_AUTH=sql` uses `RM_DB_USER` and `RM_DB_PASSWORD`. `RM_DB_AUTH=integrated` uses the current Windows session or an explicit Windows user value passed in `RM_DB_USER`.
+- Optional dotenv loading must be explicitly enabled. When enabled, CLI flags still win over process environment, and process environment still wins over values loaded from the env file.
 
 ## Nominal Flow
 

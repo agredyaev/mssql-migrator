@@ -112,10 +112,17 @@ func (r Runtime) dispatch(command string, args []string, stdout io.Writer, stder
 }
 
 func parseCommandConfig(command string, args []string) (config.Config, error) {
+	restoreEnv, err := applyEnvironmentFile(resolveEnvFilePath(args))
+	if err != nil {
+		return config.Config{}, err
+	}
+	defer restoreEnv()
+
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 
 	input := config.Input{}
+	var envFile string
 	flags.StringVar(&input.Env, "env", config.Getenv("RM_ENV", ""), "target environment")
 	flags.StringVar(&input.SQLDir, "sql-dir", config.Getenv("RM_SQL_DIR", "./sql"), "SQL root directory")
 	flags.StringVar(&input.ReportDir, "report-dir", config.Getenv("RM_REPORT_DIR", "./reports"), "report output directory")
@@ -124,6 +131,8 @@ func parseCommandConfig(command string, args []string) (config.Config, error) {
 	flags.StringVar(&input.CommandTimeout, "timeout", config.Getenv("RM_TIMEOUT", "900s"), "command timeout")
 	flags.StringVar(&input.ScriptTimeout, "script-timeout", config.Getenv("RM_SCRIPT_TIMEOUT", "600s"), "per-script timeout")
 	flags.StringVar(&input.LockTimeout, "lock-timeout", config.Getenv("RM_LOCK_TIMEOUT", "60s"), "SQL app lock timeout")
+	flags.StringVar(&envFile, "env-file", config.Getenv("RM_ENV_FILE", ""), "optional env file with RM_* values")
+	_ = envFile
 	flags.StringVar(&input.PlanFile, "plan-file", config.Getenv("RM_PLAN_FILE", ""), "approved migration plan file")
 	flags.StringVar(&input.BaselineUpTo, "up-to", config.Getenv("RM_BASELINE_UP_TO", ""), "baseline up to version")
 	flags.StringVar(&input.RepairScript, "script", config.Getenv("RM_REPAIR_SCRIPT", ""), "script to repair checksum for")
@@ -180,6 +189,7 @@ func printUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "  env values: pred, prod")
 	fmt.Fprintln(writer, "  rmig info --env prod")
 	fmt.Fprintln(writer, "  rmig plan --env prod")
+	fmt.Fprintln(writer, "  optional: --env-file path/to/.env or RM_ENV_FILE=path/to/.env")
 	fmt.Fprintln(writer, "  rmig migrate --env prod --plan-file reports/migration-plan.json")
 	fmt.Fprintln(writer, "  rmig validate --env prod")
 	fmt.Fprintln(writer, "  rmig baseline --env prod --up-to V010 --confirm")

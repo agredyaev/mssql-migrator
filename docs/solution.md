@@ -26,12 +26,15 @@ The selected design keeps migration history in `__migrator.schema_migrations` an
 ## Interfaces And Boundaries
 
 - Inputs: SQL files in `./sql/versioned`, `./sql/repeatable`, and `./sql/checks`, `RM_*` environment variables, command flags, approved plan files
+- Inputs: SQL files in `./sql/versioned`, `./sql/repeatable`, and `./sql/checks`, `RM_*` environment variables, optional env files loaded through `--env-file` or `RM_ENV_FILE`, command flags, approved plan files
 - Outputs: `reports/migration-plan.json`, `reports/migration-report.json`, `reports/validation-report.json`, metadata rows, exit codes, logs
 - Ownership boundaries: SQL files are owned in Git; `rmig` owns execution, metadata writes, and report generation
 
 ## Assumptions And Constraints
 
 - SQL Server is the execution target.
+- SQL Server authentication is selected with `RM_DB_AUTH`. `sql` uses explicit login credentials. `integrated` uses Windows Integrated Security through the MSSQL driver.
+- Optional dotenv loading is available through `--env-file` or `RM_ENV_FILE`. It does not run by default and does not replace process environment or CLI flag precedence.
 - `--env` and `RM_ENV` accept only `pred` and `prod`.
 - Versioned scripts are one-time changes.
 - Repeatable scripts are tied to Git and rerun only when their checksum changes.

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"strings"
 
 	_ "github.com/microsoft/go-mssqldb"
 
@@ -30,10 +31,20 @@ func buildDSN(cfg config.Config) string {
 	query.Set("encrypt", fmt.Sprintf("%t", cfg.Encrypt))
 	query.Set("TrustServerCertificate", fmt.Sprintf("%t", cfg.TrustServerCertificate))
 	query.Set("app name", "rmig")
+	if cfg.DBAuthMode() == config.DBAuthIntegrated {
+		query.Set("authenticator", "winsspi")
+	}
+
+	var user *url.Userinfo
+	if cfg.DBAuthMode() == config.DBAuthSQL {
+		user = url.UserPassword(cfg.User, cfg.Password)
+	} else if strings.TrimSpace(cfg.User) != "" {
+		user = url.User(cfg.User)
+	}
 
 	url := &url.URL{
 		Scheme:   "sqlserver",
-		User:     url.UserPassword(cfg.User, cfg.Password),
+		User:     user,
 		Host:     fmt.Sprintf("%s:%s", cfg.Server, cfg.Port),
 		RawQuery: query.Encode(),
 	}
