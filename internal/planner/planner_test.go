@@ -151,6 +151,8 @@ func TestVerifyApprovedPlanRejectsDifferentObjects(t *testing.T) {
 	current := contracts.MigrationPlan{LayoutHash: "hash", SQLRoot: "/sql", Base: "dwh", EffectiveBasePath: "/sql/dwh", Target: contracts.PlanTarget{Environment: "prod", Database: "ReportingDB"}, ToolVersion: "4.0.0", ToolCommit: "deadbeef", Objects: []contracts.PlannedObject{{ObjectPath: "reporting/views/daily.sql", Kind: "views", ObjectName: "daily", SchemaName: "reporting", NormalizedKey: "reporting/views/daily", Checksum: "y", PlannedAction: "create_object"}}}
 	if err := VerifyApprovedPlan(cfg, current); err == nil {
 		t.Fatal("expected object mismatch error")
+	} else if !strings.Contains(err.Error(), contracts.ErrApprovedPlanMismatch.Error()) {
+		t.Fatalf("expected approved plan mismatch sentinel, got %v", err)
 	}
 }
 
@@ -169,6 +171,19 @@ func TestVerifyApprovedPlanRejectsWrongSchemaVersion(t *testing.T) {
 	current := contracts.MigrationPlan{SchemaVersion: "v8", Command: "plan", LayoutHash: "hash", SQLRoot: "/sql", Base: "dwh", EffectiveBasePath: "/sql/dwh", Target: contracts.PlanTarget{Environment: "prod", Database: "ReportingDB"}, ToolVersion: "4.0.0", ToolCommit: "deadbeef"}
 	if err := VerifyApprovedPlan(cfg, current); err == nil {
 		t.Fatal("expected schema version mismatch")
+	} else if !strings.Contains(err.Error(), contracts.ErrApprovedPlanMismatch.Error()) {
+		t.Fatalf("expected approved plan mismatch sentinel, got %v", err)
+	}
+}
+
+func TestVerifyApprovedPlanMissingUsesSentinel(t *testing.T) {
+	cfg := config.Config{PlanFile: filepath.Join(t.TempDir(), "missing.json")}
+	err := VerifyApprovedPlan(cfg, contracts.MigrationPlan{})
+	if err == nil {
+		t.Fatal("expected missing plan error")
+	}
+	if !strings.Contains(err.Error(), contracts.ErrApprovedPlanMissing.Error()) {
+		t.Fatalf("expected approved plan missing sentinel, got %v", err)
 	}
 }
 
