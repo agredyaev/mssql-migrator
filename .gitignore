@@ -17,3 +17,4 @@ rmig
 *:Zone.Identifier*
 code_dump.txt
 export_code_to_txt.sh
+.temp
