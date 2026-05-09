@@ -26,7 +26,7 @@ func TestClassifySchemaExecutionErrorReportsPermissionFailure(t *testing.T) {
 
 func TestClassifyObjectExecutionErrorReportsPermissionFailure(t *testing.T) {
 	object := parser.Object{Path: "reporting/views/monthly.sql"}
-	planned := contracts.PlannedObject{PlannedAction: "create_object"}
+	planned := contracts.PlannedObject{PlannedAction: contracts.ActionCreateObject}
 	err := classifyObjectExecutionError(object, planned, mssql.Error{Number: 262, Message: "CREATE VIEW permission denied."})
 	if err == nil || !strings.Contains(err.Error(), "missing object DDL permission") {
 		t.Fatalf("expected object permission classification, got %v", err)
@@ -35,7 +35,7 @@ func TestClassifyObjectExecutionErrorReportsPermissionFailure(t *testing.T) {
 
 func TestClassifyObjectExecutionErrorReportsMissingParent(t *testing.T) {
 	object := parser.Object{Path: "reporting/indexes/snapshot/ix_snapshot.sql"}
-	planned := contracts.PlannedObject{PlannedAction: "create_object"}
+	planned := contracts.PlannedObject{PlannedAction: contracts.ActionCreateObject}
 	err := classifyObjectExecutionError(object, planned, fmt.Errorf("Cannot find the object 'snapshot' because it does not exist or you do not have permissions."))
 	if err == nil || !strings.Contains(err.Error(), "missing parent object") {
 		t.Fatalf("expected missing parent classification, got %v", err)

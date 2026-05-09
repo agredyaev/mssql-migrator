@@ -3,7 +3,6 @@ package migrator
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -12,6 +11,7 @@ import (
 	"reporting-db-migrations/internal/checksum"
 	"reporting-db-migrations/internal/config"
 	"reporting-db-migrations/internal/contracts"
+	"reporting-db-migrations/internal/failures"
 	"reporting-db-migrations/internal/logger"
 	"reporting-db-migrations/internal/metadata"
 	"reporting-db-migrations/internal/parser"
@@ -50,9 +50,11 @@ func (r Runner) startRun(ctx context.Context, execer metadata.Execer, command st
 	}
 	if command == "repair-checksum" {
 		record.TransactionMode = config.TransactionModeNone
-		record.RollbackScope = "none"
+		record.RollbackScope = contracts.RollbackScopeNone
 	}
-	if err := metadata.StartRun(ctx, execer, record); err != nil {
+	metaCtx, cancel := metadataContext(ctx)
+	defer cancel()
+	if err := metadata.StartRun(metaCtx, execer, record); err != nil {
 		return "", err
 	}
 	return runID, nil
@@ -65,10 +67,12 @@ func finishRun(ctx context.Context, execer metadata.Execer, runID string, succes
 	errorClass := ""
 	errorMessage := ""
 	if !success {
-		errorClass = classifyError(base, cause)
+		errorClass = failures.Classify(base, cause)
 		errorMessage = buildErrorMessage(base, cause)
 	}
-	return metadata.FinishRun(ctx, execer, runID, success, errorClass, errorMessage)
+	metaCtx, cancel := metadataContext(ctx)
+	defer cancel()
+	return metadata.FinishRun(metaCtx, execer, runID, success, errorClass, errorMessage)
 }
 
 func buildErrorMessage(base error, cause error) string {
@@ -85,44 +89,6 @@ func buildErrorMessage(base error, cause error) string {
 	return message
 }
 
-func classifyError(base error, cause error) string {
-	message := strings.ToLower(buildErrorMessage(base, cause))
-	switch {
-	case strings.Contains(message, "approved plan missing"):
-		return "approved plan missing"
-	case strings.Contains(message, "approved plan mismatch"):
-		return "approved plan mismatch"
-	case strings.Contains(message, "missing_metadata_ddl_permission") || strings.Contains(message, "missing metadata ddl permission"):
-		return "missing metadata DDL permission"
-	case strings.Contains(message, "missing schema creation permission"):
-		return "missing schema creation permission"
-	case strings.Contains(message, "missing object ddl permission"):
-		return "missing object DDL permission"
-	case strings.Contains(message, "missing parent object"):
-		return "missing parent object"
-	case strings.Contains(message, "metadata_schema_incompatible") || strings.Contains(message, "metadata schema incompatible"):
-		return "metadata schema incompatible"
-	case strings.Contains(message, "invalid repository layout"):
-		return "invalid repository layout"
-	case strings.Contains(message, "invalid_or_missing_sql_scripts_root"):
-		return "invalid or missing SQL scripts root"
-	case strings.Contains(message, "invalid_or_missing_base_selection"):
-		return "invalid or missing base selection"
-	case strings.Contains(message, "invalid_update_policy"):
-		return "invalid update policy"
-	case strings.Contains(message, "invalid_transaction_mode"):
-		return "invalid transaction mode"
-	case errors.Is(base, contracts.ErrValidation):
-		return "validation failure"
-	case errors.Is(base, contracts.ErrSQLExecution):
-		return "sql execution failure"
-	case errors.Is(base, contracts.ErrCriticalState):
-		return "critical metadata state"
-	default:
-		return "critical metadata state"
-	}
-}
-
 func planArtifactHash(planFile string) string {
 	if strings.TrimSpace(planFile) == "" {
 		return ""
@@ -135,6 +101,10 @@ func planArtifactHash(planFile string) string {
 }
 
 func persistMigrationScope(ctx context.Context, conn *sql.Conn, runID string, plan contracts.MigrationPlan) (map[string]int64, error) {
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin metadata scope transaction: %w", err)
+	}
 	for _, schema := range plan.Schemas {
 		exists := schema.Exists
 		record := metadata.TrackedSchemaRecord{
@@ -144,10 +114,11 @@ func persistMigrationScope(ctx context.Context, conn *sql.Conn, runID string, pl
 			ExistsInDatabase:     boolPtr(exists),
 			Action:               schema.Action,
 		}
-		if schema.Action == "exists" {
+		if schema.Action == contracts.SchemaActionExists {
 			record.Success = boolPtr(true)
 		}
-		if err := metadata.InsertTrackedSchema(ctx, conn, record); err != nil {
+		if err := metadata.InsertTrackedSchema(ctx, tx, record); err != nil {
+			_ = tx.Rollback()
 			return nil, err
 		}
 	}
@@ -171,24 +142,32 @@ func persistMigrationScope(ctx context.Context, conn *sql.Conn, runID string, pl
 			PlannedAction:        object.PlannedAction,
 		}
 		switch object.PlannedAction {
-		case "skip_unchanged", "adopt_existing":
+		case contracts.ActionSkipUnchanged, contracts.ActionAdoptExisting:
 			record.Success = boolPtr(true)
-		case "fail", "reprocess_changed_blocked":
+		case contracts.ActionFail, contracts.ActionReprocessChangedBlocked:
 			record.Success = boolPtr(false)
 		}
-		id, err := metadata.InsertTrackedObject(ctx, conn, record)
+		id, err := metadata.InsertTrackedObject(ctx, tx, record)
 		if err != nil {
+			_ = tx.Rollback()
 			return nil, err
 		}
 		trackedObjectIDs[object.NormalizedKey] = id
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit metadata scope transaction: %w", err)
 	}
 	return trackedObjectIDs, nil
 }
 
 func persistValidationScope(ctx context.Context, conn *sql.Conn, runID string, layout parser.Layout, catalog validate.CatalogState, successfulByKey map[string]string) (map[string]int64, error) {
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin validation scope transaction: %w", err)
+	}
 	for _, schema := range layout.Schemas {
 		_, exists := catalog.Schemas[schema.NormalizedName]
-		action := "exists"
+		action := contracts.SchemaActionExists
 		record := metadata.TrackedSchemaRecord{
 			RunID:                runID,
 			SchemaName:           schema.Name,
@@ -198,10 +177,11 @@ func persistValidationScope(ctx context.Context, conn *sql.Conn, runID string, l
 			Success:              boolPtr(exists),
 		}
 		if !exists {
-			record.Action = "fail"
+			record.Action = contracts.ActionFail
 			record.ErrorMessage = fmt.Sprintf("missing schema: %s", schema.Name)
 		}
-		if err := metadata.InsertTrackedSchema(ctx, conn, record); err != nil {
+		if err := metadata.InsertTrackedSchema(ctx, tx, record); err != nil {
+			_ = tx.Rollback()
 			return nil, err
 		}
 	}
@@ -226,17 +206,21 @@ func persistValidationScope(ctx context.Context, conn *sql.Conn, runID string, l
 			Checksum:             object.Checksum,
 			ExistsInDatabase:     boolPtr(exists),
 			MetadataMatch:        metadataMatch,
-			PlannedAction:        "validate_checked",
+			PlannedAction:        contracts.ActionValidateChecked,
 		}
 		if !exists {
 			record.Success = boolPtr(false)
 			record.ErrorMessage = fmt.Sprintf("missing managed object: %s", object.Path)
 		}
-		id, err := metadata.InsertTrackedObject(ctx, conn, record)
+		id, err := metadata.InsertTrackedObject(ctx, tx, record)
 		if err != nil {
+			_ = tx.Rollback()
 			return nil, err
 		}
 		trackedObjectIDs[object.NormalizedKey] = id
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit validation scope transaction: %w", err)
 	}
 	return trackedObjectIDs, nil
 }

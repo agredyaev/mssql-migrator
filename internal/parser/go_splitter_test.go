@@ -24,3 +24,13 @@ func TestSplitGOIgnoresInlineGO(t *testing.T) {
 		t.Fatalf("expected 1 batch, got %d", len(batches))
 	}
 }
+
+func TestSplitGODoesNotSplitInsideBlockComment(t *testing.T) {
+	batches, err := SplitGO("/*\nGO\n*/\nSELECT 1;")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(batches) != 1 {
+		t.Fatalf("expected one batch, got %d", len(batches))
+	}
+}

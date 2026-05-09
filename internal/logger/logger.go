@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,15 +21,16 @@ const (
 )
 
 type Options struct {
-	JSON    bool
-	Level   string
-	Writer  io.Writer
+	JSON   bool
+	Level  string
+	Writer io.Writer
 }
 
 type Logger struct {
 	json   bool
 	level  Level
 	writer io.Writer
+	mu     *sync.Mutex
 }
 
 func New(options Options) Logger {
@@ -36,19 +38,24 @@ func New(options Options) Logger {
 	if writer == nil {
 		writer = os.Stdout
 	}
-	return Logger{json: options.JSON, level: normalizeLevel(options.Level), writer: writer}
+	return Logger{json: options.JSON, level: normalizeLevel(options.Level), writer: writer, mu: &sync.Mutex{}}
 }
 
-func (l Logger) Debug(event, message string) { l.write(LevelDebug, event, message) }
-func (l Logger) Info(event, message string)  { l.write(LevelInfo, event, message) }
-func (l Logger) Warn(event, message string)  { l.write(LevelWarn, event, message) }
-func (l Logger) Error(event, message string) { l.write(LevelError, event, message) }
+func (l *Logger) Debug(event, message string) { l.write(LevelDebug, event, message) }
+func (l *Logger) Info(event, message string)  { l.write(LevelInfo, event, message) }
+func (l *Logger) Warn(event, message string)  { l.write(LevelWarn, event, message) }
+func (l *Logger) Error(event, message string) { l.write(LevelError, event, message) }
 
-func (l Logger) write(level Level, event, message string) {
+func (l *Logger) write(level Level, event, message string) {
 	if !l.enabled(level) {
 		return
 	}
 	message = Redact(message)
+	if l.mu == nil {
+		l.mu = &sync.Mutex{}
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	if l.json {
 		payload, _ := json.Marshal(map[string]string{
 			"time":    time.Now().UTC().Format(time.RFC3339),
@@ -62,7 +69,7 @@ func (l Logger) write(level Level, event, message string) {
 	fmt.Fprintf(l.writer, "%s %s: %s\n", strings.ToUpper(string(level)), event, message)
 }
 
-func (l Logger) enabled(level Level) bool {
+func (l *Logger) enabled(level Level) bool {
 	order := map[Level]int{LevelDebug: 10, LevelInfo: 20, LevelWarn: 30, LevelError: 40}
 	return order[level] >= order[l.level]
 }
@@ -88,17 +95,15 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(secret\s*=\s*)("[^"]*"|'[^']*'|[^;\r\n]+)`),
 	regexp.MustCompile(`(?i)(client_secret\s*=\s*)("[^"]*"|'[^']*'|[^;\r\n]+)`),
 	regexp.MustCompile(`(?i)([?&][^=&\s]*(?:token|secret|sig|signature)[^=&\s]*=)[^&\s]+`),
-	regexp.MustCompile(`sqlserver://([^:]+):([^@]+)@`),
 }
+
+var sqlServerURLSecretPattern = regexp.MustCompile(`sqlserver://([^:]+):([^@]+)@`)
 
 func Redact(value string) string {
 	result := value
 	for _, pattern := range secretPatterns {
-		if pattern.String() == `sqlserver://([^:]+):([^@]+)@` {
-			result = pattern.ReplaceAllString(result, `sqlserver://$1:***@`)
-			continue
-		}
 		result = pattern.ReplaceAllString(result, `${1}***`)
 	}
+	result = sqlServerURLSecretPattern.ReplaceAllString(result, `sqlserver://$1:***@`)
 	return result
 }

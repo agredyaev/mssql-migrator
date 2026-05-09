@@ -44,7 +44,11 @@ func (r Runner) Plan(ctx context.Context) (contracts.MigrationPlan, error) {
 	if err != nil {
 		return contracts.MigrationPlan{}, err
 	}
-	defer closeFn()
+	defer func() {
+		if err := closeFn(); err != nil {
+			r.log.Warn("db_close_failed", err.Error())
+		}
+	}()
 	successfulByKey, err := metadata.LoadSuccessfulChecksumsIfPresent(ctx, conn)
 	if err != nil {
 		return contracts.MigrationPlan{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
@@ -67,11 +71,17 @@ func (r Runner) Migrate(ctx context.Context) error {
 	if err != nil {
 		return r.writeFailedMigration(report, err, nil)
 	}
-	defer closeFn()
+	defer func() {
+		if err := closeFn(); err != nil {
+			r.log.Warn("db_close_failed", err.Error())
+		}
+	}()
 	runID := ""
 	failWithRun := func(base error, cause error) error {
 		if runID != "" {
-			_ = finishRun(ctx, conn, runID, false, base, cause)
+			if err := finishRun(ctx, conn, runID, false, base, cause); err != nil {
+				r.log.Warn("metadata_finish_run_failed", logger.Redact(err.Error()))
+			}
 		}
 		return r.writeFailedMigration(report, base, cause)
 	}
@@ -116,7 +126,9 @@ func (r Runner) Migrate(ctx context.Context) error {
 		if writeErr := reports.WriteMigration(r.cfg.ReportDir, report); writeErr != nil {
 			return fmt.Errorf("%w: %v", contracts.ErrCriticalState, writeErr)
 		}
-		_ = finishRun(ctx, conn, runID, false, err, nil)
+		if finishErr := finishRun(ctx, conn, runID, false, err, nil); finishErr != nil {
+			r.log.Warn("metadata_finish_run_failed", logger.Redact(finishErr.Error()))
+		}
 		return err
 	}
 	if !r.cfg.SkipValidate {
@@ -141,19 +153,23 @@ func (r Runner) Migrate(ctx context.Context) error {
 	return reports.WriteMigration(r.cfg.ReportDir, report)
 }
 
-func (r Runner) openReservedConnection(ctx context.Context) (*sql.Conn, func(), error) {
+func (r Runner) openReservedConnection(ctx context.Context) (*sql.Conn, func() error, error) {
 	database, err := db.Open(ctx, r.cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %v", contracts.ErrConnection, err)
 	}
 	conn, err := database.Conn(ctx)
 	if err != nil {
-		database.Close()
+		_ = database.Close()
 		return nil, nil, fmt.Errorf("%w: %v", contracts.ErrConnection, err)
 	}
-	closeFn := func() {
-		conn.Close()
-		database.Close()
+	closeFn := func() error {
+		connErr := conn.Close()
+		dbErr := database.Close()
+		if connErr != nil {
+			return connErr
+		}
+		return dbErr
 	}
 	return conn, closeFn, nil
 }

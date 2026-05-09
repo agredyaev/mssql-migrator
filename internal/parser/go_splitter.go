@@ -15,7 +15,20 @@ func SplitGO(content string) ([]Batch, error) {
 	lines := strings.Split(content, "\n")
 	batches := make([]Batch, 0)
 	current := make([]string, 0)
+	inBlockComment := false
 	for _, line := range lines {
+		if inBlockComment {
+			current = append(current, line)
+			if strings.Contains(line, "*/") {
+				inBlockComment = false
+			}
+			continue
+		}
+		if strings.Contains(line, "/*") && !strings.Contains(line, "*/") {
+			inBlockComment = true
+			current = append(current, line)
+			continue
+		}
 		matches := goLinePattern.FindStringSubmatch(line)
 		if matches == nil {
 			current = append(current, line)

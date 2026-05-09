@@ -8,24 +8,27 @@ import (
 	"strings"
 
 	"reporting-db-migrations/internal/contracts"
+	"reporting-db-migrations/internal/logger"
 )
 
 func WritePlan(dir string, plan contracts.MigrationPlan) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	if err := writeJSON(filepath.Join(dir, "migration-plan.json"), plan); err != nil {
+	plan = redactPlan(plan)
+	if err := writeJSONAtomic(filepath.Join(dir, "migration-plan.json"), plan); err != nil {
 		return err
 	}
 	text := formatPlanText(plan)
-	return os.WriteFile(filepath.Join(dir, "migration-plan.txt"), []byte(text), 0o644)
+	return writeTextAtomic(filepath.Join(dir, "migration-plan.txt"), text)
 }
 
 func WriteMigration(dir string, report contracts.MigrationReport) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	if err := writeJSON(filepath.Join(dir, "migration-report.json"), report); err != nil {
+	report = redactMigrationReport(report)
+	if err := writeJSONAtomic(filepath.Join(dir, "migration-report.json"), report); err != nil {
 		return err
 	}
 	failure := ""
@@ -33,14 +36,15 @@ func WriteMigration(dir string, report contracts.MigrationReport) error {
 		failure = report.Failed.Error
 	}
 	text := formatMigrationText(report, failure)
-	return os.WriteFile(filepath.Join(dir, "migration-report.txt"), []byte(text), 0o644)
+	return writeTextAtomic(filepath.Join(dir, "migration-report.txt"), text)
 }
 
 func WriteValidation(dir string, report contracts.ValidationReport) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	if err := writeJSON(filepath.Join(dir, "validation-report.json"), report); err != nil {
+	report = redactValidationReport(report)
+	if err := writeJSONAtomic(filepath.Join(dir, "validation-report.json"), report); err != nil {
 		return err
 	}
 	failure := ""
@@ -48,7 +52,7 @@ func WriteValidation(dir string, report contracts.ValidationReport) error {
 		failure = report.Failed.Error
 	}
 	text := formatValidationText(report, failure)
-	return os.WriteFile(filepath.Join(dir, "validation-report.txt"), []byte(text), 0o644)
+	return writeTextAtomic(filepath.Join(dir, "validation-report.txt"), text)
 }
 
 func ReadPlan(path string) (contracts.MigrationPlan, error) {
@@ -63,13 +67,105 @@ func ReadPlan(path string) (contracts.MigrationPlan, error) {
 	return plan, nil
 }
 
-func writeJSON(path string, value any) error {
+func writeJSONAtomic(path string, value any) error {
 	b, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return err
 	}
 	b = append(b, '\n')
-	return os.WriteFile(path, b, 0o644)
+	return writeFileAtomic(path, b)
+}
+
+func writeTextAtomic(path string, value string) error {
+	return writeFileAtomic(path, []byte(value))
+}
+
+func writeFileAtomic(path string, content []byte) error {
+	tmpFile, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := tmpFile.Name()
+	if _, err := tmpFile.Write(content); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+func redactPlan(plan contracts.MigrationPlan) contracts.MigrationPlan {
+	plan.Failures = redactStrings(plan.Failures)
+	plan.Blockers = redactStrings(plan.Blockers)
+	plan.BlockReasons = redactStrings(plan.BlockReasons)
+	return plan
+}
+
+func redactMigrationReport(report contracts.MigrationReport) contracts.MigrationReport {
+	report.PipelineURL = logger.Redact(report.PipelineURL)
+	report.Applied = redactScriptResults(report.Applied)
+	report.Skipped = redactScriptResults(report.Skipped)
+	if report.Failed != nil {
+		failed := *report.Failed
+		redactFailure(&failed)
+		report.Failed = &failed
+	}
+	return report
+}
+
+func redactValidationReport(report contracts.ValidationReport) contracts.ValidationReport {
+	report.PipelineURL = logger.Redact(report.PipelineURL)
+	if report.Failed != nil {
+		failed := *report.Failed
+		redactFailure(&failed)
+		report.Failed = &failed
+	}
+	return report
+}
+
+func redactScriptResults(items []contracts.ScriptResult) []contracts.ScriptResult {
+	if len(items) == 0 {
+		return items
+	}
+	result := make([]contracts.ScriptResult, len(items))
+	copy(result, items)
+	for i := range result {
+		result[i].Reason = logger.Redact(result[i].Reason)
+	}
+	return result
+}
+
+func redactFailure(failure *contracts.Failure) {
+	if failure == nil {
+		return
+	}
+	failure.Script = logger.Redact(failure.Script)
+	failure.Phase = logger.Redact(failure.Phase)
+	failure.SQLRoot = logger.Redact(failure.SQLRoot)
+	failure.Base = logger.Redact(failure.Base)
+	failure.Class = logger.Redact(failure.Class)
+	failure.Reason = logger.Redact(failure.Reason)
+	failure.SQL = logger.Redact(failure.SQL)
+	failure.Error = logger.Redact(failure.Error)
+}
+
+func redactStrings(values []string) []string {
+	if len(values) == 0 {
+		return values
+	}
+	result := make([]string, len(values))
+	for i, value := range values {
+		result[i] = logger.Redact(value)
+	}
+	return result
 }
 
 func formatPlanText(plan contracts.MigrationPlan) string {

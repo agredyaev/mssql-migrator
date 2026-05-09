@@ -2,7 +2,9 @@ package migrator
 
 import (
 	"context"
+	"io"
 	"testing"
+	"time"
 
 	"reporting-db-migrations/internal/config"
 	"reporting-db-migrations/internal/contracts"
@@ -79,4 +81,13 @@ func TestPlannedObjectsInExecutionOrderPlacesParentsFirst(t *testing.T) {
 			t.Fatalf("unexpected execution order: %#v", keys)
 		}
 	}
+}
+
+func TestProgressLoggerStopIsIdempotent(t *testing.T) {
+	runner := NewRunner(config.Config{}, logger.New(logger.Options{Writer: io.Discard}))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stop := runner.startProgressLogger(ctx, "test.sql", time.Now())
+	stop()
+	stop()
 }

@@ -24,7 +24,11 @@ func (r Runner) Validate(ctx context.Context) error {
 	if err != nil {
 		return r.writeValidationFailureReport(err, err)
 	}
-	defer closeFn()
+	defer func() {
+		if err := closeFn(); err != nil {
+			r.log.Warn("db_close_failed", err.Error())
+		}
+	}()
 	if err := r.acquireLock(ctx, conn); err != nil {
 		return r.writeValidationFailureReport(err, err)
 	}
@@ -121,7 +125,7 @@ func (r Runner) validateScope(ctx context.Context, conn *sql.Conn, layout parser
 	createdRun := false
 	trackedObjectIDs := map[string]int64{}
 	if runID == "" {
-		runID, err = r.startRun(ctx, conn, "validate", "", "", rollbackScope(r.cfg.TransactionMode))
+		runID, err = r.startRun(ctx, conn, "validate", "", "", contracts.RollbackScope(r.cfg.TransactionMode))
 		if err != nil {
 			return finalizeValidationFailure(vr, err), err
 		}
@@ -129,7 +133,9 @@ func (r Runner) validateScope(ctx context.Context, conn *sql.Conn, layout parser
 		trackedObjectIDs, err = persistValidationScope(ctx, conn, runID, layout, catalog, successfulByKey)
 		if err != nil {
 			if createdRun {
-				_ = finishRun(ctx, conn, runID, false, contracts.ErrCriticalState, err)
+				if finishErr := finishRun(ctx, conn, runID, false, contracts.ErrCriticalState, err); finishErr != nil {
+					r.log.Warn("metadata_finish_run_failed", logger.Redact(finishErr.Error()))
+				}
 			}
 			return finalizeValidationFailure(vr, err), err
 		}
@@ -142,15 +148,19 @@ func (r Runner) validateScope(ctx context.Context, conn *sql.Conn, layout parser
 	modules, err := validate.RefreshManagedObjects(ctx, conn, layout, r.log)
 	vr.Validation.ModulesRefreshed = modules.ModulesRefreshed
 	if err != nil {
-		recordValidationFailure(ctx, conn, runID, layout.Objects, trackedObjectIDs, err, includeChecks, r.cfg)
+		recordValidationFailure(ctx, conn, runID, layout.Objects, trackedObjectIDs, err, includeChecks, r.cfg, r.log)
 		if createdRun {
-			_ = finishRun(ctx, conn, runID, false, contracts.ErrValidation, err)
+			if finishErr := finishRun(ctx, conn, runID, false, contracts.ErrValidation, err); finishErr != nil {
+				r.log.Warn("metadata_finish_run_failed", logger.Redact(finishErr.Error()))
+			}
 		}
 		return finalizeValidationFailure(vr, err), err
 	}
 	if err := recordValidationSuccesses(ctx, conn, runID, layout.Objects, trackedObjectIDs, includeChecks, r.cfg); err != nil {
 		if createdRun {
-			_ = finishRun(ctx, conn, runID, false, contracts.ErrCriticalState, err)
+			if finishErr := finishRun(ctx, conn, runID, false, contracts.ErrCriticalState, err); finishErr != nil {
+				r.log.Warn("metadata_finish_run_failed", logger.Redact(finishErr.Error()))
+			}
 		}
 		return finalizeValidationFailure(vr, err), err
 	}
@@ -159,9 +169,11 @@ func (r Runner) validateScope(ctx context.Context, conn *sql.Conn, layout parser
 		vr.Validation.ChecksPassed = checks.ChecksPassed
 		vr.Validation.ChecksFailed = checks.ChecksFailed
 		if err != nil {
-			recordValidationFailure(ctx, conn, runID, nil, nil, err, includeChecks, r.cfg)
+			recordValidationFailure(ctx, conn, runID, nil, nil, err, includeChecks, r.cfg, r.log)
 			if createdRun {
-				_ = finishRun(ctx, conn, runID, false, contracts.ErrValidation, err)
+				if finishErr := finishRun(ctx, conn, runID, false, contracts.ErrValidation, err); finishErr != nil {
+					r.log.Warn("metadata_finish_run_failed", logger.Redact(finishErr.Error()))
+				}
 			}
 			return finalizeValidationFailure(vr, err), err
 		}
@@ -226,11 +238,12 @@ func validationCommand(includeChecks bool) string {
 func recordValidationSuccesses(ctx context.Context, execer metadata.Execer, runID string, objects []parser.Object, trackedObjectIDs map[string]int64, includeChecks bool, cfg config.Config) error {
 	for _, object := range objects {
 		trackedObjectID := lookupTrackedObjectID(trackedObjectIDs, object.NormalizedKey)
-		action := "validate_checked"
+		action := contracts.ActionValidateChecked
 		if !parser.IsModuleKind(object.Kind) {
-			action = "validate_skipped"
+			action = contracts.ActionValidateSkipped
 		}
-		if err := metadata.InsertAttempt(ctx, execer, metadata.AttemptRecord{
+		metaCtx, cancel := metadataContext(ctx)
+		err := metadata.InsertAttempt(metaCtx, execer, metadata.AttemptRecord{
 			RunID:            runID,
 			TrackedObjectID:  trackedObjectID,
 			ScriptName:       object.NormalizedKey,
@@ -241,17 +254,22 @@ func recordValidationSuccesses(ctx context.Context, execer metadata.Execer, runI
 			Success:          true,
 			TransactionMode:  config.TransactionModeNone,
 			TransactionScope: config.TransactionModeNone,
-			RollbackScope:    "none",
+			RollbackScope:    contracts.RollbackScopeNone,
 			NoTransaction:    true,
 			GitCommit:        cfg.GitCommit,
 			GitBranch:        cfg.GitBranch,
 			PipelineRunID:    cfg.PipelineRunID,
 			PipelineURL:      logger.Redact(cfg.PipelineURL),
 			AppliedBy:        cfg.Actor,
-		}); err != nil {
+		})
+		cancel()
+		if err != nil {
 			return err
 		}
-		if err := metadata.UpdateTrackedObjectResult(ctx, execer, runID, object.NormalizedKey, true, ""); err != nil {
+		metaCtx, cancel = metadataContext(ctx)
+		err = metadata.UpdateTrackedObjectResult(metaCtx, execer, runID, object.NormalizedKey, true, "")
+		cancel()
+		if err != nil {
 			return err
 		}
 	}
@@ -261,26 +279,31 @@ func recordValidationSuccesses(ctx context.Context, execer metadata.Execer, runI
 	return nil
 }
 
-func recordValidationFailure(ctx context.Context, execer metadata.Execer, runID string, objects []parser.Object, trackedObjectIDs map[string]int64, validationErr error, includeChecks bool, cfg config.Config) {
+func recordValidationFailure(ctx context.Context, execer metadata.Execer, runID string, objects []parser.Object, trackedObjectIDs map[string]int64, validationErr error, includeChecks bool, cfg config.Config, log logger.Logger) {
 	errorMessage := logger.Redact(validationErr.Error())
 	for _, object := range objects {
-		if err := metadata.UpdateTrackedObjectResult(ctx, execer, runID, object.NormalizedKey, false, errorMessage); err != nil {
+		metaCtx, cancel := metadataContext(ctx)
+		err := metadata.UpdateTrackedObjectResult(metaCtx, execer, runID, object.NormalizedKey, false, errorMessage)
+		cancel()
+		if err != nil {
+			log.Warn("validation_metadata_write_failed", logger.Redact(err.Error()))
 			continue
 		}
 		trackedObjectID := lookupTrackedObjectID(trackedObjectIDs, object.NormalizedKey)
-		_ = metadata.InsertAttempt(ctx, execer, metadata.AttemptRecord{
+		metaCtx, cancel = metadataContext(ctx)
+		err = metadata.InsertAttempt(metaCtx, execer, metadata.AttemptRecord{
 			RunID:            runID,
 			TrackedObjectID:  trackedObjectID,
 			ScriptName:       object.NormalizedKey,
 			ScriptType:       "validate",
 			Checksum:         object.Checksum,
-			Action:           "fail",
+			Action:           contracts.ActionFail,
 			ExecutionMS:      0,
 			Success:          false,
 			ErrorMessage:     errorMessage,
 			TransactionMode:  config.TransactionModeNone,
 			TransactionScope: config.TransactionModeNone,
-			RollbackScope:    "none",
+			RollbackScope:    contracts.RollbackScopeNone,
 			NoTransaction:    true,
 			GitCommit:        cfg.GitCommit,
 			GitBranch:        cfg.GitBranch,
@@ -288,20 +311,25 @@ func recordValidationFailure(ctx context.Context, execer metadata.Execer, runID 
 			PipelineURL:      logger.Redact(cfg.PipelineURL),
 			AppliedBy:        cfg.Actor,
 		})
+		cancel()
+		if err != nil {
+			log.Warn("validation_metadata_write_failed", logger.Redact(err.Error()))
+		}
 	}
 	if includeChecks {
-		_ = metadata.InsertAttempt(ctx, execer, metadata.AttemptRecord{
+		metaCtx, cancel := metadataContext(ctx)
+		err := metadata.InsertAttempt(metaCtx, execer, metadata.AttemptRecord{
 			RunID:            runID,
 			ScriptName:       "validation/checks",
 			ScriptType:       "validate",
 			Checksum:         "-",
-			Action:           "fail",
+			Action:           contracts.ActionFail,
 			ExecutionMS:      0,
 			Success:          false,
 			ErrorMessage:     errorMessage,
 			TransactionMode:  config.TransactionModeNone,
 			TransactionScope: config.TransactionModeNone,
-			RollbackScope:    "none",
+			RollbackScope:    contracts.RollbackScopeNone,
 			NoTransaction:    true,
 			GitCommit:        cfg.GitCommit,
 			GitBranch:        cfg.GitBranch,
@@ -309,5 +337,9 @@ func recordValidationFailure(ctx context.Context, execer metadata.Execer, runID 
 			PipelineURL:      logger.Redact(cfg.PipelineURL),
 			AppliedBy:        cfg.Actor,
 		})
+		cancel()
+		if err != nil {
+			log.Warn("validation_metadata_write_failed", logger.Redact(err.Error()))
+		}
 	}
 }

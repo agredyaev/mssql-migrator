@@ -27,6 +27,9 @@ func TestBootstrapExecutesAllStatements(t *testing.T) {
 	if !strings.Contains(state.execs[0], "CREATE SCHEMA __migrator") {
 		t.Fatalf("first bootstrap statement = %q", state.execs[0])
 	}
+	if !containsExec(state.execs, "CREATE TABLE __migrator.schema_version") {
+		t.Fatalf("expected bootstrap to create schema_version table, got %#v", state.execs)
+	}
 	if !strings.Contains(state.execs[len(state.execs)-1], "CREATE OR ALTER VIEW __migrator.v_migration_state") {
 		t.Fatalf("last bootstrap statement = %q", state.execs[len(state.execs)-1])
 	}
@@ -83,6 +86,25 @@ func TestBootstrapClassifiesIncompatibleMetadataShape(t *testing.T) {
 	}
 	if got := err.Error(); !strings.Contains(got, "run_id") {
 		t.Fatalf("Bootstrap() error = %q, want original cause", got)
+	}
+}
+
+func TestBootstrapFailsWhenSchemaVersionIsNewer(t *testing.T) {
+	conn := openMetadataTestConn(t, &metadataTestScenario{
+		queryResponses: map[string]metadataTestRows{
+			`SELECT MAX(version) FROM __migrator.schema_version`: {
+				columns: []string{""},
+				rows:    [][]driver.Value{{int64(metadataSchemaVersion + 1)}},
+			},
+		},
+	})
+	defer conn.Close()
+	err := Bootstrap(context.Background(), conn)
+	if err == nil {
+		t.Fatal("expected schema version failure")
+	}
+	if !errors.Is(err, ErrSchemaIncompatible) {
+		t.Fatalf("expected ErrSchemaIncompatible, got %v", err)
 	}
 }
 
@@ -171,6 +193,7 @@ func TestClassifyBootstrapError(t *testing.T) {
 
 const (
 	objectExistsQuery           = `SELECT CASE WHEN OBJECT_ID(@p1, @p2) IS NULL THEN 0 ELSE 1 END`
+	schemaVersionQuery          = `SELECT MAX(version) FROM __migrator.schema_version`
 	trackedObjectChecksumsQuery = `
 SELECT ISNULL(o.normalized_key, ''), m.script_name, m.checksum
 FROM __migrator.schema_migrations m
@@ -265,6 +288,9 @@ func (c *metadataTestConn) QueryContext(_ context.Context, query string, args []
 	c.state.queryArgs = append(c.state.queryArgs, cloneNamedValues(args))
 	response, ok := c.state.scenario.queryResponses[query]
 	if !ok {
+		if query == schemaVersionQuery {
+			return &metadataTestRowsResult{columns: []string{""}, rows: [][]driver.Value{{int64(metadataSchemaVersion)}}}, nil
+		}
 		return nil, fmt.Errorf("unexpected query: %s", query)
 	}
 	rows := response.rows
@@ -365,4 +391,13 @@ func keyForArgs(values ...any) string {
 		parts = append(parts, fmt.Sprintf("%v", value))
 	}
 	return strings.Join(parts, "|")
+}
+
+func containsExec(values []string, part string) bool {
+	for _, value := range values {
+		if strings.Contains(value, part) {
+			return true
+		}
+	}
+	return false
 }

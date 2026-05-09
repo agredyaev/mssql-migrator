@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"reporting-db-migrations/internal/config"
@@ -25,10 +26,17 @@ func (r Runner) executePlan(ctx context.Context, conn txConn, layout parser.Layo
 
 func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout parser.Layout, plan contracts.MigrationPlan, report *contracts.MigrationReport, runID string, trackedObjectIDs map[string]int64) error {
 	for _, schema := range plan.Schemas {
-		if schema.Action == "exists" && runID != "" {
-			_ = metadata.UpdateTrackedSchemaResult(ctx, conn, runID, strings.ToLower(schema.SchemaName), true, "")
+		if schema.Action == contracts.SchemaActionExists && runID != "" {
+			metaCtx, cancel := metadataContext(ctx)
+			err := metadata.UpdateTrackedSchemaResult(metaCtx, conn, runID, strings.ToLower(schema.SchemaName), true, "")
+			cancel()
+			if err != nil {
+				report.Result = "failed"
+				report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: "critical metadata failure after schema discovery: " + logger.Redact(err.Error())}
+				return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+			}
 		}
-		if schema.Action != "create_schema" {
+		if schema.Action != contracts.SchemaActionCreateSchema {
 			continue
 		}
 		statement := fmt.Sprintf("IF SCHEMA_ID('%s') IS NULL EXEC('CREATE SCHEMA [%s]')", escapeSQLString(schema.SchemaName), escapeSQLIdentifier(schema.SchemaName))
@@ -36,13 +44,16 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 			classifiedErr := classifySchemaExecutionError(schema.SchemaName, err)
 			message := logger.Redact(classifiedErr.Error())
 			if runID != "" {
-				_ = metadata.UpdateTrackedSchemaResult(ctx, conn, runID, strings.ToLower(schema.SchemaName), false, message)
-				_ = metadata.InsertAttempt(ctx, conn, metadata.AttemptRecord{
+				metaCtx, cancel := metadataContext(ctx)
+				_ = metadata.UpdateTrackedSchemaResult(metaCtx, conn, runID, strings.ToLower(schema.SchemaName), false, message)
+				cancel()
+				metaCtx, cancel = metadataContext(ctx)
+				_ = metadata.InsertAttempt(metaCtx, conn, metadata.AttemptRecord{
 					RunID:         runID,
 					ScriptName:    schema.SchemaName,
 					ScriptType:    "schema",
 					Checksum:      "-",
-					Action:        "fail",
+					Action:        contracts.ActionFail,
 					ExecutionMS:   0,
 					Success:       false,
 					ErrorMessage:  message,
@@ -52,19 +63,28 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 					PipelineURL:   logger.Redact(r.cfg.PipelineURL),
 					AppliedBy:     r.cfg.Actor,
 				})
+				cancel()
 			}
 			report.Result = "failed"
 			report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: message}
 			return classifiedErr
 		}
 		if runID != "" {
-			_ = metadata.UpdateTrackedSchemaResult(ctx, conn, runID, strings.ToLower(schema.SchemaName), true, "")
-			if err := metadata.InsertAttempt(ctx, conn, metadata.AttemptRecord{
+			metaCtx, cancel := metadataContext(ctx)
+			err := metadata.UpdateTrackedSchemaResult(metaCtx, conn, runID, strings.ToLower(schema.SchemaName), true, "")
+			cancel()
+			if err != nil {
+				report.Result = "failed"
+				report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: logger.Redact(err.Error())}
+				return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+			}
+			metaCtx, cancel = metadataContext(ctx)
+			if err := metadata.InsertAttempt(metaCtx, conn, metadata.AttemptRecord{
 				RunID:         runID,
 				ScriptName:    schema.SchemaName,
 				ScriptType:    "schema",
 				Checksum:      "-",
-				Action:        "create_schema",
+				Action:        contracts.SchemaActionCreateSchema,
 				ExecutionMS:   0,
 				Success:       true,
 				GitCommit:     r.cfg.GitCommit,
@@ -73,10 +93,12 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 				PipelineURL:   logger.Redact(r.cfg.PipelineURL),
 				AppliedBy:     r.cfg.Actor,
 			}); err != nil {
+				cancel()
 				report.Result = "failed"
 				report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: logger.Redact(err.Error())}
 				return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
 			}
+			cancel()
 		}
 	}
 
@@ -86,8 +108,8 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 	}
 	for _, planned := range plannedObjectsInExecutionOrder(plan.Objects) {
 		trackedObjectID := lookupTrackedObjectID(trackedObjectIDs, planned.NormalizedKey)
-		if planned.PlannedAction != "create_object" && planned.PlannedAction != "update_existing_module" && planned.PlannedAction != "update_existing_supported" {
-			if planned.PlannedAction == "skip_unchanged" || planned.PlannedAction == "adopt_existing" {
+		if planned.PlannedAction != contracts.ActionCreateObject && planned.PlannedAction != contracts.ActionUpdateExistingModule && planned.PlannedAction != contracts.ActionUpdateExistingSupported {
+			if planned.PlannedAction == contracts.ActionSkipUnchanged || planned.PlannedAction == contracts.ActionAdoptExisting {
 				if err := r.recordPassiveObjectAction(ctx, conn, planned, runID, trackedObjectID); err != nil {
 					report.Result = "failed"
 					report.Failed = &contracts.Failure{Script: planned.ObjectPath, Error: logger.Redact(err.Error())}
@@ -118,7 +140,8 @@ func (r Runner) recordAdoptedObject(ctx context.Context, execer metadata.Execer,
 }
 
 func (r Runner) recordPassiveObjectAction(ctx context.Context, execer metadata.Execer, planned contracts.PlannedObject, runID string, trackedObjectID *int64) error {
-	if err := metadata.InsertAttempt(ctx, execer, metadata.AttemptRecord{
+	metaCtx, cancel := metadataContext(ctx)
+	err := metadata.InsertAttempt(metaCtx, execer, metadata.AttemptRecord{
 		RunID:            runID,
 		TrackedObjectID:  trackedObjectID,
 		ScriptName:       planned.NormalizedKey,
@@ -136,11 +159,16 @@ func (r Runner) recordPassiveObjectAction(ctx context.Context, execer metadata.E
 		PipelineRunID:    r.cfg.PipelineRunID,
 		PipelineURL:      logger.Redact(r.cfg.PipelineURL),
 		AppliedBy:        r.cfg.Actor,
-	}); err != nil {
+	})
+	cancel()
+	if err != nil {
 		return fmt.Errorf("critical metadata failure after %s: database object state may drift from metadata: %w", planned.PlannedAction, err)
 	}
 	if runID != "" {
-		if err := metadata.UpdateTrackedObjectResult(ctx, execer, runID, planned.NormalizedKey, true, ""); err != nil {
+		metaCtx, cancel = metadataContext(ctx)
+		err = metadata.UpdateTrackedObjectResult(metaCtx, execer, runID, planned.NormalizedKey, true, "")
+		cancel()
+		if err != nil {
 			return err
 		}
 	}
@@ -156,9 +184,9 @@ func (r Runner) applyObject(parent context.Context, conn txConn, object parser.O
 		ParentName:      object.ParentName,
 		NormalizedKey:   object.NormalizedKey,
 		Checksum:        object.Checksum,
-		PlannedAction:   "create_object",
-		TransactionMode: transactionModeForObject(r.cfg.TransactionMode, object.NoTransaction),
-		RollbackScope:   rollbackScopeForObject(r.cfg.TransactionMode, object.NoTransaction),
+		PlannedAction:   contracts.ActionCreateObject,
+		TransactionMode: contracts.TransactionModeForObject(r.cfg.TransactionMode, object.NoTransaction),
+		RollbackScope:   contracts.RollbackScopeForObject(r.cfg.TransactionMode, object.NoTransaction),
 		NoTransaction:   object.NoTransaction,
 	}
 	return r.applyObjectTracked(parent, conn, object, planned, "", nil, report)
@@ -181,9 +209,9 @@ func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object p
 		Action:           planned.PlannedAction,
 		ExecutionMS:      executionMS,
 		Success:          executionErr == nil,
-		TransactionMode:  transactionModeForObject(r.cfg.TransactionMode, object.NoTransaction),
-		TransactionScope: transactionModeForObject(r.cfg.TransactionMode, object.NoTransaction),
-		RollbackScope:    rollbackScopeForObject(r.cfg.TransactionMode, object.NoTransaction),
+		TransactionMode:  contracts.TransactionModeForObject(r.cfg.TransactionMode, object.NoTransaction),
+		TransactionScope: contracts.TransactionModeForObject(r.cfg.TransactionMode, object.NoTransaction),
+		RollbackScope:    contracts.RollbackScopeForObject(r.cfg.TransactionMode, object.NoTransaction),
 		NoTransaction:    object.NoTransaction || r.cfg.TransactionMode == config.TransactionModeNone,
 		GitCommit:        r.cfg.GitCommit,
 		GitBranch:        r.cfg.GitBranch,
@@ -193,31 +221,47 @@ func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object p
 	}
 	if executionErr != nil {
 		classifiedErr := classifyObjectExecutionError(object, planned, executionErr)
-		attempt.Action = "fail"
+		attempt.Action = contracts.ActionFail
 		attempt.ErrorMessage = logger.Redact(classifiedErr.Error())
-		if err := metadata.InsertAttempt(parent, conn, attempt); err != nil {
+		metaCtx, cancel := metadataContext(parent)
+		if err := metadata.InsertAttempt(metaCtx, conn, attempt); err != nil {
+			cancel()
 			report.Result = "failed"
 			report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after failed SQL: " + logger.Redact(err.Error())}
 			return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
 		}
+		cancel()
 		if runID != "" {
-			_ = metadata.UpdateTrackedObjectResult(parent, conn, runID, object.NormalizedKey, false, attempt.ErrorMessage)
+			metaCtx, cancel = metadataContext(parent)
+			if err := metadata.UpdateTrackedObjectResult(metaCtx, conn, runID, object.NormalizedKey, false, attempt.ErrorMessage); err != nil {
+				cancel()
+				report.Result = "failed"
+				report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after failed SQL: " + logger.Redact(err.Error())}
+				return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+			}
+			cancel()
 		}
 		report.Result = "failed"
 		report.Failed = &contracts.Failure{Script: object.Path, Error: attempt.ErrorMessage}
 		return classifiedErr
 	}
-	if err := metadata.InsertAttempt(parent, conn, attempt); err != nil {
+	metaCtx, cancel := metadataContext(parent)
+	if err := metadata.InsertAttempt(metaCtx, conn, attempt); err != nil {
+		cancel()
 		report.Result = "failed"
 		report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after successful SQL: " + logger.Redact(err.Error())}
 		return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
 	}
+	cancel()
 	if runID != "" {
-		if err := metadata.UpdateTrackedObjectResult(parent, conn, runID, object.NormalizedKey, true, ""); err != nil {
+		metaCtx, cancel = metadataContext(parent)
+		if err := metadata.UpdateTrackedObjectResult(metaCtx, conn, runID, object.NormalizedKey, true, ""); err != nil {
+			cancel()
 			report.Result = "failed"
 			report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after successful SQL: " + logger.Redact(err.Error())}
 			return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
 		}
+		cancel()
 	}
 	report.Applied = append(report.Applied, contracts.ScriptResult{Script: object.Path, Type: object.Kind, Checksum: object.Checksum, ExecutionMS: executionMS})
 	r.log.Info("object_applied", fmt.Sprintf("object=%s execution_ms=%d", object.Path, executionMS))
@@ -234,13 +278,18 @@ func (r Runner) executeObject(ctx context.Context, conn txConn, object parser.Ob
 	}
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin transaction: %w", err)
 	}
 	if err := executeBatches(ctx, tx, batches); err != nil {
-		_ = tx.Rollback()
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return fmt.Errorf("execute batch: %w; rollback failed: %v", err, rollbackErr)
+		}
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	return nil
 }
 
 func executeBatches(ctx context.Context, execer metadata.Execer, batches []parser.Batch) error {
@@ -256,7 +305,10 @@ func executeBatches(ctx context.Context, execer metadata.Execer, batches []parse
 
 func (r Runner) startProgressLogger(ctx context.Context, scriptName string, startedAt time.Time) func() {
 	done := make(chan struct{})
+	stopped := make(chan struct{})
+	var once sync.Once
 	go func() {
+		defer close(stopped)
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -270,7 +322,10 @@ func (r Runner) startProgressLogger(ctx context.Context, scriptName string, star
 			}
 		}
 	}()
-	return func() { close(done) }
+	return func() {
+		once.Do(func() { close(done) })
+		<-stopped
+	}
 }
 
 func escapeSQLString(value string) string {

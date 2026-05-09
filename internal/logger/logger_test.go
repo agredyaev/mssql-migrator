@@ -3,7 +3,9 @@ package logger
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -50,5 +52,23 @@ func TestRedactMasksQuotedAndSpacedSecrets(t *testing.T) {
 		if strings.Contains(got, forbidden) {
 			t.Fatalf("redaction leaked %q in %q", forbidden, got)
 		}
+	}
+}
+
+func TestLoggerConcurrentWrites(t *testing.T) {
+	buffer := bytes.Buffer{}
+	log := New(Options{Level: "info", Writer: &buffer})
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			log.Info("concurrent", fmt.Sprintf("message=%d", i))
+		}(i)
+	}
+	wg.Wait()
+	lines := strings.Split(strings.TrimSpace(buffer.String()), "\n")
+	if len(lines) != 32 {
+		t.Fatalf("expected 32 log lines, got %d in %q", len(lines), buffer.String())
 	}
 }

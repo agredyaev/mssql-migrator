@@ -11,7 +11,7 @@ import (
 	"reporting-db-migrations/internal/metadata"
 )
 
-func (r Runner) prepareProtectedRun(ctx context.Context) (contracts.MigrationReport, *sql.Conn, func(), error) {
+func (r Runner) prepareProtectedRun(ctx context.Context) (contracts.MigrationReport, *sql.Conn, func() error, error) {
 	report := r.newMigrationReport()
 	conn, closeFn, err := r.openReservedConnection(ctx)
 	if err != nil {
@@ -21,16 +21,6 @@ func (r Runner) prepareProtectedRun(ctx context.Context) (contracts.MigrationRep
 	report.Base = r.cfg.SQLBase
 	report.EffectiveBasePath = r.cfg.SelectedBasePath()
 	return report, conn, closeFn, nil
-}
-
-func (r Runner) protectConnection(ctx context.Context, conn *sql.Conn) error {
-	if err := r.acquireLock(ctx, conn); err != nil {
-		return err
-	}
-	if err := metadata.Bootstrap(ctx, conn); err != nil {
-		return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
-	}
-	return nil
 }
 
 func (r Runner) acquireLock(ctx context.Context, conn *sql.Conn) error {

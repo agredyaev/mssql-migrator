@@ -40,7 +40,7 @@ func (e *baselinePreflightFailure) Unwrap() error {
 
 func verifyBaselineCreatePermissions(ctx context.Context, conn *sql.Conn, plan contracts.MigrationPlan, layout parser.Layout) error {
 	for _, schema := range plan.Schemas {
-		if schema.Action != "create_schema" {
+		if schema.Action != contracts.SchemaActionCreateSchema {
 			continue
 		}
 		allowed, err := hasCreateSchemaPermission(ctx, conn)
@@ -63,7 +63,7 @@ func verifyBaselineCreatePermissions(ctx context.Context, conn *sql.Conn, plan c
 	checkedSchemas := map[string]struct{}{}
 
 	for _, planned := range plan.Objects {
-		if planned.PlannedAction != "create_object" {
+		if planned.PlannedAction != contracts.ActionCreateObject {
 			continue
 		}
 		object, ok := objectsByKey[planned.NormalizedKey]
@@ -131,7 +131,7 @@ func baselineParentPlanned(plannedByKey map[string]contracts.PlannedObject, obje
 			continue
 		}
 		switch planned.PlannedAction {
-		case "create_object", "adopt_existing", "skip_unchanged":
+		case contracts.ActionCreateObject, contracts.ActionAdoptExisting, contracts.ActionSkipUnchanged:
 			return true
 		}
 	}
@@ -198,13 +198,13 @@ func classifySchemaExecutionError(schemaName string, err error) error {
 }
 
 func classifyObjectExecutionError(object parser.Object, planned contracts.PlannedObject, err error) error {
-	if planned.PlannedAction == "create_object" && looksLikeMissingParentError(err) {
+	if planned.PlannedAction == contracts.ActionCreateObject && looksLikeMissingParentError(err) {
 		return fmt.Errorf("%w: missing parent object for %s: %v", contracts.ErrSQLExecution, object.Path, err)
 	}
 	if isPermissionDeniedError(err) {
 		return fmt.Errorf("%w: missing object DDL permission for %s: %v", contracts.ErrSQLExecution, object.Path, err)
 	}
-	if planned.PlannedAction == "create_object" {
+	if planned.PlannedAction == contracts.ActionCreateObject {
 		return fmt.Errorf("%w: create object %s: %v", contracts.ErrSQLExecution, object.Path, err)
 	}
 	return fmt.Errorf("%w: %v", contracts.ErrSQLExecution, err)
