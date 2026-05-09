@@ -100,6 +100,7 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 
 - `PATH=/usr/local/go/bin:$PATH go test ./...`
 - `PATH=/usr/local/go/bin:$PATH go test -race ./...`
+- `RMIG_RUN_SQLSERVER_INTEGRATION=1 PATH=/usr/local/go/bin:$PATH go test ./internal/migrator -run SQLServer`
 - `PATH=/usr/local/go/bin:$PATH go vet ./...`
 - `PATH=/usr/local/go/bin:$PATH go build -ldflags "-X main.version=0.1.0-dev -X main.commit=$(git rev-parse HEAD)" -o rmig ./cmd/rmig`
 - `./rmig version`
@@ -115,7 +116,7 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 
 ## Open Issues And Non-Goals
 
-- Open issues: live MSSQL integration validation still needs execution in the target environment.
+- Open issues: live MSSQL integration validation is opt-in and still depends on an external disposable SQL Server.
 - Non-goals: `rmig` does not provision SQL Server, manage secrets, or orchestrate the outer CI/CD pipeline.
 
 ## References

@@ -71,6 +71,8 @@ See `README.md` for the CLI wrapper contract.
 - `rmig validate --env pred --sql-root ./sql --sql-base dwh`
 - `rmig baseline --env pred --sql-root ./sql --sql-base dwh --confirm`
 - `rmig repair-checksum --env pred --sql-root ./sql --sql-base dwh --script reporting/views/monthly.sql --confirm`
+- `RMIG_RUN_SQLSERVER_INTEGRATION=1 go test ./internal/migrator -run SQLServer`
+- The live test entrypoint is `internal/migrator/sqlserver_integration_test.go` and uses the same `RM_DB_*` connection inputs as the CLI.
 - Verify `reports/migration-plan.json`, `reports/migration-report.json`, and `reports/validation-report.json` after each corresponding step.
 - Retain the generated report files with the test run record until the suite is rerun or replaced.
 
@@ -81,7 +83,7 @@ See `README.md` for the CLI wrapper contract.
 
 ## Open Issues And Non-Goals
 
-- Open issues: this plan does not include a checked-in SQL Server container definition.
+- Open issues: this plan still does not include a checked-in SQL Server container definition.
 - Non-goals: this plan does not replace the external production pipeline.
 
 ## References

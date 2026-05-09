@@ -84,6 +84,7 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 
 - See `README.md` for shared build and unit-test commands.
 - `go test -race ./...`
+- `RMIG_RUN_SQLSERVER_INTEGRATION=1 go test ./internal/migrator -run SQLServer`
 - `docs/integration-test-plan.md`
 
 ## Operations And Recovery
@@ -94,7 +95,7 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 
 ## Open Issues And Non-Goals
 
-- Open issues: live SQL Server integration validation is still the final proof step.
+- Open issues: live SQL Server integration validation is now codified as opt-in tests and still depends on an external disposable SQL Server.
 - Non-goals: this document does not define the outer CI/CD pipeline or SQL Server provisioning.
 
 ## References
