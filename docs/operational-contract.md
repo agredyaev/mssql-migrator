@@ -4,7 +4,7 @@ Lifecycle: `Current`.
 
 ## Purpose
 
-This document defines how `rmig` is built, validated, promoted, and operated in the PR-to-production flow.
+This document defines how the current `rmig` build is configured, validated, and operated on the repo-driven v8 runtime path.
 
 ## Scope
 
@@ -12,7 +12,7 @@ This document defines how `rmig` is built, validated, promoted, and operated in 
 - CI example in `docs/ci-example.yml`
 - Secret redaction in `internal/logger/*.go`
 - Runtime metadata injection in `internal/app/app.go`
-- Failure containment in `internal/migrator/*.go`
+- Planning and validation behavior in `internal/planner/*.go`, `internal/parser/layout.go`, and `internal/validate/*.go`
 
 ## System Context
 
@@ -22,9 +22,8 @@ See `README.md` for the CLI wrapper contract.
 
 ## Interfaces And Boundaries
 
-- Inputs: `RM_*` environment variables, SQL Server connection details, `--plan-file`, `--confirm`, `--skip-validate`, build metadata
-- Inputs: `RM_*` environment variables, optional env files selected through `--env-file` or `RM_ENV_FILE`, SQL Server connection details, `--plan-file`, `--confirm`, `--skip-validate`, build metadata
-- Outputs: logs, `reports/migration-plan.*`, `reports/migration-report.*`, `reports/validation-report.*`, SQL Server metadata rows, exit codes
+- Inputs: `RM_*` environment variables, optional env files selected through `--env-file` or `RM_ENV_FILE`, SQL Server connection details, `--sql-root`, `--sql-base`, `--json`, `--plan-file`, `--update-policy`, `--transaction-mode`, build metadata
+- Outputs: logs, `reports/migration-plan.*`, `reports/migration-report.*`, `reports/validation-report.*`, SQL Server metadata rows in `[__migrator]`, exit codes
 - Ownership boundaries: the repository owns `rmig`; the release pipeline owns promotion and deployment timing
 
 ## Assumptions And Constraints
@@ -34,23 +33,37 @@ See `README.md` for the CLI wrapper contract.
 - `baseline` and `repair-checksum` require `--confirm`.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
 - `--env` and `RM_ENV` accept only `pred` and `prod`.
-- `migrate` requires `--plan-file` and runs validation by default; `--skip-validate` or `RM_SKIP_VALIDATE` disables the step.
+- `RM_SQL_ROOT` and `RM_SQL_BASE` must point to unpacked repository files on disk.
+- `RM_SQL_BASE` must be a single directory name under `RM_SQL_ROOT`.
+- `migrate` requires `--plan-file`.
+- `plan --json` emits machine-readable JSON to stdout and keeps human logs on stderr.
 - SQL Server authentication settings are provided externally. `RM_DB_AUTH=sql` uses `RM_DB_USER` and `RM_DB_PASSWORD`. `RM_DB_AUTH=integrated` uses the current Windows session or an explicit Windows user value passed in `RM_DB_USER`.
 - Optional dotenv loading must be explicitly enabled. When enabled, CLI flags still win over process environment, and process environment still wins over values loaded from the env file.
+- Repo-driven object execution runs only after approved-plan verification succeeds. Post-migrate validation is limited to the verified managed object scope.
+- `baseline` uses the repo-driven layout, creates missing schemas and objects, adopts existing objects, and requires `--confirm`.
+- `baseline` fails closed on missing metadata DDL permission, missing schema creation permission, missing object DDL permission, checksum drift, or missing parent objects.
+- `repair-checksum` uses one repo object selected by `--script <repo-path-or-normalized-key>` and writes an append-only repair attempt row.
+- `RM_UPDATE_POLICY=all_supported` is accepted, but still behaves like `modules_only` because only module update paths exist.
 
 ## Nominal Flow
 
 1. Run local verification: `go test ./...`, `go vet ./...`, `go build -ldflags "-X main.version=0.1.0-dev -X main.commit=$(git rev-parse HEAD)" -o rmig ./cmd/rmig`.
 2. Run `rmig version` to confirm the version and commit.
-3. Run `rmig plan`, then `rmig migrate`, then `rmig validate` in the target environment.
-4. Run `rmig baseline` or `rmig repair-checksum` only when the runbook allows metadata repair.
+3. Run `rmig plan --env prod --sql-root ./sql --sql-base dwh` or `rmig plan --env prod --sql-root ./sql --sql-base dwh --json`.
+4. Run `rmig migrate --env prod --sql-root ./sql --sql-base dwh --plan-file reports/migration-plan.json`.
+5. Run `rmig validate --env prod --sql-root ./sql --sql-base dwh`.
+6. Run `rmig baseline --env prod --sql-root ./sql --sql-base dwh --confirm` only when the current repo layout is already the intended target state.
+7. Run `rmig repair-checksum --env prod --sql-root ./sql --sql-base dwh --script reporting/views/monthly.sql --confirm` only when the runbook allows controlled checksum repair.
 
 ## Off-Nominal Behavior And Failure Containment
 
 - Secret leakage: redaction must strip password and token-like values from logs, reports, and stored error text.
-- Plan drift: `migrate` checks the approved plan and fails closed if inputs or the approved script set changed.
-- Concurrent deploy: app lock blocks the second migration.
+- Invalid root or base selection: the command fails before any database work.
+- Invalid repository layout: planning or validation fails before object work.
+- Plan drift: `migrate` checks the approved plan and fails closed if `git_commit`, `layout_hash`, target, tool identity, comparison mode, update policy, transaction mode, rollback scope, base selection, or the approved schema/object set changed.
 - Metadata failure: the run stops instead of reporting success.
+- Repo-driven migrate execution: current builds execute only the approved repo-driven schema/object set, write migration reports, record `adopt_existing` into metadata, and run managed-scope validation by default unless skipped. Repo-discovered `checks/*.sql` stay outside `migrate` and run only in standalone `validate`.
+- Baseline create path: current builds preflight DDL permissions, create missing repo-managed scope, record attempts into `[__migrator]`, and stop on the first classified failure.
 - Validation failure: the run stops and writes `reports/validation-report.*`.
 
 ## Verification And Validation
@@ -60,7 +73,7 @@ See `README.md` for the CLI wrapper contract.
 
 ## Operations And Recovery
 
-- Use `docs/runbook.md` for migration failure, validation failure, and metadata repair.
+- Use `docs/runbook.md` for planning failure, validation failure, and metadata repair.
 - Re-run `rmig plan` after any metadata repair.
 - Retain `reports/migration-plan.*`, `reports/migration-report.*`, and `reports/validation-report.*` with the release record for signoff.
 

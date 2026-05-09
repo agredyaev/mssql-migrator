@@ -4,13 +4,13 @@ Lifecycle: `Current`.
 
 ## Purpose
 
-This document defines the required live SQL Server checks for `rmig`.
+This document defines the required live SQL Server checks for the current `rmig` build.
 
 ## Scope
 
 - Disposable SQL Server database only
 - `plan`, `migrate`, `validate`, `baseline`, and `repair-checksum`
-- Metadata table `__migrator.schema_migrations`
+- Metadata objects `[__migrator].migration_runs`, `[__migrator].tracked_schemas`, `[__migrator].tracked_objects`, `[__migrator].schema_migrations`, and `[__migrator].v_migration_state`
 - Report files in `reports/migration-plan.*`, `reports/migration-report.*`, and `reports/validation-report.*`
 
 ## System Context
@@ -21,8 +21,8 @@ See `README.md` for the CLI wrapper contract.
 
 ## Interfaces And Boundaries
 
-- Inputs: SQL files in `./sql/versioned`, `./sql/repeatable`, and `./sql/checks`, target database credentials, `RM_*` environment variables
-- Outputs: report files in `./reports`, metadata rows in `__migrator.schema_migrations`
+- Inputs: SQL files under `<RM_SQL_ROOT>/<RM_SQL_BASE>`, target database credentials, `RM_*` environment variables
+- Outputs: report files in `./reports`, metadata rows in `[__migrator]`
 - Ownership boundaries: the test database may be destroyed between runs
 
 ## Assumptions And Constraints
@@ -30,36 +30,40 @@ See `README.md` for the CLI wrapper contract.
 - The database is disposable.
 - The run is isolated from production data.
 - Use `--env pred` for this suite so plan and report artifacts are marked as pre-production runs.
-- Script names follow the `V###__name.sql`, `R###__name.sql`, and `C###__name.sql` patterns used by the parser.
+- Repo-driven `migrate` execution is expected to create missing schemas, apply the approved repo object set, record `adopt_existing` metadata rows, and validate the managed object scope.
+- Repo-driven `baseline` is expected to create missing repo-managed schemas and objects, adopt already existing objects, and fail closed on checksum drift or missing DDL permission.
+- Repo-driven `repair-checksum` is expected to resolve one object by repo path or normalized key and append a `repair_checksum` attempt row.
+- This build persists run state in `[__migrator].migration_runs`, `[__migrator].tracked_schemas`, `[__migrator].tracked_objects`, `[__migrator].schema_migrations`, and `[__migrator].v_migration_state`.
 
 ## Nominal Flow
 
-1. Bootstrap `__migrator.schema_migrations`.
-2. Apply `V001`.
-3. Re-run and confirm `V001` is skipped.
-4. Modify applied `V001` and confirm checksum mismatch.
-5. Apply `R001`.
-6. Modify `R001` and confirm repeatable rerun.
-7. Create a broken view and confirm validation fails.
-8. Add a failing check script and confirm validation fails.
-9. Start two migrations and confirm the app lock blocks the second.
-10. Change `sql_dir_hash` after planning and confirm migration is blocked.
-11. Baseline historical `V` scripts up to a supplied version and confirm history rows are written.
-12. Repair a stored checksum for an already applied script and confirm the metadata row updates.
+1. Create a repo-driven layout under `<RM_SQL_ROOT>/<RM_SQL_BASE>/<schema>/<kind>/*.sql`.
+2. Run `plan` and confirm the plan artifact contains `schema_version`, `sql_root`, `base`, `effective_base_path`, `layout_hash`, `target`, `summary`, `schemas`, `objects`, and `failures`.
+3. Run `plan --json` and confirm JSON is written to stdout while logs stay on stderr.
+4. Introduce an invalid layout path and confirm planning fails before database changes.
+5. Introduce repo-discovered check scripts under `<schema>/checks/*.sql` and confirm `validate` executes them.
+6. Create a broken module object and confirm validation fails.
+7. Generate an approved plan, change the repo layout, and confirm `migrate` rejects the artifact.
+8. Verify `migrate` creates missing schemas, applies only the approved repo object set, skips `adopt_existing` objects without DDL, and records adoption in metadata.
+9. Run `baseline` against an empty or partial disposable database and confirm missing repo-managed schemas and objects are created, existing objects are adopted, and run state is written into `[__migrator]`.
+10. Remove required DDL permission for a controlled test principal and confirm `baseline` fails with a permission-specific error before or during create work.
+11. Repair a stored checksum for an already applied repo-managed object and confirm a new `repair_checksum` attempt row is written.
 
 ## Off-Nominal Behavior And Failure Containment
 
-- If checksum mismatch appears, the migration must stop.
+- If repository layout validation fails, the command must stop before object work.
 - If validation fails, the report must show the failing object or check script.
-- If the second migration starts, the app lock must block it.
+- If plan drift appears, the migration must stop.
+- If repo-driven migrate execution is reached, the current build must apply only the approved repo object set and run managed-scope post-migrate validation unless skipped.
 
 ## Verification And Validation
 
-- `rmig plan --env pred`
-- `rmig migrate --env pred --plan-file reports/migration-plan.json`
-- `rmig validate --env pred`
-- `rmig baseline --env pred --up-to V010 --confirm`
-- `rmig repair-checksum --env pred --script R002__views.sql --confirm`
+- `rmig plan --env pred --sql-root ./sql --sql-base dwh`
+- `rmig plan --env pred --sql-root ./sql --sql-base dwh --json`
+- `rmig migrate --env pred --sql-root ./sql --sql-base dwh --plan-file reports/migration-plan.json`
+- `rmig validate --env pred --sql-root ./sql --sql-base dwh`
+- `rmig baseline --env pred --sql-root ./sql --sql-base dwh --confirm`
+- `rmig repair-checksum --env pred --sql-root ./sql --sql-base dwh --script reporting/views/monthly.sql --confirm`
 - Verify `reports/migration-plan.json`, `reports/migration-report.json`, and `reports/validation-report.json` after each corresponding step.
 - Retain the generated report files with the test run record until the suite is rerun or replaced.
 

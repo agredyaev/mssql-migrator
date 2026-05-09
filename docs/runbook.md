@@ -4,10 +4,11 @@ Lifecycle: `Current`.
 
 ## Purpose
 
-This document explains how to operate `rmig` after a failed migration, failed validation, or metadata repair.
+This document explains how to operate `rmig` after a failed plan, failed validation, failed migration attempt, or metadata repair.
 
 ## Scope
 
+- Failure handling for `rmig plan`
 - Failure handling for `rmig migrate`
 - Failure handling for `rmig validate`
 - Operational use of `rmig baseline`
@@ -22,44 +23,50 @@ See `README.md` for the CLI wrapper contract.
 
 ## Interfaces And Boundaries
 
- - Inputs: `reports/migration-report.json`, `reports/migration-report.txt`, `reports/validation-report.json`, `reports/validation-report.txt`, SQL Server error text, `--env`, `--confirm`
+- Inputs: `reports/migration-plan.json`, `reports/migration-report.json`, `reports/validation-report.json`, SQL Server error text, `--env`, `--sql-root`, `--sql-base`, `--confirm`
 - Outputs: repaired metadata rows, rerun plan artifacts, rerun validation results
 - Ownership boundaries: SQL fixes belong in Git; metadata repair belongs to the controlled CLI path
 
 ## Assumptions And Constraints
 
-- Applied `V` scripts are not edited in place.
 - `baseline` and `repair-checksum` require `--confirm`.
-- `repair-checksum` is only for already applied scripts.
+- `repair-checksum` is only for already applied repo-managed objects that already have a successful metadata row.
 - `migrate` requires an approved plan file.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
+- `plan`, `migrate`, and `validate` require `--sql-root` and `--sql-base` or the matching `RM_*` environment variables.
+- Repo-driven `migrate` execution applies the approved repo-driven schema/object set and validates the managed object scope. Repo-discovered `checks/*.sql` run only in standalone `validate`.
+- `baseline` and `repair-checksum` both use the repo-driven layout under `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 
 ## Nominal Flow
 
 1. Read the report file in `./reports`.
-2. Identify the failing script, failed check, or metadata row.
-3. Fix the SQL or metadata issue in the correct Git path.
+2. Identify the failing schema, object, check script, or metadata row.
+3. Fix the SQL or metadata issue in the correct Git path under `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 4. Re-run the relevant command.
 
 ## Off-Nominal Behavior And Failure Containment
 
-- Migration failure: stop, inspect the report, and fix forward with a new `V` script or corrected `R` script.
-- Metadata failure after SQL success: stop deployment and inspect database state before retrying.
+- Plan failure: fix the SQL root/base selection or repository layout, then rerun `plan`.
+- Migration failure: inspect the migration report to see whether the failure happened during schema creation, object execution, managed-scope post-migrate validation, or metadata recording, then fix forward in Git and rerun `plan`.
+- Metadata failure after SQL success in repo-driven `migrate`, `baseline`, or `repair-checksum`: stop deployment and inspect database state before retrying.
+- Baseline permission failure: grant the required metadata DDL, schema creation, or object DDL permission, then rerun `plan` or `baseline`.
+- Missing parent object for an index or trigger: add or restore the parent table or view in repo scope first, then rerun `plan`.
 - Validation failure: fix the broken object or check script, then re-run `validate`.
 - Plan drift after approval: regenerate `plan` before retrying `migrate`.
 
 ## Verification And Validation
 
-- `rmig plan --env prod`
-- `rmig migrate --env prod --plan-file reports/migration-plan.json`
-- `rmig validate --env prod`
-- `rmig baseline --env prod --up-to V010 --confirm`
-- `rmig repair-checksum --env prod --script R002__views.sql --confirm`
+- `rmig plan --env prod --sql-root ./sql --sql-base dwh`
+- `rmig plan --env prod --sql-root ./sql --sql-base dwh --json`
+- `rmig migrate --env prod --sql-root ./sql --sql-base dwh --plan-file reports/migration-plan.json`
+- `rmig validate --env prod --sql-root ./sql --sql-base dwh`
+- `rmig baseline --env prod --sql-root ./sql --sql-base dwh --confirm`
+- `rmig repair-checksum --env prod --sql-root ./sql --sql-base dwh --script reporting/views/monthly.sql --confirm`
 
 ## Operations And Recovery
 
-- `baseline`: use once per existing database after the target version is confirmed.
-- `repair-checksum`: use only when the stored checksum must match the applied script.
+- `baseline`: use when the repo layout already describes the desired schema/object state and the database should be created or adopted into current repo-driven metadata.
+- `repair-checksum`: use only when one repo-managed object already matches the repo SQL in the database but its stored successful checksum row must be repaired.
 - After either metadata repair path, re-run `plan`.
 - If SQL succeeded but metadata repair is unsafe or blocked, stop and escalate with the report files and database state snapshot.
 
