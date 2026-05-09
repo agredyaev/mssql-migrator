@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"reporting-db-migrations/internal/commands"
 )
 
 type Input struct {
@@ -231,17 +233,19 @@ func (cfg Config) ValidateSQLSelection() error {
 }
 
 func (cfg Config) ValidateForCommand(command string) error {
+	spec, ok := commands.Lookup(command)
+	if !ok {
+		return fmt.Errorf("unknown command: %s", command)
+	}
 	if err := cfg.ValidateCommon(); err != nil {
 		return err
 	}
-	switch command {
-	case "plan", "migrate", "validate", "baseline", "repair-checksum":
+	if spec.RequiresSQLSelection {
 		if err := cfg.ValidateSQLSelection(); err != nil {
 			return err
 		}
 	}
-	switch command {
-	case "plan", "migrate", "baseline", "repair-checksum":
+	if spec.RequiresGitCommit {
 		return cfg.ValidateGitCommit()
 	}
 	return nil

@@ -1,16 +1,19 @@
 package contracts
 
-import "reporting-db-migrations/internal/config"
+import (
+	"reporting-db-migrations/internal/commands"
+	"reporting-db-migrations/internal/config"
+)
 
 const (
 	SchemaActionExists       = "exists"
 	SchemaActionCreateSchema = "create_schema"
 
-	CommandPlan           = "plan"
-	CommandMigrate        = "migrate"
-	CommandValidate       = "validate"
-	CommandBaseline       = "baseline"
-	CommandRepairChecksum = "repair-checksum"
+	CommandPlan           = commands.Plan
+	CommandMigrate        = commands.Migrate
+	CommandValidate       = commands.Validate
+	CommandBaseline       = commands.Baseline
+	CommandRepairChecksum = commands.RepairChecksum
 
 	ScriptTypeSchema   = "schema"
 	ScriptTypeObject   = "object"

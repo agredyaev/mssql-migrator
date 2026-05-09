@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 
+	"reporting-db-migrations/internal/commands"
 	"reporting-db-migrations/internal/config"
 	"reporting-db-migrations/internal/contracts"
 	"reporting-db-migrations/internal/failures"
@@ -60,15 +61,13 @@ func (r Runtime) Run(args []string) int {
 		return contracts.ExitOK
 	}
 
-	switch command {
-	case "info", "plan", "migrate", "validate", "baseline", "repair-checksum":
+	if _, ok := commands.Lookup(command); ok {
 		return r.dispatch(command, args[2:], stdout, stderr)
-	default:
-		failure := failures.BuildWithCause(config.Config{}, "config_failed", contracts.ErrInvalidInput, fmt.Errorf("unknown command: %s", command))
-		fmt.Fprintln(stderr, failure.Error)
-		printUsage(stdout)
-		return contracts.ExitConfigError
 	}
+	failure := failures.BuildWithCause(config.Config{}, "config_failed", contracts.ErrInvalidInput, fmt.Errorf("unknown command: %s", command))
+	fmt.Fprintln(stderr, failure.Error)
+	printUsage(stdout)
+	return contracts.ExitConfigError
 }
 
 func (r Runtime) dispatch(command string, args []string, stdout io.Writer, stderr io.Writer) int {
@@ -94,10 +93,15 @@ func (r Runtime) dispatch(command string, args []string, stdout io.Writer, stder
 		handler = migrator.Handler{}
 	}
 
-	switch command {
-	case "info":
+	spec, ok := commands.Lookup(command)
+	if !ok {
+		return contracts.ExitConfigError
+	}
+
+	switch spec.Name {
+	case commands.Info:
 		return exitCode(cfg, handler.Info(ctx, cfg, log), log, "info_failed")
-	case "plan":
+	case commands.Plan:
 		plan, err := handler.Plan(ctx, cfg, log)
 		if err != nil {
 			return exitCode(cfg, err, log, "plan_failed")
@@ -113,13 +117,13 @@ func (r Runtime) dispatch(command string, args []string, stdout io.Writer, stder
 			return contracts.ExitChecksumMismatch
 		}
 		return contracts.ExitOK
-	case "migrate":
+	case commands.Migrate:
 		return exitCode(cfg, handler.Migrate(ctx, cfg, log), log, "migration_failed")
-	case "validate":
+	case commands.Validate:
 		return exitCode(cfg, handler.Validate(ctx, cfg, log), log, "validation_failed")
-	case "baseline":
+	case commands.Baseline:
 		return exitCode(cfg, handler.Baseline(ctx, cfg, log), log, "baseline_failed")
-	case "repair-checksum":
+	case commands.RepairChecksum:
 		return exitCode(cfg, handler.RepairChecksum(ctx, cfg, log), log, "repair_checksum_failed")
 	default:
 		return contracts.ExitConfigError
@@ -164,7 +168,7 @@ func parseCommandConfig(command string, args []string) (config.Config, error) {
 	if err != nil {
 		return config.Config{}, err
 	}
-	if command == contracts.CommandMigrate && cfg.PlanFile == "" {
+	if spec, ok := commands.Lookup(command); ok && spec.RequiresPlanFile && cfg.PlanFile == "" {
 		return config.Config{}, fmt.Errorf("--plan-file is required")
 	}
 	if err := cfg.ValidateForCommand(command); err != nil {
@@ -206,13 +210,10 @@ func printUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "Usage:")
 	fmt.Fprintln(writer, "  rmig version")
 	fmt.Fprintln(writer, "  env values: pred, prod")
-	fmt.Fprintln(writer, "  rmig info --env prod")
-	fmt.Fprintln(writer, "  rmig plan --env prod --sql-root ./sql --sql-base dwh")
 	fmt.Fprintln(writer, "  optional: --env-file path/to/.env or RM_ENV_FILE=path/to/.env")
-	fmt.Fprintln(writer, "  rmig migrate --env prod --sql-root ./sql --sql-base dwh --plan-file reports/migration-plan.json")
-	fmt.Fprintln(writer, "  rmig validate --env prod --sql-root ./sql --sql-base dwh")
-	fmt.Fprintln(writer, "  rmig baseline --env prod --sql-root ./sql --sql-base dwh --confirm")
-	fmt.Fprintln(writer, "  rmig repair-checksum --env prod --sql-root ./sql --sql-base dwh --script reporting/views/monthly.sql --confirm")
+	for _, spec := range commands.Specs() {
+		fmt.Fprintf(writer, "  rmig %s\n", spec.Usage)
+	}
 }
 
 func writerOrDefault(writer io.Writer, fallback io.Writer) io.Writer {

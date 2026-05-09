@@ -24,11 +24,10 @@ func (r Runner) executePlan(ctx context.Context, conn txConn, layout parser.Layo
 }
 
 func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout parser.Layout, plan contracts.MigrationPlan, report *contracts.MigrationReport, runID string, trackedObjectIDs map[string]int64) error {
+	recorder := newMetadataRecorder(r.cfg, conn, runID)
 	for _, schema := range plan.Schemas {
 		if schema.Action == contracts.SchemaActionExists && runID != "" {
-			metaCtx, cancel := metadataContext(ctx)
-			err := metadata.UpdateTrackedSchemaResult(metaCtx, conn, runID, strings.ToLower(schema.SchemaName), true, "")
-			cancel()
+			err := recorder.recordSchemaSuccess(ctx, schema.SchemaName, schema.Action, false)
 			if err != nil {
 				report.Result = "failed"
 				report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: "critical metadata failure after schema discovery: " + logger.Redact(err.Error())}
@@ -43,61 +42,19 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 			classifiedErr := classifySchemaExecutionError(schema.SchemaName, err)
 			message := logger.Redact(classifiedErr.Error())
 			if runID != "" {
-				metaCtx, cancel := metadataContext(ctx)
-				_ = metadata.UpdateTrackedSchemaResult(metaCtx, conn, runID, strings.ToLower(schema.SchemaName), false, message)
-				cancel()
-				metaCtx, cancel = metadataContext(ctx)
-				_ = metadata.InsertAttempt(metaCtx, conn, metadata.AttemptRecord{
-					RunID:         runID,
-					ScriptName:    schema.SchemaName,
-					ScriptType:    "schema",
-					Checksum:      "-",
-					Action:        contracts.ActionFail,
-					ExecutionMS:   0,
-					Success:       false,
-					ErrorMessage:  message,
-					GitCommit:     r.cfg.GitCommit,
-					GitBranch:     r.cfg.GitBranch,
-					PipelineRunID: r.cfg.PipelineRunID,
-					PipelineURL:   logger.Redact(r.cfg.PipelineURL),
-					AppliedBy:     r.cfg.Actor,
-				})
-				cancel()
+				_ = recorder.recordSchemaFailure(ctx, schema.SchemaName, classifiedErr, true)
 			}
 			report.Result = "failed"
 			report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: message}
 			return classifiedErr
 		}
 		if runID != "" {
-			metaCtx, cancel := metadataContext(ctx)
-			err := metadata.UpdateTrackedSchemaResult(metaCtx, conn, runID, strings.ToLower(schema.SchemaName), true, "")
-			cancel()
+			err := recorder.recordSchemaSuccess(ctx, schema.SchemaName, contracts.SchemaActionCreateSchema, true)
 			if err != nil {
 				report.Result = "failed"
 				report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: logger.Redact(err.Error())}
 				return contracts.Wrap(contracts.ErrCriticalState, err)
 			}
-			metaCtx, cancel = metadataContext(ctx)
-			if err := metadata.InsertAttempt(metaCtx, conn, metadata.AttemptRecord{
-				RunID:         runID,
-				ScriptName:    schema.SchemaName,
-				ScriptType:    "schema",
-				Checksum:      "-",
-				Action:        contracts.SchemaActionCreateSchema,
-				ExecutionMS:   0,
-				Success:       true,
-				GitCommit:     r.cfg.GitCommit,
-				GitBranch:     r.cfg.GitBranch,
-				PipelineRunID: r.cfg.PipelineRunID,
-				PipelineURL:   logger.Redact(r.cfg.PipelineURL),
-				AppliedBy:     r.cfg.Actor,
-			}); err != nil {
-				cancel()
-				report.Result = "failed"
-				report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: logger.Redact(err.Error())}
-				return contracts.Wrap(contracts.ErrCriticalState, err)
-			}
-			cancel()
 		}
 	}
 
@@ -139,39 +96,8 @@ func (r Runner) recordAdoptedObject(ctx context.Context, execer metadata.Execer,
 }
 
 func (r Runner) recordPassiveObjectAction(ctx context.Context, execer metadata.Execer, planned contracts.PlannedObject, runID string, trackedObjectID *int64) error {
-	metaCtx, cancel := metadataContext(ctx)
-	err := metadata.InsertAttempt(metaCtx, execer, metadata.AttemptRecord{
-		RunID:            runID,
-		TrackedObjectID:  trackedObjectID,
-		ScriptName:       planned.NormalizedKey,
-		ScriptType:       contracts.ScriptTypeObject,
-		Checksum:         planned.Checksum,
-		Action:           planned.PlannedAction,
-		ExecutionMS:      0,
-		Success:          true,
-		TransactionMode:  planned.TransactionMode,
-		TransactionScope: planned.TransactionMode,
-		RollbackScope:    planned.RollbackScope,
-		NoTransaction:    planned.NoTransaction,
-		GitCommit:        r.cfg.GitCommit,
-		GitBranch:        r.cfg.GitBranch,
-		PipelineRunID:    r.cfg.PipelineRunID,
-		PipelineURL:      logger.Redact(r.cfg.PipelineURL),
-		AppliedBy:        r.cfg.Actor,
-	})
-	cancel()
-	if err != nil {
-		return fmt.Errorf("critical metadata failure after %s: database object state may drift from metadata: %w", planned.PlannedAction, err)
-	}
-	if runID != "" {
-		metaCtx, cancel = metadataContext(ctx)
-		err = metadata.UpdateTrackedObjectResult(metaCtx, execer, runID, planned.NormalizedKey, true, "")
-		cancel()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	recorder := newMetadataRecorder(r.cfg, execer, runID)
+	return recorder.recordObjectSuccess(ctx, passiveMetadataObject(planned, trackedObjectID), true)
 }
 
 func (r Runner) applyObject(parent context.Context, conn txConn, object parser.Object, report *contracts.MigrationReport) error {
@@ -199,68 +125,23 @@ func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object p
 	executionErr := r.executeObject(ctx, conn, object)
 	stopProgress()
 	executionMS := int(time.Since(startedAt).Milliseconds())
-	attempt := metadata.AttemptRecord{
-		RunID:            runID,
-		TrackedObjectID:  trackedObjectID,
-		ScriptName:       object.NormalizedKey,
-		ScriptType:       contracts.ScriptTypeObject,
-		Checksum:         object.Checksum,
-		Action:           planned.PlannedAction,
-		ExecutionMS:      executionMS,
-		Success:          executionErr == nil,
-		TransactionMode:  contracts.TransactionModeForObject(r.cfg.TransactionMode, object.NoTransaction),
-		TransactionScope: contracts.TransactionModeForObject(r.cfg.TransactionMode, object.NoTransaction),
-		RollbackScope:    contracts.RollbackScopeForObject(r.cfg.TransactionMode, object.NoTransaction),
-		NoTransaction:    contracts.NoTransactionForObject(r.cfg.TransactionMode, object.NoTransaction),
-		GitCommit:        r.cfg.GitCommit,
-		GitBranch:        r.cfg.GitBranch,
-		PipelineRunID:    r.cfg.PipelineRunID,
-		PipelineURL:      logger.Redact(r.cfg.PipelineURL),
-		AppliedBy:        r.cfg.Actor,
-	}
+	recorder := newMetadataRecorder(r.cfg, conn, runID)
+	recordedObject := executedMetadataObject(object, planned, trackedObjectID, executionMS)
 	if executionErr != nil {
 		classifiedErr := classifyObjectExecutionError(object, planned, executionErr)
-		attempt.Action = contracts.ActionFail
-		attempt.ErrorMessage = logger.Redact(classifiedErr.Error())
-		metaCtx, cancel := metadataContext(parent)
-		if err := metadata.InsertAttempt(metaCtx, conn, attempt); err != nil {
-			cancel()
+		if err := recorder.recordObjectFailure(parent, recordedObject, classifiedErr, true); err != nil {
 			report.Result = "failed"
 			report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after failed SQL: " + logger.Redact(err.Error())}
 			return contracts.Wrap(contracts.ErrCriticalState, err)
 		}
-		cancel()
-		if runID != "" {
-			metaCtx, cancel = metadataContext(parent)
-			if err := metadata.UpdateTrackedObjectResult(metaCtx, conn, runID, object.NormalizedKey, false, attempt.ErrorMessage); err != nil {
-				cancel()
-				report.Result = "failed"
-				report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after failed SQL: " + logger.Redact(err.Error())}
-				return contracts.Wrap(contracts.ErrCriticalState, err)
-			}
-			cancel()
-		}
 		report.Result = "failed"
-		report.Failed = &contracts.Failure{Script: object.Path, Error: attempt.ErrorMessage}
+		report.Failed = &contracts.Failure{Script: object.Path, Error: logger.Redact(classifiedErr.Error())}
 		return classifiedErr
 	}
-	metaCtx, cancel := metadataContext(parent)
-	if err := metadata.InsertAttempt(metaCtx, conn, attempt); err != nil {
-		cancel()
+	if err := recorder.recordObjectSuccess(parent, recordedObject, true); err != nil {
 		report.Result = "failed"
 		report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after successful SQL: " + logger.Redact(err.Error())}
 		return contracts.Wrap(contracts.ErrCriticalState, err)
-	}
-	cancel()
-	if runID != "" {
-		metaCtx, cancel = metadataContext(parent)
-		if err := metadata.UpdateTrackedObjectResult(metaCtx, conn, runID, object.NormalizedKey, true, ""); err != nil {
-			cancel()
-			report.Result = "failed"
-			report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after successful SQL: " + logger.Redact(err.Error())}
-			return contracts.Wrap(contracts.ErrCriticalState, err)
-		}
-		cancel()
 	}
 	report.Applied = append(report.Applied, contracts.ScriptResult{Script: object.Path, Type: object.Kind, Checksum: object.Checksum, ExecutionMS: executionMS})
 	r.log.Info("object_applied", fmt.Sprintf("object=%s execution_ms=%d", object.Path, executionMS))

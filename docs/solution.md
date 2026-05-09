@@ -50,10 +50,12 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - Post-SQL metadata writes use `internal/migrator/metadata_context.go` and a short timeout so metadata paths fail quickly instead of waiting for the full command timeout.
 - `internal/reports/write.go` writes report artifacts as consistent JSON and text pairs through temporary files and rename publication.
 - Repo-driven `migrate` creates missing schemas, applies approved create paths and safe existing-module update paths after plan verification, adopts existing objects without DDL by default, records attempts in `[__migrator]`, and validates the managed object scope by default unless skipped.
-- Repo-driven `validate` refreshes module objects, checks existence for the full managed object scope, creates one validation run row, and writes validation attempts.
+- Repo-driven `validate` refreshes module objects, checks existence for the full managed object scope, creates one validation run row, updates tracked object results for successful validation scope, and writes attempt rows only for validation failures and failed checks.
 - Repo-driven `baseline` uses the same discovered schema and object scope as `plan` and `migrate`, creates missing schemas and objects, adopts already existing objects, and blocks when a tracked object already exists with checksum drift.
 - Repo-driven `baseline` preflights metadata DDL, schema creation permission, object DDL permission, and parent-object availability before create work.
-- Repo-driven `repair-checksum` resolves one object by repo path or normalized key, but only when the current plan shows tracked checksum drift for that object. It appends a `repair_checksum` attempt row instead of mutating old rows in place.
+- Repo-driven `repair-checksum` resolves one object by repo path or normalized key, but only when the current plan shows tracked checksum drift for that object. It appends a new successful metadata attempt row instead of mutating old rows in place.
+- The append-only metadata history is stored in `[__migrator].migration_attempts`.
+- `reports/migration-plan.txt` explains why each planned object is being created, adopted, skipped, updated, or blocked.
 - Metadata bootstrap records runtime schema state in `[__migrator].schema_version`, validates known schema versions before upgrade DDL, and avoids recurring DDL churn on current metadata.
 
 ## Nominal Flow
