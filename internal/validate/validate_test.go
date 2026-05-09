@@ -3,6 +3,7 @@ package validate
 import (
 	"testing"
 
+	"reporting-db-migrations/internal/catalog"
 	"reporting-db-migrations/internal/parser"
 )
 
@@ -59,8 +60,8 @@ func TestMapTypeDescToKind(t *testing.T) {
 	}
 
 	for input, want := range tests {
-		if got := mapTypeDescToKind(input); got != want {
-			t.Fatalf("mapTypeDescToKind(%q) = %q, want %q", input, got, want)
+		if got := catalog.MapTypeDescToKind(input); got != want {
+			t.Fatalf("MapTypeDescToKind(%q) = %q, want %q", input, got, want)
 		}
 	}
 }

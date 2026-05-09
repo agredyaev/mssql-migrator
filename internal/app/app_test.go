@@ -218,7 +218,7 @@ type blockedPlanHandler struct{}
 func (blockedPlanHandler) Info(context.Context, config.Config, logger.Logger) error { return nil }
 
 func (blockedPlanHandler) Plan(context.Context, config.Config, logger.Logger) (contracts.MigrationPlan, error) {
-	return contracts.MigrationPlan{SchemaVersion: "v8", Command: "plan", Blocked: true}, nil
+	return contracts.MigrationPlan{SchemaVersion: "v8", Command: contracts.CommandPlan, Blocked: true}, nil
 }
 
 func (blockedPlanHandler) Migrate(context.Context, config.Config, logger.Logger) error { return nil }
@@ -238,7 +238,7 @@ func (planOnlyHandler) Info(context.Context, config.Config, logger.Logger) error
 func (planOnlyHandler) Plan(_ context.Context, cfg config.Config, _ logger.Logger) (contracts.MigrationPlan, error) {
 	return contracts.MigrationPlan{
 		SchemaVersion:     "v8",
-		Command:           "plan",
+		Command:           contracts.CommandPlan,
 		Tool:              "rmig",
 		ToolVersion:       cfg.ToolVersion,
 		ToolCommit:        cfg.ToolCommit,

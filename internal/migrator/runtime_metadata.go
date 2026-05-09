@@ -42,13 +42,13 @@ func (r Runner) startRun(ctx context.Context, execer metadata.Execer, command st
 		PlanFile:          planFile,
 		PlanHash:          planHash,
 	}
-	if command == "validate" || command == "repair-checksum" {
+	if command == contracts.CommandValidate || command == contracts.CommandRepairChecksum {
 		record.ComparisonMode = ""
 	}
-	if command == "validate" {
+	if command == contracts.CommandValidate {
 		record.UpdatePolicy = ""
 	}
-	if command == "repair-checksum" {
+	if command == contracts.CommandRepairChecksum {
 		record.TransactionMode = config.TransactionModeNone
 		record.RollbackScope = contracts.RollbackScopeNone
 	}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"reporting-db-migrations/internal/catalog"
 	"reporting-db-migrations/internal/checksum"
 	"reporting-db-migrations/internal/config"
 	"reporting-db-migrations/internal/contracts"
@@ -75,7 +76,7 @@ func TestBuildUpdatesChangedModuleWhenPolicyAllows(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, object := range plan.Objects {
-		if object.NormalizedKey == "reporting/views/monthly" && object.PlannedAction != "update_existing_module" {
+		if object.NormalizedKey == "reporting/views/monthly" && object.PlannedAction != contracts.ActionUpdateExistingModule {
 			t.Fatalf("expected update_existing_module, got %#v", object)
 		}
 	}
@@ -141,7 +142,7 @@ func TestBuildAllowsAdoptExistingWithoutBlocker(t *testing.T) {
 		t.Fatalf("expected adopt_existing not to block plan, got %#v", plan.BlockReasons)
 	}
 	for _, object := range plan.Objects {
-		if object.NormalizedKey == "reporting/views/monthly" && object.PlannedAction != "adopt_existing" {
+		if object.NormalizedKey == "reporting/views/monthly" && object.PlannedAction != contracts.ActionAdoptExisting {
 			t.Fatalf("expected adopt_existing action, got %#v", object)
 		}
 	}
@@ -169,7 +170,7 @@ func TestBuildLayoutHashIgnoresValidationChecks(t *testing.T) {
 func TestVerifyApprovedPlanRejectsDifferentObjects(t *testing.T) {
 	root := t.TempDir()
 	planFile := filepath.Join(root, "plan.json")
-	approved := contracts.MigrationPlan{GitCommit: "abc", LayoutHash: "hash", SQLRoot: "/sql", Base: "dwh", EffectiveBasePath: "/sql/dwh", Target: contracts.PlanTarget{Environment: "prod", Database: "ReportingDB"}, ToolVersion: "4.0.0", ToolCommit: "deadbeef", Objects: []contracts.PlannedObject{{ObjectPath: "reporting/views/monthly.sql", Kind: "views", ObjectName: "monthly", SchemaName: "reporting", NormalizedKey: "reporting/views/monthly", Checksum: "x", PlannedAction: "create_object"}}}
+	approved := contracts.MigrationPlan{GitCommit: "abc", LayoutHash: "hash", SQLRoot: "/sql", Base: "dwh", EffectiveBasePath: "/sql/dwh", Target: contracts.PlanTarget{Environment: "prod", Database: "ReportingDB"}, ToolVersion: "4.0.0", ToolCommit: "deadbeef", Objects: []contracts.PlannedObject{{ObjectPath: "reporting/views/monthly.sql", Kind: "views", ObjectName: "monthly", SchemaName: "reporting", NormalizedKey: "reporting/views/monthly", Checksum: "x", PlannedAction: contracts.ActionCreateObject}}}
 	content, err := json.Marshal(approved)
 	if err != nil {
 		t.Fatal(err)
@@ -178,7 +179,7 @@ func TestVerifyApprovedPlanRejectsDifferentObjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Config{PlanFile: planFile, GitCommit: "abc"}
-	current := contracts.MigrationPlan{LayoutHash: "hash", SQLRoot: "/sql", Base: "dwh", EffectiveBasePath: "/sql/dwh", Target: contracts.PlanTarget{Environment: "prod", Database: "ReportingDB"}, ToolVersion: "4.0.0", ToolCommit: "deadbeef", Objects: []contracts.PlannedObject{{ObjectPath: "reporting/views/daily.sql", Kind: "views", ObjectName: "daily", SchemaName: "reporting", NormalizedKey: "reporting/views/daily", Checksum: "y", PlannedAction: "create_object"}}}
+	current := contracts.MigrationPlan{LayoutHash: "hash", SQLRoot: "/sql", Base: "dwh", EffectiveBasePath: "/sql/dwh", Target: contracts.PlanTarget{Environment: "prod", Database: "ReportingDB"}, ToolVersion: "4.0.0", ToolCommit: "deadbeef", Objects: []contracts.PlannedObject{{ObjectPath: "reporting/views/daily.sql", Kind: "views", ObjectName: "daily", SchemaName: "reporting", NormalizedKey: "reporting/views/daily", Checksum: "y", PlannedAction: contracts.ActionCreateObject}}}
 	if err := VerifyApprovedPlan(cfg, current); err == nil {
 		t.Fatal("expected object mismatch error")
 	} else if !strings.Contains(err.Error(), contracts.ErrApprovedPlanMismatch.Error()) {
@@ -189,7 +190,7 @@ func TestVerifyApprovedPlanRejectsDifferentObjects(t *testing.T) {
 func TestVerifyApprovedPlanRejectsWrongSchemaVersion(t *testing.T) {
 	root := t.TempDir()
 	planFile := filepath.Join(root, "plan.json")
-	approved := contracts.MigrationPlan{SchemaVersion: "v7", Command: "plan", GitCommit: "abc", LayoutHash: "hash", SQLRoot: "/sql", Base: "dwh", EffectiveBasePath: "/sql/dwh", Target: contracts.PlanTarget{Environment: "prod", Database: "ReportingDB"}, ToolVersion: "4.0.0", ToolCommit: "deadbeef"}
+	approved := contracts.MigrationPlan{SchemaVersion: "v7", Command: contracts.CommandPlan, GitCommit: "abc", LayoutHash: "hash", SQLRoot: "/sql", Base: "dwh", EffectiveBasePath: "/sql/dwh", Target: contracts.PlanTarget{Environment: "prod", Database: "ReportingDB"}, ToolVersion: "4.0.0", ToolCommit: "deadbeef"}
 	content, err := json.Marshal(approved)
 	if err != nil {
 		t.Fatal(err)
@@ -198,7 +199,7 @@ func TestVerifyApprovedPlanRejectsWrongSchemaVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Config{PlanFile: planFile, GitCommit: "abc"}
-	current := contracts.MigrationPlan{SchemaVersion: "v8", Command: "plan", LayoutHash: "hash", SQLRoot: "/sql", Base: "dwh", EffectiveBasePath: "/sql/dwh", Target: contracts.PlanTarget{Environment: "prod", Database: "ReportingDB"}, ToolVersion: "4.0.0", ToolCommit: "deadbeef"}
+	current := contracts.MigrationPlan{SchemaVersion: "v8", Command: contracts.CommandPlan, LayoutHash: "hash", SQLRoot: "/sql", Base: "dwh", EffectiveBasePath: "/sql/dwh", Target: contracts.PlanTarget{Environment: "prod", Database: "ReportingDB"}, ToolVersion: "4.0.0", ToolCommit: "deadbeef"}
 	if err := VerifyApprovedPlan(cfg, current); err == nil {
 		t.Fatal("expected schema version mismatch")
 	} else if !strings.Contains(err.Error(), contracts.ErrApprovedPlanMismatch.Error()) {
@@ -222,7 +223,7 @@ func TestVerifyApprovedPlanRejectsApprovalBoundaryDrift(t *testing.T) {
 	planFile := filepath.Join(root, "plan.json")
 	approved := contracts.MigrationPlan{
 		SchemaVersion:     "v8",
-		Command:           "plan",
+		Command:           contracts.CommandPlan,
 		GitCommit:         "abc",
 		LayoutHash:        "hash",
 		SQLRoot:           "/sql",
@@ -256,17 +257,17 @@ func TestVerifyApprovedPlanRejectsApprovalBoundaryDrift(t *testing.T) {
 }
 
 func TestMapTypeDescToKindSupportsUserTableType(t *testing.T) {
-	if got := mapTypeDescToKind("USER_TABLE_TYPE"); got != "types" {
+	if got := catalog.MapTypeDescToKind("USER_TABLE_TYPE"); got != "types" {
 		t.Fatalf("unexpected type mapping: %q", got)
 	}
 }
 
 func TestCatalogStateQueryIncludesViewIndexes(t *testing.T) {
-	if !strings.Contains(catalogStateQuery, "o.type IN ('U', 'V')") {
-		t.Fatalf("expected catalog query to include view-backed indexes: %s", catalogStateQuery)
+	if !strings.Contains(catalog.StateQuery, "o.type IN ('U', 'V')") {
+		t.Fatalf("expected catalog query to include view-backed indexes: %s", catalog.StateQuery)
 	}
-	if strings.Contains(catalogStateQuery, "JOIN sys.tables") {
-		t.Fatalf("expected catalog query not to be limited to sys.tables: %s", catalogStateQuery)
+	if strings.Contains(catalog.StateQuery, "JOIN sys.tables") {
+		t.Fatalf("expected catalog query not to be limited to sys.tables: %s", catalog.StateQuery)
 	}
 }
 
@@ -278,7 +279,7 @@ func TestStableObjectsDropsStateDerivedFields(t *testing.T) {
 		ObjectName:      "monthly",
 		NormalizedKey:   "reporting/views/monthly",
 		Checksum:        "hash",
-		PlannedAction:   "create_object",
+		PlannedAction:   contracts.ActionCreateObject,
 		Exists:          true,
 		MetadataMatch:   boolPtr(true),
 		TransactionMode: config.TransactionModeScript,
@@ -293,7 +294,7 @@ func TestStableObjectsDropsStateDerivedFields(t *testing.T) {
 		ObjectName:      "monthly",
 		NormalizedKey:   "reporting/views/monthly",
 		Checksum:        "hash",
-		PlannedAction:   "create_object",
+		PlannedAction:   contracts.ActionCreateObject,
 		TransactionMode: config.TransactionModeScript,
 		RollbackScope:   "script",
 		SourceFile:      "reporting/views/monthly.sql",

@@ -26,8 +26,6 @@ type CatalogState struct {
 
 type CatalogObject = catalog.Object
 
-const catalogStateQuery = catalog.StateQuery
-
 func ReadCatalogState(ctx context.Context, conn *sql.Conn) (CatalogState, error) {
 	state, err := catalog.Read(ctx, conn)
 	if err != nil {
@@ -119,8 +117,4 @@ func managedScopeRefs(expected []parser.Object, actual map[string]CatalogObject)
 
 func bracket(value string) string {
 	return "[" + strings.ReplaceAll(value, "]", "]]") + "]"
-}
-
-func mapTypeDescToKind(typeDesc string) string {
-	return catalog.MapTypeDescToKind(typeDesc)
 }

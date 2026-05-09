@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"reporting-db-migrations/internal/config"
 	"reporting-db-migrations/internal/contracts"
 	"reporting-db-migrations/internal/logger"
 	"reporting-db-migrations/internal/metadata"
@@ -145,7 +144,7 @@ func (r Runner) recordPassiveObjectAction(ctx context.Context, execer metadata.E
 		RunID:            runID,
 		TrackedObjectID:  trackedObjectID,
 		ScriptName:       planned.NormalizedKey,
-		ScriptType:       "object",
+		ScriptType:       contracts.ScriptTypeObject,
 		Checksum:         planned.Checksum,
 		Action:           planned.PlannedAction,
 		ExecutionMS:      0,
@@ -187,7 +186,7 @@ func (r Runner) applyObject(parent context.Context, conn txConn, object parser.O
 		PlannedAction:   contracts.ActionCreateObject,
 		TransactionMode: contracts.TransactionModeForObject(r.cfg.TransactionMode, object.NoTransaction),
 		RollbackScope:   contracts.RollbackScopeForObject(r.cfg.TransactionMode, object.NoTransaction),
-		NoTransaction:   object.NoTransaction,
+		NoTransaction:   contracts.NoTransactionForObject(r.cfg.TransactionMode, object.NoTransaction),
 	}
 	return r.applyObjectTracked(parent, conn, object, planned, "", nil, report)
 }
@@ -204,7 +203,7 @@ func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object p
 		RunID:            runID,
 		TrackedObjectID:  trackedObjectID,
 		ScriptName:       object.NormalizedKey,
-		ScriptType:       "object",
+		ScriptType:       contracts.ScriptTypeObject,
 		Checksum:         object.Checksum,
 		Action:           planned.PlannedAction,
 		ExecutionMS:      executionMS,
@@ -212,7 +211,7 @@ func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object p
 		TransactionMode:  contracts.TransactionModeForObject(r.cfg.TransactionMode, object.NoTransaction),
 		TransactionScope: contracts.TransactionModeForObject(r.cfg.TransactionMode, object.NoTransaction),
 		RollbackScope:    contracts.RollbackScopeForObject(r.cfg.TransactionMode, object.NoTransaction),
-		NoTransaction:    object.NoTransaction || r.cfg.TransactionMode == config.TransactionModeNone,
+		NoTransaction:    contracts.NoTransactionForObject(r.cfg.TransactionMode, object.NoTransaction),
 		GitCommit:        r.cfg.GitCommit,
 		GitBranch:        r.cfg.GitBranch,
 		PipelineRunID:    r.cfg.PipelineRunID,
@@ -273,7 +272,7 @@ func (r Runner) executeObject(ctx context.Context, conn txConn, object parser.Ob
 	if err != nil {
 		return err
 	}
-	if object.NoTransaction || r.cfg.TransactionMode == config.TransactionModeNone {
+	if contracts.NoTransactionForObject(r.cfg.TransactionMode, object.NoTransaction) {
 		return executeBatches(ctx, conn, batches)
 	}
 	tx, err := conn.BeginTx(ctx, nil)

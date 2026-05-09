@@ -21,7 +21,7 @@ func TestExecutePlanTreatsAdoptExistingAsNoDDLSkip(t *testing.T) {
 			Kind:          "views",
 			NormalizedKey: "reporting/views/monthly",
 			Checksum:      "sum",
-			PlannedAction: "adopt_existing",
+			PlannedAction: contracts.ActionAdoptExisting,
 		}},
 	}
 
@@ -32,13 +32,13 @@ func TestExecutePlanTreatsAdoptExistingAsNoDDLSkip(t *testing.T) {
 	if len(execer.calls) != 1 {
 		t.Fatalf("expected one metadata write for adopt_existing, got %d", len(execer.calls))
 	}
-	if len(execer.calls[0].args) < 6 || execer.calls[0].args[2] != "reporting/views/monthly" || execer.calls[0].args[3] != "object" || execer.calls[0].args[4] != "sum" || execer.calls[0].args[5] != "adopt_existing" {
+	if len(execer.calls[0].args) < 6 || execer.calls[0].args[2] != "reporting/views/monthly" || execer.calls[0].args[3] != contracts.ScriptTypeObject || execer.calls[0].args[4] != "sum" || execer.calls[0].args[5] != contracts.ActionAdoptExisting {
 		t.Fatalf("unexpected adopt_existing metadata args: %#v", execer.calls[0].args)
 	}
 	if len(report.Skipped) != 1 {
 		t.Fatalf("expected one skipped object, got %#v", report.Skipped)
 	}
-	if report.Skipped[0].Reason != "adopt_existing" {
+	if report.Skipped[0].Reason != contracts.ActionAdoptExisting {
 		t.Fatalf("expected adopt_existing skip reason, got %#v", report.Skipped[0])
 	}
 	if report.Failed != nil {

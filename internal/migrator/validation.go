@@ -53,7 +53,7 @@ func (r Runner) writeValidationFailureReport(cause error, base error) error {
 		Database:       r.cfg.Database,
 		GitCommit:      r.cfg.GitCommit,
 		GitBranch:      r.cfg.GitBranch,
-		Command:        "validate",
+		Command:        contracts.CommandValidate,
 		SQLRoot:        r.cfg.SQLRoot,
 		Base:           r.cfg.SQLBase,
 		Scope:          validationScope(true),
@@ -124,7 +124,7 @@ func (r Runner) validateScope(ctx context.Context, conn *sql.Conn, layout parser
 	createdRun := false
 	trackedObjectIDs := map[string]int64{}
 	if runID == "" {
-		runID, err = r.startRun(ctx, conn, "validate", "", "", contracts.RollbackScope(r.cfg.TransactionMode))
+		runID, err = r.startRun(ctx, conn, contracts.CommandValidate, "", "", contracts.RollbackScope(r.cfg.TransactionMode))
 		if err != nil {
 			return finalizeValidationFailure(vr, err), err
 		}
@@ -195,7 +195,7 @@ func validationFailureReport(cfg config.Config, err error) contracts.ValidationR
 		Database:       cfg.Database,
 		GitCommit:      cfg.GitCommit,
 		GitBranch:      cfg.GitBranch,
-		Command:        "validate",
+		Command:        contracts.CommandValidate,
 		SQLRoot:        cfg.SQLRoot,
 		Base:           cfg.SQLBase,
 		Scope:          "full_validation",
@@ -246,7 +246,7 @@ func recordValidationSuccesses(ctx context.Context, execer metadata.Execer, runI
 			RunID:            runID,
 			TrackedObjectID:  trackedObjectID,
 			ScriptName:       object.NormalizedKey,
-			ScriptType:       "validate",
+			ScriptType:       contracts.ScriptTypeValidate,
 			Checksum:         object.Checksum,
 			Action:           action,
 			ExecutionMS:      0,
@@ -294,7 +294,7 @@ func recordValidationFailure(ctx context.Context, execer metadata.Execer, runID 
 			RunID:            runID,
 			TrackedObjectID:  trackedObjectID,
 			ScriptName:       object.NormalizedKey,
-			ScriptType:       "validate",
+			ScriptType:       contracts.ScriptTypeValidate,
 			Checksum:         object.Checksum,
 			Action:           contracts.ActionFail,
 			ExecutionMS:      0,
@@ -320,7 +320,7 @@ func recordValidationFailure(ctx context.Context, execer metadata.Execer, runID 
 		err := metadata.InsertAttempt(metaCtx, execer, metadata.AttemptRecord{
 			RunID:            runID,
 			ScriptName:       "validation/checks",
-			ScriptType:       "validate",
+			ScriptType:       contracts.ScriptTypeValidate,
 			Checksum:         "-",
 			Action:           contracts.ActionFail,
 			ExecutionMS:      0,

@@ -82,7 +82,7 @@ func (r Runtime) dispatch(command string, args []string, stdout io.Writer, stder
 	cfg.ToolCommit = r.BuildInfo.Commit
 
 	logWriter := stdout
-	if command == "plan" && cfg.PlanJSON {
+	if command == contracts.CommandPlan && cfg.PlanJSON {
 		logWriter = stderr
 	}
 	log := logger.New(logger.Options{JSON: cfg.JSONLogs, Level: cfg.LogLevel, Writer: logWriter})
@@ -164,7 +164,7 @@ func parseCommandConfig(command string, args []string) (config.Config, error) {
 	if err != nil {
 		return config.Config{}, err
 	}
-	if command == "migrate" && cfg.PlanFile == "" {
+	if command == contracts.CommandMigrate && cfg.PlanFile == "" {
 		return config.Config{}, fmt.Errorf("--plan-file is required")
 	}
 	if err := cfg.ValidateForCommand(command); err != nil {

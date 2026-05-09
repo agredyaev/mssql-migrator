@@ -41,6 +41,10 @@ func TransactionModeForObject(defaultMode string, noTransaction bool) string {
 	return defaultMode
 }
 
+func NoTransactionForObject(defaultMode string, noTransaction bool) bool {
+	return noTransaction || defaultMode == config.TransactionModeNone
+}
+
 func RollbackScope(defaultMode string) string {
 	if defaultMode == config.TransactionModeNone {
 		return RollbackScopeNone

@@ -36,8 +36,6 @@ type CatalogState struct {
 
 type CatalogObject = catalog.Object
 
-const catalogStateQuery = catalog.StateQuery
-
 func Build(cfg config.Config, successfulByKey map[string]string) (contracts.MigrationPlan, error) {
 	layout, hash, err := resolvePlanningLayout(cfg)
 	if err != nil {
@@ -253,7 +251,7 @@ func cloneChecksums(values map[string]string) map[string]string {
 func newPlan(cfg config.Config, hash string, layout parser.Layout) contracts.MigrationPlan {
 	return contracts.MigrationPlan{
 		SchemaVersion:     "v8",
-		Command:           "plan",
+		Command:           contracts.CommandPlan,
 		Tool:              "rmig",
 		ToolVersion:       cfg.ToolVersion,
 		ToolCommit:        cfg.ToolCommit,
@@ -316,7 +314,7 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 			Checksum:        object.Checksum,
 			TransactionMode: contracts.TransactionModeForObject(plan.TransactionMode, object.NoTransaction),
 			RollbackScope:   contracts.RollbackScopeForObject(plan.TransactionMode, object.NoTransaction),
-			NoTransaction:   object.NoTransaction,
+			NoTransaction:   contracts.NoTransactionForObject(plan.TransactionMode, object.NoTransaction),
 			SourceFile:      object.Path,
 		}
 		_, exists := catalog.Objects[object.NormalizedKey]
@@ -395,8 +393,4 @@ func inferMetadataMatch(object parser.Object, catalog CatalogState) *bool {
 	}
 	matched := checksum == object.Checksum
 	return &matched
-}
-
-func mapTypeDescToKind(typeDesc string) string {
-	return catalog.MapTypeDescToKind(typeDesc)
 }
