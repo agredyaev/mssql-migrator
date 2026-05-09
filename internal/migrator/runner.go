@@ -3,12 +3,14 @@ package migrator
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"reporting-db-migrations/internal/config"
 	"reporting-db-migrations/internal/contracts"
 	"reporting-db-migrations/internal/db"
+	"reporting-db-migrations/internal/failures"
 	"reporting-db-migrations/internal/logger"
 	"reporting-db-migrations/internal/metadata"
 	"reporting-db-migrations/internal/planner"
@@ -35,16 +37,19 @@ func (r Runner) Info(ctx context.Context) error {
 }
 
 func (r Runner) Plan(ctx context.Context) (contracts.MigrationPlan, error) {
+	if _, _, err := planner.ResolvePlanningLayoutForRunner(r.cfg); err != nil {
+		return contracts.MigrationPlan{}, err
+	}
 	conn, closeFn, err := r.openReservedConnection(ctx)
 	if err != nil {
 		return contracts.MigrationPlan{}, err
 	}
 	defer closeFn()
-	migrationState, err := metadata.LoadStateIfPresent(ctx, conn)
+	successfulByKey, err := metadata.LoadSuccessfulChecksumsIfPresent(ctx, conn)
 	if err != nil {
 		return contracts.MigrationPlan{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
 	}
-	plan, err := planner.Build(r.cfg, migrationState)
+	plan, err := planner.BuildWithConnection(ctx, r.cfg, successfulByKey, conn)
 	if err != nil {
 		return contracts.MigrationPlan{}, err
 	}
@@ -55,47 +60,84 @@ func (r Runner) Plan(ctx context.Context) (contracts.MigrationPlan, error) {
 }
 
 func (r Runner) Migrate(ctx context.Context) error {
+	if r.cfg.PlanFile == "" {
+		return r.writeFailedMigration(r.newMigrationReport(), contracts.ErrInvalidInput, fmt.Errorf("--plan-file is required"))
+	}
 	report, conn, closeFn, err := r.prepareProtectedRun(ctx)
 	if err != nil {
 		return r.writeFailedMigration(report, err, nil)
 	}
 	defer closeFn()
-	if r.cfg.PlanFile == "" {
-		return r.writeFailedMigration(report, contracts.ErrInvalidInput, fmt.Errorf("--plan-file is required"))
+	runID := ""
+	failWithRun := func(base error, cause error) error {
+		if runID != "" {
+			_ = finishRun(ctx, conn, runID, false, base, cause)
+		}
+		return r.writeFailedMigration(report, base, cause)
 	}
-	migrationState, err := metadata.LoadState(ctx, conn)
-	if err != nil {
-		return r.writeFailedMigration(report, contracts.ErrCriticalState, err)
+	if err := r.acquireLock(ctx, conn); err != nil {
+		return failWithRun(err, nil)
 	}
-	plan, err := planner.Build(r.cfg, migrationState)
+	successfulByKey, err := metadata.LoadSuccessfulChecksumsIfPresent(ctx, conn)
 	if err != nil {
-		return r.writeFailedMigration(report, contracts.ErrInvalidInput, err)
+		return failWithRun(contracts.ErrCriticalState, err)
+	}
+	planningLayout, hash, err := planner.ResolvePlanningLayoutForRunner(r.cfg)
+	if err != nil {
+		return failWithRun(contracts.ErrInvalidInput, err)
+	}
+	report.LayoutHash = hash
+	plan, err := planner.BuildResolved(ctx, r.cfg, successfulByKey, planningLayout, hash, planner.SQLCatalogReader(conn))
+	if err != nil {
+		if errors.Is(err, contracts.ErrCriticalState) {
+			return failWithRun(contracts.ErrCriticalState, err)
+		}
+		return failWithRun(contracts.ErrInvalidInput, err)
 	}
 	if plan.Blocked {
-		return r.writeFailedMigration(report, contracts.ErrChecksumMismatch, fmt.Errorf("%v", plan.BlockReasons))
+		return failWithRun(contracts.ErrChecksumMismatch, fmt.Errorf("%v", plan.BlockReasons))
 	}
 	if err := planner.VerifyApprovedPlan(r.cfg, plan); err != nil {
-		return r.writeFailedMigration(report, contracts.ErrInvalidInput, err)
+		return failWithRun(contracts.ErrInvalidInput, err)
 	}
-	if err := r.executePlan(ctx, conn, migrationState, &report); err != nil {
+	if err := bootstrapMetadata(ctx, conn); err != nil {
+		return failWithRun(contracts.ErrCriticalState, err)
+	}
+	runID, err = r.startRun(ctx, conn, "migrate", r.cfg.PlanFile, planArtifactHash(r.cfg.PlanFile), plan.Rollback)
+	if err != nil {
+		return failWithRun(contracts.ErrCriticalState, err)
+	}
+	trackedObjectIDs, err := persistMigrationScope(ctx, conn, runID, plan)
+	if err != nil {
+		return failWithRun(contracts.ErrCriticalState, err)
+	}
+	r.log.Info("rollback_scope", fmt.Sprintf("Rollback scope: %s. Previous successful scripts remain committed. Use database backups or restore points for full recovery guarantees.", plan.Rollback))
+	if err := r.executePlanTracked(ctx, conn, planningLayout, plan, &report, runID, trackedObjectIDs); err != nil {
 		if writeErr := reports.WriteMigration(r.cfg.ReportDir, report); writeErr != nil {
 			return fmt.Errorf("%w: %v", contracts.ErrCriticalState, writeErr)
 		}
+		_ = finishRun(ctx, conn, runID, false, err, nil)
 		return err
 	}
 	if !r.cfg.SkipValidate {
-		validationReport, validationErr := r.validateWithConnection(ctx, conn)
+		validationReport, validationErr := r.validateManagedScope(ctx, conn, planningLayout, runID)
+		report.ValidationScope = validationReport.Scope
 		report.Validation = validationReport.Validation
 		if writeErr := reports.WriteValidation(r.cfg.ReportDir, validationReport); writeErr != nil {
-			return r.writeFailedMigration(report, contracts.ErrCriticalState, writeErr)
+			return failWithRun(contracts.ErrCriticalState, writeErr)
 		}
 		if validationErr != nil {
-			return r.writeFailedMigration(report, contracts.ErrValidation, validationErr)
+			return failWithRun(contracts.ErrValidation, validationErr)
 		}
+	} else {
+		report.ValidationSkipped = true
 	}
 	report.Result = "success"
 	report.FinishedAt = time.Now().UTC()
 	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
+	if err := finishRun(ctx, conn, runID, true, nil, nil); err != nil {
+		return r.writeFailedMigration(report, contracts.ErrCriticalState, err)
+	}
 	return reports.WriteMigration(r.cfg.ReportDir, report)
 }
 
@@ -118,20 +160,23 @@ func (r Runner) openReservedConnection(ctx context.Context) (*sql.Conn, func(), 
 
 func (r Runner) newMigrationReport() contracts.MigrationReport {
 	return contracts.MigrationReport{
-		Tool:          "rmig",
-		Version:       r.cfg.ToolVersion,
-		ToolCommit:    r.cfg.ToolCommit,
-		Environment:   r.cfg.Env,
-		Database:      r.cfg.Database,
-		GitCommit:     r.cfg.GitCommit,
-		GitBranch:     r.cfg.GitBranch,
-		PipelineRunID: r.cfg.PipelineRunID,
-		PipelineURL:   logger.Redact(r.cfg.PipelineURL),
-		Actor:         r.cfg.Actor,
-		StartedAt:     time.Now().UTC(),
-		Result:        "running",
-		Applied:       []contracts.ScriptResult{},
-		Skipped:       []contracts.ScriptResult{},
+		Tool:              "rmig",
+		Version:           r.cfg.ToolVersion,
+		ToolCommit:        r.cfg.ToolCommit,
+		Environment:       r.cfg.Env,
+		Database:          r.cfg.Database,
+		GitCommit:         r.cfg.GitCommit,
+		GitBranch:         r.cfg.GitBranch,
+		SQLRoot:           r.cfg.SQLRoot,
+		Base:              r.cfg.SQLBase,
+		EffectiveBasePath: r.cfg.SelectedBasePath(),
+		PipelineRunID:     r.cfg.PipelineRunID,
+		PipelineURL:       logger.Redact(r.cfg.PipelineURL),
+		Actor:             r.cfg.Actor,
+		StartedAt:         time.Now().UTC(),
+		Result:            "running",
+		Applied:           []contracts.ScriptResult{},
+		Skipped:           []contracts.ScriptResult{},
 	}
 }
 
@@ -146,11 +191,8 @@ func (r Runner) writeFailedMigration(report contracts.MigrationReport, base erro
 	report.Result = "failed"
 	report.FinishedAt = time.Now().UTC()
 	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
-	message := logger.Redact(base.Error())
-	if cause != nil {
-		message += ": " + logger.Redact(cause.Error())
-	}
-	report.Failed = &contracts.Failure{Error: message}
+	failure := failures.BuildWithCause(r.cfg, "migration_failed", base, cause)
+	report.Failed = &failure
 	if err := reports.WriteMigration(r.cfg.ReportDir, report); err != nil {
 		return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
 	}

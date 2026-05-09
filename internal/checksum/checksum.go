@@ -35,32 +35,26 @@ func SHA256File(path string) (string, error) {
 
 func SQLDirHash(root string) (string, error) {
 	entries := []string{}
-	for _, sub := range []string{"versioned", "repeatable", "checks"} {
-		base := filepath.Join(root, sub)
-		if _, err := os.Stat(base); os.IsNotExist(err) {
-			continue
-		}
-		err := filepath.WalkDir(base, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() || filepath.Ext(path) != ".sql" {
-				return nil
-			}
-			rel, err := filepath.Rel(root, path)
-			if err != nil {
-				return err
-			}
-			h, err := SHA256File(path)
-			if err != nil {
-				return err
-			}
-			entries = append(entries, filepath.ToSlash(rel)+":"+h)
-			return nil
-		})
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return "", err
+			return err
 		}
+		if d.IsDir() || filepath.Ext(path) != ".sql" {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		h, err := SHA256File(path)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, filepath.ToSlash(rel)+":"+h)
+		return nil
+	})
+	if err != nil {
+		return "", err
 	}
 	sort.Strings(entries)
 	sum := sha256.Sum256([]byte(strings.Join(entries, "\n")))

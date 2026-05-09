@@ -73,23 +73,52 @@ func writeJSON(path string, value any) error {
 }
 
 func formatPlanText(plan contracts.MigrationPlan) string {
+	failures := "-"
+	if len(plan.Failures) > 0 {
+		failures = strings.Join(plan.Failures, "\n")
+	}
+	reasons := "-"
+	if len(plan.BlockReasons) > 0 {
+		reasons = strings.Join(plan.BlockReasons, "\n")
+	}
 	return fmt.Sprintf(
-		"Plan for %s/%s\nBlocked: %t\nPending: %d\nChanged repeatable: %d\n%s\n",
-		plan.TargetEnv,
-		plan.TargetDatabase,
+		"Plan for %s/%s\nSchema version: %s\nCommand: %s\nTool version: %s\nTool commit: %s\nGit commit: %s\nBase: %s/%s\nEffective base path: %s\nLayout hash: %s\nComparison mode: %s\nUpdate policy: %s\nTransaction mode: %s\nRollback: %s\nBlocked: %t\nSchemas: %d\nObjects: %d\nChecks: %d\nCreate: %d\nAdopt: %d\nSkip: %d\nChanged: %d\nFailures:\n%s\nBlock reasons:\n%s\n",
+		plan.Target.Environment,
+		plan.Target.Database,
+		plan.SchemaVersion,
+		plan.Command,
+		plan.ToolVersion,
+		plan.ToolCommit,
+		plan.GitCommit,
+		plan.SQLRoot,
+		plan.Base,
+		plan.EffectiveBasePath,
+		plan.LayoutHash,
+		plan.ComparisonMode,
+		plan.UpdatePolicy,
+		plan.TransactionMode,
+		plan.Rollback,
 		plan.Blocked,
-		len(plan.PendingScripts),
-		len(plan.ChangedRepeatableScripts),
-		strings.Join(plan.BlockReasons, "\n"),
+		plan.Summary.SchemaCount,
+		plan.Summary.ObjectCount,
+		plan.Summary.CheckCount,
+		plan.Summary.CreateCount,
+		plan.Summary.AdoptCount,
+		plan.Summary.SkipCount,
+		plan.Summary.ChangedCount,
+		failures,
+		reasons,
 	)
 }
 
 func formatMigrationText(report contracts.MigrationReport, failure string) string {
 	return fmt.Sprintf(
-		"Migration result: %s\nEnvironment: %s\nDatabase: %s\nApplied: %d\nSkipped: %d\nFailure: %s\n",
+		"Migration result: %s\nEnvironment: %s\nDatabase: %s\nValidation scope: %s\nValidation skipped: %t\nApplied: %d\nSkipped: %d\nFailure: %s\n",
 		report.Result,
 		report.Environment,
 		report.Database,
+		report.ValidationScope,
+		report.ValidationSkipped,
 		len(report.Applied),
 		len(report.Skipped),
 		failure,
@@ -98,8 +127,12 @@ func formatMigrationText(report contracts.MigrationReport, failure string) strin
 
 func formatValidationText(report contracts.ValidationReport, failure string) string {
 	return fmt.Sprintf(
-		"Validation result: %s\nEnvironment: %s\nDatabase: %s\nModules refreshed: %d\nChecks passed: %d\nChecks failed: %d\nFailure: %s\n",
+		"Validation result: %s\nCommand: %s\nScope: %s\nIncludes checks: %t\nLayout hash: %s\nEnvironment: %s\nDatabase: %s\nModules refreshed: %d\nChecks passed: %d\nChecks failed: %d\nFailure: %s\n",
 		report.Result,
+		report.Command,
+		report.Scope,
+		report.IncludesChecks,
+		report.LayoutHash,
 		report.Environment,
 		report.Database,
 		report.Validation.ModulesRefreshed,

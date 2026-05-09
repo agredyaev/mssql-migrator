@@ -23,6 +23,18 @@ func contractsReadMigrationReport(dir string) (contracts.MigrationReport, error)
 	return report, nil
 }
 
+func contractsReadValidationReport(dir string) (contracts.ValidationReport, error) {
+	content, err := os.ReadFile(filepath.Join(dir, "validation-report.json"))
+	if err != nil {
+		return contracts.ValidationReport{}, err
+	}
+	var report contracts.ValidationReport
+	if err := json.Unmarshal(content, &report); err != nil {
+		return contracts.ValidationReport{}, err
+	}
+	return report, nil
+}
+
 func containsSecret(value string) bool {
 	return strings.Contains(value, "password=secret") || strings.Contains(value, "secret")
 }
@@ -44,6 +56,10 @@ func (s *stubExecer) ExecContext(_ context.Context, query string, args ...any) (
 		return nil, s.err
 	}
 	return s.result, nil
+}
+
+func (s *stubExecer) BeginTx(_ context.Context, _ *sql.TxOptions) (*sql.Tx, error) {
+	return nil, nil
 }
 
 type stubResult struct {
@@ -70,4 +86,18 @@ func containsAny(value string, parts []string) bool {
 		}
 	}
 	return false
+}
+
+func createRepoObject(t interface {
+	Helper()
+	Fatalf(string, ...any)
+}, root string, base string, schema string, kind string, name string, content string) {
+	t.Helper()
+	path := filepath.Join(root, base, schema, kind)
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("mkdir repo object: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(path, name), []byte(content), 0o644); err != nil {
+		t.Fatalf("write repo object: %v", err)
+	}
 }

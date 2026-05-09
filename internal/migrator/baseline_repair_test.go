@@ -8,7 +8,6 @@ import (
 	"reporting-db-migrations/internal/contracts"
 	"reporting-db-migrations/internal/logger"
 	"reporting-db-migrations/internal/parser"
-	"reporting-db-migrations/internal/state"
 )
 
 func TestRequireConfirmation(t *testing.T) {
@@ -36,50 +35,37 @@ func TestWriteFailedMigrationRedactsSecretInFailure(t *testing.T) {
 	if report.Failed.Error == "" || containsSecret(report.Failed.Error) {
 		t.Fatalf("expected redacted failure, got %q", report.Failed.Error)
 	}
+	if !containsAll(report.Failed.Error, "ERROR migration_failed:", "class=sql execution failure", "sql=password=***") {
+		t.Fatalf("expected failure envelope, got %q", report.Failed.Error)
+	}
 }
 
-func TestSelectBaselineScriptsSkipsAlreadyApplied(t *testing.T) {
-	scripts := []parser.Script{{Name: "V001__one.sql", Version: "001", Type: parser.ScriptTypeVersioned, Checksum: "sum1"}, {Name: "V002__two.sql", Version: "002", Type: parser.ScriptTypeVersioned, Checksum: "sum2"}}
-	migrationState := state.New([]state.Attempt{{ScriptName: "V001__one.sql", Checksum: "sum1", Success: true}})
-	toApply, skipped, err := selectBaselineScripts(scripts, migrationState, "002")
+func TestResolveRepairObjectAcceptsObjectPath(t *testing.T) {
+	layout := parser.Layout{Objects: []parser.Object{{Path: "reporting/views/monthly.sql", NormalizedKey: "reporting/views/monthly"}}}
+	object, err := resolveRepairObject(layout, "reporting/views/monthly.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(toApply) != 1 || toApply[0].Name != "V002__two.sql" {
-		t.Fatalf("unexpected baseline apply set: %#v", toApply)
-	}
-	if len(skipped) != 1 || skipped[0].Script != "V001__one.sql" {
-		t.Fatalf("unexpected baseline skipped set: %#v", skipped)
+	if object.NormalizedKey != "reporting/views/monthly" {
+		t.Fatalf("unexpected repair object: %#v", object)
 	}
 }
 
-func TestSelectBaselineScriptsFailsOnChecksumMismatch(t *testing.T) {
-	scripts := []parser.Script{{Name: "V001__one.sql", Version: "001", Type: parser.ScriptTypeVersioned, Checksum: "sum1"}}
-	migrationState := state.New([]state.Attempt{{ScriptName: "V001__one.sql", Checksum: "old", Success: true}})
-	_, _, err := selectBaselineScripts(scripts, migrationState, "001")
-	if err == nil {
-		t.Fatal("expected checksum mismatch error")
-	}
-}
-
-func TestRepairSuccessfulChecksumUpdatesLatestSuccessfulRowOnly(t *testing.T) {
-	execer := &stubExecer{result: stubResult{rows: 1}}
-	rows, err := repairSuccessfulChecksum(t.Context(), execer, "R001__views.sql", "newsum")
+func TestResolveRepairObjectAcceptsNormalizedKey(t *testing.T) {
+	layout := parser.Layout{Objects: []parser.Object{{Path: "reporting/views/monthly.sql", NormalizedKey: "reporting/views/monthly"}}}
+	object, err := resolveRepairObject(layout, "reporting/views/monthly")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rows != 1 {
-		t.Fatalf("unexpected rows affected: %d", rows)
+	if object.Path != "reporting/views/monthly.sql" {
+		t.Fatalf("unexpected repair object: %#v", object)
 	}
-	if len(execer.calls) != 1 {
-		t.Fatalf("expected one exec call, got %d", len(execer.calls))
-	}
-	call := execer.calls[0]
-	if !containsAll(call.query, "UPDATE __migrator.schema_migrations", "SELECT TOP (1) id", "ORDER BY applied_at DESC, id DESC") {
-		t.Fatalf("unexpected repair query: %s", call.query)
-	}
-	if len(call.args) != 2 || call.args[0] != "newsum" || call.args[1] != "R001__views.sql" {
-		t.Fatalf("unexpected repair args: %#v", call.args)
+}
+
+func TestResolveRepairObjectFailsWhenTargetMissing(t *testing.T) {
+	layout := parser.Layout{Objects: []parser.Object{{Path: "reporting/views/monthly.sql", NormalizedKey: "reporting/views/monthly"}}}
+	if _, err := resolveRepairObject(layout, "reporting/views/daily.sql"); err == nil {
+		t.Fatal("expected repair target lookup to fail")
 	}
 }
 

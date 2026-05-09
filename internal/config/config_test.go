@@ -1,38 +1,32 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestValidateRejectsInvalidManagedSchema(t *testing.T) {
-	cfg := Config{Env: "prod", Server: "server", Database: "db", User: "user", Password: "password", ManagedSchemas: []string{"reporting", "bad-name"}}
-	if cfg.Validate() == nil {
-		t.Fatal("expected invalid schema error")
-	}
-}
-
 func TestValidateCommonAllowsIntegratedAuthWithoutUserAndPassword(t *testing.T) {
-	cfg := Config{Env: "prod", Server: "server", Database: "db", DBAuth: DBAuthIntegrated}
+	cfg := Config{Env: "prod", Server: "server", Database: "db", DBAuth: DBAuthIntegrated, UpdatePolicy: UpdatePolicyNone, TransactionMode: TransactionModeScript}
 	if err := cfg.ValidateCommon(); err != nil {
 		t.Fatalf("unexpected validate error: %v", err)
 	}
 }
 
 func TestValidateCommonRejectsUnknownDBAuth(t *testing.T) {
-	cfg := Config{Env: "prod", Server: "server", Database: "db", DBAuth: "something-else", User: "user", Password: "password"}
+	cfg := Config{Env: "prod", Server: "server", Database: "db", DBAuth: "something-else", User: "user", Password: "password", UpdatePolicy: UpdatePolicyNone, TransactionMode: TransactionModeScript}
 	err := cfg.ValidateCommon()
 	if err == nil || !strings.Contains(err.Error(), "allowed: sql, integrated") {
 		t.Fatalf("expected invalid auth error, got %v", err)
 	}
 }
 
-func TestLoadAllowsMissingManagedSchemasFromEnvironment(t *testing.T) {
+func TestLoadRequiresSQLRootAndBaseForPlanCommandsLater(t *testing.T) {
 	t.Setenv("RM_DB_SERVER", "server")
 	t.Setenv("RM_DB_DATABASE", "db")
 	t.Setenv("RM_DB_USER", "user")
 	t.Setenv("RM_DB_PASSWORD", "password")
-	t.Setenv("RM_MANAGED_SCHEMAS", "")
 	if _, err := Load(Input{Env: "prod"}); err != nil {
 		t.Fatalf("unexpected load error: %v", err)
 	}
@@ -84,10 +78,19 @@ func TestLoadAllowsIntegratedAuthFromEnvironment(t *testing.T) {
 	}
 }
 
-func TestValidateForCommandRequiresManagedSchemasForValidate(t *testing.T) {
-	cfg := Config{Env: "prod", Server: "server", Database: "db", User: "user", Password: "password"}
-	if err := cfg.ValidateForCommand("validate"); err == nil {
-		t.Fatal("expected missing RM_MANAGED_SCHEMAS error")
+func TestValidateForCommandDoesNotRequireManagedSchemasForValidate(t *testing.T) {
+	root := t.TempDir()
+	base := "dwh"
+	if err := osMkdirAll(joinEffectiveBasePath(root, base)); err != nil {
+		t.Fatalf("mkdir base: %v", err)
+	}
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+	cfg := Config{Env: "prod", Server: "server", Database: "db", User: "user", Password: "password", SQLRoot: root, SQLBase: base, EffectiveBasePath: joinEffectiveBasePath(root, base), UpdatePolicy: UpdatePolicyNone, TransactionMode: TransactionModeScript}
+	if err := cfg.ValidateForCommand("validate"); err != nil {
+		t.Fatalf("unexpected validate config error: %v", err)
 	}
 }
 
@@ -103,16 +106,90 @@ func TestMaskedTargetOmitsPasswordForIntegratedAuth(t *testing.T) {
 }
 
 func TestValidateForCommandRequiresGitCommitForPlan(t *testing.T) {
-	cfg := Config{Env: "prod", Server: "server", Database: "db", User: "user", Password: "password"}
-	if err := cfg.ValidateForCommand("plan"); err == nil {
-		t.Fatal("expected missing RM_GIT_COMMIT error")
+	root := t.TempDir()
+	base := "dwh"
+	if err := osMkdirAll(joinEffectiveBasePath(root, base)); err != nil {
+		t.Fatalf("mkdir base: %v", err)
+	}
+	cfg := Config{Env: "prod", Server: "server", Database: "db", User: "user", Password: "password", SQLRoot: root, SQLBase: base, EffectiveBasePath: joinEffectiveBasePath(root, base), UpdatePolicy: UpdatePolicyNone, TransactionMode: TransactionModeScript}
+	err := cfg.ValidateForCommand("plan")
+	if err == nil || !strings.Contains(err.Error(), "RM_GIT_COMMIT") {
+		t.Fatalf("expected git commit validation error, got %v", err)
 	}
 }
 
 func TestValidateRejectsUnknownEnvironment(t *testing.T) {
-	cfg := Config{Env: "stage", Server: "server", Database: "db", User: "user", Password: "password"}
+	cfg := Config{Env: "stage", Server: "server", Database: "db", User: "user", Password: "password", UpdatePolicy: UpdatePolicyNone, TransactionMode: TransactionModeScript}
 	err := cfg.ValidateCommon()
 	if err == nil || !strings.Contains(err.Error(), "allowed: pred, prod") {
 		t.Fatalf("expected invalid environment error, got %v", err)
 	}
+}
+
+func TestValidateSQLSelectionRejectsPathTraversalBase(t *testing.T) {
+	root := t.TempDir()
+	cfg := Config{SQLRoot: root, SQLBase: "../bad"}
+	err := cfg.ValidateSQLSelection()
+	if err == nil || !strings.Contains(err.Error(), "invalid_or_missing_base_selection") {
+		t.Fatalf("expected base selection error, got %v", err)
+	}
+}
+
+func TestValidateSQLSelectionRejectsAbsoluteBase(t *testing.T) {
+	root := t.TempDir()
+	cfg := Config{SQLRoot: root, SQLBase: filepath.Join(root, "dwh")}
+	err := cfg.ValidateSQLSelection()
+	if err == nil || !strings.Contains(err.Error(), "must not be an absolute path") {
+		t.Fatalf("expected absolute base error, got %v", err)
+	}
+}
+
+func TestValidateSQLSelectionRejectsSeparatorBase(t *testing.T) {
+	root := t.TempDir()
+	cfg := Config{SQLRoot: root, SQLBase: "bad/base"}
+	err := cfg.ValidateSQLSelection()
+	if err == nil || !strings.Contains(err.Error(), "single directory name") {
+		t.Fatalf("expected separator base error, got %v", err)
+	}
+}
+
+func TestValidateSQLSelectionRejectsEmptyBase(t *testing.T) {
+	root := t.TempDir()
+	cfg := Config{SQLRoot: root, SQLBase: ""}
+	err := cfg.ValidateSQLSelection()
+	if err == nil || !strings.Contains(err.Error(), "RM_SQL_BASE is required") {
+		t.Fatalf("expected empty base error, got %v", err)
+	}
+}
+
+func TestValidateSQLSelectionRejectsSQLRootFile(t *testing.T) {
+	rootFile := filepath.Join(t.TempDir(), "sql-package.tar.gz")
+	if err := os.WriteFile(rootFile, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{SQLRoot: rootFile, SQLBase: "dwh"}
+	err := cfg.ValidateSQLSelection()
+	if err == nil || !strings.Contains(err.Error(), "is not a directory") {
+		t.Fatalf("expected root file error, got %v", err)
+	}
+}
+
+func TestValidateCommonRejectsInvalidUpdatePolicy(t *testing.T) {
+	cfg := Config{Env: "prod", Server: "server", Database: "db", User: "user", Password: "password", UpdatePolicy: "wrong", TransactionMode: TransactionModeScript}
+	err := cfg.ValidateCommon()
+	if err == nil || !strings.Contains(err.Error(), "invalid_update_policy") {
+		t.Fatalf("expected invalid update policy error, got %v", err)
+	}
+}
+
+func TestValidateCommonRejectsInvalidTransactionMode(t *testing.T) {
+	cfg := Config{Env: "prod", Server: "server", Database: "db", User: "user", Password: "password", UpdatePolicy: UpdatePolicyNone, TransactionMode: "wrong"}
+	err := cfg.ValidateCommon()
+	if err == nil || !strings.Contains(err.Error(), "invalid_transaction_mode") {
+		t.Fatalf("expected invalid transaction mode error, got %v", err)
+	}
+}
+
+func osMkdirAll(path string) error {
+	return os.MkdirAll(path, 0o755)
 }

@@ -3,37 +3,43 @@ package config
 import (
 	"fmt"
 	"os"
-	"regexp"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type Input struct {
-	Env, SQLDir, ReportDir, LogLevel, CommandTimeout, ScriptTimeout, LockTimeout, PlanFile string
-	BaselineUpTo, RepairScript                                                             string
-	JSONLogs, SkipValidate, Confirm                                                        bool
+	Env, SQLRoot, SQLBase, ReportDir, LogLevel, CommandTimeout, ScriptTimeout, LockTimeout, PlanFile string
+	RepairTarget, UpdatePolicy, TransactionMode                                                      string
+	JSONLogs, SkipValidate, Confirm, PlanJSON                                                        bool
 }
 
 type Config struct {
-	Env, SQLDir, ReportDir, LogLevel                        string
-	JSONLogs, SkipValidate                                  bool
-	Confirm                                                 bool
-	CommandTimeout, ScriptTimeout, LockTimeout              time.Duration
-	PlanFile, BaselineUpTo, RepairScript                    string
-	Server, Port, Database, DBAuth, User, Password          string
-	Encrypt, TrustServerCertificate                         bool
-	ManagedSchemas                                          []string
-	GitCommit, GitBranch, PipelineRunID, PipelineURL, Actor string
-	ToolVersion, ToolCommit                                 string
+	Env, SQLRoot, SQLBase, EffectiveBasePath, ReportDir, LogLevel string
+	JSONLogs, SkipValidate, Confirm, PlanJSON                     bool
+	CommandTimeout, ScriptTimeout, LockTimeout                    time.Duration
+	PlanFile, RepairTarget                                        string
+	Server, Port, Database, DBAuth, User, Password                string
+	Encrypt, TrustServerCertificate                               bool
+	GitCommit, GitBranch, PipelineRunID, PipelineURL, Actor       string
+	ToolVersion, ToolCommit                                       string
+	ComparisonMode, UpdatePolicy, TransactionMode                 string
 }
 
 const (
 	DBAuthSQL        = "sql"
 	DBAuthIntegrated = "integrated"
-)
 
-var managedSchemaPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	ComparisonModeCaseInsensitive = "case_insensitive"
+
+	UpdatePolicyNone         = "none"
+	UpdatePolicyModulesOnly  = "modules_only"
+	UpdatePolicyAllSupported = "all_supported"
+
+	TransactionModeScript = "script"
+	TransactionModeNone   = "none"
+)
 
 var allowedEnvironments = map[string]struct{}{
 	"pred": {},
@@ -43,6 +49,17 @@ var allowedEnvironments = map[string]struct{}{
 var allowedDBAuthModes = map[string]struct{}{
 	DBAuthSQL:        {},
 	DBAuthIntegrated: {},
+}
+
+var allowedUpdatePolicies = map[string]struct{}{
+	UpdatePolicyNone:         {},
+	UpdatePolicyModulesOnly:  {},
+	UpdatePolicyAllSupported: {},
+}
+
+var allowedTransactionModes = map[string]struct{}{
+	TransactionModeScript: {},
+	TransactionModeNone:   {},
 }
 
 func Getenv(key, fallback string) string {
@@ -86,21 +103,26 @@ func Load(input Input) (Config, error) {
 	}
 
 	cfg := Config{
-		Env:            normalizeEnv(input.Env),
-		SQLDir:         def(input.SQLDir, "./sql"),
-		ReportDir:      def(input.ReportDir, "./reports"),
-		LogLevel:       def(input.LogLevel, "info"),
-		JSONLogs:       input.JSONLogs,
-		SkipValidate:   input.SkipValidate,
-		Confirm:        input.Confirm,
-		CommandTimeout: commandTimeout,
-		ScriptTimeout:  scriptTimeout,
-		LockTimeout:    lockTimeout,
-		PlanFile:       input.PlanFile,
-		BaselineUpTo:   strings.TrimSpace(input.BaselineUpTo),
-		RepairScript:   strings.TrimSpace(input.RepairScript),
+		Env:             normalizeEnv(input.Env),
+		SQLRoot:         strings.TrimSpace(input.SQLRoot),
+		SQLBase:         strings.TrimSpace(input.SQLBase),
+		ReportDir:       def(input.ReportDir, "./reports"),
+		LogLevel:        def(input.LogLevel, "info"),
+		JSONLogs:        input.JSONLogs,
+		SkipValidate:    input.SkipValidate,
+		Confirm:         input.Confirm,
+		PlanJSON:        input.PlanJSON,
+		CommandTimeout:  commandTimeout,
+		ScriptTimeout:   scriptTimeout,
+		LockTimeout:     lockTimeout,
+		PlanFile:        input.PlanFile,
+		RepairTarget:    strings.TrimSpace(input.RepairTarget),
+		ComparisonMode:  ComparisonModeCaseInsensitive,
+		UpdatePolicy:    normalizeUpdatePolicy(def(input.UpdatePolicy, UpdatePolicyNone)),
+		TransactionMode: normalizeTransactionMode(def(input.TransactionMode, TransactionModeScript)),
 	}
 	cfg.loadEnvironment()
+	cfg.EffectiveBasePath = joinEffectiveBasePath(cfg.SQLRoot, cfg.SQLBase)
 	return cfg, cfg.ValidateCommon()
 }
 
@@ -108,7 +130,7 @@ func (cfg Config) Validate() error {
 	if err := cfg.ValidateCommon(); err != nil {
 		return err
 	}
-	return cfg.ValidateManagedSchemas()
+	return cfg.ValidateSQLSelection()
 }
 
 func (cfg Config) ValidateCommon() error {
@@ -140,6 +162,12 @@ func (cfg Config) ValidateCommon() error {
 	if err := cfg.ValidateDBAuth(); err != nil {
 		return err
 	}
+	if err := cfg.ValidateUpdatePolicy(); err != nil {
+		return err
+	}
+	if err := cfg.ValidateTransactionMode(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -157,21 +185,47 @@ func (cfg Config) ValidateDBAuth() error {
 	return nil
 }
 
-func (cfg Config) ValidateManagedSchemas() error {
-	if len(cfg.ManagedSchemas) == 0 {
-		return fmt.Errorf("missing required config: RM_MANAGED_SCHEMAS")
-	}
-	for _, schema := range cfg.ManagedSchemas {
-		if !managedSchemaPattern.MatchString(schema) {
-			return fmt.Errorf("invalid managed schema name: %s", schema)
-		}
+func (cfg Config) ValidateGitCommit() error {
+	if strings.TrimSpace(cfg.GitCommit) == "" {
+		return fmt.Errorf("missing required config: RM_GIT_COMMIT")
 	}
 	return nil
 }
 
-func (cfg Config) ValidateGitCommit() error {
-	if strings.TrimSpace(cfg.GitCommit) == "" {
-		return fmt.Errorf("missing required config: RM_GIT_COMMIT")
+func (cfg Config) ValidateUpdatePolicy() error {
+	if _, ok := allowedUpdatePolicies[cfg.UpdatePolicy]; !ok {
+		return fmt.Errorf("invalid_update_policy: %s", cfg.UpdatePolicy)
+	}
+	return nil
+}
+
+func (cfg Config) ValidateTransactionMode() error {
+	if _, ok := allowedTransactionModes[cfg.TransactionMode]; !ok {
+		return fmt.Errorf("invalid_transaction_mode: %s", cfg.TransactionMode)
+	}
+	return nil
+}
+
+func (cfg Config) ValidateSQLSelection() error {
+	if strings.TrimSpace(cfg.SQLRoot) == "" {
+		return fmt.Errorf("invalid_or_missing_sql_scripts_root: RM_SQL_ROOT is required")
+	}
+	rootInfo, err := os.Stat(cfg.SQLRoot)
+	if err != nil {
+		return fmt.Errorf("invalid_or_missing_sql_scripts_root: %v", err)
+	}
+	if !rootInfo.IsDir() {
+		return fmt.Errorf("invalid_or_missing_sql_scripts_root: %s is not a directory", cfg.SQLRoot)
+	}
+	if err := validateSQLBaseName(cfg.SQLBase); err != nil {
+		return err
+	}
+	baseInfo, err := os.Stat(cfg.SelectedBasePath())
+	if err != nil {
+		return fmt.Errorf("invalid_or_missing_base_selection: %v", err)
+	}
+	if !baseInfo.IsDir() {
+		return fmt.Errorf("invalid_or_missing_base_selection: %s is not a directory", cfg.SelectedBasePath())
 	}
 	return nil
 }
@@ -181,18 +235,13 @@ func (cfg Config) ValidateForCommand(command string) error {
 		return err
 	}
 	switch command {
-	case "plan":
-		return cfg.ValidateGitCommit()
-	case "validate":
-		return cfg.ValidateManagedSchemas()
-	case "migrate":
-		if err := cfg.ValidateGitCommit(); err != nil {
+	case "plan", "migrate", "validate", "baseline", "repair-checksum":
+		if err := cfg.ValidateSQLSelection(); err != nil {
 			return err
 		}
-		if !cfg.SkipValidate {
-			return cfg.ValidateManagedSchemas()
-		}
-	case "baseline", "repair-checksum":
+	}
+	switch command {
+	case "plan", "migrate", "baseline", "repair-checksum":
 		return cfg.ValidateGitCommit()
 	}
 	return nil
@@ -214,6 +263,13 @@ func (cfg Config) MaskedTarget() string {
 	return target + ";user=" + cfg.User + ";password=***"
 }
 
+func (cfg Config) SelectedBasePath() string {
+	if cfg.EffectiveBasePath != "" {
+		return cfg.EffectiveBasePath
+	}
+	return joinEffectiveBasePath(cfg.SQLRoot, cfg.SQLBase)
+}
+
 func (cfg *Config) loadEnvironment() {
 	cfg.Server = strings.TrimSpace(os.Getenv("RM_DB_SERVER"))
 	cfg.Port = def(os.Getenv("RM_DB_PORT"), "1433")
@@ -223,7 +279,6 @@ func (cfg *Config) loadEnvironment() {
 	cfg.Password = os.Getenv("RM_DB_PASSWORD")
 	cfg.Encrypt = GetenvBool("RM_DB_ENCRYPT", true)
 	cfg.TrustServerCertificate = GetenvBool("RM_DB_TRUST_SERVER_CERTIFICATE", false)
-	cfg.ManagedSchemas = splitCSV(os.Getenv("RM_MANAGED_SCHEMAS"))
 	cfg.GitCommit = os.Getenv("RM_GIT_COMMIT")
 	cfg.GitBranch = os.Getenv("RM_GIT_BRANCH")
 	cfg.PipelineRunID = os.Getenv("RM_PIPELINE_RUN_ID")
@@ -271,4 +326,46 @@ func normalizeDBAuth(value string) string {
 		return DBAuthSQL
 	}
 	return value
+}
+
+func normalizeUpdatePolicy(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return UpdatePolicyNone
+	}
+	return value
+}
+
+func normalizeTransactionMode(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return TransactionModeScript
+	}
+	return value
+}
+
+func validateSQLBaseName(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fmt.Errorf("invalid_or_missing_base_selection: RM_SQL_BASE is required")
+	}
+	if filepath.IsAbs(value) {
+		return fmt.Errorf("invalid_or_missing_base_selection: RM_SQL_BASE must not be an absolute path")
+	}
+	if value == "." || value == ".." {
+		return fmt.Errorf("invalid_or_missing_base_selection: RM_SQL_BASE must not contain path traversal segments")
+	}
+	if strings.Contains(value, "/") || strings.Contains(value, `\`) {
+		return fmt.Errorf("invalid_or_missing_base_selection: RM_SQL_BASE must be a single directory name")
+	}
+	return nil
+}
+
+func joinEffectiveBasePath(root string, base string) string {
+	root = strings.TrimSpace(root)
+	base = strings.TrimSpace(base)
+	if root == "" || base == "" {
+		return ""
+	}
+	return filepath.Join(root, base)
 }

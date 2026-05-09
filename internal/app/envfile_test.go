@@ -22,7 +22,7 @@ func TestResolveEnvFilePathSupportsEqualsForm(t *testing.T) {
 }
 
 func TestLoadEnvironmentFileParsesCommentsQuotesAndExport(t *testing.T) {
-	path := writeEnvFile(t, "test.env", "# comment\nRM_DB_SERVER=server\nexport RM_DB_AUTH=integrated\nRM_MANAGED_SCHEMAS=\"dbo, reporting\"\nRM_SQL_DIR='C:\\\\sql dir'\n")
+	path := writeEnvFile(t, "test.env", "# comment\nRM_DB_SERVER=server\nexport RM_DB_AUTH=integrated\nRM_SQL_BASE=\"dwh\"\nRM_SQL_ROOT='C:\\\\sql dir'\n")
 	values, err := loadEnvironmentFile(path)
 	if err != nil {
 		t.Fatalf("unexpected load error: %v", err)
@@ -33,11 +33,11 @@ func TestLoadEnvironmentFileParsesCommentsQuotesAndExport(t *testing.T) {
 	if values["RM_DB_AUTH"] != "integrated" {
 		t.Fatalf("expected integrated auth, got %q", values["RM_DB_AUTH"])
 	}
-	if values["RM_MANAGED_SCHEMAS"] != "dbo, reporting" {
-		t.Fatalf("expected quoted schema list, got %q", values["RM_MANAGED_SCHEMAS"])
+	if values["RM_SQL_BASE"] != "dwh" {
+		t.Fatalf("expected sql base, got %q", values["RM_SQL_BASE"])
 	}
-	if values["RM_SQL_DIR"] != `C:\\sql dir` {
-		t.Fatalf("expected quoted windows path, got %q", values["RM_SQL_DIR"])
+	if values["RM_SQL_ROOT"] != `C:\\sql dir` {
+		t.Fatalf("expected quoted windows path, got %q", values["RM_SQL_ROOT"])
 	}
 }
 
@@ -82,7 +82,8 @@ func TestApplyEnvironmentFileDoesNotOverrideEmptyExistingEnvironment(t *testing.
 }
 
 func TestParseCommandConfigLoadsValuesFromEnvFileWhenEnabled(t *testing.T) {
-	path := writeEnvFile(t, "config.env", "RM_DB_SERVER=file-server\nRM_DB_DATABASE=file-db\nRM_DB_AUTH=integrated\nRM_MANAGED_SCHEMAS=dbo\n")
+	root, base := createSQLLayout(t)
+	path := writeEnvFile(t, "config.env", "RM_DB_SERVER=file-server\nRM_DB_DATABASE=file-db\nRM_DB_AUTH=integrated\nRM_GIT_COMMIT=file-commit\nRM_SQL_ROOT="+root+"\nRM_SQL_BASE="+base+"\n")
 	cfg, err := parseCommandConfig("validate", []string{"--env", "pred", "--env-file", path})
 	if err != nil {
 		t.Fatalf("unexpected config error: %v", err)
@@ -96,8 +97,8 @@ func TestParseCommandConfigLoadsValuesFromEnvFileWhenEnabled(t *testing.T) {
 	if cfg.DBAuthMode() != "integrated" {
 		t.Fatalf("expected integrated auth, got %q", cfg.DBAuthMode())
 	}
-	if len(cfg.ManagedSchemas) != 1 || cfg.ManagedSchemas[0] != "dbo" {
-		t.Fatalf("unexpected managed schemas: %#v", cfg.ManagedSchemas)
+	if cfg.SQLRoot != root || cfg.SQLBase != base {
+		t.Fatalf("unexpected sql selection: root=%q base=%q", cfg.SQLRoot, cfg.SQLBase)
 	}
 }
 
@@ -106,7 +107,8 @@ func TestParseCommandConfigProcessEnvOverridesEnvFile(t *testing.T) {
 	t.Setenv("RM_DB_DATABASE", "process-db")
 	t.Setenv("RM_DB_USER", "process-user")
 	t.Setenv("RM_DB_PASSWORD", "process-password")
-	path := writeEnvFile(t, "config.env", "RM_DB_SERVER=file-server\nRM_DB_DATABASE=file-db\nRM_DB_USER=file-user\nRM_DB_PASSWORD=file-password\n")
+	root, base := createSQLLayout(t)
+	path := writeEnvFile(t, "config.env", "RM_DB_SERVER=file-server\nRM_DB_DATABASE=file-db\nRM_DB_USER=file-user\nRM_DB_PASSWORD=file-password\nRM_SQL_ROOT="+root+"\nRM_SQL_BASE="+base+"\n")
 	cfg, err := parseCommandConfig("info", []string{"--env", "prod", "--env-file", path})
 	if err != nil {
 		t.Fatalf("unexpected config error: %v", err)
@@ -137,7 +139,8 @@ func TestParseCommandConfigWithoutEnvFileKeepsCurrentBehavior(t *testing.T) {
 }
 
 func TestParseCommandConfigSupportsEnvFileFromEnvironment(t *testing.T) {
-	path := writeEnvFile(t, "config.env", "RM_DB_SERVER=file-server\nRM_DB_DATABASE=file-db\nRM_DB_AUTH=integrated\nRM_MANAGED_SCHEMAS=dbo\n")
+	root, base := createSQLLayout(t)
+	path := writeEnvFile(t, "config.env", "RM_DB_SERVER=file-server\nRM_DB_DATABASE=file-db\nRM_DB_AUTH=integrated\nRM_GIT_COMMIT=file-commit\nRM_SQL_ROOT="+root+"\nRM_SQL_BASE="+base+"\n")
 	t.Setenv("RM_ENV_FILE", path)
 	cfg, err := parseCommandConfig("validate", []string{"--env", "pred"})
 	if err != nil {
