@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"reporting-db-migrations/internal/catalog"
 	"reporting-db-migrations/internal/config"
 	"reporting-db-migrations/internal/contracts"
 	"reporting-db-migrations/internal/logger"
@@ -23,85 +24,16 @@ type CatalogState struct {
 	Objects map[string]CatalogObject
 }
 
-type CatalogObject struct {
-	SchemaName string
-	Kind       string
-	ObjectName string
-	ParentName string
-}
+type CatalogObject = catalog.Object
 
-const catalogStateQuery = `
-SELECT s.name, o.type_desc, o.name, ISNULL(parent.name, '')
-FROM sys.objects o
-JOIN sys.schemas s ON s.schema_id = o.schema_id
-LEFT JOIN sys.objects parent ON parent.object_id = o.parent_object_id
-WHERE o.is_ms_shipped = 0
-UNION ALL
-SELECT s.name, 'USER_TABLE_TYPE', tt.name, ''
-FROM sys.table_types tt
-JOIN sys.schemas s ON s.schema_id = tt.schema_id
-UNION ALL
-SELECT s.name, 'INDEX', i.name, o.name
-FROM sys.indexes i
-JOIN sys.objects o ON o.object_id = i.object_id
-JOIN sys.schemas s ON s.schema_id = o.schema_id
-WHERE i.is_hypothetical = 0 AND i.name IS NOT NULL AND o.type IN ('U', 'V') AND o.is_ms_shipped = 0
-ORDER BY 1, 3`
+const catalogStateQuery = catalog.StateQuery
 
 func ReadCatalogState(ctx context.Context, conn *sql.Conn) (CatalogState, error) {
-	state := CatalogState{
-		Schemas: map[string]struct{}{},
-		Objects: map[string]CatalogObject{},
-	}
-	if conn == nil {
-		return state, nil
-	}
-	schemaRows, err := conn.QueryContext(ctx, `SELECT name FROM sys.schemas WHERE name NOT IN ('sys', 'INFORMATION_SCHEMA') ORDER BY name`)
+	state, err := catalog.Read(ctx, conn)
 	if err != nil {
-		return CatalogState{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+		return CatalogState{}, err
 	}
-	for schemaRows.Next() {
-		var schemaName string
-		if err := schemaRows.Scan(&schemaName); err != nil {
-			schemaRows.Close()
-			return CatalogState{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
-		}
-		state.Schemas[strings.ToLower(schemaName)] = struct{}{}
-	}
-	if err := schemaRows.Err(); err != nil {
-		schemaRows.Close()
-		return CatalogState{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
-	}
-	schemaRows.Close()
-
-	rows, err := conn.QueryContext(ctx, catalogStateQuery)
-	if err != nil {
-		return CatalogState{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var schemaName string
-		var typeDesc string
-		var objectName string
-		var parentName string
-		if err := rows.Scan(&schemaName, &typeDesc, &objectName, &parentName); err != nil {
-			return CatalogState{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
-		}
-		kind := mapTypeDescToKind(typeDesc)
-		if kind == "" {
-			continue
-		}
-		key := strings.ToLower(schemaName) + "/" + kind + "/"
-		if parentName != "" && (kind == "triggers" || kind == "indexes") {
-			key += strings.ToLower(parentName) + "/"
-		}
-		key += strings.ToLower(objectName)
-		state.Objects[key] = CatalogObject{SchemaName: schemaName, Kind: kind, ObjectName: objectName, ParentName: parentName}
-	}
-	if err := rows.Err(); err != nil {
-		return CatalogState{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
-	}
-	return state, nil
+	return CatalogState{Schemas: state.Schemas, Objects: state.Objects}, nil
 }
 
 func RefreshManagedObjects(ctx context.Context, conn *sql.Conn, layout parser.Layout, log logger.Logger) (contracts.ValidationSummary, error) {
@@ -190,26 +122,5 @@ func bracket(value string) string {
 }
 
 func mapTypeDescToKind(typeDesc string) string {
-	switch strings.ToUpper(strings.TrimSpace(typeDesc)) {
-	case "USER_TABLE":
-		return "tables"
-	case "VIEW":
-		return "views"
-	case "SQL_STORED_PROCEDURE":
-		return "procedures"
-	case "SQL_SCALAR_FUNCTION", "SQL_INLINE_TABLE_VALUED_FUNCTION", "SQL_TABLE_VALUED_FUNCTION":
-		return "functions"
-	case "SQL_TRIGGER":
-		return "triggers"
-	case "INDEX":
-		return "indexes"
-	case "USER_TABLE_TYPE":
-		return "types"
-	case "SEQUENCE_OBJECT":
-		return "sequences"
-	case "SYNONYM":
-		return "synonyms"
-	default:
-		return ""
-	}
+	return catalog.MapTypeDescToKind(typeDesc)
 }

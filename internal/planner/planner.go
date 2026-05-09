@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"reporting-db-migrations/internal/catalog"
 	"reporting-db-migrations/internal/config"
 	"reporting-db-migrations/internal/contracts"
 	"reporting-db-migrations/internal/parser"
@@ -33,30 +34,9 @@ type CatalogState struct {
 	SuccessfulByKey map[string]string
 }
 
-type CatalogObject struct {
-	SchemaName string
-	Kind       string
-	ObjectName string
-	ParentName string
-}
+type CatalogObject = catalog.Object
 
-const catalogStateQuery = `
-SELECT s.name, o.type_desc, o.name, ISNULL(parent.name, '')
-FROM sys.objects o
-JOIN sys.schemas s ON s.schema_id = o.schema_id
-LEFT JOIN sys.objects parent ON parent.object_id = o.parent_object_id
-WHERE o.is_ms_shipped = 0
-UNION ALL
-SELECT s.name, 'USER_TABLE_TYPE', tt.name, ''
-FROM sys.table_types tt
-JOIN sys.schemas s ON s.schema_id = tt.schema_id
-UNION ALL
-SELECT s.name, 'INDEX', i.name, o.name
-FROM sys.indexes i
-JOIN sys.objects o ON o.object_id = i.object_id
-JOIN sys.schemas s ON s.schema_id = o.schema_id
-WHERE i.is_hypothetical = 0 AND i.name IS NOT NULL AND o.type IN ('U', 'V') AND o.is_ms_shipped = 0
-ORDER BY 1, 3`
+const catalogStateQuery = catalog.StateQuery
 
 func Build(cfg config.Config, successfulByKey map[string]string) (contracts.MigrationPlan, error) {
 	layout, hash, err := resolvePlanningLayout(cfg)
@@ -115,16 +95,16 @@ func ResolvePlanningLayoutForRunner(cfg config.Config) (parser.Layout, string, e
 func VerifyApprovedPlan(cfg config.Config, current contracts.MigrationPlan) error {
 	p, err := reports.ReadPlan(cfg.PlanFile)
 	if err != nil {
-		return fmt.Errorf("approved plan missing: %w", err)
+		return fmt.Errorf("%w: %v", contracts.ErrApprovedPlanMissing, err)
 	}
 	if p.Blocked {
-		return fmt.Errorf("approved plan mismatch: approved plan is blocked")
+		return fmt.Errorf("%w: approved plan is blocked", contracts.ErrApprovedPlanMismatch)
 	}
 	if p.SchemaVersion != "v8" {
-		return fmt.Errorf("approved plan mismatch: schema version %s", p.SchemaVersion)
+		return fmt.Errorf("%w: schema version %s", contracts.ErrApprovedPlanMismatch, p.SchemaVersion)
 	}
 	if p.Command != "plan" {
-		return fmt.Errorf("approved plan mismatch: command %s", p.Command)
+		return fmt.Errorf("%w: command %s", contracts.ErrApprovedPlanMismatch, p.Command)
 	}
 	mm := []string{}
 	if p.GitCommit != cfg.GitCommit {
@@ -167,13 +147,13 @@ func VerifyApprovedPlan(cfg config.Config, current contracts.MigrationPlan) erro
 		mm = append(mm, "effective_base_path")
 	}
 	if len(mm) > 0 {
-		return fmt.Errorf("approved plan mismatch: %v", mm)
+		return fmt.Errorf("%w: %v", contracts.ErrApprovedPlanMismatch, mm)
 	}
 	if !reflect.DeepEqual(stableSchemas(p.Schemas), stableSchemas(current.Schemas)) {
-		return fmt.Errorf("approved plan mismatch: schema set does not match current deployment state")
+		return fmt.Errorf("%w: schema set does not match current deployment state", contracts.ErrApprovedPlanMismatch)
 	}
 	if !reflect.DeepEqual(stableObjects(p.Objects), stableObjects(current.Objects)) {
-		return fmt.Errorf("approved plan mismatch: object set does not match current deployment state")
+		return fmt.Errorf("%w: object set does not match current deployment state", contracts.ErrApprovedPlanMismatch)
 	}
 	return nil
 }
@@ -223,59 +203,13 @@ func stableObjects(items []contracts.PlannedObject) []contracts.PlannedObject {
 }
 
 func (r sqlCatalogReader) ReadCatalogState(ctx context.Context) (CatalogState, error) {
-	state := CatalogState{
-		Schemas:         map[string]struct{}{},
-		Objects:         map[string]CatalogObject{},
-		SuccessfulByKey: map[string]string{},
-	}
-	if r.conn == nil {
-		return state, nil
-	}
-	schemaRows, err := r.conn.QueryContext(ctx, `SELECT name FROM sys.schemas WHERE name NOT IN ('sys', 'INFORMATION_SCHEMA') ORDER BY name`)
+	state := CatalogState{Schemas: map[string]struct{}{}, Objects: map[string]CatalogObject{}, SuccessfulByKey: map[string]string{}}
+	catalogState, err := catalog.Read(ctx, r.conn)
 	if err != nil {
-		return CatalogState{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+		return CatalogState{}, err
 	}
-	for schemaRows.Next() {
-		var schemaName string
-		if err := schemaRows.Scan(&schemaName); err != nil {
-			schemaRows.Close()
-			return CatalogState{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
-		}
-		state.Schemas[strings.ToLower(schemaName)] = struct{}{}
-	}
-	if err := schemaRows.Err(); err != nil {
-		schemaRows.Close()
-		return CatalogState{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
-	}
-	schemaRows.Close()
-
-	rows, err := r.conn.QueryContext(ctx, catalogStateQuery)
-	if err != nil {
-		return CatalogState{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var schemaName string
-		var typeDesc string
-		var objectName string
-		var parentName string
-		if err := rows.Scan(&schemaName, &typeDesc, &objectName, &parentName); err != nil {
-			return CatalogState{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
-		}
-		kind := mapTypeDescToKind(typeDesc)
-		if kind == "" {
-			continue
-		}
-		key := strings.ToLower(schemaName) + "/" + kind + "/"
-		if parentName != "" && (kind == "triggers" || kind == "indexes") {
-			key += strings.ToLower(parentName) + "/"
-		}
-		key += strings.ToLower(objectName)
-		state.Objects[key] = CatalogObject{SchemaName: schemaName, Kind: kind, ObjectName: objectName, ParentName: parentName}
-	}
-	if err := rows.Err(); err != nil {
-		return CatalogState{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
-	}
+	state.Schemas = catalogState.Schemas
+	state.Objects = catalogState.Objects
 	return state, nil
 }
 
@@ -336,7 +270,7 @@ func newPlan(cfg config.Config, hash string, layout parser.Layout) contracts.Mig
 		ComparisonMode:  cfg.ComparisonMode,
 		UpdatePolicy:    cfg.UpdatePolicy,
 		TransactionMode: cfg.TransactionMode,
-		Rollback:        rollbackScope(cfg.TransactionMode),
+		Rollback:        contracts.RollbackScope(cfg.TransactionMode),
 		PlannedAt:       time.Now().UTC(),
 		Summary: contracts.PlanSummary{
 			SchemaCount: len(layout.Schemas),
@@ -353,9 +287,9 @@ func newPlan(cfg config.Config, hash string, layout parser.Layout) contracts.Mig
 func planSchemas(plan *contracts.MigrationPlan, layout parser.Layout, catalog CatalogState) {
 	for _, schema := range layout.Schemas {
 		_, exists := catalog.Schemas[schema.NormalizedName]
-		action := "create_schema"
+		action := contracts.SchemaActionCreateSchema
 		if exists {
-			action = "exists"
+			action = contracts.SchemaActionExists
 		}
 		plan.Schemas = append(plan.Schemas, contracts.PlannedSchema{
 			SchemaName: schema.Name,
@@ -380,8 +314,8 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 			ParentName:      object.ParentName,
 			NormalizedKey:   object.NormalizedKey,
 			Checksum:        object.Checksum,
-			TransactionMode: transactionModeForObject(plan.TransactionMode, object.NoTransaction),
-			RollbackScope:   rollbackScopeForObject(plan.TransactionMode, object.NoTransaction),
+			TransactionMode: contracts.TransactionModeForObject(plan.TransactionMode, object.NoTransaction),
+			RollbackScope:   contracts.RollbackScopeForObject(plan.TransactionMode, object.NoTransaction),
 			NoTransaction:   object.NoTransaction,
 			SourceFile:      object.Path,
 		}
@@ -394,18 +328,18 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 		}
 		plan.Objects = append(plan.Objects, planned)
 		switch planned.PlannedAction {
-		case "create_object":
+		case contracts.ActionCreateObject:
 			plan.Summary.CreateCount++
-		case "adopt_existing":
+		case contracts.ActionAdoptExisting:
 			plan.Summary.AdoptCount++
-		case "skip_unchanged":
+		case contracts.ActionSkipUnchanged:
 			plan.Summary.SkipCount++
-		case "reprocess_changed_blocked":
+		case contracts.ActionReprocessChangedBlocked:
 			plan.BlockReasons = append(plan.BlockReasons, "existing object changed: "+object.Path)
 			plan.Summary.ChangedCount++
-		case "update_existing_module", "update_existing_supported":
+		case contracts.ActionUpdateExistingModule, contracts.ActionUpdateExistingSupported:
 			plan.Summary.ChangedCount++
-		case "fail":
+		case contracts.ActionFail:
 			plan.Failures = append(plan.Failures, "invalid object state: "+object.Path)
 		}
 	}
@@ -417,22 +351,22 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 func determineObjectAction(object parser.Object, catalog CatalogState, updatePolicy string) string {
 	_, exists := catalog.Objects[object.NormalizedKey]
 	if !exists {
-		return "create_object"
+		return contracts.ActionCreateObject
 	}
 	checksum, tracked := catalog.SuccessfulByKey[object.NormalizedKey]
 	if tracked && checksum == object.Checksum {
-		return "skip_unchanged"
+		return contracts.ActionSkipUnchanged
 	}
 	if tracked && checksum != object.Checksum {
 		if parser.IsModuleKind(object.Kind) && updatePolicy == config.UpdatePolicyModulesOnly {
-			return "update_existing_module"
+			return contracts.ActionUpdateExistingModule
 		}
 		if parser.IsModuleKind(object.Kind) && updatePolicy == config.UpdatePolicyAllSupported {
-			return "update_existing_supported"
+			return contracts.ActionUpdateExistingSupported
 		}
-		return "reprocess_changed_blocked"
+		return contracts.ActionReprocessChangedBlocked
 	}
-	return "adopt_existing"
+	return contracts.ActionAdoptExisting
 }
 
 func inferMetadataMatch(object parser.Object, catalog CatalogState) *bool {
@@ -444,48 +378,6 @@ func inferMetadataMatch(object parser.Object, catalog CatalogState) *bool {
 	return &matched
 }
 
-func transactionModeForObject(defaultMode string, noTransaction bool) string {
-	if noTransaction {
-		return config.TransactionModeNone
-	}
-	return defaultMode
-}
-
-func rollbackScope(defaultMode string) string {
-	if defaultMode == config.TransactionModeNone {
-		return "none"
-	}
-	return "script"
-}
-
-func rollbackScopeForObject(defaultMode string, noTransaction bool) string {
-	if noTransaction || defaultMode == config.TransactionModeNone {
-		return "none"
-	}
-	return "script"
-}
-
 func mapTypeDescToKind(typeDesc string) string {
-	switch strings.ToUpper(strings.TrimSpace(typeDesc)) {
-	case "USER_TABLE":
-		return "tables"
-	case "VIEW":
-		return "views"
-	case "SQL_STORED_PROCEDURE":
-		return "procedures"
-	case "SQL_SCALAR_FUNCTION", "SQL_INLINE_TABLE_VALUED_FUNCTION", "SQL_TABLE_VALUED_FUNCTION":
-		return "functions"
-	case "SQL_TRIGGER":
-		return "triggers"
-	case "INDEX":
-		return "indexes"
-	case "USER_TABLE_TYPE":
-		return "types"
-	case "SEQUENCE_OBJECT":
-		return "sequences"
-	case "SYNONYM":
-		return "synonyms"
-	default:
-		return ""
-	}
+	return catalog.MapTypeDescToKind(typeDesc)
 }

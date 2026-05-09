@@ -297,18 +297,6 @@ func parseDuration(name, value string) (time.Duration, error) {
 	return duration, nil
 }
 
-func splitCSV(value string) []string {
-	parts := strings.Split(value, ",")
-	result := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			result = append(result, part)
-		}
-	}
-	return result
-}
-
 func def(value, fallback string) string {
 	if strings.TrimSpace(value) == "" {
 		return fallback
