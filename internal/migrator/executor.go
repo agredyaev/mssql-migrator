@@ -33,7 +33,7 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 			if err != nil {
 				report.Result = "failed"
 				report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: "critical metadata failure after schema discovery: " + logger.Redact(err.Error())}
-				return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+				return contracts.Wrap(contracts.ErrCriticalState, err)
 			}
 		}
 		if schema.Action != contracts.SchemaActionCreateSchema {
@@ -76,7 +76,7 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 			if err != nil {
 				report.Result = "failed"
 				report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: logger.Redact(err.Error())}
-				return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+				return contracts.Wrap(contracts.ErrCriticalState, err)
 			}
 			metaCtx, cancel = metadataContext(ctx)
 			if err := metadata.InsertAttempt(metaCtx, conn, metadata.AttemptRecord{
@@ -96,7 +96,7 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 				cancel()
 				report.Result = "failed"
 				report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: logger.Redact(err.Error())}
-				return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+				return contracts.Wrap(contracts.ErrCriticalState, err)
 			}
 			cancel()
 		}
@@ -113,7 +113,7 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 				if err := r.recordPassiveObjectAction(ctx, conn, planned, runID, trackedObjectID); err != nil {
 					report.Result = "failed"
 					report.Failed = &contracts.Failure{Script: planned.ObjectPath, Error: logger.Redact(err.Error())}
-					return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+					return contracts.Wrap(contracts.ErrCriticalState, err)
 				}
 				report.Skipped = append(report.Skipped, contracts.ScriptResult{Script: planned.ObjectPath, Type: planned.Kind, Checksum: planned.Checksum, Reason: planned.PlannedAction})
 				continue
@@ -228,7 +228,7 @@ func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object p
 			cancel()
 			report.Result = "failed"
 			report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after failed SQL: " + logger.Redact(err.Error())}
-			return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+			return contracts.Wrap(contracts.ErrCriticalState, err)
 		}
 		cancel()
 		if runID != "" {
@@ -237,7 +237,7 @@ func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object p
 				cancel()
 				report.Result = "failed"
 				report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after failed SQL: " + logger.Redact(err.Error())}
-				return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+				return contracts.Wrap(contracts.ErrCriticalState, err)
 			}
 			cancel()
 		}
@@ -250,7 +250,7 @@ func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object p
 		cancel()
 		report.Result = "failed"
 		report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after successful SQL: " + logger.Redact(err.Error())}
-		return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+		return contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	cancel()
 	if runID != "" {
@@ -259,7 +259,7 @@ func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object p
 			cancel()
 			report.Result = "failed"
 			report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after successful SQL: " + logger.Redact(err.Error())}
-			return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+			return contracts.Wrap(contracts.ErrCriticalState, err)
 		}
 		cancel()
 	}

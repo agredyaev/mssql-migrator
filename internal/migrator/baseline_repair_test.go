@@ -76,3 +76,34 @@ func TestNewMigrationReportRedactsPipelineURL(t *testing.T) {
 		t.Fatalf("pipeline url was not redacted: %s", report.PipelineURL)
 	}
 }
+
+func TestResolveRepairPlanObjectFindsTarget(t *testing.T) {
+	object, err := resolveRepairPlanObject(contracts.MigrationPlan{Objects: []contracts.PlannedObject{{NormalizedKey: "reporting/views/monthly", PlannedAction: contracts.ActionUpdateExistingModule}}}, "reporting/views/monthly")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if object.PlannedAction != contracts.ActionUpdateExistingModule {
+		t.Fatalf("unexpected repair plan object: %#v", object)
+	}
+}
+
+func TestValidateRepairEligibilityAllowsChangedTrackedObject(t *testing.T) {
+	err := validateRepairEligibility(parser.Object{Path: "reporting/views/monthly.sql"}, contracts.PlannedObject{PlannedAction: contracts.ActionUpdateExistingModule})
+	if err != nil {
+		t.Fatalf("expected changed tracked object to be eligible, got %v", err)
+	}
+}
+
+func TestValidateRepairEligibilityRejectsUnchangedObject(t *testing.T) {
+	err := validateRepairEligibility(parser.Object{Path: "reporting/views/monthly.sql"}, contracts.PlannedObject{PlannedAction: contracts.ActionSkipUnchanged})
+	if err == nil || err.Error() == "" {
+		t.Fatal("expected unchanged object to be rejected")
+	}
+}
+
+func TestValidateRepairEligibilityRejectsAdoptExistingObject(t *testing.T) {
+	err := validateRepairEligibility(parser.Object{Path: "reporting/views/monthly.sql"}, contracts.PlannedObject{PlannedAction: contracts.ActionAdoptExisting})
+	if err == nil || err.Error() == "" {
+		t.Fatal("expected adopt_existing object to be rejected")
+	}
+}

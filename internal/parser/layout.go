@@ -344,6 +344,26 @@ func IsModuleKind(kind string) bool {
 	return ok
 }
 
+func SupportsExistingObjectUpdate(object Object) bool {
+	if !IsModuleKind(object.Kind) {
+		return false
+	}
+	trimmed := strings.TrimSpace(strings.TrimPrefix(object.Content, "\ufeff"))
+	upper := strings.ToUpper(trimmed)
+	switch object.Kind {
+	case "views":
+		return strings.HasPrefix(upper, "CREATE OR ALTER VIEW")
+	case "procedures":
+		return strings.HasPrefix(upper, "CREATE OR ALTER PROCEDURE") || strings.HasPrefix(upper, "CREATE OR ALTER PROC")
+	case "functions":
+		return strings.HasPrefix(upper, "CREATE OR ALTER FUNCTION")
+	case "triggers":
+		return strings.HasPrefix(upper, "CREATE OR ALTER TRIGGER")
+	default:
+		return false
+	}
+}
+
 func NormalizeTrackedName(value string) string {
 	value = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(value, `\`, "/")))
 	if value == "" {

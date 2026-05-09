@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -45,6 +46,20 @@ func TestLoadEnvironmentFileRejectsInvalidLine(t *testing.T) {
 	path := writeEnvFile(t, "invalid.env", "RM_DB_SERVER\n")
 	if _, err := loadEnvironmentFile(path); err == nil {
 		t.Fatal("expected invalid env file error")
+	}
+}
+
+func TestLoadEnvironmentFileRejectsUnsupportedKey(t *testing.T) {
+	path := writeEnvFile(t, "invalid.env", "HOME=/tmp/override\n")
+	if _, err := loadEnvironmentFile(path); err == nil || !strings.Contains(err.Error(), "unsupported key HOME") {
+		t.Fatalf("expected unsupported key error, got %v", err)
+	}
+}
+
+func TestLoadEnvironmentFileRejectsUnknownRMKey(t *testing.T) {
+	path := writeEnvFile(t, "invalid.env", "RM_NOT_SUPPORTED=value\n")
+	if _, err := loadEnvironmentFile(path); err == nil || !strings.Contains(err.Error(), "unsupported key RM_NOT_SUPPORTED") {
+		t.Fatalf("expected unsupported RM key error, got %v", err)
 	}
 }
 

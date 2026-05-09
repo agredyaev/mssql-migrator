@@ -29,7 +29,7 @@ func NewRunner(cfg config.Config, log logger.Logger) Runner {
 func (r Runner) Info(ctx context.Context) error {
 	database, err := db.Open(ctx, r.cfg)
 	if err != nil {
-		return fmt.Errorf("%w: %v", contracts.ErrConnection, err)
+		return contracts.Wrap(contracts.ErrConnection, err)
 	}
 	defer database.Close()
 	r.log.Info("connection_ok", r.cfg.MaskedTarget())
@@ -51,7 +51,7 @@ func (r Runner) Plan(ctx context.Context) (contracts.MigrationPlan, error) {
 	}()
 	successfulByKey, err := metadata.LoadSuccessfulChecksumsIfPresent(ctx, conn)
 	if err != nil {
-		return contracts.MigrationPlan{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+		return contracts.MigrationPlan{}, contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	plan, err := planner.BuildWithConnection(ctx, r.cfg, successfulByKey, conn)
 	if err != nil {
@@ -124,7 +124,7 @@ func (r Runner) Migrate(ctx context.Context) error {
 	r.log.Info("rollback_scope", fmt.Sprintf("Rollback scope: %s. Previous successful scripts remain committed. Use database backups or restore points for full recovery guarantees.", plan.Rollback))
 	if err := r.executePlanTracked(ctx, conn, planningLayout, plan, &report, runID, trackedObjectIDs); err != nil {
 		if writeErr := reports.WriteMigration(r.cfg.ReportDir, report); writeErr != nil {
-			return fmt.Errorf("%w: %v", contracts.ErrCriticalState, writeErr)
+			return contracts.Wrap(contracts.ErrCriticalState, writeErr)
 		}
 		if finishErr := finishRun(ctx, conn, runID, false, err, nil); finishErr != nil {
 			r.log.Warn("metadata_finish_run_failed", logger.Redact(finishErr.Error()))
@@ -156,12 +156,12 @@ func (r Runner) Migrate(ctx context.Context) error {
 func (r Runner) openReservedConnection(ctx context.Context) (*sql.Conn, func() error, error) {
 	database, err := db.Open(ctx, r.cfg)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %v", contracts.ErrConnection, err)
+		return nil, nil, contracts.Wrap(contracts.ErrConnection, err)
 	}
 	conn, err := database.Conn(ctx)
 	if err != nil {
 		_ = database.Close()
-		return nil, nil, fmt.Errorf("%w: %v", contracts.ErrConnection, err)
+		return nil, nil, contracts.Wrap(contracts.ErrConnection, err)
 	}
 	closeFn := func() error {
 		connErr := conn.Close()
@@ -210,10 +210,10 @@ func (r Runner) writeFailedMigration(report contracts.MigrationReport, base erro
 	failure := failures.BuildWithCause(r.cfg, "migration_failed", base, cause)
 	report.Failed = &failure
 	if err := reports.WriteMigration(r.cfg.ReportDir, report); err != nil {
-		return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+		return contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	if cause == nil {
 		return base
 	}
-	return fmt.Errorf("%w: %v", base, cause)
+	return contracts.Wrap(base, cause)
 }

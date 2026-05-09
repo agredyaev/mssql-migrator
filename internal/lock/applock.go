@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"reporting-db-migrations/internal/contracts"
 )
 
 var (
@@ -18,9 +20,9 @@ func Acquire(ctx context.Context, conn *sql.Conn, timeout time.Duration) error {
 	err := conn.QueryRowContext(ctx, `DECLARE @result INT; EXEC @result = sp_getapplock @Resource='reporting_layer_migration', @LockMode='Exclusive', @LockOwner='Session', @LockTimeout=@p1; SELECT @result;`, int(timeout.Milliseconds())).Scan(&result)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			return fmt.Errorf("%w: %v", ErrTimeout, err)
+			return contracts.Wrap(ErrTimeout, err)
 		}
-		return fmt.Errorf("%w: %v", ErrFailed, err)
+		return contracts.Wrap(ErrFailed, err)
 	}
 	if result == -1 || result == -2 {
 		return fmt.Errorf("%w: result=%d", ErrTimeout, result)

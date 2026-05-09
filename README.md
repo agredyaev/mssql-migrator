@@ -45,8 +45,8 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 - Plan flags: `--json`, `--update-policy`, `--transaction-mode`
 - Migrate flags: `--plan-file`, `--skip-validate`
 - Repair flag: `--script` selects one repo object path or normalized key for `repair-checksum`
-- Optional env file flag: `--env-file` loads `RM_*` values from a dotenv-style file. The file is ignored unless `--env-file` or `RM_ENV_FILE` is set.
-- The env file is trusted operator input. `rmig` parses and applies `RM_*` values from it, but it does not sandbox or validate the file beyond dotenv syntax and normal command config validation.
+- Optional env file flag: `--env-file` loads supported `RM_*` values from a dotenv-style file. The file is ignored unless `--env-file` or `RM_ENV_FILE` is set.
+- The env file is trusted operator input, but `rmig` accepts only the supported `RM_*` keys that map to current command inputs. Unknown keys and non-`RM_*` keys fail validation with a line-number error.
 - Supporting environment: `RM_ENV`, `RM_SQL_ROOT`, `RM_SQL_BASE`, `RM_REPORT_DIR`, `RM_LOG_LEVEL`, `RM_JSON_LOGS`, `RM_TIMEOUT`, `RM_SCRIPT_TIMEOUT`, `RM_LOCK_TIMEOUT`, `RM_PLAN_FILE`, `RM_REPAIR_SCRIPT`, `RM_SKIP_VALIDATE`, `RM_CONFIRM`, `RM_ENV_FILE`, `RM_UPDATE_POLICY`, `RM_TRANSACTION_MODE`, `RM_PLAN_JSON`
 - Database authentication environment: `RM_DB_AUTH` (`sql` or `integrated`). `sql` is the default and requires `RM_DB_USER` and `RM_DB_PASSWORD`. `integrated` uses Windows Integrated Security through the driver `winsspi` authenticator. `RM_DB_USER` is optional in integrated mode and can be omitted to use the current Windows session.
 - Precedence when `--env-file` or `RM_ENV_FILE` is used: CLI flags override process environment, process environment overrides `.env`, and `.env` overrides built-in defaults.
@@ -62,17 +62,17 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 - `RM_SQL_BASE` must be a single directory name under `RM_SQL_ROOT`.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
 - `plan --json` writes machine-readable JSON to stdout. Human logs go to stderr for that mode.
-- `RM_UPDATE_POLICY` supports `none`, `modules_only`, and `all_supported`. `all_supported` is accepted but currently behaves the same as `modules_only` because only module update paths are implemented.
+- `RM_UPDATE_POLICY` supports `none`, `modules_only`, and `all_supported`. Existing module updates are allowed only when the repo SQL starts with the matching `CREATE OR ALTER` statement for that object kind.
 - `RM_TRANSACTION_MODE` supports `script` and `none`.
 - Logs, reports, and stored error text must not expose secrets.
-- `migrate` executes approved create paths and supported module update paths after approved-plan verification, treats `adopt_existing` as a no-DDL adoption path, records attempts into `[__migrator]`, and limits post-migrate validation to the verified managed object scope.
+- `migrate` executes approved create paths and safe existing-module update paths after approved-plan verification, treats `adopt_existing` as a no-DDL adoption path, records attempts into `[__migrator]`, and limits post-migrate validation to the verified managed object scope.
 - `baseline` uses the same repo-driven layout as `plan` and `migrate`. It creates missing repo-managed schemas and objects, adopts already existing objects without DDL, and fails closed on checksum drift.
 - `baseline` preflights metadata DDL, schema creation permission, object DDL permission, and missing parent objects before create work.
-- `repair-checksum` targets one repo object selected by path or normalized key and writes an append-only `repair_checksum` attempt row.
-- Report files are written atomically through `internal/reports/write.go` by writing `*.tmp` and renaming into place.
+- `repair-checksum` targets one repo object selected by path or normalized key, but only when the current plan shows tracked checksum drift for that object. It writes an append-only `repair_checksum` attempt row.
+- Report files are written as consistent JSON and text pairs through `internal/reports/write.go` by staging `*.tmp` files and publishing both final artifacts together.
 - Metadata writes use a short bounded context in `internal/migrator/metadata_context.go` so post-SQL metadata updates do not hang until the full command timeout.
 - Catalog reads are shared through `internal/catalog/catalog.go` so plan and validation classify the live SQL Server object set the same way.
-- Metadata bootstrap now records schema version state in `[__migrator].schema_version`.
+- Metadata bootstrap records schema version state in `[__migrator].schema_version`, validates known schema versions before upgrade DDL, and does not churn existing indexes and view definitions on every run.
 
 ## Nominal Flow
 
@@ -82,14 +82,15 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 4. Run `rmig migrate --env prod --sql-root ./sql --sql-base dwh --plan-file reports/migration-plan.json` to verify the approved plan, create missing schemas, apply planned repo objects, record `adopt_existing` metadata rows, and validate the managed object scope.
 5. Run `rmig validate --env prod --sql-root ./sql --sql-base dwh` to bootstrap metadata if needed, refresh repo-discovered module objects, and execute repo-discovered check scripts.
 6. Run `rmig baseline --env prod --sql-root ./sql --sql-base dwh --confirm` to create or adopt the current repo-managed scope without an approved plan artifact.
-7. Run `rmig repair-checksum --env prod --sql-root ./sql --sql-base dwh --script reporting/views/monthly.sql --confirm` only when an already applied repo object needs checksum metadata repair.
+7. Run `rmig repair-checksum --env prod --sql-root ./sql --sql-base dwh --script reporting/views/monthly.sql --confirm` only when the current plan shows tracked checksum drift for that repo object.
 
 ## Off-Nominal Behavior And Failure Containment
 
 - Invalid SQL root or base selection: command validation fails before database work.
 - Invalid repository layout: `plan` or `validate` fails before object work.
 - Approved-plan drift: `migrate` rejects the plan if `git_commit`, `layout_hash`, target, tool identity, comparison mode, update policy, transaction mode, rollback scope, base selection, or the approved schema/object set differs.
-- Metadata read or write failure: the run reports a critical state and stops.
+- Metadata read or write failure: the run reports a critical state and stops. Metadata updates also fail closed when the target row is missing or duplicated.
+- Unsafe existing-module update SQL: `plan` blocks the object when the repo file does not start with the required `CREATE OR ALTER` statement.
 - Missing schema creation permission or missing object DDL permission: `baseline` or `migrate` stops with a permission-specific error.
 - Missing parent object for `indexes` or `triggers`: execution stops with a parent-object failure.
 - Validation failure: the run stops and writes `reports/validation-report.*`.
@@ -110,7 +111,7 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 - Normal operation: run `plan`, then `migrate`, then `validate`.
 - Recovery: follow `docs/runbook.md` after a failed planning, migration, validation, baseline, or repair run.
 - Use `rmig baseline` when the repo layout already describes the desired target state and the database should be created or adopted into current repo-driven metadata.
-- Use `rmig repair-checksum` when one repo-managed object already matches the repo SQL in the database but the stored successful checksum row must be repaired.
+- Use `rmig repair-checksum` only when one repo-managed object is already tracked and the current plan shows checksum drift for that object.
 
 ## Open Issues And Non-Goals
 

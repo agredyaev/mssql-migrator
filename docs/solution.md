@@ -36,7 +36,7 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - SQL Server is the execution target.
 - SQL Server authentication is selected with `RM_DB_AUTH`. `sql` uses explicit login credentials. `integrated` uses Windows Integrated Security through the MSSQL driver.
 - Optional dotenv loading is available through `--env-file` or `RM_ENV_FILE`. It does not run by default and does not replace process environment or CLI flag precedence.
-- The env file is trusted operator input. `rmig` only validates dotenv syntax and then normal command config rules.
+- The env file is trusted operator input, but `rmig` accepts only the supported `RM_*` keys that map to current command inputs. Unknown keys fail before command execution.
 - `--env` and `RM_ENV` accept only `pred` and `prod`.
 - `RM_SQL_ROOT` and `RM_SQL_BASE` are required for planning, execution, validation, and repair commands.
 - `RM_SQL_BASE` must be a single directory name under `RM_SQL_ROOT`.
@@ -44,17 +44,17 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - `migrate` requires an approved plan file.
 - `plan --json` writes stable machine-readable JSON to stdout and keeps logs on stderr.
 - `RM_UPDATE_POLICY` defaults to `none`.
-- `RM_UPDATE_POLICY=all_supported` is accepted by config, but still behaves like `modules_only` because only module update logic is implemented.
+- Existing module updates are allowed only when the repo SQL starts with the matching `CREATE OR ALTER` statement for that object kind.
 - `RM_TRANSACTION_MODE` defaults to `script`.
 - Logs, reports, and stored error text must not expose secrets.
 - Post-SQL metadata writes use `internal/migrator/metadata_context.go` and a short timeout so metadata paths fail quickly instead of waiting for the full command timeout.
-- `internal/reports/write.go` writes report artifacts atomically through a temporary file and `os.Rename`.
-- Repo-driven `migrate` creates missing schemas, applies approved create paths and supported module update paths after plan verification, adopts existing objects without DDL by default, records attempts in `[__migrator]`, and validates the managed object scope by default unless skipped.
+- `internal/reports/write.go` writes report artifacts as consistent JSON and text pairs through temporary files and rename publication.
+- Repo-driven `migrate` creates missing schemas, applies approved create paths and safe existing-module update paths after plan verification, adopts existing objects without DDL by default, records attempts in `[__migrator]`, and validates the managed object scope by default unless skipped.
 - Repo-driven `validate` refreshes module objects, checks existence for the full managed object scope, creates one validation run row, and writes validation attempts.
 - Repo-driven `baseline` uses the same discovered schema and object scope as `plan` and `migrate`, creates missing schemas and objects, adopts already existing objects, and blocks when a tracked object already exists with checksum drift.
 - Repo-driven `baseline` preflights metadata DDL, schema creation permission, object DDL permission, and parent-object availability before create work.
-- Repo-driven `repair-checksum` resolves one object by repo path or normalized key and appends a `repair_checksum` attempt row instead of mutating old rows in place.
-- Metadata bootstrap records runtime schema state in `[__migrator].schema_version`.
+- Repo-driven `repair-checksum` resolves one object by repo path or normalized key, but only when the current plan shows tracked checksum drift for that object. It appends a `repair_checksum` attempt row instead of mutating old rows in place.
+- Metadata bootstrap records runtime schema state in `[__migrator].schema_version`, validates known schema versions before upgrade DDL, and avoids recurring DDL churn on current metadata.
 
 ## Nominal Flow
 
@@ -72,7 +72,9 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - Invalid root or base selection: config validation fails before command execution.
 - Invalid repository layout: discovery fails before database work.
 - Approved-plan drift: `migrate` fails closed if `git_commit`, `layout_hash`, target, tool identity, comparison mode, update policy, transaction mode, rollback scope, base selection, or the approved schema/object set differs.
+- Unsafe existing-module update SQL: `plan` blocks the object when the repo file does not start with the required `CREATE OR ALTER` statement.
 - Metadata failure after SQL success: treated as a critical state in the active repo-driven `migrate`, `baseline`, and `repair-checksum` paths.
+- Metadata updates fail closed when the target row is missing or duplicated.
 - Missing schema creation permission, missing object DDL permission, or missing parent object: create paths fail closed with a specific classified error.
 - Scope persistence for tracked schemas and tracked objects is written in one metadata transaction per run scope.
 - Validation failure: the run stops and writes `reports/validation-report.*`.
@@ -88,7 +90,7 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 
 - Use `docs/runbook.md` after a failed planning, migration, validation, baseline, or repair run.
 - Use `rmig baseline` when the repo layout is already the desired target state and the database must be created or adopted into current repo-driven metadata.
-- Use `rmig repair-checksum` when one repo-managed object already exists in the database and only the stored checksum metadata needs controlled repair.
+- Use `rmig repair-checksum` only when one repo-managed object is already tracked and the current plan shows checksum drift for that object.
 
 ## Open Issues And Non-Goals
 

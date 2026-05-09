@@ -62,6 +62,7 @@ func TestBuildUpdatesChangedModuleWhenPolicyAllows(t *testing.T) {
 	root := t.TempDir()
 	base := createLayout(t, root)
 	path := filepath.Join(root, base, "reporting", "views", "monthly.sql")
+	writeSQL(t, path, "CREATE OR ALTER VIEW reporting.monthly AS SELECT 1;")
 	currentChecksum, err := checksum.SHA256File(path)
 	if err != nil {
 		t.Fatal(err)
@@ -76,6 +77,35 @@ func TestBuildUpdatesChangedModuleWhenPolicyAllows(t *testing.T) {
 	for _, object := range plan.Objects {
 		if object.NormalizedKey == "reporting/views/monthly" && object.PlannedAction != "update_existing_module" {
 			t.Fatalf("expected update_existing_module, got %#v", object)
+		}
+	}
+}
+
+func TestBuildBlocksChangedModuleWithoutCreateOrAlter(t *testing.T) {
+	root := t.TempDir()
+	base := createLayout(t, root)
+	path := filepath.Join(root, base, "reporting", "views", "monthly.sql")
+	writeSQL(t, path, "CREATE VIEW reporting.monthly AS SELECT 1;")
+	currentChecksum, err := checksum.SHA256File(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{Env: "prod", Database: "ReportingDB", SQLRoot: root, SQLBase: base, EffectiveBasePath: filepath.Join(root, base), ToolVersion: "4.0.0", UpdatePolicy: config.UpdatePolicyModulesOnly, TransactionMode: config.TransactionModeScript, ComparisonMode: config.ComparisonModeCaseInsensitive}
+	migrationState := map[string]string{"reporting/views/monthly": currentChecksum + "changed"}
+
+	plan, err := BuildWithCatalog(context.Background(), cfg, migrationState, stubCatalogReader{objects: map[string]CatalogObject{"reporting/views/monthly": {SchemaName: "reporting", Kind: "views", ObjectName: "monthly"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Blocked {
+		t.Fatal("expected unsafe module update to block plan")
+	}
+	if len(plan.BlockReasons) == 0 || !strings.Contains(plan.BlockReasons[0], "CREATE OR ALTER") {
+		t.Fatalf("expected CREATE OR ALTER block reason, got %#v", plan.BlockReasons)
+	}
+	for _, object := range plan.Objects {
+		if object.NormalizedKey == "reporting/views/monthly" && object.PlannedAction != contracts.ActionReprocessChangedBlocked {
+			t.Fatalf("expected blocked changed action, got %#v", object)
 		}
 	}
 }
@@ -285,7 +315,7 @@ func (s stubCatalogReader) ReadCatalogState(_ context.Context) (CatalogState, er
 func createLayout(t *testing.T, root string) string {
 	t.Helper()
 	base := "dwh"
-	writeSQL(t, filepath.Join(root, base, "reporting", "views", "monthly.sql"), "SELECT 1;")
+	writeSQL(t, filepath.Join(root, base, "reporting", "views", "monthly.sql"), "CREATE VIEW reporting.monthly AS SELECT 1;")
 	writeSQL(t, filepath.Join(root, base, "reporting", "procedures", "refresh.sql"), "SELECT 2;")
 	return base
 }

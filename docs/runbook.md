@@ -30,7 +30,7 @@ See `README.md` for the CLI wrapper contract.
 ## Assumptions And Constraints
 
 - `baseline` and `repair-checksum` require `--confirm`.
-- `repair-checksum` is only for already applied repo-managed objects that already have a successful metadata row.
+- `repair-checksum` is only for already applied repo-managed objects that already have a successful metadata row and are currently in tracked checksum drift.
 - `migrate` requires an approved plan file.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
 - `plan`, `migrate`, and `validate` require `--sql-root` and `--sql-base` or the matching `RM_*` environment variables.
@@ -67,10 +67,10 @@ See `README.md` for the CLI wrapper contract.
 ## Operations And Recovery
 
 - `baseline`: use when the repo layout already describes the desired schema/object state and the database should be created or adopted into current repo-driven metadata.
-- `repair-checksum`: use only when one repo-managed object already matches the repo SQL in the database but its stored successful checksum row must be repaired.
+- `repair-checksum`: use only when one repo-managed object is already tracked and the current plan shows checksum drift for that object.
 - After either metadata repair path, re-run `plan`.
 - If SQL succeeded but metadata repair is unsafe or blocked, stop and escalate with the report files and database state snapshot.
-- If a report file is missing or truncated after a local interruption, rerun the command. Report files are written atomically, so a final artifact should be either the old complete file or the new complete file.
+- If a report file is missing or truncated after a local interruption, rerun the command. Report JSON and text artifacts are published as a consistent pair, so the final state should be either the old pair or the new pair.
 
 ## Open Issues And Non-Goals
 

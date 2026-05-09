@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 
 	"reporting-db-migrations/internal/contracts"
 	"reporting-db-migrations/internal/lock"
@@ -26,16 +25,16 @@ func (r Runner) prepareProtectedRun(ctx context.Context) (contracts.MigrationRep
 func (r Runner) acquireLock(ctx context.Context, conn *sql.Conn) error {
 	if err := lock.Acquire(ctx, conn, r.cfg.LockTimeout); err != nil {
 		if errors.Is(err, lock.ErrTimeout) {
-			return fmt.Errorf("%w: %v", contracts.ErrLockTimeout, err)
+			return contracts.Wrap(contracts.ErrLockTimeout, err)
 		}
-		return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+		return contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	return nil
 }
 
 func bootstrapMetadata(ctx context.Context, conn *sql.Conn) error {
 	if err := metadata.Bootstrap(ctx, conn); err != nil {
-		return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+		return contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	return nil
 }

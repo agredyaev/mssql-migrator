@@ -3,12 +3,46 @@ package app
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
 
 type envState struct {
 	value   string
 	existed bool
+}
+
+var allowedEnvFileKeys = map[string]struct{}{
+	"RM_ENV":                         {},
+	"RM_SQL_ROOT":                    {},
+	"RM_SQL_BASE":                    {},
+	"RM_REPORT_DIR":                  {},
+	"RM_LOG_LEVEL":                   {},
+	"RM_JSON_LOGS":                   {},
+	"RM_PLAN_JSON":                   {},
+	"RM_TIMEOUT":                     {},
+	"RM_SCRIPT_TIMEOUT":              {},
+	"RM_LOCK_TIMEOUT":                {},
+	"RM_PLAN_FILE":                   {},
+	"RM_REPAIR_SCRIPT":               {},
+	"RM_UPDATE_POLICY":               {},
+	"RM_TRANSACTION_MODE":            {},
+	"RM_CONFIRM":                     {},
+	"RM_SKIP_VALIDATE":               {},
+	"RM_DB_SERVER":                   {},
+	"RM_DB_PORT":                     {},
+	"RM_DB_DATABASE":                 {},
+	"RM_DB_AUTH":                     {},
+	"RM_DB_USER":                     {},
+	"RM_DB_PASSWORD":                 {},
+	"RM_DB_ENCRYPT":                  {},
+	"RM_DB_TRUST_SERVER_CERTIFICATE": {},
+	"RM_GIT_COMMIT":                  {},
+	"RM_GIT_BRANCH":                  {},
+	"RM_PIPELINE_RUN_ID":             {},
+	"RM_PIPELINE_URL":                {},
+	"RM_ACTOR":                       {},
+	"RM_ENV_FILE":                    {},
 }
 
 func resolveEnvFilePath(args []string) string {
@@ -97,6 +131,9 @@ func loadEnvironmentFile(path string) (map[string]string, error) {
 		if key == "" {
 			return nil, fmt.Errorf("invalid env file %s line %d: empty key", path, index+1)
 		}
+		if _, ok := allowedEnvFileKeys[key]; !ok {
+			return nil, fmt.Errorf("invalid env file %s line %d: unsupported key %s (allowed: %s)", path, index+1, key, strings.Join(sortedAllowedEnvFileKeys(), ", "))
+		}
 		parsedValue, err := parseEnvironmentValue(strings.TrimSpace(value))
 		if err != nil {
 			return nil, fmt.Errorf("invalid env file %s line %d: %v", path, index+1, err)
@@ -122,4 +159,13 @@ func parseEnvironmentValue(value string) (string, error) {
 		}
 	}
 	return value, nil
+}
+
+func sortedAllowedEnvFileKeys() []string {
+	keys := make([]string, 0, len(allowedEnvFileKeys))
+	for key := range allowedEnvFileKeys {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }

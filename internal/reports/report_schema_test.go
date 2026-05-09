@@ -135,3 +135,24 @@ func TestWritePlanRedactsBlockReasons(t *testing.T) {
 		t.Fatalf("secret leaked in plan report: %s", string(jsonContent))
 	}
 }
+
+func TestWriteFilePairAtomicRemovesPublishedFirstFileOnSecondRenameFailure(t *testing.T) {
+	dir := t.TempDir()
+	firstPath := filepath.Join(dir, "pair.json")
+	secondPath := filepath.Join(dir, "pair.txt")
+	if err := os.MkdirAll(secondPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := writeFilePairAtomic(firstPath, []byte("{}\n"), secondPath, []byte("text\n"))
+	if err == nil {
+		t.Fatal("expected pair write error")
+	}
+	if _, statErr := os.Stat(firstPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected first file cleanup after partial publish, got %v", statErr)
+	}
+	if matches, globErr := filepath.Glob(filepath.Join(dir, "*.tmp-*")); globErr != nil {
+		t.Fatal(globErr)
+	} else if len(matches) != 0 {
+		t.Fatalf("unexpected temp files after failed pair write: %#v", matches)
+	}
+}

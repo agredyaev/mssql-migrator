@@ -83,7 +83,7 @@ func BuildResolved(ctx context.Context, cfg config.Config, successfulByKey map[s
 func resolvePlanningLayout(cfg config.Config) (parser.Layout, string, error) {
 	layout, err := parser.DiscoverLayout(cfg.SelectedBasePath())
 	if err != nil {
-		return parser.Layout{}, "", fmt.Errorf("%w: %v", contracts.ErrInvalidInput, err)
+		return parser.Layout{}, "", contracts.Wrap(contracts.ErrInvalidInput, err)
 	}
 	return layout, parser.HashLayout(layout, false), nil
 }
@@ -95,7 +95,7 @@ func ResolvePlanningLayoutForRunner(cfg config.Config) (parser.Layout, string, e
 func VerifyApprovedPlan(cfg config.Config, current contracts.MigrationPlan) error {
 	p, err := reports.ReadPlan(cfg.PlanFile)
 	if err != nil {
-		return fmt.Errorf("%w: %v", contracts.ErrApprovedPlanMissing, err)
+		return contracts.Wrap(contracts.ErrApprovedPlanMissing, err)
 	}
 	if p.Blocked {
 		return fmt.Errorf("%w: approved plan is blocked", contracts.ErrApprovedPlanMismatch)
@@ -147,7 +147,7 @@ func VerifyApprovedPlan(cfg config.Config, current contracts.MigrationPlan) erro
 		mm = append(mm, "effective_base_path")
 	}
 	if len(mm) > 0 {
-		return fmt.Errorf("%w: %v", contracts.ErrApprovedPlanMismatch, mm)
+		return contracts.Wrap(contracts.ErrApprovedPlanMismatch, fmt.Errorf("%v", mm))
 	}
 	if !reflect.DeepEqual(stableSchemas(p.Schemas), stableSchemas(current.Schemas)) {
 		return fmt.Errorf("%w: schema set does not match current deployment state", contracts.ErrApprovedPlanMismatch)
@@ -322,6 +322,10 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 		_, exists := catalog.Objects[object.NormalizedKey]
 		planned.Exists = exists
 		planned.PlannedAction = determineObjectAction(object, catalog, updatePolicy)
+		if isUnsafeUpdateAction(planned.PlannedAction) && !parser.SupportsExistingObjectUpdate(object) {
+			planned.PlannedAction = contracts.ActionReprocessChangedBlocked
+			plan.BlockReasons = append(plan.BlockReasons, "existing object update requires CREATE OR ALTER: "+object.Path)
+		}
 		metadataMatch := inferMetadataMatch(object, catalog)
 		if metadataMatch != nil {
 			planned.MetadataMatch = metadataMatch
@@ -335,7 +339,9 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 		case contracts.ActionSkipUnchanged:
 			plan.Summary.SkipCount++
 		case contracts.ActionReprocessChangedBlocked:
-			plan.BlockReasons = append(plan.BlockReasons, "existing object changed: "+object.Path)
+			if !containsBlockReason(plan.BlockReasons, "existing object update requires CREATE OR ALTER: "+object.Path) {
+				plan.BlockReasons = append(plan.BlockReasons, "existing object changed: "+object.Path)
+			}
 			plan.Summary.ChangedCount++
 		case contracts.ActionUpdateExistingModule, contracts.ActionUpdateExistingSupported:
 			plan.Summary.ChangedCount++
@@ -346,6 +352,19 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 	sort.Slice(plan.Objects, func(i, j int) bool {
 		return plan.Objects[i].NormalizedKey < plan.Objects[j].NormalizedKey
 	})
+}
+
+func isUnsafeUpdateAction(action string) bool {
+	return action == contracts.ActionUpdateExistingModule || action == contracts.ActionUpdateExistingSupported
+}
+
+func containsBlockReason(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func determineObjectAction(object parser.Object, catalog CatalogState, updatePolicy string) string {

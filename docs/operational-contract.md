@@ -39,11 +39,12 @@ See `README.md` for the CLI wrapper contract.
 - `plan --json` emits machine-readable JSON to stdout and keeps human logs on stderr.
 - SQL Server authentication settings are provided externally. `RM_DB_AUTH=sql` uses `RM_DB_USER` and `RM_DB_PASSWORD`. `RM_DB_AUTH=integrated` uses the current Windows session or an explicit Windows user value passed in `RM_DB_USER`.
 - Optional dotenv loading must be explicitly enabled. When enabled, CLI flags still win over process environment, and process environment still wins over values loaded from the env file.
+- The env file may contain only supported `RM_*` keys for current command inputs. Unknown keys and non-`RM_*` keys fail validation.
 - Repo-driven object execution runs only after approved-plan verification succeeds. Post-migrate validation is limited to the verified managed object scope.
 - `baseline` uses the repo-driven layout, creates missing schemas and objects, adopts existing objects, and requires `--confirm`.
 - `baseline` fails closed on missing metadata DDL permission, missing schema creation permission, missing object DDL permission, checksum drift, or missing parent objects.
-- `repair-checksum` uses one repo object selected by `--script <repo-path-or-normalized-key>` and writes an append-only repair attempt row.
-- `RM_UPDATE_POLICY=all_supported` is accepted, but still behaves like `modules_only` because only module update paths exist.
+- `repair-checksum` uses one repo object selected by `--script <repo-path-or-normalized-key>`, but only when the current plan shows tracked checksum drift for that object. It writes an append-only repair attempt row.
+- Existing module updates are allowed only when the repo SQL starts with the matching `CREATE OR ALTER` statement for that object kind.
 
 ## Nominal Flow
 
@@ -61,7 +62,8 @@ See `README.md` for the CLI wrapper contract.
 - Invalid root or base selection: the command fails before any database work.
 - Invalid repository layout: planning or validation fails before object work.
 - Plan drift: `migrate` checks the approved plan and fails closed if `git_commit`, `layout_hash`, target, tool identity, comparison mode, update policy, transaction mode, rollback scope, base selection, or the approved schema/object set changed.
-- Metadata failure: the run stops instead of reporting success.
+- Unsafe existing-module update SQL: `plan` blocks the object before execution.
+- Metadata failure: the run stops instead of reporting success. Metadata updates also fail closed when the target row is missing or duplicated.
 - Repo-driven migrate execution: current builds execute only the approved repo-driven schema/object set, write migration reports, record `adopt_existing` into metadata, and run managed-scope validation by default unless skipped. Repo-discovered `checks/*.sql` stay outside `migrate` and run only in standalone `validate`.
 - Baseline create path: current builds preflight DDL permissions, create missing repo-managed scope, record attempts into `[__migrator]`, and stop on the first classified failure.
 - Validation failure: the run stops and writes `reports/validation-report.*`.

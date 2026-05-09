@@ -78,17 +78,33 @@ func classify(base error, cause error) string {
 		return "invalid transaction mode"
 	case errors.Is(base, contracts.ErrConnection):
 		return "connection failed"
+	case errors.Is(cause, contracts.ErrConnection):
+		return "connection failed"
 	case errors.Is(base, contracts.ErrLockTimeout):
+		return "lock timeout"
+	case errors.Is(cause, contracts.ErrLockTimeout):
 		return "lock timeout"
 	case errors.Is(base, contracts.ErrValidation):
 		return "validation failure"
+	case errors.Is(cause, contracts.ErrValidation):
+		return "validation failure"
 	case errors.Is(base, contracts.ErrSQLExecution):
+		return "sql execution failure"
+	case errors.Is(cause, contracts.ErrSQLExecution):
 		return "sql execution failure"
 	case errors.Is(base, contracts.ErrCriticalState):
 		return "critical metadata state"
+	case errors.Is(cause, contracts.ErrCriticalState):
+		return "critical metadata state"
 	case strings.Contains(message, "missing required config") || strings.Contains(message, "unknown command") || strings.Contains(message, "confirm flag required") || errors.Is(base, contracts.ErrInvalidInput):
 		return "invalid input"
-	default:
+	case errors.Is(cause, contracts.ErrInvalidInput):
 		return "invalid input"
+	case cause != nil:
+		return "runtime failure"
+	case base != nil:
+		return "runtime failure"
+	default:
+		return "runtime failure"
 	}
 }

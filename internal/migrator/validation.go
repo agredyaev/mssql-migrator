@@ -3,7 +3,6 @@ package migrator
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"time"
 
 	"reporting-db-migrations/internal/config"
@@ -37,10 +36,10 @@ func (r Runner) Validate(ctx context.Context) error {
 	}
 	vr, err := r.validateWithConnection(ctx, conn)
 	if writeErr := reports.WriteValidation(r.cfg.ReportDir, vr); writeErr != nil {
-		return fmt.Errorf("%w: %v", contracts.ErrCriticalState, writeErr)
+		return contracts.Wrap(contracts.ErrCriticalState, writeErr)
 	}
 	if err != nil {
-		return fmt.Errorf("%w: %v", contracts.ErrValidation, err)
+		return contracts.Wrap(contracts.ErrValidation, err)
 	}
 	return nil
 }
@@ -69,7 +68,7 @@ func (r Runner) writeValidationFailureReport(cause error, base error) error {
 	failure := failures.BuildWithCause(r.cfg, "validation_failed", base, cause)
 	vr.Failed = &failure
 	if err := reports.WriteValidation(r.cfg.ReportDir, vr); err != nil {
-		return fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+		return contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	if base == nil {
 		return cause
@@ -77,7 +76,7 @@ func (r Runner) writeValidationFailureReport(cause error, base error) error {
 	if cause == base {
 		return base
 	}
-	return fmt.Errorf("%w: %v", base, cause)
+	return contracts.Wrap(base, cause)
 }
 
 func (r Runner) validateWithConnection(ctx context.Context, conn *sql.Conn) (contracts.ValidationReport, error) {

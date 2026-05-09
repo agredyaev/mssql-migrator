@@ -16,11 +16,15 @@ func WritePlan(dir string, plan contracts.MigrationPlan) error {
 		return err
 	}
 	plan = redactPlan(plan)
-	if err := writeJSONAtomic(filepath.Join(dir, "migration-plan.json"), plan); err != nil {
+	jsonContent, err := marshalJSON(plan)
+	if err != nil {
 		return err
 	}
 	text := formatPlanText(plan)
-	return writeTextAtomic(filepath.Join(dir, "migration-plan.txt"), text)
+	return writeFilePairAtomic(
+		filepath.Join(dir, "migration-plan.json"), jsonContent,
+		filepath.Join(dir, "migration-plan.txt"), []byte(text),
+	)
 }
 
 func WriteMigration(dir string, report contracts.MigrationReport) error {
@@ -28,7 +32,8 @@ func WriteMigration(dir string, report contracts.MigrationReport) error {
 		return err
 	}
 	report = redactMigrationReport(report)
-	if err := writeJSONAtomic(filepath.Join(dir, "migration-report.json"), report); err != nil {
+	jsonContent, err := marshalJSON(report)
+	if err != nil {
 		return err
 	}
 	failure := ""
@@ -36,7 +41,10 @@ func WriteMigration(dir string, report contracts.MigrationReport) error {
 		failure = report.Failed.Error
 	}
 	text := formatMigrationText(report, failure)
-	return writeTextAtomic(filepath.Join(dir, "migration-report.txt"), text)
+	return writeFilePairAtomic(
+		filepath.Join(dir, "migration-report.json"), jsonContent,
+		filepath.Join(dir, "migration-report.txt"), []byte(text),
+	)
 }
 
 func WriteValidation(dir string, report contracts.ValidationReport) error {
@@ -44,7 +52,8 @@ func WriteValidation(dir string, report contracts.ValidationReport) error {
 		return err
 	}
 	report = redactValidationReport(report)
-	if err := writeJSONAtomic(filepath.Join(dir, "validation-report.json"), report); err != nil {
+	jsonContent, err := marshalJSON(report)
+	if err != nil {
 		return err
 	}
 	failure := ""
@@ -52,7 +61,10 @@ func WriteValidation(dir string, report contracts.ValidationReport) error {
 		failure = report.Failed.Error
 	}
 	text := formatValidationText(report, failure)
-	return writeTextAtomic(filepath.Join(dir, "validation-report.txt"), text)
+	return writeFilePairAtomic(
+		filepath.Join(dir, "validation-report.json"), jsonContent,
+		filepath.Join(dir, "validation-report.txt"), []byte(text),
+	)
 }
 
 func ReadPlan(path string) (contracts.MigrationPlan, error) {
@@ -68,12 +80,19 @@ func ReadPlan(path string) (contracts.MigrationPlan, error) {
 }
 
 func writeJSONAtomic(path string, value any) error {
-	b, err := json.MarshalIndent(value, "", "  ")
+	b, err := marshalJSON(value)
 	if err != nil {
 		return err
 	}
-	b = append(b, '\n')
 	return writeFileAtomic(path, b)
+}
+
+func marshalJSON(value any) ([]byte, error) {
+	b, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
 }
 
 func writeTextAtomic(path string, value string) error {
@@ -81,18 +100,8 @@ func writeTextAtomic(path string, value string) error {
 }
 
 func writeFileAtomic(path string, content []byte) error {
-	tmpFile, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	tmp, err := writeTempFile(path, content)
 	if err != nil {
-		return err
-	}
-	tmp := tmpFile.Name()
-	if _, err := tmpFile.Write(content); err != nil {
-		_ = tmpFile.Close()
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := tmpFile.Close(); err != nil {
-		_ = os.Remove(tmp)
 		return err
 	}
 	if err := os.Rename(tmp, path); err != nil {
@@ -100,6 +109,47 @@ func writeFileAtomic(path string, content []byte) error {
 		return err
 	}
 	return nil
+}
+
+func writeFilePairAtomic(firstPath string, firstContent []byte, secondPath string, secondContent []byte) error {
+	firstTemp, err := writeTempFile(firstPath, firstContent)
+	if err != nil {
+		return err
+	}
+	secondTemp, err := writeTempFile(secondPath, secondContent)
+	if err != nil {
+		_ = os.Remove(firstTemp)
+		return err
+	}
+	if err := os.Rename(firstTemp, firstPath); err != nil {
+		_ = os.Remove(firstTemp)
+		_ = os.Remove(secondTemp)
+		return err
+	}
+	if err := os.Rename(secondTemp, secondPath); err != nil {
+		_ = os.Remove(secondTemp)
+		_ = os.Remove(firstPath)
+		return err
+	}
+	return nil
+}
+
+func writeTempFile(path string, content []byte) (string, error) {
+	tmpFile, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return "", err
+	}
+	tmp := tmpFile.Name()
+	if _, err := tmpFile.Write(content); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	if err := tmpFile.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	return tmp, nil
 }
 
 func redactPlan(plan contracts.MigrationPlan) contracts.MigrationPlan {

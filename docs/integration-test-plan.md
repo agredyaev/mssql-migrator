@@ -33,7 +33,8 @@ See `README.md` for the CLI wrapper contract.
 - Use `--env pred` for this suite so plan and report artifacts are marked as pre-production runs.
 - Repo-driven `migrate` execution is expected to create missing schemas, apply the approved repo object set, record `adopt_existing` metadata rows, and validate the managed object scope.
 - Repo-driven `baseline` is expected to create missing repo-managed schemas and objects, adopt already existing objects, and fail closed on checksum drift or missing DDL permission.
-- Repo-driven `repair-checksum` is expected to resolve one object by repo path or normalized key and append a `repair_checksum` attempt row.
+- Existing module updates are expected to run only when the repo SQL starts with the matching `CREATE OR ALTER` statement for that object kind.
+- Repo-driven `repair-checksum` is expected to resolve one object by repo path or normalized key only when the current plan shows tracked checksum drift for that object, then append a `repair_checksum` attempt row.
 - This build persists run state in `[__migrator].migration_runs`, `[__migrator].tracked_schemas`, `[__migrator].tracked_objects`, `[__migrator].schema_migrations`, and `[__migrator].v_migration_state`.
 - This build is expected to keep `[__migrator].schema_version` at the current checked-in metadata schema version.
 
@@ -50,8 +51,10 @@ See `README.md` for the CLI wrapper contract.
 9. Run `baseline` against an empty or partial disposable database and confirm missing repo-managed schemas and objects are created, existing objects are adopted, and run state is written into `[__migrator]`.
 10. Remove required DDL permission for a controlled test principal and confirm `baseline` fails with a permission-specific error before or during create work.
 11. Repair a stored checksum for an already applied repo-managed object and confirm a new `repair_checksum` attempt row is written.
-12. Verify `[__migrator].schema_version` contains the expected current version row.
-13. Interrupt a report-writing step in a controlled run and confirm the final report path is never left as a partial file.
+12. Try `repair-checksum` for an unchanged or untracked object and confirm the command fails closed before metadata mutation.
+13. Verify `[__migrator].schema_version` contains the expected current version row.
+14. Interrupt a report-writing step in a controlled run and confirm the final report path is never left as a partial file.
+15. Run `plan` for a changed existing module without `CREATE OR ALTER` and confirm the plan is blocked before `migrate`.
 
 ## Off-Nominal Behavior And Failure Containment
 

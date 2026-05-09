@@ -147,6 +147,18 @@ func TestNormalizeTrackedNameRemovesSQLSuffixForRepoObjects(t *testing.T) {
 	}
 }
 
+func TestSupportsExistingObjectUpdateRequiresCreateOrAlter(t *testing.T) {
+	if !SupportsExistingObjectUpdate(Object{Kind: "views", Content: "CREATE OR ALTER VIEW reporting.monthly AS SELECT 1;"}) {
+		t.Fatal("expected CREATE OR ALTER VIEW to support existing object update")
+	}
+	if SupportsExistingObjectUpdate(Object{Kind: "views", Content: "CREATE VIEW reporting.monthly AS SELECT 1;"}) {
+		t.Fatal("expected plain CREATE VIEW to be blocked for existing object update")
+	}
+	if !SupportsExistingObjectUpdate(Object{Kind: "procedures", Content: "CREATE OR ALTER PROC reporting.refresh AS SELECT 1;"}) {
+		t.Fatal("expected CREATE OR ALTER PROC to support existing object update")
+	}
+}
+
 func writeLayoutFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

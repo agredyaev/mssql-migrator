@@ -21,7 +21,7 @@ func TestBootstrapExecutesAllStatements(t *testing.T) {
 	}
 
 	state := metadataTestStateForConn(t, conn)
-	if got, want := len(state.execs), len(bootstrapStatements()); got != want {
+	if got, want := len(state.execs), len(bootstrapStatements())+len(bootstrapUpgradeStatements()); got != want {
 		t.Fatalf("Bootstrap() executed %d statements, want %d", got, want)
 	}
 	if !strings.Contains(state.execs[0], "CREATE SCHEMA __migrator") {
@@ -30,30 +30,31 @@ func TestBootstrapExecutesAllStatements(t *testing.T) {
 	if !containsExec(state.execs, "CREATE TABLE __migrator.schema_version") {
 		t.Fatalf("expected bootstrap to create schema_version table, got %#v", state.execs)
 	}
-	if !strings.Contains(state.execs[len(state.execs)-1], "CREATE OR ALTER VIEW __migrator.v_migration_state") {
+	if !strings.Contains(state.execs[len(state.execs)-1], "CREATE VIEW __migrator.v_migration_state") {
 		t.Fatalf("last bootstrap statement = %q", state.execs[len(state.execs)-1])
 	}
 }
 
-func TestBootstrapCompatibleExistingMetadataShapeRemainsIdempotent(t *testing.T) {
-	statements := bootstrapStatements()
+func TestBootstrapCurrentMetadataDoesNotRewriteObjects(t *testing.T) {
 	conn := openMetadataTestConn(t, &metadataTestScenario{
-		execErrAt: map[int]error{},
+		objectExists: map[string]bool{
+			keyForArgs("__migrator.schema_version", "U"):     true,
+			keyForArgs("__migrator.migration_runs", "U"):     true,
+			keyForArgs("__migrator.tracked_schemas", "U"):    true,
+			keyForArgs("__migrator.tracked_objects", "U"):    true,
+			keyForArgs("__migrator.schema_migrations", "U"):  true,
+			keyForArgs("__migrator.v_migration_state", "V"): true,
+		},
 	})
 	defer conn.Close()
 
-	for range 2 {
-		if err := Bootstrap(context.Background(), conn); err != nil {
-			t.Fatalf("Bootstrap() error = %v", err)
-		}
+	if err := Bootstrap(context.Background(), conn); err != nil {
+		t.Fatalf("Bootstrap() error = %v", err)
 	}
 
 	state := metadataTestStateForConn(t, conn)
-	if got, want := len(state.execs), len(statements)*2; got != want {
-		t.Fatalf("Bootstrap() executed %d statements, want %d after repeated run", got, want)
-	}
-	if state.execs[len(statements)] != statements[0] {
-		t.Fatalf("second bootstrap run did not restart statement sequence")
+	if got := len(state.execs); got != 0 {
+		t.Fatalf("Bootstrap() executed %d statements for current metadata, want 0", got)
 	}
 }
 
@@ -91,6 +92,9 @@ func TestBootstrapClassifiesIncompatibleMetadataShape(t *testing.T) {
 
 func TestBootstrapFailsWhenSchemaVersionIsNewer(t *testing.T) {
 	conn := openMetadataTestConn(t, &metadataTestScenario{
+		objectExists: map[string]bool{
+			keyForArgs("__migrator.schema_version", "U"): true,
+		},
 		queryResponses: map[string]metadataTestRows{
 			`SELECT MAX(version) FROM __migrator.schema_version`: {
 				columns: []string{""},
@@ -105,6 +109,31 @@ func TestBootstrapFailsWhenSchemaVersionIsNewer(t *testing.T) {
 	}
 	if !errors.Is(err, ErrSchemaIncompatible) {
 		t.Fatalf("expected ErrSchemaIncompatible, got %v", err)
+	}
+	state := metadataTestStateForConn(t, conn)
+	if got := len(state.execs); got != 0 {
+		t.Fatalf("expected no bootstrap DDL before version failure, got %d statements", got)
+	}
+}
+
+func TestFinishRunRejectsZeroRowsAffected(t *testing.T) {
+	err := FinishRun(context.Background(), stubMetadataExecer{result: stubMetadataResult{rows: 0}}, "run-1", true, "", "")
+	if err == nil || !strings.Contains(err.Error(), "expected 1 row affected") {
+		t.Fatalf("expected rows affected failure, got %v", err)
+	}
+}
+
+func TestUpdateTrackedSchemaResultRejectsZeroRowsAffected(t *testing.T) {
+	err := UpdateTrackedSchemaResult(context.Background(), stubMetadataExecer{result: stubMetadataResult{rows: 0}}, "run-1", "reporting", true, "")
+	if err == nil || !strings.Contains(err.Error(), "expected 1 row affected") {
+		t.Fatalf("expected rows affected failure, got %v", err)
+	}
+}
+
+func TestUpdateTrackedObjectResultRejectsMultipleRowsAffected(t *testing.T) {
+	err := UpdateTrackedObjectResult(context.Background(), stubMetadataExecer{result: stubMetadataResult{rows: 2}}, "run-1", "reporting/views/monthly", true, "")
+	if err == nil || !strings.Contains(err.Error(), "expected 1 row affected") {
+		t.Fatalf("expected rows affected failure, got %v", err)
 	}
 }
 
@@ -204,6 +233,7 @@ ORDER BY m.applied_at ASC, m.id ASC`
 
 type metadataTestScenario struct {
 	execErrAt      map[int]error
+	objectExists   map[string]bool
 	queryResponses map[string]metadataTestRows
 }
 
@@ -286,6 +316,20 @@ func (c *metadataTestConn) QueryContext(_ context.Context, query string, args []
 	defer c.state.mu.Unlock()
 	c.state.queries = append(c.state.queries, query)
 	c.state.queryArgs = append(c.state.queryArgs, cloneNamedValues(args))
+	if query == objectExistsQuery {
+		if response, ok := c.state.scenario.queryResponses[query]; ok {
+			rows := response.rows
+			if len(response.rowsByArgs) > 0 {
+				rows = response.rowsByArgs[keyForNamedValues(args)]
+			}
+			return &metadataTestRowsResult{columns: response.columns, rows: rows}, nil
+		}
+		exists := int64(0)
+		if c.state.scenario.objectExists != nil && c.state.scenario.objectExists[keyForNamedValues(args)] {
+			exists = 1
+		}
+		return &metadataTestRowsResult{columns: []string{"exists"}, rows: [][]driver.Value{{exists}}}, nil
+	}
 	response, ok := c.state.scenario.queryResponses[query]
 	if !ok {
 		if query == schemaVersionQuery {
@@ -299,6 +343,26 @@ func (c *metadataTestConn) QueryContext(_ context.Context, query string, args []
 	}
 	return &metadataTestRowsResult{columns: response.columns, rows: rows}, nil
 }
+
+type stubMetadataExecer struct {
+	result sql.Result
+	err    error
+}
+
+func (s stubMetadataExecer) ExecContext(context.Context, string, ...any) (sql.Result, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.result, nil
+}
+
+type stubMetadataResult struct {
+	rows int64
+}
+
+func (s stubMetadataResult) LastInsertId() (int64, error) { return 0, nil }
+
+func (s stubMetadataResult) RowsAffected() (int64, error) { return s.rows, nil }
 
 func (r *metadataTestRowsResult) Columns() []string {
 	return r.columns

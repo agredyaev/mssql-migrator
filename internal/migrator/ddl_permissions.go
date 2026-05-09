@@ -45,7 +45,7 @@ func verifyBaselineCreatePermissions(ctx context.Context, conn *sql.Conn, plan c
 		}
 		allowed, err := hasCreateSchemaPermission(ctx, conn)
 		if err != nil {
-			return fmt.Errorf("%w: permission preflight for schema %s: %v", contracts.ErrCriticalState, schema.SchemaName, err)
+			return contracts.Wrap(contracts.ErrCriticalState, fmt.Errorf("permission preflight for schema %s: %w", schema.SchemaName, err))
 		}
 		if !allowed {
 			return &baselinePreflightFailure{base: contracts.ErrSQLExecution, class: "missing schema creation permission", schemaName: schema.SchemaName}
@@ -74,7 +74,7 @@ func verifyBaselineCreatePermissions(ctx context.Context, conn *sql.Conn, plan c
 		if object.ParentName != "" {
 			parentExists, err := databaseObjectExists(ctx, conn, object.SchemaName, object.ParentName)
 			if err != nil {
-				return fmt.Errorf("%w: permission preflight for parent %s.%s: %v", contracts.ErrCriticalState, object.SchemaName, object.ParentName, err)
+				return contracts.Wrap(contracts.ErrCriticalState, fmt.Errorf("permission preflight for parent %s.%s: %w", object.SchemaName, object.ParentName, err))
 			}
 			if !parentExists && !baselineParentPlanned(plannedByKey, object) {
 				return &baselinePreflightFailure{base: contracts.ErrSQLExecution, class: "missing parent object", object: object}
@@ -82,7 +82,7 @@ func verifyBaselineCreatePermissions(ctx context.Context, conn *sql.Conn, plan c
 			if parentExists {
 				allowed, err := hasObjectAlterPermission(ctx, conn, object.SchemaName, object.ParentName)
 				if err != nil {
-					return fmt.Errorf("%w: permission preflight for parent %s.%s: %v", contracts.ErrCriticalState, object.SchemaName, object.ParentName, err)
+					return contracts.Wrap(contracts.ErrCriticalState, fmt.Errorf("permission preflight for parent %s.%s: %w", object.SchemaName, object.ParentName, err))
 				}
 				if !allowed {
 					return &baselinePreflightFailure{base: contracts.ErrSQLExecution, class: "missing object DDL permission", object: object}
@@ -97,7 +97,7 @@ func verifyBaselineCreatePermissions(ctx context.Context, conn *sql.Conn, plan c
 		if permission := requiredDatabaseCreatePermission(object.Kind); permission != "" {
 			allowed, err := hasDatabasePermission(ctx, conn, permission)
 			if err != nil {
-				return fmt.Errorf("%w: permission preflight for %s on %s: %v", contracts.ErrCriticalState, permission, object.Path, err)
+				return contracts.Wrap(contracts.ErrCriticalState, fmt.Errorf("permission preflight for %s on %s: %w", permission, object.Path, err))
 			}
 			if !allowed {
 				return &baselinePreflightFailure{base: contracts.ErrSQLExecution, class: "missing object DDL permission", object: object}
@@ -105,7 +105,7 @@ func verifyBaselineCreatePermissions(ctx context.Context, conn *sql.Conn, plan c
 		}
 		allowed, err := hasSchemaAlterPermission(ctx, conn, object.SchemaName)
 		if err != nil {
-			return fmt.Errorf("%w: permission preflight for schema %s: %v", contracts.ErrCriticalState, object.SchemaName, err)
+			return contracts.Wrap(contracts.ErrCriticalState, fmt.Errorf("permission preflight for schema %s: %w", object.SchemaName, err))
 		}
 		if !allowed {
 			return &baselinePreflightFailure{base: contracts.ErrSQLExecution, class: "missing object DDL permission", object: object}
@@ -192,22 +192,22 @@ SELECT CASE WHEN EXISTS (
 
 func classifySchemaExecutionError(schemaName string, err error) error {
 	if isPermissionDeniedError(err) {
-		return fmt.Errorf("%w: missing schema creation permission for %s: %v", contracts.ErrSQLExecution, schemaName, err)
+		return contracts.Wrap(contracts.ErrSQLExecution, fmt.Errorf("missing schema creation permission for %s: %w", schemaName, err))
 	}
-	return fmt.Errorf("%w: create schema %s: %v", contracts.ErrSQLExecution, schemaName, err)
+	return contracts.Wrap(contracts.ErrSQLExecution, fmt.Errorf("create schema %s: %w", schemaName, err))
 }
 
 func classifyObjectExecutionError(object parser.Object, planned contracts.PlannedObject, err error) error {
 	if planned.PlannedAction == contracts.ActionCreateObject && looksLikeMissingParentError(err) {
-		return fmt.Errorf("%w: missing parent object for %s: %v", contracts.ErrSQLExecution, object.Path, err)
+		return contracts.Wrap(contracts.ErrSQLExecution, fmt.Errorf("missing parent object for %s: %w", object.Path, err))
 	}
 	if isPermissionDeniedError(err) {
-		return fmt.Errorf("%w: missing object DDL permission for %s: %v", contracts.ErrSQLExecution, object.Path, err)
+		return contracts.Wrap(contracts.ErrSQLExecution, fmt.Errorf("missing object DDL permission for %s: %w", object.Path, err))
 	}
 	if planned.PlannedAction == contracts.ActionCreateObject {
-		return fmt.Errorf("%w: create object %s: %v", contracts.ErrSQLExecution, object.Path, err)
+		return contracts.Wrap(contracts.ErrSQLExecution, fmt.Errorf("create object %s: %w", object.Path, err))
 	}
-	return fmt.Errorf("%w: %v", contracts.ErrSQLExecution, err)
+	return contracts.Wrap(contracts.ErrSQLExecution, err)
 }
 
 func isPermissionDeniedError(err error) bool {

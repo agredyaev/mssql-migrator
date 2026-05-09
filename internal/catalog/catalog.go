@@ -3,7 +3,6 @@ package catalog
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 
 	"reporting-db-migrations/internal/contracts"
@@ -49,25 +48,25 @@ func Read(ctx context.Context, conn *sql.Conn) (State, error) {
 	}
 	schemaRows, err := conn.QueryContext(ctx, `SELECT name FROM sys.schemas WHERE name NOT IN ('sys', 'INFORMATION_SCHEMA') ORDER BY name`)
 	if err != nil {
-		return State{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+		return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	for schemaRows.Next() {
 		var schemaName string
 		if err := schemaRows.Scan(&schemaName); err != nil {
 			schemaRows.Close()
-			return State{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+			return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
 		}
 		state.Schemas[strings.ToLower(schemaName)] = struct{}{}
 	}
 	if err := schemaRows.Err(); err != nil {
 		schemaRows.Close()
-		return State{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+		return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	schemaRows.Close()
 
 	rows, err := conn.QueryContext(ctx, StateQuery)
 	if err != nil {
-		return State{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+		return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -76,7 +75,7 @@ func Read(ctx context.Context, conn *sql.Conn) (State, error) {
 		var objectName string
 		var parentName string
 		if err := rows.Scan(&schemaName, &typeDesc, &objectName, &parentName); err != nil {
-			return State{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+			return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
 		}
 		kind := MapTypeDescToKind(typeDesc)
 		if kind == "" {
@@ -90,7 +89,7 @@ func Read(ctx context.Context, conn *sql.Conn) (State, error) {
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return State{}, fmt.Errorf("%w: %v", contracts.ErrCriticalState, err)
+		return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	return state, nil
 }

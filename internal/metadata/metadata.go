@@ -110,7 +110,28 @@ type AttemptRecord struct {
 }
 
 func Bootstrap(ctx context.Context, conn *sql.Conn) error {
+	schemaVersionExists, err := objectExists(ctx, conn, "__migrator.schema_version", "U")
+	if err != nil {
+		return classifyBootstrapError(err)
+	}
+	if schemaVersionExists {
+		if err := verifySchemaVersion(ctx, conn); err != nil {
+			return err
+		}
+	}
+	bootstrapRequired, err := shouldBootstrap(ctx, conn)
+	if err != nil {
+		return classifyBootstrapError(err)
+	}
+	if !bootstrapRequired {
+		return nil
+	}
 	for _, statement := range bootstrapStatements() {
+		if _, err := conn.ExecContext(ctx, statement); err != nil {
+			return classifyBootstrapError(err)
+		}
+	}
+	for _, statement := range bootstrapUpgradeStatements() {
 		if _, err := conn.ExecContext(ctx, statement); err != nil {
 			return classifyBootstrapError(err)
 		}
@@ -215,14 +236,17 @@ VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p1
 }
 
 func FinishRun(ctx context.Context, execer Execer, runID string, success bool, errorClass string, errorMessage string) error {
-	_, err := execer.ExecContext(ctx, `
+	result, err := execer.ExecContext(ctx, `
 UPDATE __migrator.migration_runs
 SET finished_at = SYSUTCDATETIME(),
     success = @p2,
     error_class = @p3,
     error_message = @p4
 WHERE run_id = @p1`, runID, success, nullable(errorClass), nullable(errorMessage))
-	return err
+	if err != nil {
+		return err
+	}
+	return requireSingleRow(result, "finish migration run")
 }
 
 func InsertTrackedSchema(ctx context.Context, execer Execer, record TrackedSchemaRecord) error {
@@ -272,21 +296,27 @@ VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p1
 }
 
 func UpdateTrackedSchemaResult(ctx context.Context, execer Execer, runID string, normalizedSchemaName string, success bool, errorMessage string) error {
-	_, err := execer.ExecContext(ctx, `
+	result, err := execer.ExecContext(ctx, `
 UPDATE __migrator.tracked_schemas
 SET success = @p3,
     error_message = @p4
 WHERE run_id = @p1 AND normalized_schema_name = @p2`, runID, normalizedSchemaName, success, nullable(errorMessage))
-	return err
+	if err != nil {
+		return err
+	}
+	return requireSingleRow(result, "update tracked schema result")
 }
 
 func UpdateTrackedObjectResult(ctx context.Context, execer Execer, runID string, normalizedKey string, success bool, errorMessage string) error {
-	_, err := execer.ExecContext(ctx, `
+	result, err := execer.ExecContext(ctx, `
 UPDATE __migrator.tracked_objects
 SET success = @p3,
     error_message = @p4
 WHERE run_id = @p1 AND normalized_key = @p2`, runID, normalizedKey, success, nullable(errorMessage))
-	return err
+	if err != nil {
+		return err
+	}
+	return requireSingleRow(result, "update tracked object result")
 }
 
 func InsertAttempt(ctx context.Context, execer Execer, record AttemptRecord) error {
@@ -326,24 +356,48 @@ func objectExists(ctx context.Context, conn *sql.Conn, name string, objectType s
 	return exists == 1, nil
 }
 
+func shouldBootstrap(ctx context.Context, conn *sql.Conn) (bool, error) {
+	requiredObjects := []struct {
+		name       string
+		objectType string
+	}{
+		{name: "__migrator.schema_version", objectType: "U"},
+		{name: "__migrator.migration_runs", objectType: "U"},
+		{name: "__migrator.tracked_schemas", objectType: "U"},
+		{name: "__migrator.tracked_objects", objectType: "U"},
+		{name: "__migrator.schema_migrations", objectType: "U"},
+		{name: "__migrator.v_migration_state", objectType: "V"},
+	}
+	for _, item := range requiredObjects {
+		exists, err := objectExists(ctx, conn, item.name, item.objectType)
+		if err != nil {
+			return false, err
+		}
+		if !exists {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func classifyBootstrapError(err error) error {
 	if err == nil {
 		return nil
 	}
 	lower := strings.ToLower(err.Error())
 	if strings.Contains(lower, "permission") || strings.Contains(lower, "denied") || strings.Contains(lower, "not authorized") {
-		return fmt.Errorf("%w: %v", ErrMissingDDLPermission, err)
+		return contracts.Wrap(ErrMissingDDLPermission, err)
 	}
-	return fmt.Errorf("%w: %v", ErrSchemaIncompatible, err)
+	return contracts.Wrap(ErrSchemaIncompatible, err)
 }
 
 func verifySchemaVersion(ctx context.Context, conn *sql.Conn) error {
 	var maxVersion sql.NullInt64
 	if err := conn.QueryRowContext(ctx, `SELECT MAX(version) FROM __migrator.schema_version`).Scan(&maxVersion); err != nil {
-		return fmt.Errorf("%w: %v", ErrSchemaIncompatible, err)
+		return contracts.Wrap(ErrSchemaIncompatible, err)
 	}
 	if maxVersion.Valid && maxVersion.Int64 > metadataSchemaVersion {
-		return fmt.Errorf("%w: metadata schema version %d is newer than supported version %d", ErrSchemaIncompatible, maxVersion.Int64, metadataSchemaVersion)
+		return contracts.Wrap(ErrSchemaIncompatible, fmt.Errorf("metadata schema version %d is newer than supported version %d", maxVersion.Int64, metadataSchemaVersion))
 	}
 	return nil
 }
@@ -471,16 +525,6 @@ END`,
 BEGIN
     ALTER TABLE __migrator.schema_migrations ALTER COLUMN script_type NVARCHAR(64) NOT NULL
 END`,
-		fmt.Sprintf(`UPDATE __migrator.schema_migrations
-SET script_type = '%s'
-WHERE script_type NOT IN ('%s', '%s', '%s', '%s', '%s')`, contracts.ScriptTypeObject, contracts.ScriptTypeSchema, contracts.ScriptTypeObject, contracts.ScriptTypeValidate, contracts.ScriptTypeBaseline, contracts.ScriptTypeRepair),
-		fmt.Sprintf(`UPDATE __migrator.schema_migrations
-SET action = CASE WHEN success = 1 THEN '%s' ELSE '%s' END
-WHERE action IS NULL`, contracts.ActionCreateObject, contracts.ActionFail),
-		`IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_migration_runs_base' AND object_id = OBJECT_ID('__migrator.migration_runs')) DROP INDEX IX_migration_runs_base ON __migrator.migration_runs`,
-		`CREATE INDEX IX_migration_runs_base ON __migrator.migration_runs (base_name, started_at DESC)`,
-		`IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_migration_runs_pipeline' AND object_id = OBJECT_ID('__migrator.migration_runs')) DROP INDEX IX_migration_runs_pipeline ON __migrator.migration_runs`,
-		`CREATE INDEX IX_migration_runs_pipeline ON __migrator.migration_runs (pipeline_run_id) WHERE pipeline_run_id IS NOT NULL`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_tracked_schemas_run' AND parent_object_id = OBJECT_ID('__migrator.tracked_schemas'))
 ALTER TABLE __migrator.tracked_schemas ADD CONSTRAINT FK_tracked_schemas_run FOREIGN KEY (run_id) REFERENCES __migrator.migration_runs(run_id)`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_tracked_objects_run' AND parent_object_id = OBJECT_ID('__migrator.tracked_objects'))
@@ -501,16 +545,10 @@ ALTER TABLE __migrator.migration_runs WITH CHECK ADD CONSTRAINT CK_migration_run
 ALTER TABLE __migrator.migration_runs WITH CHECK ADD CONSTRAINT CK_migration_runs_rollback_scope CHECK (rollback_scope IS NULL OR rollback_scope IN ('script', 'none'))`,
 		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_tracked_schemas_action' AND parent_object_id = OBJECT_ID('__migrator.tracked_schemas'))
 ALTER TABLE __migrator.tracked_schemas WITH CHECK ADD CONSTRAINT CK_tracked_schemas_action CHECK (action IN ('discovered', '%s', '%s', '%s', '%s'))`, contracts.SchemaActionExists, contracts.SchemaActionCreateSchema, contracts.ActionSkipUnchanged, contracts.ActionFail),
-		`IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_tracked_schemas_run_schema' AND object_id = OBJECT_ID('__migrator.tracked_schemas')) DROP INDEX UX_tracked_schemas_run_schema ON __migrator.tracked_schemas`,
-		`CREATE UNIQUE INDEX UX_tracked_schemas_run_schema ON __migrator.tracked_schemas (run_id, normalized_schema_name)`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_tracked_objects_kind' AND parent_object_id = OBJECT_ID('__migrator.tracked_objects'))
 ALTER TABLE __migrator.tracked_objects WITH CHECK ADD CONSTRAINT CK_tracked_objects_kind CHECK (kind IN ('tables', 'views', 'procedures', 'functions', 'triggers', 'indexes', 'types', 'sequences', 'synonyms'))`,
 		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_tracked_objects_planned_action' AND parent_object_id = OBJECT_ID('__migrator.tracked_objects'))
 ALTER TABLE __migrator.tracked_objects WITH CHECK ADD CONSTRAINT CK_tracked_objects_planned_action CHECK (planned_action IN ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s'))`, contracts.ActionCreateObject, contracts.ActionAdoptExisting, contracts.ActionSkipUnchanged, contracts.ActionReprocessChanged, contracts.ActionReprocessChangedBlocked, contracts.ActionUpdateExistingModule, contracts.ActionUpdateExistingSupported, contracts.ActionValidateChecked, contracts.ActionValidateSkipped, contracts.ActionFail),
-		`IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_tracked_objects_run_key' AND object_id = OBJECT_ID('__migrator.tracked_objects')) DROP INDEX UX_tracked_objects_run_key ON __migrator.tracked_objects`,
-		`CREATE UNIQUE INDEX UX_tracked_objects_run_key ON __migrator.tracked_objects (run_id, normalized_key)`,
-		`IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_tracked_objects_key' AND object_id = OBJECT_ID('__migrator.tracked_objects')) DROP INDEX IX_tracked_objects_key ON __migrator.tracked_objects`,
-		`CREATE INDEX IX_tracked_objects_key ON __migrator.tracked_objects (normalized_key, discovered_at DESC)`,
 		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_schema_migrations_script_type' AND parent_object_id = OBJECT_ID('__migrator.schema_migrations'))
 ALTER TABLE __migrator.schema_migrations WITH CHECK ADD CONSTRAINT CK_schema_migrations_script_type CHECK (script_type IN ('%s', '%s', '%s', '%s', '%s'))`, contracts.ScriptTypeSchema, contracts.ScriptTypeObject, contracts.ScriptTypeValidate, contracts.ScriptTypeBaseline, contracts.ScriptTypeRepair),
 		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_schema_migrations_action' AND parent_object_id = OBJECT_ID('__migrator.schema_migrations'))
@@ -521,15 +559,36 @@ ALTER TABLE __migrator.schema_migrations WITH CHECK ADD CONSTRAINT CK_schema_mig
 ALTER TABLE __migrator.schema_migrations WITH CHECK ADD CONSTRAINT CK_schema_migrations_transaction_scope CHECK (transaction_scope IS NULL OR transaction_scope IN ('script', 'none'))`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_schema_migrations_rollback_scope' AND parent_object_id = OBJECT_ID('__migrator.schema_migrations'))
 ALTER TABLE __migrator.schema_migrations WITH CHECK ADD CONSTRAINT CK_schema_migrations_rollback_scope CHECK (rollback_scope IS NULL OR rollback_scope IN ('script', 'none'))`,
-		`IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_schema_migrations_script_name' AND object_id = OBJECT_ID('__migrator.schema_migrations')) DROP INDEX IX_schema_migrations_script_name ON __migrator.schema_migrations`,
-		`CREATE INDEX IX_schema_migrations_script_name ON __migrator.schema_migrations (script_name)`,
-		`IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_schema_migrations_success' AND object_id = OBJECT_ID('__migrator.schema_migrations')) DROP INDEX IX_schema_migrations_success ON __migrator.schema_migrations`,
-		`CREATE INDEX IX_schema_migrations_success ON __migrator.schema_migrations (success, applied_at, id)`,
-		`IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_schema_migrations_run_id' AND object_id = OBJECT_ID('__migrator.schema_migrations')) DROP INDEX IX_schema_migrations_run_id ON __migrator.schema_migrations`,
-		`CREATE INDEX IX_schema_migrations_run_id ON __migrator.schema_migrations (run_id, id) WHERE run_id IS NOT NULL`,
-		`IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_schema_migrations_tracked_object' AND object_id = OBJECT_ID('__migrator.schema_migrations')) DROP INDEX IX_schema_migrations_tracked_object ON __migrator.schema_migrations`,
-		`CREATE INDEX IX_schema_migrations_tracked_object ON __migrator.schema_migrations (tracked_object_id, success, applied_at DESC, id DESC) WHERE tracked_object_id IS NOT NULL`,
-		`CREATE OR ALTER VIEW __migrator.v_migration_state AS
+	}
+}
+
+func bootstrapUpgradeStatements() []string {
+	return []string{
+		fmt.Sprintf(`UPDATE __migrator.schema_migrations
+SET script_type = '%s'
+WHERE script_type NOT IN ('%s', '%s', '%s', '%s', '%s')`, contracts.ScriptTypeObject, contracts.ScriptTypeSchema, contracts.ScriptTypeObject, contracts.ScriptTypeValidate, contracts.ScriptTypeBaseline, contracts.ScriptTypeRepair),
+		fmt.Sprintf(`UPDATE __migrator.schema_migrations
+SET action = CASE WHEN success = 1 THEN '%s' ELSE '%s' END
+WHERE action IS NULL`, contracts.ActionCreateObject, contracts.ActionFail),
+		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_migration_runs_base' AND object_id = OBJECT_ID('__migrator.migration_runs'))
+CREATE INDEX IX_migration_runs_base ON __migrator.migration_runs (base_name, started_at DESC)`,
+		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_migration_runs_pipeline' AND object_id = OBJECT_ID('__migrator.migration_runs'))
+CREATE INDEX IX_migration_runs_pipeline ON __migrator.migration_runs (pipeline_run_id) WHERE pipeline_run_id IS NOT NULL`,
+		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_tracked_schemas_run_schema' AND object_id = OBJECT_ID('__migrator.tracked_schemas'))
+CREATE UNIQUE INDEX UX_tracked_schemas_run_schema ON __migrator.tracked_schemas (run_id, normalized_schema_name)`,
+		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_tracked_objects_run_key' AND object_id = OBJECT_ID('__migrator.tracked_objects'))
+CREATE UNIQUE INDEX UX_tracked_objects_run_key ON __migrator.tracked_objects (run_id, normalized_key)`,
+		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_tracked_objects_key' AND object_id = OBJECT_ID('__migrator.tracked_objects'))
+CREATE INDEX IX_tracked_objects_key ON __migrator.tracked_objects (normalized_key, discovered_at DESC)`,
+		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_schema_migrations_script_name' AND object_id = OBJECT_ID('__migrator.schema_migrations'))
+CREATE INDEX IX_schema_migrations_script_name ON __migrator.schema_migrations (script_name)`,
+		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_schema_migrations_success' AND object_id = OBJECT_ID('__migrator.schema_migrations'))
+CREATE INDEX IX_schema_migrations_success ON __migrator.schema_migrations (success, applied_at, id)`,
+		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_schema_migrations_run_id' AND object_id = OBJECT_ID('__migrator.schema_migrations'))
+CREATE INDEX IX_schema_migrations_run_id ON __migrator.schema_migrations (run_id, id) WHERE run_id IS NOT NULL`,
+		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_schema_migrations_tracked_object' AND object_id = OBJECT_ID('__migrator.schema_migrations'))
+CREATE INDEX IX_schema_migrations_tracked_object ON __migrator.schema_migrations (tracked_object_id, success, applied_at DESC, id DESC) WHERE tracked_object_id IS NOT NULL`,
+		`IF OBJECT_ID('__migrator.v_migration_state', 'V') IS NULL EXEC(N'CREATE VIEW __migrator.v_migration_state AS
 SELECT
     r.run_id,
     r.command,
@@ -597,8 +656,22 @@ OUTER APPLY (
     WHERE (o.tracked_object_id IS NOT NULL AND m.tracked_object_id = o.tracked_object_id)
        OR (o.tracked_object_id IS NULL AND m.run_id = r.run_id AND m.tracked_object_id IS NULL)
     ORDER BY m.applied_at DESC, m.id DESC
-) a`,
+) a')`,
 	}
+}
+
+func requireSingleRow(result sql.Result, operation string) error {
+	if result == nil {
+		return fmt.Errorf("%s: missing SQL result", operation)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s: read rows affected: %w", operation, err)
+	}
+	if rows != 1 {
+		return fmt.Errorf("%s: expected 1 row affected, got %d", operation, rows)
+	}
+	return nil
 }
 
 func nullable(value string) any {

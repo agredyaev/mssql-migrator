@@ -115,7 +115,7 @@ func (r Runner) Baseline(ctx context.Context) error {
 	}
 	if err := baselineRunner.executePlanTracked(ctx, conn, layout, plan, &report, runID, trackedObjectIDs); err != nil {
 		if writeErr := reports.WriteMigration(r.cfg.ReportDir, report); writeErr != nil {
-			return fmt.Errorf("%w: %v", contracts.ErrCriticalState, writeErr)
+			return contracts.Wrap(contracts.ErrCriticalState, writeErr)
 		}
 		if finishErr := finishRun(ctx, conn, runID, false, err, nil); finishErr != nil {
 			r.log.Warn("metadata_finish_run_failed", logger.Redact(finishErr.Error()))
@@ -166,6 +166,17 @@ func (r Runner) RepairChecksum(ctx context.Context) error {
 	if err != nil {
 		return r.writeFailedMigration(report, contracts.ErrInvalidInput, err)
 	}
+	plan, err := planner.BuildResolved(ctx, r.cfg, successfulByKey, layout, hash, planner.SQLCatalogReader(conn))
+	if err != nil {
+		return r.writeFailedMigration(report, contracts.ErrCriticalState, err)
+	}
+	plannedTarget, err := resolveRepairPlanObject(plan, target.NormalizedKey)
+	if err != nil {
+		return r.writeFailedMigration(report, contracts.ErrInvalidInput, err)
+	}
+	if err := validateRepairEligibility(target, plannedTarget); err != nil {
+		return r.writeFailedMigration(report, contracts.ErrInvalidInput, err)
+	}
 	catalog, err := planner.SQLCatalogReader(conn).ReadCatalogState(ctx)
 	if err != nil {
 		return r.writeFailedMigration(report, contracts.ErrCriticalState, err)
@@ -181,7 +192,7 @@ func (r Runner) RepairChecksum(ctx context.Context) error {
 	if err != nil {
 		return r.writeFailedMigration(report, contracts.ErrCriticalState, err)
 	}
-	trackedObjectID, err := persistRepairScope(ctx, conn, runID, target, catalog, currentChecksum)
+	trackedObjectID, err := persistRepairScope(ctx, conn, runID, target, plannedTarget, catalog, currentChecksum)
 	if err != nil {
 		if finishErr := finishRun(ctx, conn, runID, false, contracts.ErrCriticalState, err); finishErr != nil {
 			r.log.Warn("metadata_finish_run_failed", logger.Redact(finishErr.Error()))
@@ -317,7 +328,7 @@ func resolveRepairObject(layout parser.Layout, selector string) (parser.Object, 
 	return parser.Object{}, fmt.Errorf("repair target not found in repo layout: %s", selector)
 }
 
-func persistRepairScope(ctx context.Context, conn *sql.Conn, runID string, object parser.Object, catalog planner.CatalogState, currentChecksum string) (*int64, error) {
+func persistRepairScope(ctx context.Context, conn *sql.Conn, runID string, object parser.Object, planned contracts.PlannedObject, catalog planner.CatalogState, currentChecksum string) (*int64, error) {
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin repair scope transaction: %w", err)
@@ -349,7 +360,7 @@ func persistRepairScope(ctx context.Context, conn *sql.Conn, runID string, objec
 		Checksum:             object.Checksum,
 		ExistsInDatabase:     boolPtr(true),
 		MetadataMatch:        boolPtr(metadataMatch),
-		PlannedAction:        contracts.ActionSkipUnchanged,
+		PlannedAction:        planned.PlannedAction,
 	})
 	if err != nil {
 		_ = tx.Rollback()
@@ -359,4 +370,28 @@ func persistRepairScope(ctx context.Context, conn *sql.Conn, runID string, objec
 		return nil, fmt.Errorf("commit repair scope transaction: %w", err)
 	}
 	return &trackedObjectID, nil
+}
+
+func resolveRepairPlanObject(plan contracts.MigrationPlan, normalizedKey string) (contracts.PlannedObject, error) {
+	for _, object := range plan.Objects {
+		if object.NormalizedKey == normalizedKey {
+			return object, nil
+		}
+	}
+	return contracts.PlannedObject{}, fmt.Errorf("repair target not found in current plan: %s", normalizedKey)
+}
+
+func validateRepairEligibility(target parser.Object, planned contracts.PlannedObject) error {
+	switch planned.PlannedAction {
+	case contracts.ActionUpdateExistingModule, contracts.ActionUpdateExistingSupported, contracts.ActionReprocessChangedBlocked:
+		return nil
+	case contracts.ActionSkipUnchanged:
+		return fmt.Errorf("repair target checksum already matches current repo SQL: %s", target.Path)
+	case contracts.ActionAdoptExisting:
+		return fmt.Errorf("repair target is not tracked yet and must be adopted through baseline or migrate: %s", target.Path)
+	case contracts.ActionCreateObject:
+		return fmt.Errorf("repair target does not require checksum repair because the object is planned for creation: %s", target.Path)
+	default:
+		return fmt.Errorf("repair target is not eligible for checksum repair in state %s: %s", planned.PlannedAction, target.Path)
+	}
 }
