@@ -15,3 +15,5 @@ rmig
 # vendor/
 .tmp
 *:Zone.Identifier*
+code_dump.txt
+export_code_to_txt.sh

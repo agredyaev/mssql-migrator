@@ -11,6 +11,7 @@ This document defines the required live SQL Server checks for the current `rmig`
 - Disposable SQL Server database only
 - `plan`, `migrate`, `validate`, `baseline`, and `repair-checksum`
 - Metadata objects `[__migrator].migration_runs`, `[__migrator].tracked_schemas`, `[__migrator].tracked_objects`, `[__migrator].schema_migrations`, and `[__migrator].v_migration_state`
+- Metadata version object `[__migrator].schema_version`
 - Report files in `reports/migration-plan.*`, `reports/migration-report.*`, and `reports/validation-report.*`
 
 ## System Context
@@ -34,6 +35,7 @@ See `README.md` for the CLI wrapper contract.
 - Repo-driven `baseline` is expected to create missing repo-managed schemas and objects, adopt already existing objects, and fail closed on checksum drift or missing DDL permission.
 - Repo-driven `repair-checksum` is expected to resolve one object by repo path or normalized key and append a `repair_checksum` attempt row.
 - This build persists run state in `[__migrator].migration_runs`, `[__migrator].tracked_schemas`, `[__migrator].tracked_objects`, `[__migrator].schema_migrations`, and `[__migrator].v_migration_state`.
+- This build is expected to keep `[__migrator].schema_version` at the current checked-in metadata schema version.
 
 ## Nominal Flow
 
@@ -48,6 +50,8 @@ See `README.md` for the CLI wrapper contract.
 9. Run `baseline` against an empty or partial disposable database and confirm missing repo-managed schemas and objects are created, existing objects are adopted, and run state is written into `[__migrator]`.
 10. Remove required DDL permission for a controlled test principal and confirm `baseline` fails with a permission-specific error before or during create work.
 11. Repair a stored checksum for an already applied repo-managed object and confirm a new `repair_checksum` attempt row is written.
+12. Verify `[__migrator].schema_version` contains the expected current version row.
+13. Interrupt a report-writing step in a controlled run and confirm the final report path is never left as a partial file.
 
 ## Off-Nominal Behavior And Failure Containment
 

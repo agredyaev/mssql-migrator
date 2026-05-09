@@ -49,6 +49,7 @@ See `README.md` for the CLI wrapper contract.
 - Plan failure: fix the SQL root/base selection or repository layout, then rerun `plan`.
 - Migration failure: inspect the migration report to see whether the failure happened during schema creation, object execution, managed-scope post-migrate validation, or metadata recording, then fix forward in Git and rerun `plan`.
 - Metadata failure after SQL success in repo-driven `migrate`, `baseline`, or `repair-checksum`: stop deployment and inspect database state before retrying.
+- Metadata failure after SQL success should be treated as a split-brain risk between SQL Server state and `[__migrator]`. Do not retry blindly. Inspect `[__migrator].migration_runs`, `[__migrator].tracked_objects`, `[__migrator].tracked_schemas`, and the target object state first.
 - Baseline permission failure: grant the required metadata DDL, schema creation, or object DDL permission, then rerun `plan` or `baseline`.
 - Missing parent object for an index or trigger: add or restore the parent table or view in repo scope first, then rerun `plan`.
 - Validation failure: fix the broken object or check script, then re-run `validate`.
@@ -69,6 +70,7 @@ See `README.md` for the CLI wrapper contract.
 - `repair-checksum`: use only when one repo-managed object already matches the repo SQL in the database but its stored successful checksum row must be repaired.
 - After either metadata repair path, re-run `plan`.
 - If SQL succeeded but metadata repair is unsafe or blocked, stop and escalate with the report files and database state snapshot.
+- If a report file is missing or truncated after a local interruption, rerun the command. Report files are written atomically, so a final artifact should be either the old complete file or the new complete file.
 
 ## Open Issues And Non-Goals
 

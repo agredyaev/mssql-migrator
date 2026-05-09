@@ -13,6 +13,7 @@ It exists so a maintainer can understand what is implemented now, how run state 
 - CLI command handlers: `internal/migrator/handler.go`, `internal/migrator/runner.go`, `internal/migrator/baseline_repair.go`, `internal/migrator/validation.go`
 - Repo layout discovery: `internal/parser/layout.go`
 - Metadata storage: `internal/metadata/metadata.go`
+- Shared catalog reads: `internal/catalog/catalog.go`
 - Planning logic: `internal/planner/planner.go`
 - Report writers: `internal/reports/write.go`
 - Validation logic: `internal/validate/validate.go`
@@ -35,6 +36,7 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - SQL Server is the execution target.
 - SQL Server authentication is selected with `RM_DB_AUTH`. `sql` uses explicit login credentials. `integrated` uses Windows Integrated Security through the MSSQL driver.
 - Optional dotenv loading is available through `--env-file` or `RM_ENV_FILE`. It does not run by default and does not replace process environment or CLI flag precedence.
+- The env file is trusted operator input. `rmig` only validates dotenv syntax and then normal command config rules.
 - `--env` and `RM_ENV` accept only `pred` and `prod`.
 - `RM_SQL_ROOT` and `RM_SQL_BASE` are required for planning, execution, validation, and repair commands.
 - `RM_SQL_BASE` must be a single directory name under `RM_SQL_ROOT`.
@@ -45,11 +47,14 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - `RM_UPDATE_POLICY=all_supported` is accepted by config, but still behaves like `modules_only` because only module update logic is implemented.
 - `RM_TRANSACTION_MODE` defaults to `script`.
 - Logs, reports, and stored error text must not expose secrets.
+- Post-SQL metadata writes use `internal/migrator/metadata_context.go` and a short timeout so metadata paths fail quickly instead of waiting for the full command timeout.
+- `internal/reports/write.go` writes report artifacts atomically through a temporary file and `os.Rename`.
 - Repo-driven `migrate` creates missing schemas, applies approved create paths and supported module update paths after plan verification, adopts existing objects without DDL by default, records attempts in `[__migrator]`, and validates the managed object scope by default unless skipped.
 - Repo-driven `validate` refreshes module objects, checks existence for the full managed object scope, creates one validation run row, and writes validation attempts.
 - Repo-driven `baseline` uses the same discovered schema and object scope as `plan` and `migrate`, creates missing schemas and objects, adopts already existing objects, and blocks when a tracked object already exists with checksum drift.
 - Repo-driven `baseline` preflights metadata DDL, schema creation permission, object DDL permission, and parent-object availability before create work.
 - Repo-driven `repair-checksum` resolves one object by repo path or normalized key and appends a `repair_checksum` attempt row instead of mutating old rows in place.
+- Metadata bootstrap records runtime schema state in `[__migrator].schema_version`.
 
 ## Nominal Flow
 
@@ -69,12 +74,14 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - Approved-plan drift: `migrate` fails closed if `git_commit`, `layout_hash`, target, tool identity, comparison mode, update policy, transaction mode, rollback scope, base selection, or the approved schema/object set differs.
 - Metadata failure after SQL success: treated as a critical state in the active repo-driven `migrate`, `baseline`, and `repair-checksum` paths.
 - Missing schema creation permission, missing object DDL permission, or missing parent object: create paths fail closed with a specific classified error.
+- Scope persistence for tracked schemas and tracked objects is written in one metadata transaction per run scope.
 - Validation failure: the run stops and writes `reports/validation-report.*`.
 - Repo-driven migrate execution: only the approved repo-driven schema/object set is executed. Repo-discovered checks are outside the `migrate` approval boundary and run only through standalone `validate`.
 
 ## Verification And Validation
 
 - See `README.md` for shared build and unit-test commands.
+- `go test -race ./...`
 - `docs/integration-test-plan.md`
 
 ## Operations And Recovery

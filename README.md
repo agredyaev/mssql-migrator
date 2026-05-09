@@ -46,6 +46,7 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 - Migrate flags: `--plan-file`, `--skip-validate`
 - Repair flag: `--script` selects one repo object path or normalized key for `repair-checksum`
 - Optional env file flag: `--env-file` loads `RM_*` values from a dotenv-style file. The file is ignored unless `--env-file` or `RM_ENV_FILE` is set.
+- The env file is trusted operator input. `rmig` parses and applies `RM_*` values from it, but it does not sandbox or validate the file beyond dotenv syntax and normal command config validation.
 - Supporting environment: `RM_ENV`, `RM_SQL_ROOT`, `RM_SQL_BASE`, `RM_REPORT_DIR`, `RM_LOG_LEVEL`, `RM_JSON_LOGS`, `RM_TIMEOUT`, `RM_SCRIPT_TIMEOUT`, `RM_LOCK_TIMEOUT`, `RM_PLAN_FILE`, `RM_REPAIR_SCRIPT`, `RM_SKIP_VALIDATE`, `RM_CONFIRM`, `RM_ENV_FILE`, `RM_UPDATE_POLICY`, `RM_TRANSACTION_MODE`, `RM_PLAN_JSON`
 - Database authentication environment: `RM_DB_AUTH` (`sql` or `integrated`). `sql` is the default and requires `RM_DB_USER` and `RM_DB_PASSWORD`. `integrated` uses Windows Integrated Security through the driver `winsspi` authenticator. `RM_DB_USER` is optional in integrated mode and can be omitted to use the current Windows session.
 - Precedence when `--env-file` or `RM_ENV_FILE` is used: CLI flags override process environment, process environment overrides `.env`, and `.env` overrides built-in defaults.
@@ -68,6 +69,10 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 - `baseline` uses the same repo-driven layout as `plan` and `migrate`. It creates missing repo-managed schemas and objects, adopts already existing objects without DDL, and fails closed on checksum drift.
 - `baseline` preflights metadata DDL, schema creation permission, object DDL permission, and missing parent objects before create work.
 - `repair-checksum` targets one repo object selected by path or normalized key and writes an append-only `repair_checksum` attempt row.
+- Report files are written atomically through `internal/reports/write.go` by writing `*.tmp` and renaming into place.
+- Metadata writes use a short bounded context in `internal/migrator/metadata_context.go` so post-SQL metadata updates do not hang until the full command timeout.
+- Catalog reads are shared through `internal/catalog/catalog.go` so plan and validation classify the live SQL Server object set the same way.
+- Metadata bootstrap now records schema version state in `[__migrator].schema_version`.
 
 ## Nominal Flow
 
@@ -93,6 +98,7 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 ## Verification And Validation
 
 - `PATH=/usr/local/go/bin:$PATH go test ./...`
+- `PATH=/usr/local/go/bin:$PATH go test -race ./...`
 - `PATH=/usr/local/go/bin:$PATH go vet ./...`
 - `PATH=/usr/local/go/bin:$PATH go build -ldflags "-X main.version=0.1.0-dev -X main.commit=$(git rev-parse HEAD)" -o rmig ./cmd/rmig`
 - `./rmig version`
