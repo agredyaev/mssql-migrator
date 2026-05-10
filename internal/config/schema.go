@@ -35,6 +35,19 @@ func BindFlags(flags *flag.FlagSet, input *Input) {
 	}
 }
 
+func MarkExplicitFlags(flags *flag.FlagSet, input *Input) {
+	flags.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "timeout":
+			input.commandTimeoutFromFlag = true
+		case "script-timeout":
+			input.scriptTimeoutFromFlag = true
+		case "lock-timeout":
+			input.lockTimeoutFromFlag = true
+		}
+	})
+}
+
 func AllowedEnvKeys() map[string]struct{} {
 	keys := make(map[string]struct{}, len(inputFieldSpecs)+11)
 	for _, spec := range inputFieldSpecs {

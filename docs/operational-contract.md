@@ -40,10 +40,12 @@ See `README.md` for the CLI wrapper contract.
 - SQL Server authentication settings are provided externally. `RM_DB_AUTH=sql` uses `RM_DB_USER` and `RM_DB_PASSWORD`. `RM_DB_AUTH=integrated` uses the current Windows session or an explicit Windows user value passed in `RM_DB_USER`.
 - Optional dotenv loading must be explicitly enabled. When enabled, CLI flags still win over process environment, and process environment still wins over values loaded from the env file.
 - The env file may contain only supported `RM_*` keys for current command inputs. Unknown keys and non-`RM_*` keys fail validation.
+- Malformed `RM_TIMEOUT`, `RM_SCRIPT_TIMEOUT`, and `RM_LOCK_TIMEOUT` values, including values loaded through `--env-file`, are configuration errors. Malformed `--timeout`, `--script-timeout`, and `--lock-timeout` flag values are invalid input.
 - Repo-driven object execution runs only after approved-plan verification succeeds. Post-migrate validation is limited to the verified managed object scope.
 - `baseline` uses the repo-driven layout, creates missing schemas and objects, adopts existing objects, and requires `--confirm`.
 - `baseline` fails closed on missing metadata DDL permission, missing schema creation permission, missing object DDL permission, checksum drift, or missing parent objects.
 - `repair-checksum` uses one repo object selected by `--script <repo-path-or-normalized-key>`, but only when the current plan shows tracked checksum drift for that object. It appends a new successful metadata attempt row in `[__migrator].attempts` and does not rewrite old checksum history.
+- Current builds do not migrate legacy metadata objects such as `__migrator.migration_runs` or `__migrator.migration_attempts` to the current schema. This is a breaking migration requirement for existing environments: legacy metadata must be upgraded or removed outside the current CLI before v2-only builds can run. If any legacy metadata object is present, bootstrap and checksum reads fail closed with `metadata_schema_incompatible`.
 - In operator-facing wording, `[__migrator].attempts` is the append-only attempt log, and `[__migrator].items` is the per-run managed scope snapshot for schemas and objects.
 - `reports/migration-plan.txt` is the human-oriented operator view. It explains why each object is planned for create, adopt, skip, update, or block.
 - Existing module updates are allowed only when the repo SQL starts with the matching `CREATE OR ALTER` statement for that object kind.
@@ -66,6 +68,7 @@ See `README.md` for the CLI wrapper contract.
 - Plan drift: `migrate` checks the approved plan and fails closed if `git_commit`, `layout_hash`, target, tool identity, comparison mode, update policy, transaction mode, rollback scope, base selection, or the approved schema/object set changed.
 - Unsafe existing-module update SQL: `plan` blocks the object before execution.
 - Metadata failure: the run stops instead of reporting success. Metadata updates also fail closed when the target row is missing or duplicated.
+- Legacy metadata shape: current builds stop before metadata bootstrap or checksum reads. Operators must upgrade or remove legacy metadata outside the current CLI because no in-place v1 to v2 migration path exists yet.
 - Repo-driven migrate execution: current builds execute only the approved repo-driven schema/object set, write migration reports, record `adopt_existing` into metadata, and run managed-scope validation by default unless skipped. Repo-discovered `checks/*.sql` stay outside `migrate` and run only in standalone `validate`.
 - Baseline create path: current builds preflight DDL permissions, create missing repo-managed scope, record item and attempt rows into `[__migrator]`, and stop on the first classified failure.
 - Validation failure: the run stops and writes `reports/validation-report.*`.

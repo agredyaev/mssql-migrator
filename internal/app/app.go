@@ -133,6 +133,7 @@ func parseCommandConfig(command string, args []string) (config.Config, error) {
 	if err := flags.Parse(args); err != nil {
 		return config.Config{}, contracts.Wrap(contracts.ErrInvalidInput, err)
 	}
+	config.MarkExplicitFlags(flags, &input)
 	cfg, err := config.Load(input)
 	if err != nil {
 		return config.Config{}, err

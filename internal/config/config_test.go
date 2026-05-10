@@ -4,13 +4,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reporting-db-migrations/internal/contracts"
 	"strings"
 	"testing"
-)
-
-var (
-	configErrorSentinel       = errors.New("configuration error")
-	invalidInputErrorSentinel = errors.New("invalid input")
 )
 
 func TestValidateCommonAllowsIntegratedAuthWithoutUserAndPassword(t *testing.T) {
@@ -84,6 +80,37 @@ func TestLoadAllowsIntegratedAuthFromEnvironment(t *testing.T) {
 	}
 }
 
+func TestLoadClassifiesInvalidTimeoutFlagAsInvalidInput(t *testing.T) {
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+
+	_, err := Load(Input{Env: "prod", CommandTimeout: "not-a-duration", commandTimeoutFromFlag: true})
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !errors.Is(err, contracts.ErrInvalidInput) {
+		t.Fatalf("expected invalid input sentinel, got %v", err)
+	}
+}
+
+func TestLoadClassifiesInvalidTimeoutEnvironmentAsConfigError(t *testing.T) {
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+	t.Setenv("RM_TIMEOUT", "not-a-duration")
+
+	_, err := Load(Input{Env: "prod", CommandTimeout: Getenv("RM_TIMEOUT", "900s")})
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !errors.Is(err, contracts.ErrConfig) {
+		t.Fatalf("expected config sentinel, got %v", err)
+	}
+}
+
 func TestValidateForCommandDoesNotRequireManagedSchemasForValidate(t *testing.T) {
 	root := t.TempDir()
 	base := "dwh"
@@ -135,7 +162,23 @@ func TestValidateForCommandRequiresConfirmForBaseline(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "confirm flag required") {
 		t.Fatalf("expected confirm validation error, got %v", err)
 	}
-	if !errors.Is(err, invalidInputErrorSentinel) {
+	if !errors.Is(err, contracts.ErrInvalidInput) {
+		t.Fatalf("expected invalid input sentinel, got %v", err)
+	}
+}
+
+func TestValidateForCommandRequiresScriptForRepairChecksum(t *testing.T) {
+	root := t.TempDir()
+	base := "dwh"
+	if err := osMkdirAll(joinEffectiveBasePath(root, base)); err != nil {
+		t.Fatalf("mkdir base: %v", err)
+	}
+	cfg := Config{Env: "prod", Server: "server", Database: "db", User: "user", Password: "password", SQLRoot: root, SQLBase: base, EffectiveBasePath: joinEffectiveBasePath(root, base), GitCommit: "abc", Confirm: true, UpdatePolicy: UpdatePolicyNone, TransactionMode: TransactionModeScript}
+	err := cfg.ValidateForCommand("repair-checksum")
+	if err == nil || !strings.Contains(err.Error(), "--script is required") {
+		t.Fatalf("expected script validation error, got %v", err)
+	}
+	if !errors.Is(err, contracts.ErrInvalidInput) {
 		t.Fatalf("expected invalid input sentinel, got %v", err)
 	}
 }
@@ -146,7 +189,7 @@ func TestValidateCommonWrapsMissingConfigAsConfigError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected missing config error")
 	}
-	if !errors.Is(err, configErrorSentinel) {
+	if !errors.Is(err, contracts.ErrConfig) {
 		t.Fatalf("expected config sentinel, got %v", err)
 	}
 }
@@ -157,7 +200,7 @@ func TestValidateSQLSelectionWrapsPathErrorsAsInvalidInput(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected sql selection error")
 	}
-	if !errors.Is(err, invalidInputErrorSentinel) {
+	if !errors.Is(err, contracts.ErrInvalidInput) {
 		t.Fatalf("expected invalid input sentinel, got %v", err)
 	}
 }
@@ -224,7 +267,7 @@ func TestValidateCommonRejectsInvalidUpdatePolicy(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "invalid_update_policy") {
 		t.Fatalf("expected invalid update policy error, got %v", err)
 	}
-	if !errors.Is(err, invalidInputErrorSentinel) {
+	if !errors.Is(err, contracts.ErrInvalidInput) {
 		t.Fatalf("expected invalid input sentinel, got %v", err)
 	}
 }
@@ -235,8 +278,19 @@ func TestValidateCommonRejectsInvalidTransactionMode(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "invalid_transaction_mode") {
 		t.Fatalf("expected invalid transaction mode error, got %v", err)
 	}
-	if !errors.Is(err, invalidInputErrorSentinel) {
+	if !errors.Is(err, contracts.ErrInvalidInput) {
 		t.Fatalf("expected invalid input sentinel, got %v", err)
+	}
+}
+
+func TestWrapErrorsUseContractsSentinels(t *testing.T) {
+	configErr := wrapConfigError(errors.New("missing required config: RM_GIT_COMMIT"))
+	if !errors.Is(configErr, contracts.ErrConfig) {
+		t.Fatalf("expected config sentinel, got %v", configErr)
+	}
+	invalidInputErr := wrapInvalidInputError(errors.New("--script is required"))
+	if !errors.Is(invalidInputErr, contracts.ErrInvalidInput) {
+		t.Fatalf("expected invalid input sentinel, got %v", invalidInputErr)
 	}
 }
 

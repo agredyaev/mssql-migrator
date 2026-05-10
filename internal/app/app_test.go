@@ -69,6 +69,38 @@ func TestParseCommandConfigRequiresPlanFileForMigrate(t *testing.T) {
 	}
 }
 
+func TestParseCommandConfigRequiresScriptForRepairChecksum(t *testing.T) {
+	root, base := createSQLLayout(t)
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+	t.Setenv("RM_GIT_COMMIT", "deadbeef")
+	_, err := parseCommandConfig("repair-checksum", []string{"--env", "prod", "--sql-root", root, "--sql-base", base, "--confirm"})
+	if err == nil || !strings.Contains(err.Error(), "--script is required") {
+		t.Fatalf("expected script error, got %v", err)
+	}
+}
+
+func TestRunReturnsInvalidInputExitForMissingRepairScript(t *testing.T) {
+	root, base := createSQLLayout(t)
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+	t.Setenv("RM_GIT_COMMIT", "deadbeef")
+	stdout := bytes.Buffer{}
+	stderr := bytes.Buffer{}
+	runtime := Runtime{BuildInfo: BuildInfo{Version: "1.0.0", Commit: "abc"}, Stdout: &stdout, Stderr: &stderr}
+	code := runtime.Run([]string{"rmig", "repair-checksum", "--env", "prod", "--sql-root", root, "--sql-base", base, "--confirm"})
+	if code != contracts.ExitInvalidInput {
+		t.Fatalf("expected invalid input exit, got %d stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "class=invalid input") || !strings.Contains(stderr.String(), "reason=--script is required") {
+		t.Fatalf("expected invalid input envelope, got %q", stderr.String())
+	}
+}
+
 func TestParseCommandConfigDoesNotRequireManagedSchemasForValidate(t *testing.T) {
 	root, base := createSQLLayout(t)
 	t.Setenv("RM_DB_SERVER", "server")
@@ -117,6 +149,52 @@ func TestRunWritesConfigFailureEnvelopeToStderr(t *testing.T) {
 	output := stderr.String()
 	if !strings.Contains(output, "ERROR config_failed:") || !strings.Contains(output, "sql_root=-") || !strings.Contains(output, "base=-") || !strings.Contains(output, "class=configuration error") {
 		t.Fatalf("expected config envelope on stderr, got %q", output)
+	}
+}
+
+func TestRunReturnsConfigErrorForInvalidDurationEnvironment(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		envKey string
+	}{
+		{name: "command timeout", envKey: "RM_TIMEOUT"},
+		{name: "script timeout", envKey: "RM_SCRIPT_TIMEOUT"},
+		{name: "lock timeout", envKey: "RM_LOCK_TIMEOUT"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("RM_DB_SERVER", "server")
+			t.Setenv("RM_DB_DATABASE", "db")
+			t.Setenv("RM_DB_USER", "user")
+			t.Setenv("RM_DB_PASSWORD", "password")
+			t.Setenv(tt.envKey, "not-a-duration")
+			stdout := bytes.Buffer{}
+			stderr := bytes.Buffer{}
+			runtime := Runtime{BuildInfo: BuildInfo{Version: "1.0.0", Commit: "abc"}, Stdout: &stdout, Stderr: &stderr}
+			code := runtime.Run([]string{"rmig", "info", "--env", "prod"})
+			if code != contracts.ExitConfigError {
+				t.Fatalf("expected config error exit, got %d stderr=%q", code, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "class=configuration error") || !strings.Contains(stderr.String(), "reason=invalid") {
+				t.Fatalf("expected config error envelope, got %q", stderr.String())
+			}
+		})
+	}
+}
+
+func TestRunReturnsInvalidInputForInvalidDurationFlag(t *testing.T) {
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+	stdout := bytes.Buffer{}
+	stderr := bytes.Buffer{}
+	runtime := Runtime{BuildInfo: BuildInfo{Version: "1.0.0", Commit: "abc"}, Stdout: &stdout, Stderr: &stderr}
+	code := runtime.Run([]string{"rmig", "info", "--env", "prod", "--timeout", "not-a-duration"})
+	if code != contracts.ExitInvalidInput {
+		t.Fatalf("expected invalid input exit, got %d stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "class=invalid input") || !strings.Contains(stderr.String(), "reason=invalid timeout") {
+		t.Fatalf("expected invalid input envelope, got %q", stderr.String())
 	}
 }
 

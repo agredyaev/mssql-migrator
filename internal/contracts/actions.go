@@ -2,7 +2,6 @@ package contracts
 
 import (
 	"reporting-db-migrations/internal/commands"
-	"reporting-db-migrations/internal/config"
 )
 
 const (
@@ -35,28 +34,29 @@ const (
 
 	RollbackScopeScript = "script"
 	RollbackScopeNone   = "none"
+	transactionModeNone = "none"
 )
 
 func TransactionModeForObject(defaultMode string, noTransaction bool) string {
 	if noTransaction {
-		return config.TransactionModeNone
+		return transactionModeNone
 	}
 	return defaultMode
 }
 
 func NoTransactionForObject(defaultMode string, noTransaction bool) bool {
-	return noTransaction || defaultMode == config.TransactionModeNone
+	return noTransaction || defaultMode == transactionModeNone
 }
 
 func RollbackScope(defaultMode string) string {
-	if defaultMode == config.TransactionModeNone {
+	if defaultMode == transactionModeNone {
 		return RollbackScopeNone
 	}
 	return RollbackScopeScript
 }
 
 func RollbackScopeForObject(defaultMode string, noTransaction bool) string {
-	if noTransaction || defaultMode == config.TransactionModeNone {
+	if noTransaction || defaultMode == transactionModeNone {
 		return RollbackScopeNone
 	}
 	return RollbackScopeScript

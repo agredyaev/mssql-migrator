@@ -10,17 +10,14 @@ import (
 	"time"
 
 	"reporting-db-migrations/internal/commands"
-)
-
-var (
-	errConfigKind       = errors.New("configuration error")
-	errInvalidInputKind = errors.New("invalid input")
+	"reporting-db-migrations/internal/contracts"
 )
 
 type Input struct {
 	Env, SQLRoot, SQLBase, ReportDir, LogLevel, CommandTimeout, ScriptTimeout, LockTimeout, EnvFile, PlanFile string
 	RepairTarget, UpdatePolicy, TransactionMode                                                               string
 	JSONLogs, SkipValidate, Confirm, PlanJSON                                                                 bool
+	commandTimeoutFromFlag, scriptTimeoutFromFlag, lockTimeoutFromFlag                                        bool
 }
 
 type Config struct {
@@ -97,17 +94,17 @@ func GetenvBool(key string, fallback bool) bool {
 }
 
 func Load(input Input) (Config, error) {
-	commandTimeout, err := parseDuration("timeout", def(input.CommandTimeout, "900s"))
+	commandTimeout, err := loadDurationInput("timeout", "RM_TIMEOUT", input.CommandTimeout, "900s", input.commandTimeoutFromFlag)
 	if err != nil {
-		return Config{}, wrapInvalidInputError(err)
+		return Config{}, err
 	}
-	scriptTimeout, err := parseDuration("script-timeout", def(input.ScriptTimeout, "600s"))
+	scriptTimeout, err := loadDurationInput("script-timeout", "RM_SCRIPT_TIMEOUT", input.ScriptTimeout, "600s", input.scriptTimeoutFromFlag)
 	if err != nil {
-		return Config{}, wrapInvalidInputError(err)
+		return Config{}, err
 	}
-	lockTimeout, err := parseDuration("lock-timeout", def(input.LockTimeout, "60s"))
+	lockTimeout, err := loadDurationInput("lock-timeout", "RM_LOCK_TIMEOUT", input.LockTimeout, "60s", input.lockTimeoutFromFlag)
 	if err != nil {
-		return Config{}, wrapInvalidInputError(err)
+		return Config{}, err
 	}
 
 	cfg := Config{
@@ -259,6 +256,9 @@ func (cfg Config) ValidateForCommand(command string) error {
 	if spec.RequiresPlanFile && strings.TrimSpace(cfg.PlanFile) == "" {
 		return wrapInvalidInputError(fmt.Errorf("--plan-file is required"))
 	}
+	if spec.RequiresRepairTarget && strings.TrimSpace(cfg.RepairTarget) == "" {
+		return wrapInvalidInputError(fmt.Errorf("--script is required"))
+	}
 	if spec.RequiresConfirm && !cfg.Confirm {
 		return wrapInvalidInputError(fmt.Errorf("confirm flag required"))
 	}
@@ -266,40 +266,17 @@ func (cfg Config) ValidateForCommand(command string) error {
 }
 
 func wrapConfigError(err error) error {
-	if err == nil || errors.Is(err, errConfigKind) {
+	if err == nil || errors.Is(err, contracts.ErrConfig) {
 		return err
 	}
-	return classifiedError{kind: errConfigKind.Error(), err: err}
+	return contracts.Wrap(contracts.ErrConfig, err)
 }
 
 func wrapInvalidInputError(err error) error {
-	if err == nil || errors.Is(err, errInvalidInputKind) {
+	if err == nil || errors.Is(err, contracts.ErrInvalidInput) {
 		return err
 	}
-	return classifiedError{kind: errInvalidInputKind.Error(), err: err}
-}
-
-type classifiedError struct {
-	kind string
-	err  error
-}
-
-func (e classifiedError) Error() string {
-	if e.err == nil {
-		return e.kind
-	}
-	return e.err.Error()
-}
-
-func (e classifiedError) Unwrap() error {
-	return e.err
-}
-
-func (e classifiedError) Is(target error) bool {
-	if target == nil {
-		return false
-	}
-	return target.Error() == e.kind
+	return contracts.Wrap(contracts.ErrInvalidInput, err)
 }
 
 func (cfg Config) DBAuthMode() string {
@@ -350,6 +327,20 @@ func parseDuration(name, value string) (time.Duration, error) {
 		return 0, fmt.Errorf("invalid %s: must be greater than zero", name)
 	}
 	return duration, nil
+}
+
+func loadDurationInput(name string, envKey string, value string, fallback string, fromFlag bool) (time.Duration, error) {
+	duration, err := parseDuration(name, def(value, fallback))
+	if err == nil {
+		return duration, nil
+	}
+	if fromFlag {
+		return 0, wrapInvalidInputError(err)
+	}
+	if raw, ok := os.LookupEnv(envKey); ok && strings.TrimSpace(raw) != "" {
+		return 0, wrapConfigError(err)
+	}
+	return 0, wrapConfigError(err)
 }
 
 func def(value, fallback string) string {
