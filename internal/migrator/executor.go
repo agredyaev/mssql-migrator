@@ -24,10 +24,10 @@ func (r Runner) executePlan(ctx context.Context, conn txConn, layout parser.Layo
 }
 
 func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout parser.Layout, plan contracts.MigrationPlan, report *contracts.MigrationReport, runID string, itemIDs map[string]int64) error {
-	recorder := newMetadataRecorder(r.cfg, conn, runID)
+	recorder := newMetadataRecorder(r.cfg, conn, nil, runID)
 	for _, schema := range plan.Schemas {
 		if schema.Action == contracts.SchemaActionExists && runID != "" {
-			err := recorder.recordSchemaSuccess(ctx, schema.SchemaName, schema.Action, false)
+			err := recorder.attempt.SchemaSuccess(ctx, schema.SchemaName, schema.Action, false)
 			if err != nil {
 				report.Result = "failed"
 				report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: "critical metadata failure after schema discovery: " + logger.Redact(err.Error())}
@@ -42,14 +42,14 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 			classifiedErr := classifySchemaExecutionError(schema.SchemaName, err)
 			message := logger.Redact(classifiedErr.Error())
 			if runID != "" {
-				_ = recorder.recordSchemaFailure(ctx, schema.SchemaName, classifiedErr, true)
+				_ = recorder.attempt.SchemaFailure(ctx, schema.SchemaName, classifiedErr, true)
 			}
 			report.Result = "failed"
 			report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: message}
 			return classifiedErr
 		}
 		if runID != "" {
-			err := recorder.recordSchemaSuccess(ctx, schema.SchemaName, contracts.SchemaActionCreateSchema, true)
+			err := recorder.attempt.SchemaSuccess(ctx, schema.SchemaName, contracts.SchemaActionCreateSchema, true)
 			if err != nil {
 				report.Result = "failed"
 				report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: logger.Redact(err.Error())}
@@ -96,8 +96,8 @@ func (r Runner) recordAdoptedObject(ctx context.Context, execer metadata.Execer,
 }
 
 func (r Runner) recordPassiveObjectAction(ctx context.Context, execer metadata.Execer, planned contracts.PlannedObject, runID string, itemID *int64) error {
-	recorder := newMetadataRecorder(r.cfg, execer, runID)
-	return recorder.recordObjectSuccess(ctx, passiveMetadataObject(planned, itemID), true)
+	recorder := newMetadataRecorder(r.cfg, execer, nil, runID)
+	return recorder.attempt.ObjectSuccess(ctx, passiveMetadataObject(planned, itemID), true)
 }
 
 func (r Runner) applyObject(parent context.Context, conn txConn, object parser.Object, report *contracts.MigrationReport) error {
@@ -125,11 +125,11 @@ func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object p
 	executionErr := r.executeObject(ctx, conn, object)
 	stopProgress()
 	executionMS := int(time.Since(startedAt).Milliseconds())
-	recorder := newMetadataRecorder(r.cfg, conn, runID)
+	recorder := newMetadataRecorder(r.cfg, conn, nil, runID)
 	recordedObject := executedMetadataObject(object, planned, itemID, executionMS)
 	if executionErr != nil {
 		classifiedErr := classifyObjectExecutionError(object, planned, executionErr)
-		if err := recorder.recordObjectFailure(parent, recordedObject, classifiedErr, true); err != nil {
+		if err := recorder.attempt.ObjectFailure(parent, recordedObject, classifiedErr, true); err != nil {
 			report.Result = "failed"
 			report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after failed SQL: " + logger.Redact(err.Error())}
 			return contracts.Wrap(contracts.ErrCriticalState, err)
@@ -138,7 +138,7 @@ func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object p
 		report.Failed = &contracts.Failure{Script: object.Path, Error: logger.Redact(classifiedErr.Error())}
 		return classifiedErr
 	}
-	if err := recorder.recordObjectSuccess(parent, recordedObject, true); err != nil {
+	if err := recorder.attempt.ObjectSuccess(parent, recordedObject, true); err != nil {
 		report.Result = "failed"
 		report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after successful SQL: " + logger.Redact(err.Error())}
 		return contracts.Wrap(contracts.ErrCriticalState, err)
@@ -231,6 +231,7 @@ func plannedObjectsInExecutionOrder(items []contracts.PlannedObject) []contracts
 	if len(items) < 2 {
 		return items
 	}
+	resolver := objectDependencyResolver{}
 	original := append([]contracts.PlannedObject(nil), items...)
 	byKey := make(map[string]contracts.PlannedObject, len(original))
 	for _, item := range original {
@@ -248,7 +249,7 @@ func plannedObjectsInExecutionOrder(items []contracts.PlannedObject) []contracts
 			return
 		}
 		visiting[item.NormalizedKey] = true
-		for _, parentKey := range plannedParentCandidates(item) {
+		for _, parentKey := range resolver.ParentCandidates(item.SchemaName, item.ParentName) {
 			if parent, ok := byKey[parentKey]; ok {
 				visit(parent)
 				break
@@ -265,16 +266,4 @@ func plannedObjectsInExecutionOrder(items []contracts.PlannedObject) []contracts
 		visit(item)
 	}
 	return ordered
-}
-
-func plannedParentCandidates(item contracts.PlannedObject) []string {
-	if strings.TrimSpace(item.ParentName) == "" {
-		return nil
-	}
-	parentName := strings.ToLower(strings.TrimSpace(item.ParentName))
-	schemaName := strings.ToLower(strings.TrimSpace(item.SchemaName))
-	return []string{
-		schemaName + "/tables/" + parentName,
-		schemaName + "/views/" + parentName,
-	}
 }

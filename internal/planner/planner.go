@@ -44,14 +44,6 @@ func Build(cfg config.Config, successfulByKey map[string]string) (contracts.Migr
 	return BuildResolved(context.Background(), cfg, successfulByKey, layout, hash, nil)
 }
 
-func BuildWithConnection(ctx context.Context, cfg config.Config, successfulByKey map[string]string, conn *sql.Conn) (contracts.MigrationPlan, error) {
-	layout, hash, err := resolvePlanningLayout(cfg)
-	if err != nil {
-		return contracts.MigrationPlan{}, err
-	}
-	return BuildResolved(ctx, cfg, successfulByKey, layout, hash, sqlCatalogReader{conn: conn})
-}
-
 func BuildWithCatalog(ctx context.Context, cfg config.Config, successfulByKey map[string]string, reader CatalogReader) (contracts.MigrationPlan, error) {
 	layout, hash, err := resolvePlanningLayout(cfg)
 	if err != nil {

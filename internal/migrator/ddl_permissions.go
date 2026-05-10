@@ -39,6 +39,7 @@ func (e *baselinePreflightFailure) Unwrap() error {
 }
 
 func verifyBaselineCreatePermissions(ctx context.Context, conn *sql.Conn, plan contracts.MigrationPlan, layout parser.Layout) error {
+	resolver := objectDependencyResolver{}
 	for _, schema := range plan.Schemas {
 		if schema.Action != contracts.SchemaActionCreateSchema {
 			continue
@@ -76,7 +77,7 @@ func verifyBaselineCreatePermissions(ctx context.Context, conn *sql.Conn, plan c
 			if err != nil {
 				return contracts.Wrap(contracts.ErrCriticalState, fmt.Errorf("permission preflight for parent %s.%s: %w", object.SchemaName, object.ParentName, err))
 			}
-			if !parentExists && !baselineParentPlanned(plannedByKey, object) {
+			if !parentExists && !resolver.ParentSatisfied(plannedByKey, object) {
 				return &baselinePreflightFailure{base: contracts.ErrSQLExecution, class: "missing parent object", object: object}
 			}
 			if parentExists {
@@ -114,28 +115,6 @@ func verifyBaselineCreatePermissions(ctx context.Context, conn *sql.Conn, plan c
 	}
 
 	return nil
-}
-
-func baselineParentPlanned(plannedByKey map[string]contracts.PlannedObject, object parser.Object) bool {
-	if strings.TrimSpace(object.ParentName) == "" {
-		return true
-	}
-	parentName := strings.ToLower(strings.TrimSpace(object.ParentName))
-	keys := []string{
-		object.NormalizedSchemaName + "/tables/" + parentName,
-		object.NormalizedSchemaName + "/views/" + parentName,
-	}
-	for _, key := range keys {
-		planned, ok := plannedByKey[key]
-		if !ok {
-			continue
-		}
-		switch planned.PlannedAction {
-		case contracts.ActionCreateObject, contracts.ActionAdoptExisting, contracts.ActionSkipUnchanged:
-			return true
-		}
-	}
-	return false
 }
 
 func hasCreateSchemaPermission(ctx context.Context, conn *sql.Conn) (bool, error) {

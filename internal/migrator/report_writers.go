@@ -9,6 +9,24 @@ import (
 	"reporting-db-migrations/internal/reports"
 )
 
+type FailureReporter struct {
+	cfg config.Config
+}
+
+func (r FailureReporter) Migration(report contracts.MigrationReport, base error, cause error) error {
+	report = finalizeMigrationFailureReport(r.cfg, report, base, cause)
+	return writeFailureReport(func() error {
+		return reports.WriteMigration(r.cfg.ReportDir, report)
+	}, base, cause)
+}
+
+func (r FailureReporter) Validation(report contracts.ValidationReport, phase string, base error, cause error) error {
+	report = finalizeValidationFailureReport(r.cfg, report, phase, base, cause)
+	return writeFailureReport(func() error {
+		return reports.WriteValidation(r.cfg.ReportDir, report)
+	}, base, cause)
+}
+
 func writeMigrationReport(dir string, report contracts.MigrationReport) error {
 	return reports.WriteMigration(dir, report)
 }

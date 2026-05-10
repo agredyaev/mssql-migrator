@@ -11,14 +11,6 @@ import (
 	"reporting-db-migrations/internal/parser"
 )
 
-func TestRequireConfirmation(t *testing.T) {
-	runner := NewRunner(config.Config{}, logger.New(logger.Options{}))
-	err := runner.requireConfirmation()
-	if err == nil || err.Error() == "" {
-		t.Fatal("expected confirmation error")
-	}
-}
-
 func TestWriteFailedMigrationRedactsSecretInFailure(t *testing.T) {
 	dir := t.TempDir()
 	runner := NewRunner(config.Config{ReportDir: dir}, logger.New(logger.Options{}))

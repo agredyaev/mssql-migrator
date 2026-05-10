@@ -118,6 +118,19 @@ func TestValidateForCommandRequiresGitCommitForPlan(t *testing.T) {
 	}
 }
 
+func TestValidateForCommandRequiresConfirmForBaseline(t *testing.T) {
+	root := t.TempDir()
+	base := "dwh"
+	if err := osMkdirAll(joinEffectiveBasePath(root, base)); err != nil {
+		t.Fatalf("mkdir base: %v", err)
+	}
+	cfg := Config{Env: "prod", Server: "server", Database: "db", User: "user", Password: "password", SQLRoot: root, SQLBase: base, EffectiveBasePath: joinEffectiveBasePath(root, base), GitCommit: "abc", UpdatePolicy: UpdatePolicyNone, TransactionMode: TransactionModeScript}
+	err := cfg.ValidateForCommand("baseline")
+	if err == nil || !strings.Contains(err.Error(), "confirm flag required") {
+		t.Fatalf("expected confirm validation error, got %v", err)
+	}
+}
+
 func TestValidateRejectsUnknownEnvironment(t *testing.T) {
 	cfg := Config{Env: "stage", Server: "server", Database: "db", User: "user", Password: "password", UpdatePolicy: UpdatePolicyNone, TransactionMode: TransactionModeScript}
 	err := cfg.ValidateCommon()

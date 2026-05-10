@@ -36,9 +36,6 @@ func (r Runner) Info(ctx context.Context) error {
 }
 
 func (r Runner) Plan(ctx context.Context) (contracts.MigrationPlan, error) {
-	if _, _, err := planner.ResolvePlanningLayoutForRunner(r.cfg); err != nil {
-		return contracts.MigrationPlan{}, err
-	}
 	conn, closeFn, err := r.openReservedConnection(ctx)
 	if err != nil {
 		return contracts.MigrationPlan{}, err
@@ -52,7 +49,11 @@ func (r Runner) Plan(ctx context.Context) (contracts.MigrationPlan, error) {
 	if err != nil {
 		return contracts.MigrationPlan{}, contracts.Wrap(contracts.ErrCriticalState, err)
 	}
-	plan, err := planner.BuildWithConnection(ctx, r.cfg, successfulByKey, conn)
+	layout, hash, err := planner.ResolvePlanningLayoutForRunner(r.cfg)
+	if err != nil {
+		return contracts.MigrationPlan{}, err
+	}
+	plan, err := planner.BuildResolved(ctx, r.cfg, successfulByKey, layout, hash, planner.SQLCatalogReader(conn))
 	if err != nil {
 		return contracts.MigrationPlan{}, err
 	}
@@ -109,7 +110,7 @@ func (r Runner) Migrate(ctx context.Context) error {
 	if err != nil {
 		return failWithRun(contracts.ErrCriticalState, err)
 	}
-	itemIDs, err := recorder.persistMigrationScope(ctx, conn, plan)
+	itemIDs, err := recorder.scope.Migration(ctx, plan)
 	if err != nil {
 		return failWithRun(contracts.ErrCriticalState, err)
 	}
@@ -187,16 +188,6 @@ func (r Runner) newMigrationReport() contracts.MigrationReport {
 	}
 }
 
-func (r Runner) requireConfirmation() error {
-	if !r.cfg.Confirm {
-		return fmt.Errorf("%w: confirm flag required", contracts.ErrInvalidInput)
-	}
-	return nil
-}
-
 func (r Runner) writeFailedMigration(report contracts.MigrationReport, base error, cause error) error {
-	report = finalizeMigrationFailureReport(r.cfg, report, base, cause)
-	return writeFailureReport(func() error {
-		return reports.WriteMigration(r.cfg.ReportDir, report)
-	}, base, cause)
+	return FailureReporter{cfg: r.cfg}.Migration(report, base, cause)
 }

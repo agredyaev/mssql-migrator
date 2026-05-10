@@ -53,10 +53,7 @@ func (r Runner) writeValidationFailureReport(cause error, base error) error {
 		Actor:          r.cfg.Actor,
 		StartedAt:      time.Now().UTC(),
 	}
-	vr = finalizeValidationFailureReport(r.cfg, vr, "validation_failed", base, cause)
-	return writeFailureReport(func() error {
-		return writeValidationReport(r.cfg.ReportDir, vr)
-	}, base, cause)
+	return FailureReporter{cfg: r.cfg}.Validation(vr, "validation_failed", base, cause)
 }
 
 func (r Runner) validateManagedScope(ctx context.Context, session *runSession, layout parser.Layout, runID string) (contracts.ValidationReport, error) {
@@ -103,7 +100,7 @@ func (r Runner) validateScope(ctx context.Context, session *runSession, layout p
 			return finalizeValidationFailure(vr, err), err
 		}
 		createdRun = true
-		itemIDs, err = recorder.persistValidationScope(ctx, conn, layout, catalog, successfulByKey)
+		itemIDs, err = recorder.scope.Validation(ctx, layout, catalog, successfulByKey)
 		if err != nil {
 			if createdRun {
 				session.RecordRunFailure(ctx, recorder, contracts.ErrCriticalState, err)
@@ -111,7 +108,7 @@ func (r Runner) validateScope(ctx context.Context, session *runSession, layout p
 			return finalizeValidationFailure(vr, err), err
 		}
 	} else {
-		itemIDs, err = recorder.loadObjectItemIDs(ctx, conn)
+		itemIDs, err = recorder.loadObjectItemIDs(ctx)
 		if err != nil {
 			return finalizeValidationFailure(vr, err), err
 		}
@@ -119,13 +116,13 @@ func (r Runner) validateScope(ctx context.Context, session *runSession, layout p
 	modules, err := validate.RefreshManagedObjects(ctx, conn, layout, r.log)
 	vr.Validation.ModulesRefreshed = modules.ModulesRefreshed
 	if err != nil {
-		recorder.recordValidationFailure(ctx, layout.Objects, itemIDs, err, includeChecks, r.log)
+		recorder.validation.recordFailure(ctx, layout.Objects, itemIDs, err, includeChecks, r.log)
 		if createdRun {
 			session.RecordRunFailure(ctx, recorder, contracts.ErrValidation, err)
 		}
 		return finalizeValidationFailure(vr, err), err
 	}
-	if err := recorder.recordValidationSuccesses(ctx, layout.Objects); err != nil {
+	if err := recorder.validation.recordSuccesses(ctx, layout.Objects); err != nil {
 		if createdRun {
 			session.RecordRunFailure(ctx, recorder, contracts.ErrCriticalState, err)
 		}
@@ -136,7 +133,7 @@ func (r Runner) validateScope(ctx context.Context, session *runSession, layout p
 		vr.Validation.ChecksPassed = checks.ChecksPassed
 		vr.Validation.ChecksFailed = checks.ChecksFailed
 		if err != nil {
-			recorder.recordValidationFailure(ctx, nil, nil, err, includeChecks, r.log)
+			recorder.validation.recordFailure(ctx, nil, nil, err, includeChecks, r.log)
 			if createdRun {
 				session.RecordRunFailure(ctx, recorder, contracts.ErrValidation, err)
 			}

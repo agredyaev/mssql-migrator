@@ -14,9 +14,6 @@ import (
 )
 
 func (r Runner) Baseline(ctx context.Context) error {
-	if err := r.requireConfirmation(); err != nil {
-		return err
-	}
 	baselineRunner := r
 	baselineRunner.cfg.UpdatePolicy = config.UpdatePolicyNone
 	session, err := r.startProtectedSession(ctx)
@@ -46,7 +43,7 @@ func (r Runner) Baseline(ctx context.Context) error {
 	if err != nil {
 		return session.Fail(contracts.ErrCriticalState, err)
 	}
-	itemIDs, err := recorder.persistMigrationScope(ctx, conn, plan)
+	itemIDs, err := recorder.scope.Migration(ctx, plan)
 	if err != nil {
 		session.RecordRunFailure(ctx, recorder, contracts.ErrCriticalState, err)
 		return session.Fail(contracts.ErrCriticalState, err)
@@ -60,14 +57,14 @@ func (r Runner) Baseline(ctx context.Context) error {
 			continue
 		case contracts.ActionUpdateExistingModule, contracts.ActionUpdateExistingSupported, contracts.ActionReprocessChangedBlocked:
 			failure := fmt.Errorf("%w: baseline found existing metadata drift for %s; use repair-checksum", contracts.ErrMetadataDrift, object.ObjectPath)
-			if recordErr := recorder.recordObjectFailure(ctx, baselineFailureMetadataObject(object, itemID, baselineRunner.cfg.TransactionMode), failure, true); recordErr != nil {
+			if recordErr := recorder.attempt.ObjectFailure(ctx, baselineFailureMetadataObject(object, itemID, baselineRunner.cfg.TransactionMode), failure, true); recordErr != nil {
 				r.log.Warn("baseline_metadata_write_failed", logger.Redact(recordErr.Error()))
 			}
 			session.RecordRunFailure(ctx, recorder, failure, nil)
 			return session.Fail(failure, nil)
 		default:
 			failure := fmt.Errorf("%w: unsupported baseline object state %s for %s", contracts.ErrInvalidInput, object.PlannedAction, object.ObjectPath)
-			if recordErr := recorder.recordObjectFailure(ctx, baselineFailureMetadataObject(object, itemID, baselineRunner.cfg.TransactionMode), failure, true); recordErr != nil {
+			if recordErr := recorder.attempt.ObjectFailure(ctx, baselineFailureMetadataObject(object, itemID, baselineRunner.cfg.TransactionMode), failure, true); recordErr != nil {
 				r.log.Warn("baseline_metadata_write_failed", logger.Redact(recordErr.Error()))
 			}
 			session.RecordRunFailure(ctx, recorder, failure, nil)
@@ -78,7 +75,7 @@ func (r Runner) Baseline(ctx context.Context) error {
 		var failure *baselinePreflightFailure
 		if errors.As(err, &failure) {
 			if strings.TrimSpace(failure.schemaName) != "" {
-				if recordErr := recorder.recordSchemaFailure(ctx, failure.schemaName, err, true); recordErr != nil {
+				if recordErr := recorder.attempt.SchemaFailure(ctx, failure.schemaName, err, true); recordErr != nil {
 					r.log.Warn("baseline_metadata_write_failed", logger.Redact(recordErr.Error()))
 				}
 			}
@@ -88,7 +85,7 @@ func (r Runner) Baseline(ctx context.Context) error {
 				if planned.NormalizedKey == "" {
 					planned = contracts.PlannedObject{ObjectPath: failure.object.Path, NormalizedKey: failure.object.NormalizedKey, Checksum: failure.object.Checksum}
 				}
-				if recordErr := recorder.recordObjectFailure(ctx, baselineFailureMetadataObject(planned, itemID, baselineRunner.cfg.TransactionMode), err, true); recordErr != nil {
+				if recordErr := recorder.attempt.ObjectFailure(ctx, baselineFailureMetadataObject(planned, itemID, baselineRunner.cfg.TransactionMode), err, true); recordErr != nil {
 					r.log.Warn("baseline_metadata_write_failed", logger.Redact(recordErr.Error()))
 				}
 			}
@@ -113,9 +110,6 @@ func (r Runner) Baseline(ctx context.Context) error {
 }
 
 func (r Runner) RepairChecksum(ctx context.Context) error {
-	if err := r.requireConfirmation(); err != nil {
-		return err
-	}
 	if strings.TrimSpace(r.cfg.RepairTarget) == "" {
 		return fmt.Errorf("%w: --script is required", contracts.ErrInvalidInput)
 	}
@@ -124,7 +118,6 @@ func (r Runner) RepairChecksum(ctx context.Context) error {
 		return session.Fail(err, nil)
 	}
 	defer session.Close()
-	conn := session.conn
 	report := session.MigrationReport()
 	if err := session.BootstrapMetadata(ctx); err != nil {
 		return session.Fail(contracts.ErrCriticalState, err)
@@ -168,7 +161,7 @@ func (r Runner) RepairChecksum(ctx context.Context) error {
 	if err != nil {
 		return session.Fail(contracts.ErrCriticalState, err)
 	}
-	itemID, err := recorder.persistRepairScope(ctx, conn, target, plannedTarget, catalog, currentChecksum)
+	itemID, err := recorder.scope.Repair(ctx, target, plannedTarget, catalog, currentChecksum)
 	if err != nil {
 		session.RecordRunFailure(ctx, recorder, contracts.ErrCriticalState, err)
 		return session.Fail(contracts.ErrCriticalState, err)
@@ -183,7 +176,7 @@ func (r Runner) RepairChecksum(ctx context.Context) error {
 		}
 		return session.WriteMigrationReport()
 	}
-	err = recorder.recordRepairSuccess(ctx, target, itemID)
+	err = recorder.repair.recordSuccess(ctx, target, itemID)
 	if err != nil {
 		session.RecordRunFailure(ctx, recorder, contracts.ErrCriticalState, err)
 		return session.Fail(contracts.ErrCriticalState, err)

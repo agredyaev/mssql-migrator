@@ -53,14 +53,14 @@ func (s *runSession) StartRun(ctx context.Context, command string, planFile stri
 	if err != nil {
 		return "", metadataRecorder{}, err
 	}
-	return runID, newMetadataRecorder(s.runner.cfg, s.conn, runID), nil
+	return runID, newMetadataRecorder(s.runner.cfg, s.conn, s.conn, runID), nil
 }
 
 func (s *runSession) Recorder(runID string) metadataRecorder {
 	if s == nil || s.conn == nil {
 		return metadataRecorder{}
 	}
-	return newMetadataRecorder(s.runner.cfg, s.conn, runID)
+	return newMetadataRecorder(s.runner.cfg, s.conn, s.conn, runID)
 }
 
 func (s *runSession) Close() {
@@ -73,7 +73,7 @@ func (s *runSession) Close() {
 }
 
 func (s *runSession) Fail(base error, cause error) error {
-	return s.runner.writeFailedMigration(s.report, base, cause)
+	return FailureReporter{cfg: s.runner.cfg}.Migration(s.report, base, cause)
 }
 
 func (s *runSession) ResolvePlanningLayout() (parser.Layout, string, error) {
