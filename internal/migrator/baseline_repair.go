@@ -86,8 +86,8 @@ func (r Runner) validateBaselineObject(ctx context.Context, state *protectedRunS
 	switch object.PlannedAction {
 	case contracts.ActionSkipUnchanged, contracts.ActionAdoptExisting, contracts.ActionCreateObject:
 		return nil
-	case contracts.ActionUpdateExistingModule, contracts.ActionUpdateExistingSupported, contracts.ActionReprocessChangedBlocked:
-		failure := fmt.Errorf("%w: baseline found existing metadata drift for %s; use repair-checksum", contracts.ErrMetadataDrift, object.ObjectPath)
+	case contracts.ActionUpdateExistingModule, contracts.ActionUpdateExistingSupported, contracts.ActionReprocessChangedBlocked, contracts.ActionReprocessChanged:
+		failure := baselineDriftFailure(object)
 		r.warnBaselineAttemptWriteFailure(state.recorder.attempt.ObjectFailure(ctx, baselineFailureMetadataObject(object, itemID, r.cfg.TransactionMode), failure, true))
 		return state.fail(ctx, failure, nil)
 	default:
@@ -134,6 +134,23 @@ func (r Runner) warnBaselineAttemptWriteFailure(err error) {
 	if err != nil {
 		r.log.Warn("baseline_metadata_write_failed", logger.Redact(err.Error()))
 	}
+}
+
+func baselineDriftFailure(object contracts.PlannedObject) error {
+	if object.Kind == "tables" {
+		if len(object.TransitionPaths) > 0 {
+			return fmt.Errorf("%w: baseline found tracked table drift for %s; use migrate to apply checked-in transitions from %s", contracts.ErrMetadataDrift, object.ObjectPath, strings.Join(object.TransitionPaths, ", "))
+		}
+		return fmt.Errorf("%w: baseline found tracked table drift for %s; add a checked-in migration under %s and use migrate", contracts.ErrMetadataDrift, object.ObjectPath, requiredTableTransitionDir(object))
+	}
+	return fmt.Errorf("%w: baseline found existing metadata drift for %s; use repair-checksum", contracts.ErrMetadataDrift, object.ObjectPath)
+}
+
+func requiredTableTransitionDir(object contracts.PlannedObject) string {
+	if strings.TrimSpace(object.SchemaName) == "" || strings.TrimSpace(object.ObjectName) == "" {
+		return "<schema>/tables/_migrations/<table>/"
+	}
+	return object.SchemaName + "/tables/_migrations/" + object.ObjectName + "/"
 }
 
 func (r Runner) prepareRepairChecksum(ctx context.Context, state *protectedRunState) (repairChecksumContext, error) {
@@ -230,6 +247,11 @@ func validateRepairEligibility(target parser.Object, planned contracts.PlannedOb
 	switch planned.PlannedAction {
 	case contracts.ActionUpdateExistingModule, contracts.ActionUpdateExistingSupported, contracts.ActionReprocessChangedBlocked:
 		return nil
+	case contracts.ActionReprocessChanged:
+		if planned.Kind == "tables" || len(planned.TransitionPaths) > 0 {
+			return fmt.Errorf("repair-checksum cannot run for %s: the current plan will apply checked-in table transitions, so use migrate instead", target.Path)
+		}
+		return fmt.Errorf("repair-checksum cannot run for %s: the current plan will reprocess the object, so use migrate instead", target.Path)
 	case contracts.ActionSkipUnchanged:
 		return fmt.Errorf("repair-checksum is not needed for %s: the latest successful metadata checksum already matches the current repo SQL", target.Path)
 	case contracts.ActionAdoptExisting:

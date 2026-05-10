@@ -183,6 +183,34 @@ func TestSupportsExistingObjectUpdateRequiresCreateOrAlter(t *testing.T) {
 	}
 }
 
+func TestDiscoverLayoutParsesTableTransitionScripts(t *testing.T) {
+	root := t.TempDir()
+	writeLayoutFile(t, filepath.Join(root, "reporting", "tables", "snapshot.sql"), "CREATE TABLE reporting.snapshot(id int);")
+	writeLayoutFile(t, filepath.Join(root, "reporting", "tables", "_migrations", "snapshot", "001_deadbee_add_name.sql"), "ALTER TABLE reporting.snapshot ADD name nvarchar(100) NULL;")
+	layout, err := DiscoverLayout(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(layout.Transitions) != 1 {
+		t.Fatalf("expected one transition, got %#v", layout.Transitions)
+	}
+	if layout.Transitions[0].NormalizedKey != "reporting/tables/snapshot" {
+		t.Fatalf("unexpected transition key: %#v", layout.Transitions[0])
+	}
+	if layout.Transitions[0].Ordinal != "001" {
+		t.Fatalf("unexpected transition ordinal: %#v", layout.Transitions[0])
+	}
+}
+
+func TestDiscoverLayoutRejectsInvalidTableTransitionName(t *testing.T) {
+	root := t.TempDir()
+	writeLayoutFile(t, filepath.Join(root, "reporting", "tables", "snapshot.sql"), "CREATE TABLE reporting.snapshot(id int);")
+	writeLayoutFile(t, filepath.Join(root, "reporting", "tables", "_migrations", "snapshot", "bad.sql"), "ALTER TABLE reporting.snapshot ADD name nvarchar(100) NULL;")
+	if _, err := DiscoverLayout(root); err == nil || !strings.Contains(err.Error(), "<nnn>_<commit>_<slug>.sql") {
+		t.Fatalf("expected invalid transition file error, got %v", err)
+	}
+}
+
 func writeLayoutFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

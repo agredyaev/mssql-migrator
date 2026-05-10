@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,6 +14,7 @@ import (
 	"reporting-db-migrations/internal/failures"
 	"reporting-db-migrations/internal/logger"
 	"reporting-db-migrations/internal/migrator"
+	"reporting-db-migrations/internal/reports"
 )
 
 type BuildInfo struct {
@@ -82,7 +82,7 @@ func (r Runtime) dispatch(spec commands.Spec, args []string, stdout io.Writer, s
 	cfg.ToolCommit = r.BuildInfo.Commit
 
 	logWriter := stdout
-	if spec.Name == contracts.CommandPlan && cfg.PlanJSON {
+	if spec.Name == contracts.CommandPlan {
 		logWriter = stderr
 	}
 	log := logger.New(logger.Options{JSON: cfg.JSONLogs, Level: cfg.LogLevel, Writer: logWriter})
@@ -109,7 +109,7 @@ func (r Runtime) dispatch(spec commands.Spec, args []string, stdout io.Writer, s
 		log.Error(event, outcome.Failure.Error)
 		return outcome.ExitCode
 	}
-	if result.plan != nil && result.plan.Blocked {
+	if spec.Name != contracts.CommandPlan && result.plan != nil && result.plan.Blocked {
 		outcome := failures.EvaluatePlanBlocked(cfg, *result.plan)
 		log.Error(spec.FailureEvent, outcome.Failure.Error)
 		return outcome.ExitCode
@@ -163,11 +163,15 @@ func writerOrDefault(writer io.Writer, fallback io.Writer) io.Writer {
 }
 
 func writePlanJSON(writer io.Writer, plan contracts.MigrationPlan) error {
-	b, err := json.MarshalIndent(plan, "", "  ")
+	b, err := reports.MarshalPlanJSON(plan)
 	if err != nil {
 		return err
 	}
-	b = append(b, '\n')
 	_, err = writer.Write(b)
+	return err
+}
+
+func writePlanText(writer io.Writer, plan contracts.MigrationPlan) error {
+	_, err := io.WriteString(writer, reports.FormatPlanText(plan))
 	return err
 }

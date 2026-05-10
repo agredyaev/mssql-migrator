@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"reporting-db-migrations/internal/config"
@@ -225,6 +226,9 @@ func classifyMigrationPlanBuildError(err error) error {
 }
 
 func (r Runner) verifyMigrationPlan(plan contracts.MigrationPlan) error {
+	if strings.TrimSpace(r.cfg.PlanFile) == "" {
+		return nil
+	}
 	return planner.VerifyApprovedPlan(r.cfg, plan)
 }
 

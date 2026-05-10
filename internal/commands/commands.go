@@ -6,7 +6,6 @@ type Spec struct {
 	FailureEvent         string
 	RequiresSQLSelection bool
 	RequiresGitCommit    bool
-	RequiresPlanFile     bool
 	RequiresRepairTarget bool
 	RequiresConfirm      bool
 }
@@ -21,12 +20,12 @@ const (
 )
 
 var specs = []Spec{
-	{Name: Info, Usage: "info --env prod", FailureEvent: "info_failed", RequiresSQLSelection: false, RequiresGitCommit: false, RequiresPlanFile: false, RequiresRepairTarget: false, RequiresConfirm: false},
-	{Name: Plan, Usage: "plan --env prod --sql-root ./sql --sql-base dwh", FailureEvent: "plan_failed", RequiresSQLSelection: true, RequiresGitCommit: true, RequiresPlanFile: false, RequiresRepairTarget: false, RequiresConfirm: false},
-	{Name: Migrate, Usage: "migrate --env prod --sql-root ./sql --sql-base dwh --plan-file reports/migration-plan.json", FailureEvent: "migration_failed", RequiresSQLSelection: true, RequiresGitCommit: true, RequiresPlanFile: true, RequiresRepairTarget: false, RequiresConfirm: false},
-	{Name: Validate, Usage: "validate --env prod --sql-root ./sql --sql-base dwh", FailureEvent: "validation_failed", RequiresSQLSelection: true, RequiresGitCommit: false, RequiresPlanFile: false, RequiresRepairTarget: false, RequiresConfirm: false},
-	{Name: Baseline, Usage: "baseline --env prod --sql-root ./sql --sql-base dwh --confirm", FailureEvent: "baseline_failed", RequiresSQLSelection: true, RequiresGitCommit: true, RequiresPlanFile: false, RequiresRepairTarget: false, RequiresConfirm: true},
-	{Name: RepairChecksum, Usage: "repair-checksum --env prod --sql-root ./sql --sql-base dwh --script reporting/views/monthly.sql --confirm", FailureEvent: "repair_checksum_failed", RequiresSQLSelection: true, RequiresGitCommit: true, RequiresPlanFile: false, RequiresRepairTarget: true, RequiresConfirm: true},
+	{Name: Info, Usage: "info --env prod", FailureEvent: "info_failed", RequiresSQLSelection: false, RequiresGitCommit: false, RequiresRepairTarget: false, RequiresConfirm: false},
+	{Name: Plan, Usage: "plan --env prod --sql-root ./sql --sql-base dwh", FailureEvent: "plan_failed", RequiresSQLSelection: true, RequiresGitCommit: true, RequiresRepairTarget: false, RequiresConfirm: false},
+	{Name: Migrate, Usage: "migrate --env prod --sql-root ./sql --sql-base dwh", FailureEvent: "migration_failed", RequiresSQLSelection: true, RequiresGitCommit: true, RequiresRepairTarget: false, RequiresConfirm: false},
+	{Name: Validate, Usage: "validate --env prod --sql-root ./sql --sql-base dwh", FailureEvent: "validation_failed", RequiresSQLSelection: true, RequiresGitCommit: false, RequiresRepairTarget: false, RequiresConfirm: false},
+	{Name: Baseline, Usage: "baseline --env prod --sql-root ./sql --sql-base dwh --confirm", FailureEvent: "baseline_failed", RequiresSQLSelection: true, RequiresGitCommit: true, RequiresRepairTarget: false, RequiresConfirm: true},
+	{Name: RepairChecksum, Usage: "repair-checksum --env prod --sql-root ./sql --sql-base dwh --script reporting/views/monthly.sql --confirm", FailureEvent: "repair_checksum_failed", RequiresSQLSelection: true, RequiresGitCommit: true, RequiresRepairTarget: true, RequiresConfirm: true},
 }
 
 var specsByName = func() map[string]Spec {

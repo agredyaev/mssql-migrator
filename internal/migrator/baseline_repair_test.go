@@ -77,3 +77,27 @@ func TestValidateRepairEligibilityRejectsAdoptExistingObject(t *testing.T) {
 		t.Fatal("expected adopt_existing object to be rejected")
 	}
 }
+
+func TestBaselineDriftFailureForTransitionBackedTableUsesMigrateMessage(t *testing.T) {
+	err := baselineDriftFailure(contracts.PlannedObject{
+		ObjectPath:      "reporting/tables/snapshot.sql",
+		SchemaName:      "reporting",
+		ObjectName:      "snapshot",
+		Kind:            "tables",
+		TransitionPaths: []string{"reporting/tables/_migrations/snapshot/001_deadbee_expand_snapshot.sql"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "use migrate to apply checked-in transitions") || !strings.Contains(err.Error(), "001_deadbee_expand_snapshot.sql") {
+		t.Fatalf("expected transition-backed baseline drift message, got %v", err)
+	}
+}
+
+func TestValidateRepairEligibilityRejectsTransitionBackedTableUpdate(t *testing.T) {
+	err := validateRepairEligibility(parser.Object{Path: "reporting/tables/snapshot.sql"}, contracts.PlannedObject{
+		Kind:            "tables",
+		PlannedAction:   contracts.ActionReprocessChanged,
+		TransitionPaths: []string{"reporting/tables/_migrations/snapshot/001_deadbee_expand_snapshot.sql"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "use migrate instead") {
+		t.Fatalf("expected transition-backed table update to require migrate, got %v", err)
+	}
+}

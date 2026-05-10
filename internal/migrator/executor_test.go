@@ -91,3 +91,55 @@ func TestProgressLoggerStopIsIdempotent(t *testing.T) {
 	stop()
 	stop()
 }
+
+func TestExecutePlanAppliesCheckedInTransitionsBeforeTableObject(t *testing.T) {
+	runner := NewRunner(config.Config{TransactionMode: config.TransactionModeNone}, logger.New(logger.Options{Writer: io.Discard}))
+	report := contracts.MigrationReport{Result: "running"}
+	layout := parser.Layout{
+		Objects: []parser.Object{{
+			Path:          "reporting/tables/snapshot.sql",
+			AbsolutePath:  "/tmp/reporting/tables/snapshot.sql",
+			Content:       "CREATE TABLE reporting.snapshot(id int);",
+			SchemaName:    "reporting",
+			Kind:          "tables",
+			ObjectName:    "snapshot",
+			NormalizedKey: "reporting/tables/snapshot",
+			Checksum:      "table-sum",
+		}},
+		Transitions: []parser.TransitionScript{{
+			Path:          "reporting/tables/_migrations/snapshot/001_deadbee_expand_snapshot.sql",
+			Content:       "-- migrator: no-transaction\nALTER TABLE reporting.snapshot ADD name nvarchar(100) NULL;",
+			NormalizedKey: "reporting/tables/snapshot",
+			Ordinal:       "001",
+			NoTransaction: true,
+		}},
+	}
+	plan := contracts.MigrationPlan{Objects: []contracts.PlannedObject{{
+		ObjectPath:      "reporting/tables/snapshot.sql",
+		Kind:            "tables",
+		NormalizedKey:   "reporting/tables/snapshot",
+		Checksum:        "table-sum",
+		PlannedAction:   contracts.ActionReprocessChanged,
+		TransitionPaths: []string{"reporting/tables/_migrations/snapshot/001_deadbee_expand_snapshot.sql"},
+		TransactionMode: config.TransactionModeNone,
+		RollbackScope:   contracts.RollbackScopeNone,
+		NoTransaction:   true,
+	}}}
+
+	execer := &stubExecer{result: stubResult{rows: 1}}
+	if err := runner.executePlan(context.Background(), execer, layout, plan, &report); err != nil {
+		t.Fatalf("unexpected executePlan error: %v", err)
+	}
+	if len(execer.calls) < 2 {
+		t.Fatalf("expected transition SQL and table SQL, got %#v", execer.calls)
+	}
+	if !containsAll(execer.calls[0].query, "ALTER TABLE", "snapshot", "name") {
+		t.Fatalf("expected transition SQL first, got %#v", execer.calls)
+	}
+	if !containsAll(execer.calls[1].query, "CREATE TABLE", "snapshot") {
+		t.Fatalf("expected table SQL after transition, got %#v", execer.calls)
+	}
+	if len(report.Applied) != 2 {
+		t.Fatalf("expected transition and table in applied report, got %#v", report.Applied)
+	}
+}

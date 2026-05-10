@@ -295,6 +295,10 @@ func planSchemas(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 }
 
 func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog CatalogState, updatePolicy string) {
+	transitionsByKey := make(map[string][]parser.TransitionScript)
+	for _, transition := range layout.Transitions {
+		transitionsByKey[transition.NormalizedKey] = append(transitionsByKey[transition.NormalizedKey], transition)
+	}
 	for _, object := range layout.Objects {
 		planned := contracts.PlannedObject{
 			ObjectPath:      object.Path,
@@ -309,9 +313,10 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 			NoTransaction:   noTransactionForObject(plan.TransactionMode, object.NoTransaction),
 			SourceFile:      object.Path,
 		}
+		planned.TransitionPaths = transitionPaths(transitionsByKey[object.NormalizedKey])
 		_, exists := catalog.Objects[object.NormalizedKey]
 		planned.Exists = exists
-		planned.PlannedAction = determineObjectAction(object, catalog, updatePolicy)
+		planned.PlannedAction = determineObjectAction(object, catalog, updatePolicy, len(planned.TransitionPaths) > 0)
 		if isUnsafeUpdateAction(planned.PlannedAction) && !parser.SupportsExistingObjectUpdate(object) {
 			planned.PlannedAction = contracts.ActionReprocessChangedBlocked
 			plan.BlockReasons = append(plan.BlockReasons, "blocked existing object update: "+object.Path+" must start with CREATE OR ALTER for "+strings.TrimSuffix(strings.ToUpper(object.Kind), "S"))
@@ -330,8 +335,10 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 			plan.Summary.SkipCount++
 		case contracts.ActionReprocessChangedBlocked:
 			if !containsBlockReason(plan.BlockReasons, "blocked existing object update: "+object.Path+" must start with CREATE OR ALTER for "+strings.TrimSuffix(strings.ToUpper(object.Kind), "S")) {
-				plan.BlockReasons = append(plan.BlockReasons, "blocked existing object change: "+object.Path+" is already tracked, repo checksum changed, and the current update policy does not allow automatic DDL for this object kind")
+				plan.BlockReasons = append(plan.BlockReasons, blockedExistingObjectReason(object, planned.TransitionPaths))
 			}
+			plan.Summary.ChangedCount++
+		case contracts.ActionReprocessChanged:
 			plan.Summary.ChangedCount++
 		case contracts.ActionUpdateExistingModule, contracts.ActionUpdateExistingSupported:
 			plan.Summary.ChangedCount++
@@ -357,7 +364,7 @@ func containsBlockReason(values []string, target string) bool {
 	return false
 }
 
-func determineObjectAction(object parser.Object, catalog CatalogState, updatePolicy string) string {
+func determineObjectAction(object parser.Object, catalog CatalogState, updatePolicy string, hasTransition bool) string {
 	_, exists := catalog.Objects[object.NormalizedKey]
 	if !exists {
 		return contracts.ActionCreateObject
@@ -367,6 +374,9 @@ func determineObjectAction(object parser.Object, catalog CatalogState, updatePol
 		return contracts.ActionSkipUnchanged
 	}
 	if tracked && checksum != object.Checksum {
+		if object.Kind == "tables" && hasTransition {
+			return contracts.ActionReprocessChanged
+		}
 		if parser.IsModuleKind(object.Kind) && updatePolicy == config.UpdatePolicyModulesOnly {
 			return contracts.ActionUpdateExistingModule
 		}
@@ -376,6 +386,27 @@ func determineObjectAction(object parser.Object, catalog CatalogState, updatePol
 		return contracts.ActionReprocessChangedBlocked
 	}
 	return contracts.ActionAdoptExisting
+}
+
+func transitionPaths(items []parser.TransitionScript) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(items))
+	for _, item := range items {
+		paths = append(paths, item.Path)
+	}
+	return paths
+}
+
+func blockedExistingObjectReason(object parser.Object, transitions []string) string {
+	if object.Kind == "tables" {
+		if len(transitions) == 0 {
+			return "transition required: " + object.Path + " is already tracked, repo checksum changed, and table drift needs a checked-in migration under " + object.SchemaName + "/tables/_migrations/" + object.ObjectName + "/"
+		}
+		return "blocked existing object change: " + object.Path + " is already tracked, repo checksum changed, and the current transition set is not executable"
+	}
+	return "blocked existing object change: " + object.Path + " is already tracked, repo checksum changed, and the current update policy does not allow automatic DDL for this object kind"
 }
 
 func inferMetadataMatch(object parser.Object, catalog CatalogState) *bool {

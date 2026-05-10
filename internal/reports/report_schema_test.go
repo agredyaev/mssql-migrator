@@ -45,6 +45,34 @@ func TestMigrationPlanJSONSchemaUsesSnakeCase(t *testing.T) {
 	}
 }
 
+func TestMigrationPlanJSONIncludesTransitionPaths(t *testing.T) {
+	plan := contracts.MigrationPlan{Objects: []contracts.PlannedObject{{
+		ObjectPath:      "reporting/tables/snapshot.sql",
+		Kind:            "tables",
+		TransitionPaths: []string{"reporting/tables/_migrations/snapshot/001_deadbee_expand_snapshot.sql"},
+	}}}
+	content, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := map[string]any{}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		t.Fatal(err)
+	}
+	objects, ok := payload["objects"].([]any)
+	if !ok || len(objects) != 1 {
+		t.Fatalf("expected one object payload, got %s", string(content))
+	}
+	objectPayload, ok := objects[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected object payload map, got %T", objects[0])
+	}
+	paths, ok := objectPayload["transition_paths"].([]any)
+	if !ok || len(paths) != 1 || paths[0] != "reporting/tables/_migrations/snapshot/001_deadbee_expand_snapshot.sql" {
+		t.Fatalf("expected transition_paths payload, got %s", string(content))
+	}
+}
+
 func TestMigrationReportJSONSchemaUsesSnakeCase(t *testing.T) {
 	report := contracts.MigrationReport{Tool: "rmig", Version: "1.0.0", ToolCommit: "deadbeef", Environment: "prod", Database: "db", GitCommit: "abc", ValidationScope: "managed_scope_only", ValidationSkipped: false, PipelineRunID: "run-1", PipelineURL: "https://ci.example/run", StartedAt: time.Unix(0, 0).UTC(), FinishedAt: time.Unix(1, 0).UTC(), Result: "success"}
 	assertJSONKeys(t, report, []string{"tool_commit", "validation_scope", "pipeline_run_id", "pipeline_url", "started_at", "finished_at"}, []string{"ToolCommit", "PipelineRunID", "PipelineURL"})
@@ -236,6 +264,27 @@ func TestFormatPlanTextExplainsObjectDecisions(t *testing.T) {
 		"adopt existing database object without DDL",
 		"latest successful metadata checksum already matches the current repo SQL",
 		"blocked because the object is already tracked",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected plan text to contain %q, got %s", expected, text)
+		}
+	}
+}
+
+func TestFormatPlanTextExplainsTransitionBackedTableDecisions(t *testing.T) {
+	text := formatPlanText(contracts.MigrationPlan{
+		SchemaVersion: "v8",
+		Command:       "plan",
+		Target:        contracts.PlanTarget{Environment: "pred", Database: "db"},
+		Objects: []contracts.PlannedObject{
+			{ObjectPath: "reporting/tables/snapshot.sql", SchemaName: "reporting", ObjectName: "snapshot", Kind: "tables", PlannedAction: contracts.ActionReprocessChanged, TransitionPaths: []string{"reporting/tables/_migrations/snapshot/001_deadbee_expand_snapshot.sql"}},
+			{ObjectPath: "reporting/tables/stale.sql", SchemaName: "reporting", ObjectName: "stale", Kind: "tables", PlannedAction: contracts.ActionReprocessChangedBlocked},
+		},
+	})
+	for _, expected := range []string{
+		"apply checked-in transitions before the repo table SQL",
+		"reporting/tables/_migrations/snapshot/001_deadbee_expand_snapshot.sql",
+		"checked-in transition is required under reporting/tables/_migrations/stale/",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("expected plan text to contain %q, got %s", expected, text)

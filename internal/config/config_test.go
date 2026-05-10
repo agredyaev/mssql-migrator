@@ -80,6 +80,21 @@ func TestLoadAllowsIntegratedAuthFromEnvironment(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsUpdatePolicyToModulesOnly(t *testing.T) {
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+
+	cfg, err := Load(Input{Env: "prod"})
+	if err != nil {
+		t.Fatalf("unexpected load error: %v", err)
+	}
+	if cfg.UpdatePolicy != UpdatePolicyModulesOnly {
+		t.Fatalf("expected default update policy %q, got %q", UpdatePolicyModulesOnly, cfg.UpdatePolicy)
+	}
+}
+
 func TestLoadClassifiesInvalidTimeoutFlagAsInvalidInput(t *testing.T) {
 	t.Setenv("RM_DB_SERVER", "server")
 	t.Setenv("RM_DB_DATABASE", "db")

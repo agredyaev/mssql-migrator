@@ -128,7 +128,7 @@ func Load(input Input) (Config, error) {
 		Env:             normalizeEnv(input.Env),
 		SQLRoot:         strings.TrimSpace(input.SQLRoot),
 		SQLBase:         strings.TrimSpace(input.SQLBase),
-		ReportDir:       def(input.ReportDir, "./reports"),
+		ReportDir:       strings.TrimSpace(input.ReportDir),
 		LogLevel:        def(input.LogLevel, "info"),
 		JSONLogs:        jsonLogs,
 		SkipValidate:    skipValidate,
@@ -140,7 +140,7 @@ func Load(input Input) (Config, error) {
 		PlanFile:        input.PlanFile,
 		RepairTarget:    strings.TrimSpace(input.RepairTarget),
 		ComparisonMode:  ComparisonModeCaseInsensitive,
-		UpdatePolicy:    normalizeUpdatePolicy(def(input.UpdatePolicy, UpdatePolicyNone)),
+		UpdatePolicy:    normalizeUpdatePolicy(def(input.UpdatePolicy, UpdatePolicyModulesOnly)),
 		TransactionMode: normalizeTransactionMode(def(input.TransactionMode, TransactionModeScript)),
 	}
 	if err := cfg.loadEnvironment(); err != nil {
@@ -272,9 +272,6 @@ func (cfg Config) ValidateForCommand(command string) error {
 		if err := cfg.ValidateGitCommit(); err != nil {
 			return err
 		}
-	}
-	if spec.RequiresPlanFile && strings.TrimSpace(cfg.PlanFile) == "" {
-		return wrapInvalidInputError(fmt.Errorf("--plan-file is required"))
 	}
 	if spec.RequiresRepairTarget && strings.TrimSpace(cfg.RepairTarget) == "" {
 		return wrapInvalidInputError(fmt.Errorf("--script is required"))

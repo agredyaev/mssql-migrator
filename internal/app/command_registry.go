@@ -50,6 +50,10 @@ var commandRunners = map[string]commandRunner{
 			if err := writePlanJSON(stdout, plan); err != nil {
 				return commandResult{}, failureEventError{event: "plan_output_failed", err: err}
 			}
+		} else {
+			if err := writePlanText(stdout, plan); err != nil {
+				return commandResult{}, failureEventError{event: "plan_output_failed", err: err}
+			}
 		}
 		return commandResult{plan: &plan}, nil
 	},

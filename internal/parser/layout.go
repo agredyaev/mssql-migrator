@@ -36,10 +36,11 @@ var moduleKinds = map[string]struct{}{
 var sqlIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_@$#]*$`)
 
 type Layout struct {
-	RootPath string
-	Schemas  []Schema
-	Objects  []Object
-	Checks   []CheckScript
+	RootPath    string
+	Schemas     []Schema
+	Objects     []Object
+	Transitions []TransitionScript
+	Checks      []CheckScript
 }
 
 type Schema struct {
@@ -74,6 +75,19 @@ type CheckScript struct {
 	NoTransaction bool
 }
 
+type TransitionScript struct {
+	Path          string
+	AbsolutePath  string
+	Content       string
+	SchemaName    string
+	TableName     string
+	NormalizedKey string
+	Checksum      string
+	Ordinal       string
+	Slug          string
+	NoTransaction bool
+}
+
 type Batch struct {
 	SQL    string
 	Repeat int
@@ -99,6 +113,7 @@ func discoverLayout(root string, includeChecks bool) (Layout, error) {
 	schemaSet := map[string]Schema{}
 	objects := []Object{}
 	checks := []CheckScript{}
+	transitions := []TransitionScript{}
 	seenKeys := map[string]string{}
 
 	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -143,6 +158,14 @@ func discoverLayout(root string, includeChecks bool) (Layout, error) {
 		}
 
 		kind := strings.TrimSpace(segments[1])
+		if kind == "tables" && len(segments) >= 4 && segments[2] == "_migrations" {
+			transition, err := parseTransitionScript(root, rel, schemaName)
+			if err != nil {
+				return err
+			}
+			transitions = append(transitions, transition)
+			return nil
+		}
 		if kind == "checks" {
 			if len(segments) != 3 {
 				return fmt.Errorf("invalid repository layout: checks path must be <schema>/checks/<name>.sql: %s", rel)
@@ -186,6 +209,15 @@ func discoverLayout(root string, includeChecks bool) (Layout, error) {
 	sort.Slice(objects, func(i, j int) bool {
 		return objects[i].NormalizedKey < objects[j].NormalizedKey
 	})
+	sort.Slice(transitions, func(i, j int) bool {
+		if transitions[i].NormalizedKey != transitions[j].NormalizedKey {
+			return transitions[i].NormalizedKey < transitions[j].NormalizedKey
+		}
+		if transitions[i].Ordinal != transitions[j].Ordinal {
+			return transitions[i].Ordinal < transitions[j].Ordinal
+		}
+		return transitions[i].Path < transitions[j].Path
+	})
 	sort.Slice(checks, func(i, j int) bool {
 		return checks[i].Path < checks[j].Path
 	})
@@ -194,7 +226,7 @@ func discoverLayout(root string, includeChecks bool) (Layout, error) {
 		return Layout{}, fmt.Errorf("invalid repository layout: no managed SQL objects found under %s", filepath.ToSlash(root))
 	}
 
-	return Layout{RootPath: root, Schemas: schemas, Objects: objects, Checks: checks}, nil
+	return Layout{RootPath: root, Schemas: schemas, Objects: objects, Transitions: transitions, Checks: checks}, nil
 }
 
 func validateLayoutDirectory(root string, path string, schemaSet map[string]Schema) error {
@@ -223,6 +255,16 @@ func validateLayoutDirectory(root string, path string, schemaSet map[string]Sche
 		return fmt.Errorf("invalid repository layout: unsupported kind %s in %s", kind, relDir)
 	}
 	if kind != "checks" {
+		if kind == "tables" && len(segments) >= 3 && segments[2] == "_migrations" {
+			switch len(segments) {
+			case 3, 4:
+				return nil
+			case 5:
+				return nil
+			default:
+				return fmt.Errorf("invalid repository layout: table migrations path must be <schema>/tables/_migrations/<table>/<nnn>_<commit>_<slug>.sql: %s", relDir)
+			}
+		}
 		if _, ok := allowedKinds[kind]; !ok {
 			return fmt.Errorf("invalid repository layout: unsupported kind %s in %s", kind, relDir)
 		}
@@ -339,6 +381,45 @@ func parseCheckScript(root string, rel string, schemaName string) (CheckScript, 
 	}, nil
 }
 
+var transitionFilePattern = regexp.MustCompile(`^(\d{3})_([A-Fa-f0-9]{7,40})_([A-Za-z0-9_]+)\.sql$`)
+
+func parseTransitionScript(root string, rel string, schemaName string) (TransitionScript, error) {
+	segments := strings.Split(rel, "/")
+	if len(segments) != 5 || segments[1] != "tables" || segments[2] != "_migrations" {
+		return TransitionScript{}, fmt.Errorf("invalid repository layout: table migrations path must be <schema>/tables/_migrations/<table>/<nnn>_<commit>_<slug>.sql: %s", rel)
+	}
+	tableName := strings.TrimSpace(segments[3])
+	if err := validateSQLIdentifier("object", tableName); err != nil {
+		return TransitionScript{}, err
+	}
+	fileName := segments[4]
+	matches := transitionFilePattern.FindStringSubmatch(fileName)
+	if len(matches) != 4 {
+		return TransitionScript{}, fmt.Errorf("invalid repository layout: table migration file must match <nnn>_<commit>_<slug>.sql: %s", rel)
+	}
+	abs := filepath.Join(root, filepath.FromSlash(rel))
+	fileChecksum, err := checksum.SHA256File(abs)
+	if err != nil {
+		return TransitionScript{}, err
+	}
+	body, err := os.ReadFile(abs)
+	if err != nil {
+		return TransitionScript{}, err
+	}
+	return TransitionScript{
+		Path:          rel,
+		AbsolutePath:  abs,
+		Content:       string(body),
+		SchemaName:    schemaName,
+		TableName:     tableName,
+		NormalizedKey: strings.ToLower(strings.TrimSpace(schemaName)) + "/tables/" + strings.ToLower(tableName),
+		Checksum:      fileChecksum,
+		Ordinal:       matches[1],
+		Slug:          matches[3],
+		NoTransaction: hasNoTransactionDirective(string(body)),
+	}, nil
+}
+
 func buildNormalizedKey(object Object) string {
 	parts := []string{object.NormalizedSchemaName, object.Kind}
 	if object.NormalizedParentName != "" {
@@ -423,12 +504,15 @@ func validateSQLIdentifier(kind string, value string) error {
 }
 
 func HashLayout(layout Layout, includeChecks bool) string {
-	entries := make([]string, 0, len(layout.Schemas)+len(layout.Objects)+len(layout.Checks))
+	entries := make([]string, 0, len(layout.Schemas)+len(layout.Objects)+len(layout.Transitions)+len(layout.Checks))
 	for _, schema := range layout.Schemas {
 		entries = append(entries, "schema:"+schema.NormalizedName)
 	}
 	for _, object := range layout.Objects {
 		entries = append(entries, "object:"+object.Path+":"+object.NormalizedKey+":"+object.Checksum)
+	}
+	for _, transition := range layout.Transitions {
+		entries = append(entries, "transition:"+transition.Path+":"+transition.NormalizedKey+":"+transition.Checksum)
 	}
 	if includeChecks {
 		for _, check := range layout.Checks {

@@ -13,6 +13,9 @@ import (
 )
 
 func WritePlan(dir string, plan contracts.MigrationPlan) error {
+	if strings.TrimSpace(dir) == "" {
+		return nil
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -29,6 +32,9 @@ func WritePlan(dir string, plan contracts.MigrationPlan) error {
 }
 
 func WriteMigration(dir string, report contracts.MigrationReport) error {
+	if strings.TrimSpace(dir) == "" {
+		return nil
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -49,6 +55,9 @@ func WriteMigration(dir string, report contracts.MigrationReport) error {
 }
 
 func WriteValidation(dir string, report contracts.ValidationReport) error {
+	if strings.TrimSpace(dir) == "" {
+		return nil
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -78,6 +87,10 @@ func ReadPlan(path string) (contracts.MigrationPlan, error) {
 		return contracts.MigrationPlan{}, err
 	}
 	return plan, nil
+}
+
+func MarshalPlanJSON(plan contracts.MigrationPlan) ([]byte, error) {
+	return marshalJSON(redactPlan(plan))
 }
 
 func writeJSONAtomic(path string, value any) error {
@@ -252,6 +265,7 @@ func redactStrings(values []string) []string {
 }
 
 func formatPlanText(plan contracts.MigrationPlan) string {
+	plan = redactPlan(plan)
 	failures := "-"
 	if len(plan.Failures) > 0 {
 		failures = strings.Join(plan.Failures, "\n")
@@ -297,6 +311,10 @@ func formatPlanText(plan contracts.MigrationPlan) string {
 		failures,
 		reasons,
 	)
+}
+
+func FormatPlanText(plan contracts.MigrationPlan) string {
+	return formatPlanText(plan)
 }
 
 func formatMigrationText(report contracts.MigrationReport, failure string) string {
@@ -346,9 +364,27 @@ func describePlannedAction(object contracts.PlannedObject) string {
 		return "apply repo SQL to the existing tracked object because checksum drift was detected and module updates are allowed"
 	case contracts.ActionUpdateExistingSupported:
 		return "apply repo SQL to the existing tracked object because checksum drift was detected and supported existing-object updates are allowed"
+	case contracts.ActionReprocessChanged:
+		if object.Kind == "tables" && len(object.TransitionPaths) > 0 {
+			return "apply checked-in transitions before the repo table SQL because tracked table drift was detected: " + strings.Join(object.TransitionPaths, ", ")
+		}
+		return "reprocess the tracked object because checksum drift was detected and the repo provides an explicit execution path"
 	case contracts.ActionReprocessChangedBlocked:
+		if object.Kind == "tables" {
+			if len(object.TransitionPaths) > 0 {
+				return "blocked because the tracked table checksum changed but the current checked-in transition set is not on an executable path"
+			}
+			return "blocked because the tracked table checksum changed and a checked-in transition is required under " + requiredTransitionDir(object) + " before the repo table SQL can run"
+		}
 		return "blocked because the object is already tracked, the repo checksum changed, and this change is not on a safe automatic DDL path"
 	default:
 		return object.PlannedAction
 	}
+}
+
+func requiredTransitionDir(object contracts.PlannedObject) string {
+	if strings.TrimSpace(object.SchemaName) == "" || strings.TrimSpace(object.ObjectName) == "" {
+		return "<schema>/tables/_migrations/<table>/"
+	}
+	return object.SchemaName + "/tables/_migrations/" + object.ObjectName + "/"
 }

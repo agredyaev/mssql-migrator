@@ -19,7 +19,7 @@ func TestBuildPlansCreateAndChangedObjects(t *testing.T) {
 	root := t.TempDir()
 	base := createLayout(t, root)
 
-	cfg := config.Config{Env: "prod", Database: "ReportingDB", SQLRoot: root, SQLBase: base, EffectiveBasePath: filepath.Join(root, base), ToolVersion: "4.0.0", UpdatePolicy: config.UpdatePolicyNone, TransactionMode: config.TransactionModeScript, ComparisonMode: config.ComparisonModeCaseInsensitive}
+	cfg := config.Config{Env: "prod", Database: "ReportingDB", SQLRoot: root, SQLBase: base, EffectiveBasePath: filepath.Join(root, base), ToolVersion: "4.0.0", UpdatePolicy: config.UpdatePolicyModulesOnly, TransactionMode: config.TransactionModeScript, ComparisonMode: config.ComparisonModeCaseInsensitive}
 	migrationState := map[string]string{"reporting/views/monthly": "old"}
 
 	plan, err := Build(cfg, migrationState)
@@ -35,6 +35,29 @@ func TestBuildPlansCreateAndChangedObjects(t *testing.T) {
 	}
 	if plan.Objects[0].PlannedAction == "" || plan.Objects[1].PlannedAction == "" {
 		t.Fatalf("expected planned actions, got %#v", plan.Objects)
+	}
+}
+
+func TestBuildDefaultsChangedModuleToAutoSafeUpdate(t *testing.T) {
+	root := t.TempDir()
+	base := createLayout(t, root)
+	path := filepath.Join(root, base, "reporting", "views", "monthly.sql")
+	writeSQL(t, path, "CREATE OR ALTER VIEW reporting.monthly AS SELECT 1;")
+	currentChecksum, err := checksum.SHA256File(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{Env: "prod", Database: "ReportingDB", SQLRoot: root, SQLBase: base, EffectiveBasePath: filepath.Join(root, base), ToolVersion: "4.0.0", UpdatePolicy: config.UpdatePolicyModulesOnly, TransactionMode: config.TransactionModeScript, ComparisonMode: config.ComparisonModeCaseInsensitive}
+	migrationState := map[string]string{"reporting/views/monthly": currentChecksum + "changed"}
+
+	plan, err := BuildWithCatalog(context.Background(), cfg, migrationState, stubCatalogReader{objects: map[string]CatalogObject{"reporting/views/monthly": {SchemaName: "reporting", Kind: "views", ObjectName: "monthly"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, object := range plan.Objects {
+		if object.NormalizedKey == "reporting/views/monthly" && object.PlannedAction != contracts.ActionUpdateExistingModule {
+			t.Fatalf("expected default module update action, got %#v", object)
+		}
 	}
 }
 
@@ -56,6 +79,59 @@ func TestBuildBlocksChangedExistingNonModuleObject(t *testing.T) {
 	}
 	if !plan.Blocked {
 		t.Fatal("expected plan to be blocked")
+	}
+}
+
+func TestBuildUsesCheckedInTransitionForChangedTable(t *testing.T) {
+	root := t.TempDir()
+	base := createTableLayout(t, root)
+	path := filepath.Join(root, base, "reporting", "tables", "snapshot.sql")
+	writeSQL(t, filepath.Join(root, base, "reporting", "tables", "_migrations", "snapshot", "001_deadbee_expand_snapshot.sql"), "ALTER TABLE reporting.snapshot ADD name nvarchar(100) NULL;")
+	currentChecksum, err := checksum.SHA256File(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	layout, hash, err := resolvePlanningLayout(config.Config{SQLRoot: root, SQLBase: base})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildResolved(context.Background(), config.Config{Env: "prod", Database: "ReportingDB", SQLRoot: root, SQLBase: base, EffectiveBasePath: filepath.Join(root, base), ToolVersion: "4.0.0", UpdatePolicy: config.UpdatePolicyModulesOnly, TransactionMode: config.TransactionModeScript, ComparisonMode: config.ComparisonModeCaseInsensitive}, map[string]string{"reporting/tables/snapshot": currentChecksum + "changed"}, layout, hash, stubCatalogReader{objects: map[string]CatalogObject{"reporting/tables/snapshot": {SchemaName: "reporting", Kind: "tables", ObjectName: "snapshot"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Blocked {
+		t.Fatalf("expected transition-backed table change not to block, got %#v", plan.BlockReasons)
+	}
+	for _, object := range plan.Objects {
+		if object.NormalizedKey == "reporting/tables/snapshot" {
+			if object.PlannedAction != contracts.ActionReprocessChanged {
+				t.Fatalf("expected reprocess_changed, got %#v", object)
+			}
+			if len(object.TransitionPaths) != 1 {
+				t.Fatalf("expected one transition path, got %#v", object)
+			}
+		}
+	}
+}
+
+func TestBuildRequiresTransitionForChangedTable(t *testing.T) {
+	root := t.TempDir()
+	base := createTableLayout(t, root)
+	path := filepath.Join(root, base, "reporting", "tables", "snapshot.sql")
+	currentChecksum, err := checksum.SHA256File(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildWithCatalog(context.Background(), config.Config{Env: "prod", Database: "ReportingDB", SQLRoot: root, SQLBase: base, EffectiveBasePath: filepath.Join(root, base), ToolVersion: "4.0.0", UpdatePolicy: config.UpdatePolicyModulesOnly, TransactionMode: config.TransactionModeScript, ComparisonMode: config.ComparisonModeCaseInsensitive}, map[string]string{"reporting/tables/snapshot": currentChecksum + "changed"}, stubCatalogReader{objects: map[string]CatalogObject{"reporting/tables/snapshot": {SchemaName: "reporting", Kind: "tables", ObjectName: "snapshot"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Blocked {
+		t.Fatal("expected missing transition to block")
+	}
+	if len(plan.BlockReasons) == 0 || !strings.Contains(plan.BlockReasons[0], "transition required") {
+		t.Fatalf("expected transition-required message, got %#v", plan.BlockReasons)
 	}
 }
 
@@ -253,6 +329,15 @@ func TestVerifyApprovedPlanRejectsApprovalBoundaryDrift(t *testing.T) {
 		t.Fatal("expected approval boundary mismatch")
 	} else if !strings.Contains(err.Error(), "update_policy") || !strings.Contains(err.Error(), "transaction_mode") || !strings.Contains(err.Error(), "rollback") {
 		t.Fatalf("unexpected mismatch error: %v", err)
+	}
+}
+
+func TestVerifyApprovedPlanUsesCurrentPlanWhenPlanFileNotSet(t *testing.T) {
+	current := contracts.MigrationPlan{SchemaVersion: "v8", Command: contracts.CommandPlan}
+	if err := VerifyApprovedPlan(config.Config{}, current); err == nil {
+		t.Fatal("expected missing plan file sentinel in file approval mode")
+	} else if !strings.Contains(err.Error(), contracts.ErrApprovedPlanMissing.Error()) {
+		t.Fatalf("expected approved plan missing sentinel, got %v", err)
 	}
 }
 

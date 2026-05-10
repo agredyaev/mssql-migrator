@@ -54,20 +54,21 @@ type PlannedSchema struct {
 }
 
 type PlannedObject struct {
-	ObjectPath      string `json:"object_path"`
-	SchemaName      string `json:"schema_name"`
-	Kind            string `json:"kind"`
-	ObjectName      string `json:"object_name"`
-	ParentName      string `json:"parent_name,omitempty"`
-	NormalizedKey   string `json:"normalized_key"`
-	Checksum        string `json:"checksum"`
-	Exists          bool   `json:"exists_in_database"`
-	MetadataMatch   *bool  `json:"metadata_match,omitempty"`
-	PlannedAction   string `json:"planned_action"`
-	TransactionMode string `json:"transaction_mode,omitempty"`
-	RollbackScope   string `json:"rollback_scope,omitempty"`
-	NoTransaction   bool   `json:"no_transaction,omitempty"`
-	SourceFile      string `json:"source_file,omitempty"`
+	ObjectPath      string   `json:"object_path"`
+	SchemaName      string   `json:"schema_name"`
+	Kind            string   `json:"kind"`
+	ObjectName      string   `json:"object_name"`
+	ParentName      string   `json:"parent_name,omitempty"`
+	NormalizedKey   string   `json:"normalized_key"`
+	Checksum        string   `json:"checksum"`
+	Exists          bool     `json:"exists_in_database"`
+	MetadataMatch   *bool    `json:"metadata_match,omitempty"`
+	PlannedAction   string   `json:"planned_action"`
+	TransactionMode string   `json:"transaction_mode,omitempty"`
+	RollbackScope   string   `json:"rollback_scope,omitempty"`
+	NoTransaction   bool     `json:"no_transaction,omitempty"`
+	SourceFile      string   `json:"source_file,omitempty"`
+	TransitionPaths []string `json:"transition_paths,omitempty"`
 }
 
 type MigrationPlan struct {

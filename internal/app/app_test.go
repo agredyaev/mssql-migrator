@@ -65,7 +65,7 @@ func TestDefaultRuntimeUsesRealMigratorHandler(t *testing.T) {
 	}
 }
 
-func TestParseCommandConfigRequiresPlanFileForMigrate(t *testing.T) {
+func TestParseCommandConfigAllowsMigrateWithoutPlanFile(t *testing.T) {
 	root, base := createSQLLayout(t)
 	t.Setenv("RM_DB_SERVER", "server")
 	t.Setenv("RM_DB_DATABASE", "db")
@@ -73,8 +73,8 @@ func TestParseCommandConfigRequiresPlanFileForMigrate(t *testing.T) {
 	t.Setenv("RM_DB_PASSWORD", "password")
 	t.Setenv("RM_GIT_COMMIT", "deadbeef")
 	_, err := parseCommandConfig("migrate", []string{"--env", "prod", "--sql-root", root, "--sql-base", base})
-	if err == nil || !strings.Contains(err.Error(), "--plan-file is required") {
-		t.Fatalf("expected plan-file error, got %v", err)
+	if err != nil {
+		t.Fatalf("expected migrate config without plan file, got %v", err)
 	}
 }
 
@@ -250,25 +250,6 @@ func TestRunReturnsInvalidInputForInvalidDurationFlag(t *testing.T) {
 	}
 }
 
-func TestRunReturnsInvalidInputExitForMissingPlanFile(t *testing.T) {
-	root, base := createSQLLayout(t)
-	t.Setenv("RM_DB_SERVER", "server")
-	t.Setenv("RM_DB_DATABASE", "db")
-	t.Setenv("RM_DB_USER", "user")
-	t.Setenv("RM_DB_PASSWORD", "password")
-	t.Setenv("RM_GIT_COMMIT", "deadbeef")
-	stdout := bytes.Buffer{}
-	stderr := bytes.Buffer{}
-	runtime := Runtime{BuildInfo: BuildInfo{Version: "1.0.0", Commit: "abc"}, Stdout: &stdout, Stderr: &stderr}
-	code := runtime.Run([]string{"rmig", "migrate", "--env", "prod", "--sql-root", root, "--sql-base", base})
-	if code != contracts.ExitInvalidInput {
-		t.Fatalf("expected invalid input exit, got %d stderr=%q", code, stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "class=invalid input") || !strings.Contains(stderr.String(), "reason=--plan-file is required") {
-		t.Fatalf("expected invalid input envelope, got %q", stderr.String())
-	}
-}
-
 func TestRunReturnsInvalidInputExitForUnknownCommand(t *testing.T) {
 	stdout := bytes.Buffer{}
 	stderr := bytes.Buffer{}
@@ -359,7 +340,32 @@ func TestPlanJSONWritesJSONToStdout(t *testing.T) {
 	}
 }
 
-func TestBlockedPlanReturnsChecksumMismatchExit(t *testing.T) {
+func TestPlanWritesTextToStdoutByDefault(t *testing.T) {
+	root, base := createSQLLayout(t)
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+	t.Setenv("RM_GIT_COMMIT", "deadbeef")
+	stdout := bytes.Buffer{}
+	stderr := bytes.Buffer{}
+	runtime := Runtime{BuildInfo: BuildInfo{Version: "1.0.0", Commit: "abc"}, Handler: planOnlyHandler{}, Stdout: &stdout, Stderr: &stderr}
+	code := runtime.Run([]string{"rmig", "plan", "--env", "prod", "--sql-root", root, "--sql-base", base})
+	if code != contracts.ExitOK {
+		t.Fatalf("unexpected exit code: %d stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Plan for prod/db") {
+		t.Fatalf("expected text plan on stdout, got %q", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "password") || strings.Contains(stdout.String(), "token") {
+		t.Fatalf("unexpected secret-looking content in stdout, got %q", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected stderr to stay empty, got %q", stderr.String())
+	}
+}
+
+func TestBlockedPlanReturnsSuccessExit(t *testing.T) {
 	root, base := createSQLLayout(t)
 	t.Setenv("RM_DB_SERVER", "server")
 	t.Setenv("RM_DB_DATABASE", "db")
@@ -370,8 +376,11 @@ func TestBlockedPlanReturnsChecksumMismatchExit(t *testing.T) {
 	stderr := bytes.Buffer{}
 	runtime := Runtime{BuildInfo: BuildInfo{Version: "1.0.0", Commit: "abc"}, Handler: blockedPlanHandler{}, Stdout: &stdout, Stderr: &stderr}
 	code := runtime.Run([]string{"rmig", "plan", "--env", "prod", "--sql-root", root, "--sql-base", base})
-	if code != contracts.ExitChecksumMismatch {
-		t.Fatalf("expected checksum mismatch exit, got %d", code)
+	if code != contracts.ExitOK {
+		t.Fatalf("expected success exit for informational blocked plan, got %d", code)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr for blocked plan output, got %q", stderr.String())
 	}
 }
 

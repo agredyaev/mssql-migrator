@@ -34,8 +34,12 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 	for _, object := range layout.Objects {
 		byKey[object.NormalizedKey] = object
 	}
+	transitionsByPath := map[string]parser.TransitionScript{}
+	for _, transition := range layout.Transitions {
+		transitionsByPath[transition.Path] = transition
+	}
 	for _, planned := range plannedObjectsInExecutionOrder(plan.Objects) {
-		if err := r.executePlannedObject(ctx, conn, byKey, planned, runID, itemIDs, report); err != nil {
+		if err := r.executePlannedObject(ctx, conn, byKey, transitionsByPath, planned, runID, itemIDs, report); err != nil {
 			return err
 		}
 	}
@@ -72,7 +76,7 @@ func (r Runner) executePlannedSchema(ctx context.Context, conn txConn, recorder 
 	return nil
 }
 
-func (r Runner) executePlannedObject(ctx context.Context, conn txConn, byKey map[string]parser.Object, planned contracts.PlannedObject, runID string, itemIDs map[string]int64, report *contracts.MigrationReport) error {
+func (r Runner) executePlannedObject(ctx context.Context, conn txConn, byKey map[string]parser.Object, transitionsByPath map[string]parser.TransitionScript, planned contracts.PlannedObject, runID string, itemIDs map[string]int64, report *contracts.MigrationReport) error {
 	itemID := lookupItemID(itemIDs, planned.NormalizedKey)
 	if planned.PlannedAction == contracts.ActionSkipUnchanged || planned.PlannedAction == contracts.ActionAdoptExisting {
 		if err := r.recordPassiveObjectAction(ctx, conn, planned, runID, itemID); err != nil {
@@ -82,7 +86,7 @@ func (r Runner) executePlannedObject(ctx context.Context, conn txConn, byKey map
 		report.Skipped = append(report.Skipped, contracts.ScriptResult{Script: planned.ObjectPath, Type: planned.Kind, Checksum: planned.Checksum, Reason: planned.PlannedAction})
 		return nil
 	}
-	if planned.PlannedAction != contracts.ActionCreateObject && planned.PlannedAction != contracts.ActionUpdateExistingModule && planned.PlannedAction != contracts.ActionUpdateExistingSupported {
+	if planned.PlannedAction != contracts.ActionCreateObject && planned.PlannedAction != contracts.ActionUpdateExistingModule && planned.PlannedAction != contracts.ActionUpdateExistingSupported && planned.PlannedAction != contracts.ActionReprocessChanged {
 		setFailedResult(report, planned.ObjectPath, "unsupported planned action: "+planned.PlannedAction)
 		return fmt.Errorf("%w: unsupported planned action %s for %s", contracts.ErrInvalidInput, planned.PlannedAction, planned.ObjectPath)
 	}
@@ -90,6 +94,11 @@ func (r Runner) executePlannedObject(ctx context.Context, conn txConn, byKey map
 	if !ok {
 		setFailedResult(report, planned.ObjectPath, "object missing from verified layout")
 		return fmt.Errorf("%w: object missing from layout for %s", contracts.ErrInvalidInput, planned.NormalizedKey)
+	}
+	if planned.PlannedAction == contracts.ActionReprocessChanged {
+		if err := r.applyTransitionScripts(ctx, conn, transitionsByPath, planned, report); err != nil {
+			return err
+		}
 	}
 	return r.applyObjectTracked(ctx, conn, object, planned, runID, itemID, report)
 }
@@ -181,6 +190,59 @@ func executeBatches(ctx context.Context, execer metadata.Execer, batches []parse
 		}
 	}
 	return nil
+}
+
+func (r Runner) applyTransitionScripts(parent context.Context, conn txConn, transitionsByPath map[string]parser.TransitionScript, planned contracts.PlannedObject, report *contracts.MigrationReport) error {
+	for _, path := range planned.TransitionPaths {
+		transition, ok := transitionsByPath[path]
+		if !ok {
+			err := fmt.Errorf("transition script missing from verified layout: %s", path)
+			setFailedResult(report, path, err.Error())
+			return fmt.Errorf("%w: %v", contracts.ErrInvalidInput, err)
+		}
+		if err := r.executeSQLContent(parent, conn, path, transition.Content, transition.NoTransaction); err != nil {
+			setFailedResult(report, path, err.Error())
+			return classifyTransitionExecutionError(path, err)
+		}
+		report.Applied = append(report.Applied, contracts.ScriptResult{Script: path, Type: contracts.ScriptTypeBaseline, Reason: contracts.ActionReprocessChanged})
+		r.log.Info("transition_applied", fmt.Sprintf("script=%s", path))
+	}
+	return nil
+}
+
+func (r Runner) executeSQLContent(parent context.Context, conn txConn, scriptName string, content string, noTransaction bool) error {
+	ctx, cancel := context.WithTimeout(parent, r.cfg.ScriptTimeout)
+	defer cancel()
+	startedAt := time.Now()
+	stopProgress := r.startProgressLogger(ctx, scriptName, startedAt)
+	batches, err := parser.SplitGO(content)
+	if err == nil {
+		if noTransaction {
+			err = executeBatches(ctx, conn, batches)
+		} else {
+			tx, txErr := conn.BeginTx(ctx, nil)
+			if txErr != nil {
+				stopProgress()
+				return fmt.Errorf("begin transaction: %w", txErr)
+			}
+			err = executeBatches(ctx, tx, batches)
+			if err != nil {
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					stopProgress()
+					return fmt.Errorf("execute batch: %w; rollback failed: %v", err, rollbackErr)
+				}
+			} else if err = tx.Commit(); err != nil {
+				err = fmt.Errorf("commit transaction: %w", err)
+			}
+		}
+	}
+	stopProgress()
+	_ = startedAt
+	return err
+}
+
+func classifyTransitionExecutionError(path string, err error) error {
+	return fmt.Errorf("transition execution failed for %s: %w", path, err)
 }
 
 func (r Runner) startProgressLogger(ctx context.Context, scriptName string, startedAt time.Time) func() {
