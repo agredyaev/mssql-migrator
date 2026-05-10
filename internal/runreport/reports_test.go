@@ -114,6 +114,19 @@ func TestReturnFailureWrapsDistinctBaseAndCause(t *testing.T) {
 	}
 }
 
+func TestReturnFailureKeepsExistingBaseWrapper(t *testing.T) {
+	err := runreport.ReturnFailure(contracts.ErrCriticalState, contracts.Wrap(contracts.ErrCriticalState, assertErr("boom")))
+	if err == nil {
+		t.Fatal("expected wrapped error")
+	}
+	if !errors.Is(err, contracts.ErrCriticalState) {
+		t.Fatalf("expected critical state sentinel, got %v", err)
+	}
+	if err.Error() != "critical metadata state: boom" {
+		t.Fatalf("expected no duplicated sentinel, got %q", err.Error())
+	}
+}
+
 func readMigrationReport(t *testing.T, dir string) contracts.MigrationReport {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Join(dir, "migration-report.json"))

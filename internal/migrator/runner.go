@@ -151,7 +151,11 @@ func (r Runner) validateMigrationScope(ctx context.Context, state *protectedRunS
 		return state.fail(ctx, contracts.ErrCriticalState, writeErr)
 	}
 	if validationErr != nil {
-		return state.fail(ctx, contracts.ErrValidation, validationErr)
+		base := contracts.ErrValidation
+		if errors.Is(validationErr, contracts.ErrCriticalState) {
+			base = contracts.ErrCriticalState
+		}
+		return state.fail(ctx, base, validationErr)
 	}
 	return nil
 }

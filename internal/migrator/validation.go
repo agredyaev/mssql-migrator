@@ -2,6 +2,7 @@ package migrator
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"reporting-db-migrations/internal/config"
@@ -96,12 +97,12 @@ func (r Runner) loadValidationInputs(ctx context.Context, session *runSession, v
 	catalog, err := validate.ReadCatalogState(ctx, session.conn)
 	if err != nil {
 		finalizeValidationFailure(vr, contracts.ErrCriticalState, err)
-		return validate.CatalogState{}, nil, err
+		return validate.CatalogState{}, nil, validationFailureError(contracts.ErrCriticalState, err)
 	}
 	successfulByKey, err := session.LoadSuccessfulChecksums(ctx)
 	if err != nil {
 		finalizeValidationFailure(vr, contracts.ErrCriticalState, err)
-		return validate.CatalogState{}, nil, err
+		return validate.CatalogState{}, nil, validationFailureError(contracts.ErrCriticalState, err)
 	}
 	return catalog, successfulByKey, nil
 }
@@ -114,7 +115,7 @@ func (r Runner) ensureValidationRunState(ctx context.Context, session *runSessio
 	itemIDs, err := runState.recorder.loadObjectItemIDs(ctx)
 	if err != nil {
 		finalizeValidationFailure(vr, contracts.ErrCriticalState, err)
-		return validationRunState{}, err
+		return validationRunState{}, validationFailureError(contracts.ErrCriticalState, err)
 	}
 	runState.itemIDs = itemIDs
 	return runState, nil
@@ -124,12 +125,11 @@ func (r Runner) createValidationRunState(ctx context.Context, session *runSessio
 	runID, recorder, err := session.StartRun(ctx, contracts.CommandValidate, "", "", rollbackScope(r.cfg.TransactionMode))
 	if err != nil {
 		finalizeValidationFailure(vr, contracts.ErrCriticalState, err)
-		return validationRunState{}, err
+		return validationRunState{}, validationFailureError(contracts.ErrCriticalState, err)
 	}
 	itemIDs, err := recorder.scope.Validation(ctx, layout, catalog, successfulByKey)
 	if err != nil {
-		validationRunState{runID: runID, createdRun: true, recorder: recorder}.fail(ctx, session, vr, contracts.ErrCriticalState, err)
-		return validationRunState{}, err
+		return validationRunState{}, validationRunState{runID: runID, createdRun: true, recorder: recorder}.fail(ctx, session, vr, contracts.ErrCriticalState, err)
 	}
 	return validationRunState{runID: runID, createdRun: true, recorder: recorder, itemIDs: itemIDs}, nil
 }
@@ -139,7 +139,7 @@ func (r Runner) executeValidationScope(ctx context.Context, session *runSession,
 	vr.Validation.ModulesRefreshed = modules.ModulesRefreshed
 	if err != nil {
 		runState.recorder.validation.recordFailure(ctx, layout.Objects, runState.itemIDs, err, includeChecks, r.log)
-		return vr, runState.fail(ctx, session, &vr, contracts.ErrValidation, err)
+		return vr, runState.fail(ctx, session, &vr, validationFailureBase(err), err)
 	}
 	if err := runState.recorder.validation.markSuccesses(ctx, layout.Objects); err != nil {
 		return vr, runState.fail(ctx, session, &vr, contracts.ErrCriticalState, err)
@@ -162,7 +162,7 @@ func (r Runner) runValidationChecks(ctx context.Context, session *runSession, la
 	vr.Validation.ChecksFailed = checks.ChecksFailed
 	if err != nil {
 		runState.recorder.validation.recordFailure(ctx, nil, nil, err, includeChecks, r.log)
-		return runState.fail(ctx, session, vr, contracts.ErrValidation, err)
+		return runState.fail(ctx, session, vr, validationFailureBase(err), err)
 	}
 	return nil
 }
@@ -174,7 +174,7 @@ func (s validationRunState) finish(ctx context.Context, session *runSession, vr 
 	}
 	if err := session.FinishRun(ctx, s.recorder); err != nil {
 		finalizeValidationFailure(vr, contracts.ErrCriticalState, err)
-		return err
+		return validationFailureError(contracts.ErrCriticalState, err)
 	}
 	return nil
 }
@@ -189,7 +189,21 @@ func (s validationRunState) recordRunFailure(ctx context.Context, session *runSe
 func (s validationRunState) fail(ctx context.Context, session *runSession, vr *contracts.ValidationReport, base error, cause error) error {
 	s.recordRunFailure(ctx, session, base, cause)
 	finalizeValidationFailure(vr, base, cause)
-	return cause
+	return validationFailureError(base, cause)
+}
+
+func validationFailureError(base error, cause error) error {
+	if cause == nil || base == nil || errors.Is(cause, base) {
+		return cause
+	}
+	return contracts.Wrap(base, cause)
+}
+
+func validationFailureBase(err error) error {
+	if errors.Is(err, contracts.ErrCriticalState) {
+		return contracts.ErrCriticalState
+	}
+	return contracts.ErrValidation
 }
 
 func validationFailureReport(vr contracts.ValidationReport, base error, cause error) contracts.ValidationReport {

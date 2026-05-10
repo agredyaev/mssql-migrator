@@ -95,6 +95,40 @@ func TestWriteValidationFailureReportIncludesScopeMetadata(t *testing.T) {
 	}
 }
 
+func TestValidateFailureReportReturnsCriticalStateWrapper(t *testing.T) {
+	dir := t.TempDir()
+	runner := NewRunner(config.Config{ReportDir: dir, Env: "prod", Database: "db", SQLRoot: "/sql", SQLBase: "dwh"}, logger.New(logger.Options{}))
+	err := runner.writeValidationFailureReport(assertErr("boom"), contracts.ErrCriticalState)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, contracts.ErrCriticalState) {
+		t.Fatalf("expected critical state sentinel, got %v", err)
+	}
+}
+
+func TestValidationRunStateFailReturnsWrappedBase(t *testing.T) {
+	err := validationRunState{createdRun: false}.fail(t.Context(), nil, &contracts.ValidationReport{}, contracts.ErrCriticalState, assertErr("boom"))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, contracts.ErrCriticalState) {
+		t.Fatalf("expected critical state sentinel, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("expected wrapped cause, got %v", err)
+	}
+}
+
+func TestValidationFailureBasePreservesCriticalState(t *testing.T) {
+	if got := validationFailureBase(contracts.Wrap(contracts.ErrCriticalState, assertErr("boom"))); !errors.Is(got, contracts.ErrCriticalState) {
+		t.Fatalf("expected critical state base, got %v", got)
+	}
+	if got := validationFailureBase(assertErr("boom")); !errors.Is(got, contracts.ErrValidation) {
+		t.Fatalf("expected validation base, got %v", got)
+	}
+}
+
 type assertErr string
 
 func (e assertErr) Error() string { return string(e) }

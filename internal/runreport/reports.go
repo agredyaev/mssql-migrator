@@ -1,6 +1,7 @@
 package runreport
 
 import (
+	"errors"
 	"time"
 
 	"reporting-db-migrations/internal/config"
@@ -78,8 +79,11 @@ func ReturnFailure(base error, cause error) error {
 	if base == nil {
 		return cause
 	}
-	if cause == nil || cause == base {
+	if cause == nil {
 		return base
+	}
+	if errors.Is(cause, base) {
+		return cause
 	}
 	return contracts.Wrap(base, cause)
 }
