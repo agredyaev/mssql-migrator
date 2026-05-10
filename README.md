@@ -61,6 +61,7 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 - `RM_SQL_ROOT` and `RM_SQL_BASE` are required for `plan`, `migrate`, `validate`, `baseline`, and `repair-checksum`.
 - If `RM_SQL_BASE` is omitted and `RM_SQL_ROOT` contains exactly one base directory, `rmig` uses that directory automatically.
 - `RM_SQL_BASE` must be a single directory name under `RM_SQL_ROOT`.
+- If `RM_DB_DATABASE` is omitted, `rmig` uses `RM_SQL_BASE` as the target database name.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
 - If `RM_GIT_COMMIT` is omitted, `rmig` tries to read `HEAD` from the nearest `.git` directory above `RM_SQL_ROOT`.
 - `plan --json` writes machine-readable JSON to stdout. Human logs go to stderr for that mode.

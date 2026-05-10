@@ -226,6 +226,22 @@ func TestApplyRepositoryDefaultsUsesGitHeadCommit(t *testing.T) {
 	}
 }
 
+func TestApplyRepositoryDefaultsUsesSQLBaseAsDatabase(t *testing.T) {
+	cfg := Config{SQLBase: "dactests"}
+	cfg.applyRepositoryDefaults()
+	if cfg.Database != "dactests" {
+		t.Fatalf("expected database to default from sql base, got %q", cfg.Database)
+	}
+}
+
+func TestApplyRepositoryDefaultsKeepsExplicitDatabase(t *testing.T) {
+	cfg := Config{SQLBase: "dactests", Database: "reportingdb"}
+	cfg.applyRepositoryDefaults()
+	if cfg.Database != "reportingdb" {
+		t.Fatalf("expected explicit database to win, got %q", cfg.Database)
+	}
+}
+
 func TestValidateForCommandRequiresConfirmForBaseline(t *testing.T) {
 	root := t.TempDir()
 	base := "dwh"

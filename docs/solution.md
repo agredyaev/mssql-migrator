@@ -41,6 +41,7 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - `RM_SQL_ROOT` and `RM_SQL_BASE` are required for planning, execution, validation, and repair commands.
 - If `RM_SQL_BASE` is omitted and `RM_SQL_ROOT` contains exactly one base directory, the runtime uses that directory automatically.
 - `RM_SQL_BASE` must be a single directory name under `RM_SQL_ROOT`.
+- If `RM_DB_DATABASE` is omitted, the runtime uses `RM_SQL_BASE` as the target database name.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
 - If `RM_GIT_COMMIT` is omitted, the runtime tries to resolve `HEAD` from the nearest `.git` directory above `RM_SQL_ROOT`.
 - `migrate` requires an approved plan file.

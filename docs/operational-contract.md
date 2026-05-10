@@ -37,6 +37,7 @@ See `README.md` for the CLI wrapper contract.
 - `RM_SQL_ROOT` and `RM_SQL_BASE` must point to unpacked repository files on disk.
 - If `RM_SQL_BASE` is omitted and `RM_SQL_ROOT` contains exactly one base directory, the runtime uses that base automatically.
 - `RM_SQL_BASE` must be a single directory name under `RM_SQL_ROOT`.
+- If `RM_DB_DATABASE` is omitted, the runtime uses `RM_SQL_BASE` as the target database name.
 - `migrate` requires `--plan-file`.
 - `plan --json` emits machine-readable JSON to stdout and keeps human logs on stderr.
 - `plan` is read-only. It reads metadata state directly and does not bootstrap or repair partial metadata. Use `migrate`, `baseline`, or `repair-checksum` when metadata must be bootstrapped under lock.

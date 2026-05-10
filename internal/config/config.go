@@ -354,6 +354,9 @@ func (cfg *Config) applyRepositoryDefaults() {
 	if strings.TrimSpace(cfg.SQLBase) == "" {
 		cfg.SQLBase = detectSingleSQLBase(cfg.SQLRoot)
 	}
+	if strings.TrimSpace(cfg.Database) == "" {
+		cfg.Database = strings.TrimSpace(cfg.SQLBase)
+	}
 	if strings.TrimSpace(cfg.GitCommit) == "" {
 		cfg.GitCommit = detectGitCommit(cfg.SQLRoot)
 	}
