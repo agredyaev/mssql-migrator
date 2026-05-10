@@ -72,11 +72,11 @@ func (s *runSession) Close() {
 	}
 }
 
-func (s *runSession) Fail(base error, cause error) error {
+func (s *runSession) Fail(phase string, base error, cause error) error {
 	if s == nil {
 		return returnFailure(base, cause)
 	}
-	return FailureReporter{cfg: s.runner.cfg}.Migration(s.report, base, cause)
+	return FailureReporter{cfg: s.runner.cfg}.Migration(s.report, phase, base, cause)
 }
 
 func (s *runSession) ResolvePlanningLayout() (parser.Layout, string, error) {

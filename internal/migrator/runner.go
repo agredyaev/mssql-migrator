@@ -36,6 +36,10 @@ func (r Runner) Info(ctx context.Context) error {
 }
 
 func (r Runner) Plan(ctx context.Context) (contracts.MigrationPlan, error) {
+	layout, hash, err := planner.ResolvePlanningLayoutForRunner(r.cfg)
+	if err != nil {
+		return contracts.MigrationPlan{}, err
+	}
 	conn, closeFn, err := r.openReservedConnection(ctx)
 	if err != nil {
 		return contracts.MigrationPlan{}, err
@@ -49,10 +53,6 @@ func (r Runner) Plan(ctx context.Context) (contracts.MigrationPlan, error) {
 	if err != nil {
 		return contracts.MigrationPlan{}, contracts.Wrap(contracts.ErrCriticalState, err)
 	}
-	layout, hash, err := planner.ResolvePlanningLayoutForRunner(r.cfg)
-	if err != nil {
-		return contracts.MigrationPlan{}, err
-	}
 	plan, err := planner.BuildResolved(ctx, r.cfg, successfulByKey, layout, hash, planner.SQLCatalogReader(conn))
 	if err != nil {
 		return contracts.MigrationPlan{}, err
@@ -64,12 +64,9 @@ func (r Runner) Plan(ctx context.Context) (contracts.MigrationPlan, error) {
 }
 
 func (r Runner) Migrate(ctx context.Context) error {
-	if r.cfg.PlanFile == "" {
-		return r.writeFailedMigration(r.newMigrationReport(), contracts.ErrInvalidInput, fmt.Errorf("--plan-file is required"))
-	}
 	session, err := r.startProtectedSession(ctx)
 	if err != nil {
-		return session.Fail(err, nil)
+		return session.Fail("migration_failed", err, nil)
 	}
 	defer session.Close()
 	conn := session.conn
@@ -79,7 +76,10 @@ func (r Runner) Migrate(ctx context.Context) error {
 		if runID != "" {
 			session.RecordRunFailure(ctx, recorder, base, cause)
 		}
-		return session.Fail(base, cause)
+		return session.Fail("migration_failed", base, cause)
+	}
+	if err := session.BootstrapMetadata(ctx); err != nil {
+		return failWithRun(contracts.ErrCriticalState, err)
 	}
 	successfulByKey, err := session.LoadSuccessfulChecksums(ctx)
 	if err != nil {
@@ -102,9 +102,6 @@ func (r Runner) Migrate(ctx context.Context) error {
 	}
 	if err := planner.VerifyApprovedPlan(r.cfg, plan); err != nil {
 		return failWithRun(contracts.ErrInvalidInput, err)
-	}
-	if err := session.BootstrapMetadata(ctx); err != nil {
-		return failWithRun(contracts.ErrCriticalState, err)
 	}
 	runID, recorder, err = session.StartRun(ctx, contracts.CommandMigrate, r.cfg.PlanFile, planArtifactHash(r.cfg.PlanFile), plan.Rollback)
 	if err != nil {
@@ -140,7 +137,7 @@ func (r Runner) Migrate(ctx context.Context) error {
 	report.FinishedAt = time.Now().UTC()
 	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
 	if err := session.FinishRun(ctx, recorder); err != nil {
-		return session.Fail(contracts.ErrCriticalState, err)
+		return session.Fail("migration_failed", contracts.ErrCriticalState, err)
 	}
 	return session.WriteMigrationReport()
 }
@@ -188,6 +185,6 @@ func (r Runner) newMigrationReport() contracts.MigrationReport {
 	}
 }
 
-func (r Runner) writeFailedMigration(report contracts.MigrationReport, base error, cause error) error {
-	return FailureReporter{cfg: r.cfg}.Migration(report, base, cause)
+func (r Runner) writeFailedMigration(report contracts.MigrationReport, phase string, base error, cause error) error {
+	return FailureReporter{cfg: r.cfg}.Migration(report, phase, base, cause)
 }

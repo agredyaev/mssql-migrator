@@ -14,7 +14,7 @@ import (
 func TestWriteFailedMigrationRedactsSecretInFailure(t *testing.T) {
 	dir := t.TempDir()
 	runner := NewRunner(config.Config{ReportDir: dir}, logger.New(logger.Options{}))
-	err := runner.writeFailedMigration(runner.newMigrationReport(), contracts.ErrSQLExecution, fmt.Errorf("password=secret"))
+	err := runner.writeFailedMigration(runner.newMigrationReport(), "baseline_failed", contracts.ErrSQLExecution, fmt.Errorf("password=secret"))
 	if err == nil {
 		t.Fatal("expected wrapped error")
 	}
@@ -28,7 +28,7 @@ func TestWriteFailedMigrationRedactsSecretInFailure(t *testing.T) {
 	if report.Failed.Error == "" || containsSecret(report.Failed.Error) {
 		t.Fatalf("expected redacted failure, got %q", report.Failed.Error)
 	}
-	if !containsAll(report.Failed.Error, "ERROR migration_failed:", "class=sql execution failure", "sql=password=***") {
+	if !containsAll(report.Failed.Error, "ERROR baseline_failed:", "class=sql execution failure", "sql=password=***") {
 		t.Fatalf("expected failure envelope, got %q", report.Failed.Error)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"reporting-db-migrations/internal/config"
 	"reporting-db-migrations/internal/contracts"
@@ -29,25 +30,49 @@ func TestValidateWritesFailureReportOnPreflightError(t *testing.T) {
 	}
 }
 
-func TestMigrateFailsBeforeDBWorkWhenPlanMissing(t *testing.T) {
-	root := t.TempDir()
-	base := "dwh"
-	createRepoObject(t, root, base, "reporting", "views", "monthly.sql", "SELECT 1;")
+func TestRunSessionFailUsesExplicitPhase(t *testing.T) {
 	dir := t.TempDir()
-	runner := NewRunner(config.Config{ReportDir: dir, Env: "prod", Database: "db", SQLRoot: root, SQLBase: base, UpdatePolicy: config.UpdatePolicyNone, TransactionMode: config.TransactionModeScript}, logger.New(logger.Options{}))
-	err := runner.Migrate(t.Context())
-	if err == nil || !strings.Contains(err.Error(), "--plan-file is required") {
-		t.Fatalf("expected plan-file error, got %v", err)
+	session := &runSession{runner: NewRunner(config.Config{ReportDir: dir}, logger.New(logger.Options{})), report: contracts.MigrationReport{StartedAt: assertStartedAt()}}
+
+	err := session.Fail("repair_checksum_failed", contracts.ErrInvalidInput, assertErr("boom"))
+	if err == nil {
+		t.Fatal("expected error")
 	}
 	report, readErr := contractsReadMigrationReport(dir)
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
-	if report.Failed == nil {
-		t.Fatalf("expected migration failure report, got %#v", report)
+	if report.Failed == nil || !containsAll(report.Failed.Error, "ERROR repair_checksum_failed:", "class=invalid input", "reason=boom") {
+		t.Fatalf("expected repair checksum phase in report, got %#v", report.Failed)
 	}
-	if !containsAll(report.Failed.Error, "ERROR migration_failed:", "class=invalid input", "reason=--plan-file is required") {
-		t.Fatalf("expected migration envelope, got %#v", report.Failed)
+}
+
+func TestPlanPrefersLayoutErrorBeforeConnectionError(t *testing.T) {
+	runner := NewRunner(config.Config{
+		Env:             "prod",
+		Database:        "db",
+		Server:          "127.0.0.1",
+		Port:            "1",
+		User:            "user",
+		Password:        "password",
+		SQLRoot:         t.TempDir(),
+		SQLBase:         "missing",
+		UpdatePolicy:    config.UpdatePolicyNone,
+		TransactionMode: config.TransactionModeScript,
+	}, logger.New(logger.Options{}))
+
+	_, err := runner.Plan(t.Context())
+	if err == nil {
+		t.Fatal("expected plan error")
+	}
+	if !errors.Is(err, contracts.ErrInvalidInput) {
+		t.Fatalf("expected invalid input, got %v", err)
+	}
+	if errors.Is(err, contracts.ErrConnection) {
+		t.Fatalf("expected layout error before connection attempt, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "no such file or directory") {
+		t.Fatalf("expected layout discovery error, got %v", err)
 	}
 }
 
@@ -77,7 +102,7 @@ func (e assertErr) Error() string { return string(e) }
 func TestRunSessionFailIsNilSafe(t *testing.T) {
 	var session *runSession
 
-	err := session.Fail(contracts.ErrConnection, assertErr("boom"))
+	err := session.Fail("migration_failed", contracts.ErrConnection, assertErr("boom"))
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -87,4 +112,8 @@ func TestRunSessionFailIsNilSafe(t *testing.T) {
 	if !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("expected wrapped cause, got %v", err)
 	}
+}
+
+func assertStartedAt() time.Time {
+	return time.Now().UTC()
 }

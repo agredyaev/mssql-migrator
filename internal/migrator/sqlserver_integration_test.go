@@ -25,6 +25,8 @@ func TestSQLServerPlanBlocksChangedModuleWithoutCreateOrAlter(t *testing.T) {
 	ctx := context.Background()
 	conn, cfg := openSQLServerIntegrationConn(t)
 	defer conn.Close()
+	resetIntegrationMetadata(t, ctx, conn)
+	t.Cleanup(func() { resetIntegrationMetadata(t, ctx, conn) })
 
 	schemaName := integrationSchemaName("blockedplan")
 	resetIntegrationSchema(t, ctx, conn, schemaName)
@@ -117,6 +119,8 @@ func TestSQLServerValidateRunsChecksAndRefreshesModules(t *testing.T) {
 	ctx := context.Background()
 	conn, cfg := openSQLServerIntegrationConn(t)
 	defer conn.Close()
+	resetIntegrationMetadata(t, ctx, conn)
+	t.Cleanup(func() { resetIntegrationMetadata(t, ctx, conn) })
 
 	schemaName := integrationSchemaName("validate")
 	resetIntegrationSchema(t, ctx, conn, schemaName)
@@ -181,6 +185,157 @@ func TestSQLServerValidateRunsChecksAndRefreshesModules(t *testing.T) {
 	}
 	if report.Validation.ChecksPassed != 1 {
 		t.Fatalf("expected one passed check, got %#v", report.Validation)
+	}
+}
+
+func TestSQLServerBaselineForcesUpdatePolicyNone(t *testing.T) {
+	ctx := context.Background()
+	conn, cfg := openSQLServerIntegrationConn(t)
+	defer conn.Close()
+	resetIntegrationMetadata(t, ctx, conn)
+	t.Cleanup(func() { resetIntegrationMetadata(t, ctx, conn) })
+
+	schemaName := integrationSchemaName("baselinepolicy")
+	resetIntegrationSchema(t, ctx, conn, schemaName)
+	t.Cleanup(func() { resetIntegrationSchema(t, ctx, conn, schemaName) })
+
+	if _, err := conn.ExecContext(ctx, "CREATE SCHEMA ["+schemaName+"]"); err != nil {
+		t.Fatalf("create schema: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, "EXEC(N'CREATE VIEW ["+schemaName+"].[monthly] AS SELECT 1 AS id;')"); err != nil {
+		t.Fatalf("create view: %v", err)
+	}
+	if err := metadata.Bootstrap(ctx, conn); err != nil {
+		t.Fatalf("bootstrap metadata: %v", err)
+	}
+	if err := seedSuccessfulMetadataObject(ctx, conn, cfg.Database, metadata.ItemRecord{
+		ItemType:             metadata.ItemTypeObject,
+		ObjectPath:           schemaName + "/views/monthly.sql",
+		SchemaName:           schemaName,
+		NormalizedSchemaName: strings.ToLower(schemaName),
+		Kind:                 "views",
+		ObjectName:           "monthly",
+		NormalizedObjectName: "monthly",
+		NormalizedKey:        schemaName + "/views/monthly",
+		Checksum:             "previous-checksum",
+		Action:               contracts.ActionCreateObject,
+	}, metadata.AttemptRecord{
+		ScriptName:       schemaName + "/views/monthly.sql",
+		ScriptType:       contracts.ScriptTypeObject,
+		Checksum:         "previous-checksum",
+		Action:           contracts.ActionCreateObject,
+		Success:          true,
+		TransactionMode:  config.TransactionModeScript,
+		TransactionScope: config.TransactionModeScript,
+		RollbackScope:    contracts.RollbackScopeScript,
+		NoTransaction:    false,
+	}); err != nil {
+		t.Fatalf("seed metadata drift: %v", err)
+	}
+
+	root := t.TempDir()
+	base := "dwh"
+	createRepoObject(t, root, base, schemaName, "views", "monthly.sql", "CREATE OR ALTER VIEW ["+schemaName+"].[monthly] AS SELECT 2 AS id;")
+
+	runner := NewRunner(config.Config{
+		Env:                    "pred",
+		SQLRoot:                root,
+		SQLBase:                base,
+		EffectiveBasePath:      filepath.Join(root, base),
+		ReportDir:              t.TempDir(),
+		Database:               cfg.Database,
+		Server:                 cfg.Server,
+		Port:                   cfg.Port,
+		DBAuth:                 cfg.DBAuth,
+		User:                   cfg.User,
+		Password:               cfg.Password,
+		Encrypt:                cfg.Encrypt,
+		TrustServerCertificate: cfg.TrustServerCertificate,
+		GitCommit:              "integration-test",
+		UpdatePolicy:           config.UpdatePolicyModulesOnly,
+		TransactionMode:        config.TransactionModeScript,
+		ToolVersion:            "test",
+		ToolCommit:             "test",
+	}, logger.New(logger.Options{}))
+
+	err := runner.Baseline(ctx)
+	if err == nil {
+		t.Fatal("expected baseline drift failure")
+	}
+	if !strings.Contains(err.Error(), contracts.ErrMetadataDrift.Error()) {
+		t.Fatalf("expected metadata drift failure, got %v", err)
+	}
+	if got := latestRunUpdatePolicy(t, ctx, conn, contracts.CommandBaseline, root); got != config.UpdatePolicyNone {
+		t.Fatalf("expected baseline run update_policy %q, got %q", config.UpdatePolicyNone, got)
+	}
+	if got := latestItemAction(t, ctx, conn, contracts.CommandBaseline, root, schemaName+"/views/monthly"); got != contracts.ActionReprocessChangedBlocked {
+		t.Fatalf("expected baseline item action %q, got %q", contracts.ActionReprocessChangedBlocked, got)
+	}
+}
+
+func TestSQLServerMigrateBootstrapsPartialMetadataBeforeChecksumLoad(t *testing.T) {
+	ctx := context.Background()
+	conn, cfg := openSQLServerIntegrationConn(t)
+	defer conn.Close()
+	resetIntegrationMetadata(t, ctx, conn)
+	t.Cleanup(func() { resetIntegrationMetadata(t, ctx, conn) })
+
+	schemaName := integrationSchemaName("migratepartial")
+	resetIntegrationSchema(t, ctx, conn, schemaName)
+	t.Cleanup(func() { resetIntegrationSchema(t, ctx, conn, schemaName) })
+
+	root := t.TempDir()
+	base := "dwh"
+	createRepoObject(t, root, base, schemaName, "views", "monthly.sql", "CREATE VIEW ["+schemaName+"].[monthly] AS SELECT 1 AS id;")
+
+	reportDir := t.TempDir()
+	runner := NewRunner(config.Config{
+		Env:                    "pred",
+		SQLRoot:                root,
+		SQLBase:                base,
+		EffectiveBasePath:      filepath.Join(root, base),
+		ReportDir:              reportDir,
+		Database:               cfg.Database,
+		Server:                 cfg.Server,
+		Port:                   cfg.Port,
+		DBAuth:                 cfg.DBAuth,
+		User:                   cfg.User,
+		Password:               cfg.Password,
+		Encrypt:                cfg.Encrypt,
+		TrustServerCertificate: cfg.TrustServerCertificate,
+		GitCommit:              "integration-test",
+		UpdatePolicy:           config.UpdatePolicyNone,
+		TransactionMode:        config.TransactionModeScript,
+		ToolVersion:            "test",
+		ToolCommit:             "test",
+	}, logger.New(logger.Options{}))
+
+	plan, err := runner.Plan(ctx)
+	if err != nil {
+		t.Fatalf("plan failed: %v", err)
+	}
+	if plan.Blocked {
+		t.Fatalf("expected unblocked plan, got %#v", plan)
+	}
+
+	resetIntegrationMetadata(t, ctx, conn)
+	createPartialCurrentMetadata(t, ctx, conn)
+	if !integrationObjectExists(t, ctx, conn, "__migrator.schema_version", "U") {
+		t.Fatal("expected partial metadata schema_version table")
+	}
+	if integrationObjectExists(t, ctx, conn, "__migrator.runs", "U") {
+		t.Fatal("expected metadata runs table to be missing before bootstrap repair")
+	}
+
+	runner.cfg.PlanFile = filepath.Join(reportDir, "migration-plan.json")
+	if err := runner.Migrate(ctx); err != nil {
+		t.Fatalf("migrate failed with partial metadata shape: %v", err)
+	}
+	if !integrationObjectExists(t, ctx, conn, "__migrator.runs", "U") {
+		t.Fatal("expected bootstrap to create metadata runs table")
+	}
+	if !integrationObjectExists(t, ctx, conn, "["+schemaName+"].[monthly]", "V") {
+		t.Fatal("expected migrate to create repo-managed view")
 	}
 }
 
@@ -256,4 +411,53 @@ func seedSuccessfulMetadataObject(ctx context.Context, conn *sql.Conn, targetDat
 		return err
 	}
 	return metadata.FinishRun(ctx, conn, runID, true, "", "")
+}
+
+func resetIntegrationMetadata(t *testing.T, ctx context.Context, conn *sql.Conn) {
+	t.Helper()
+	cleanup := "IF OBJECT_ID('__migrator.attempts', 'U') IS NOT NULL DROP TABLE __migrator.attempts; IF OBJECT_ID('__migrator.items', 'U') IS NOT NULL DROP TABLE __migrator.items; IF OBJECT_ID('__migrator.runs', 'U') IS NOT NULL DROP TABLE __migrator.runs; IF OBJECT_ID('__migrator.schema_version', 'U') IS NOT NULL DROP TABLE __migrator.schema_version; IF OBJECT_ID('__migrator.v_migration_state', 'V') IS NOT NULL DROP VIEW __migrator.v_migration_state; IF OBJECT_ID('__migrator.migration_attempts', 'U') IS NOT NULL DROP TABLE __migrator.migration_attempts; IF OBJECT_ID('__migrator.tracked_objects', 'U') IS NOT NULL DROP TABLE __migrator.tracked_objects; IF OBJECT_ID('__migrator.tracked_schemas', 'U') IS NOT NULL DROP TABLE __migrator.tracked_schemas; IF OBJECT_ID('__migrator.migration_runs', 'U') IS NOT NULL DROP TABLE __migrator.migration_runs; IF OBJECT_ID('__migrator.schema_migrations', 'U') IS NOT NULL DROP TABLE __migrator.schema_migrations; IF SCHEMA_ID('__migrator') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sys.objects o JOIN sys.schemas s ON s.schema_id = o.schema_id WHERE s.name = '__migrator') EXEC('DROP SCHEMA __migrator');"
+	if _, err := conn.ExecContext(ctx, cleanup); err != nil {
+		t.Fatalf("reset metadata: %v", err)
+	}
+}
+
+func createPartialCurrentMetadata(t *testing.T, ctx context.Context, conn *sql.Conn) {
+	t.Helper()
+	if _, err := conn.ExecContext(ctx, "IF SCHEMA_ID('__migrator') IS NULL EXEC('CREATE SCHEMA __migrator')"); err != nil {
+		t.Fatalf("create metadata schema: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, "CREATE TABLE __migrator.schema_version (version INT NOT NULL PRIMARY KEY, applied_at DATETIME2 NOT NULL CONSTRAINT DF_schema_version_applied_at DEFAULT SYSUTCDATETIME())"); err != nil {
+		t.Fatalf("create schema_version table: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, "INSERT INTO __migrator.schema_version(version) VALUES (2)"); err != nil {
+		t.Fatalf("seed schema_version row: %v", err)
+	}
+}
+
+func integrationObjectExists(t *testing.T, ctx context.Context, conn *sql.Conn, name string, objectType string) bool {
+	t.Helper()
+	var exists int
+	if err := conn.QueryRowContext(ctx, "SELECT CASE WHEN OBJECT_ID(@p1, @p2) IS NULL THEN 0 ELSE 1 END", name, objectType).Scan(&exists); err != nil {
+		t.Fatalf("check object %s: %v", name, err)
+	}
+	return exists == 1
+}
+
+func latestRunUpdatePolicy(t *testing.T, ctx context.Context, conn *sql.Conn, command string, sqlRoot string) string {
+	t.Helper()
+	var value string
+	if err := conn.QueryRowContext(ctx, "SELECT TOP (1) ISNULL(update_policy, '') FROM __migrator.runs WHERE command = @p1 AND sql_root = @p2 ORDER BY started_at DESC", command, sqlRoot).Scan(&value); err != nil {
+		t.Fatalf("read latest run update_policy: %v", err)
+	}
+	return value
+}
+
+func latestItemAction(t *testing.T, ctx context.Context, conn *sql.Conn, command string, sqlRoot string, normalizedKey string) string {
+	t.Helper()
+	var value string
+	query := "SELECT TOP (1) i.action FROM __migrator.items i JOIN __migrator.runs r ON r.run_id = i.run_id WHERE r.command = @p1 AND r.sql_root = @p2 AND i.normalized_key = @p3 ORDER BY i.created_at DESC, i.item_id DESC"
+	if err := conn.QueryRowContext(ctx, query, command, sqlRoot, normalizedKey).Scan(&value); err != nil {
+		t.Fatalf("read latest item action: %v", err)
+	}
+	return value
 }
