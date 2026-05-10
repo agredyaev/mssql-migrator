@@ -38,7 +38,9 @@ func (e *baselinePreflightFailure) Unwrap() error {
 	return e.base
 }
 
-func verifyBaselineCreatePermissions(ctx context.Context, conn *sql.Conn, plan contracts.MigrationPlan, layout parser.Layout) error {
+// verifyBaselineCreatePermissionsBestEffort catches common permission failures early.
+// Final DDL execution remains authoritative.
+func verifyBaselineCreatePermissionsBestEffort(ctx context.Context, conn *sql.Conn, plan contracts.MigrationPlan, layout parser.Layout) error {
 	resolver := objectDependencyResolver{}
 	for _, schema := range plan.Schemas {
 		if schema.Action != contracts.SchemaActionCreateSchema {

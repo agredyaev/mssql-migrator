@@ -43,6 +43,7 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
 - `migrate` requires an approved plan file.
 - `plan --json` writes stable machine-readable JSON to stdout and keeps logs on stderr.
+- `plan` is read-only. It reads metadata state directly and does not bootstrap or repair partial metadata. Use `migrate`, `baseline`, or `repair-checksum` when metadata must be bootstrapped under lock.
 - `RM_UPDATE_POLICY` defaults to `none`.
 - Existing module updates are allowed only when the repo SQL starts with the matching `CREATE OR ALTER` statement for that object kind.
 - `RM_TRANSACTION_MODE` defaults to `script`.
@@ -74,6 +75,7 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 
 - Invalid root or base selection: config validation fails before command execution.
 - Invalid repository layout: discovery fails before database work.
+- Partial metadata state during `plan`: the command fails on metadata read errors instead of repairing metadata. Locked metadata bootstrap remains in `migrate`, `baseline`, and `repair-checksum`.
 - Approved-plan drift: `migrate` fails closed if `git_commit`, `layout_hash`, target, tool identity, comparison mode, update policy, transaction mode, rollback scope, base selection, or the approved schema/object set differs.
 - Unsafe existing-module update SQL: `plan` blocks the object when the repo file does not start with the required `CREATE OR ALTER` statement.
 - Metadata failure after SQL success: treated as a critical state in the active repo-driven `migrate`, `baseline`, and `repair-checksum` paths.

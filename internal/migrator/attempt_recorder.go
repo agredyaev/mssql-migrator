@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"reporting-db-migrations/internal/attempts"
 	"reporting-db-migrations/internal/contracts"
-	"reporting-db-migrations/internal/logger"
-	"reporting-db-migrations/internal/metadata"
 )
 
 type attemptRecorder struct {
@@ -22,23 +21,11 @@ func (r attemptRecorder) SchemaSuccess(ctx context.Context, schemaName string, a
 	if !writeAttempt {
 		return nil
 	}
-	return r.writer.insertAttempt(ctx, metadata.AttemptRecord{
-		ScriptName:    schemaName,
-		ScriptType:    contracts.ScriptTypeSchema,
-		Checksum:      "-",
-		Action:        action,
-		ExecutionMS:   0,
-		Success:       true,
-		GitCommit:     r.writer.cfg.GitCommit,
-		GitBranch:     r.writer.cfg.GitBranch,
-		PipelineRunID: r.writer.cfg.PipelineRunID,
-		PipelineURL:   logger.Redact(r.writer.cfg.PipelineURL),
-		AppliedBy:     r.writer.cfg.Actor,
-	})
+	return r.writer.insertAttempt(ctx, attempts.Schema(schemaName, action, true, "", r.writer.cfg))
 }
 
 func (r attemptRecorder) SchemaFailure(ctx context.Context, schemaName string, failure error, writeAttempt bool) error {
-	message := logger.Redact(failure.Error())
+	message := attempts.RedactError(failure)
 	normalizedSchemaName := strings.ToLower(strings.TrimSpace(schemaName))
 	if err := r.writer.updateSchema(ctx, normalizedSchemaName, false, message); err != nil {
 		return err
@@ -46,20 +33,7 @@ func (r attemptRecorder) SchemaFailure(ctx context.Context, schemaName string, f
 	if !writeAttempt {
 		return nil
 	}
-	return r.writer.insertAttempt(ctx, metadata.AttemptRecord{
-		ScriptName:    schemaName,
-		ScriptType:    contracts.ScriptTypeSchema,
-		Checksum:      "-",
-		Action:        contracts.ActionFail,
-		ExecutionMS:   0,
-		Success:       false,
-		ErrorMessage:  message,
-		GitCommit:     r.writer.cfg.GitCommit,
-		GitBranch:     r.writer.cfg.GitBranch,
-		PipelineRunID: r.writer.cfg.PipelineRunID,
-		PipelineURL:   logger.Redact(r.writer.cfg.PipelineURL),
-		AppliedBy:     r.writer.cfg.Actor,
-	})
+	return r.writer.insertAttempt(ctx, attempts.Schema(schemaName, contracts.ActionFail, false, message, r.writer.cfg))
 }
 
 func (r attemptRecorder) ObjectSuccess(ctx context.Context, object plannedMetadataObject, writeAttempt bool) error {
@@ -72,7 +46,7 @@ func (r attemptRecorder) ObjectSuccess(ctx context.Context, object plannedMetada
 }
 
 func (r attemptRecorder) ObjectFailure(ctx context.Context, object plannedMetadataObject, failure error, writeAttempt bool) error {
-	message := logger.Redact(failure.Error())
+	message := attempts.RedactError(failure)
 	if writeAttempt {
 		attempt := object.failureAttempt(r.writer.cfg, message)
 		if err := r.writer.insertAttempt(ctx, attempt); err != nil {

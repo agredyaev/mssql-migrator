@@ -35,10 +35,6 @@ func contractsReadValidationReport(dir string) (contracts.ValidationReport, erro
 	return report, nil
 }
 
-func containsSecret(value string) bool {
-	return strings.Contains(value, "password=secret") || strings.Contains(value, "secret")
-}
-
 type execCall struct {
 	query string
 	args  []any

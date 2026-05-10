@@ -128,8 +128,7 @@ func writeFilePairAtomic(firstPath string, firstContent []byte, secondPath strin
 	}
 	if err := os.Rename(secondTemp, secondPath); err != nil {
 		_ = os.Remove(secondTemp)
-		_ = os.Remove(firstPath)
-		return err
+		return fmt.Errorf("write secondary report file: %w", err)
 	}
 	return nil
 }

@@ -12,21 +12,34 @@ import (
 	"reporting-db-migrations/internal/db"
 	"reporting-db-migrations/internal/logger"
 	"reporting-db-migrations/internal/metadata"
+	"reporting-db-migrations/internal/parser"
 	"reporting-db-migrations/internal/planner"
 	"reporting-db-migrations/internal/reports"
+	"reporting-db-migrations/internal/runreport"
 )
+
+type dbOpener interface {
+	Open(context.Context, config.Config) (*sql.DB, error)
+}
+
+type defaultDBOpener struct{}
+
+func (defaultDBOpener) Open(ctx context.Context, cfg config.Config) (*sql.DB, error) {
+	return db.Open(ctx, cfg)
+}
 
 type Runner struct {
 	cfg config.Config
 	log logger.Logger
+	db  dbOpener
 }
 
 func NewRunner(cfg config.Config, log logger.Logger) Runner {
-	return Runner{cfg: cfg, log: log}
+	return Runner{cfg: cfg, log: log, db: defaultDBOpener{}}
 }
 
 func (r Runner) Info(ctx context.Context) error {
-	database, err := db.Open(ctx, r.cfg)
+	database, err := r.db.Open(ctx, r.cfg)
 	if err != nil {
 		return contracts.Wrap(contracts.ErrConnection, err)
 	}
@@ -64,86 +77,142 @@ func (r Runner) Plan(ctx context.Context) (contracts.MigrationPlan, error) {
 }
 
 func (r Runner) Migrate(ctx context.Context) error {
-	session, err := r.startProtectedSession(ctx)
+	state, err := r.startProtectedRunState(ctx, "migration_failed")
 	if err != nil {
-		return session.Fail("migration_failed", err, nil)
-	}
-	defer session.Close()
-	conn := session.conn
-	runID := ""
-	recorder := session.Recorder(runID)
-	failWithRun := func(base error, cause error) error {
-		if runID != "" {
-			session.RecordRunFailure(ctx, recorder, base, cause)
-		}
-		return session.Fail("migration_failed", base, cause)
-	}
-	if err := session.BootstrapMetadata(ctx); err != nil {
-		return failWithRun(contracts.ErrCriticalState, err)
-	}
-	successfulByKey, err := session.LoadSuccessfulChecksums(ctx)
-	if err != nil {
-		return failWithRun(contracts.ErrCriticalState, err)
-	}
-	planningLayout, hash, err := session.ResolvePlanningLayout()
-	if err != nil {
-		return failWithRun(contracts.ErrInvalidInput, err)
-	}
-	session.SetLayoutHash(hash)
-	plan, err := session.BuildPlan(ctx, successfulByKey, planningLayout, hash)
-	if err != nil {
-		if errors.Is(err, contracts.ErrCriticalState) {
-			return failWithRun(contracts.ErrCriticalState, err)
-		}
-		return failWithRun(contracts.ErrInvalidInput, err)
-	}
-	if plan.Blocked {
-		return failWithRun(contracts.ErrChecksumMismatch, fmt.Errorf("%v", plan.BlockReasons))
-	}
-	if err := planner.VerifyApprovedPlan(r.cfg, plan); err != nil {
-		return failWithRun(contracts.ErrInvalidInput, err)
-	}
-	runID, recorder, err = session.StartRun(ctx, contracts.CommandMigrate, r.cfg.PlanFile, planArtifactHash(r.cfg.PlanFile), plan.Rollback)
-	if err != nil {
-		return failWithRun(contracts.ErrCriticalState, err)
-	}
-	itemIDs, err := recorder.scope.Migration(ctx, plan)
-	if err != nil {
-		return failWithRun(contracts.ErrCriticalState, err)
-	}
-	r.log.Info("rollback_scope", fmt.Sprintf("Rollback scope: %s. Previous successful scripts remain committed. Use database backups or restore points for full recovery guarantees.", plan.Rollback))
-	report := session.MigrationReport()
-	if err := r.executePlanTracked(ctx, conn, planningLayout, plan, report, runID, itemIDs); err != nil {
-		if writeErr := session.WriteMigrationReport(); writeErr != nil {
-			return contracts.Wrap(contracts.ErrCriticalState, writeErr)
-		}
-		session.RecordRunFailure(ctx, recorder, err, nil)
 		return err
 	}
-	if !r.cfg.SkipValidate {
-		validationReport, validationErr := r.validateManagedScope(ctx, session, planningLayout, runID)
-		report.ValidationScope = validationReport.Scope
-		report.Validation = validationReport.Validation
-		if writeErr := writeValidationReport(r.cfg.ReportDir, validationReport); writeErr != nil {
-			return failWithRun(contracts.ErrCriticalState, writeErr)
-		}
-		if validationErr != nil {
-			return failWithRun(contracts.ErrValidation, validationErr)
-		}
-	} else {
+	defer state.Close()
+
+	planCtx, err := r.prepareMigrationExecution(ctx, state)
+	if err != nil {
+		return err
+	}
+	if err := r.executeMigrationPlan(ctx, state, planCtx); err != nil {
+		return err
+	}
+	if err := r.validateMigrationScope(ctx, state, planCtx); err != nil {
+		return err
+	}
+	return state.finishSuccess(ctx)
+}
+
+type executionPlanContext struct {
+	layout  plannerLayoutContext
+	plan    contracts.MigrationPlan
+	itemIDs map[string]int64
+}
+
+type plannerLayoutContext struct {
+	resolved parser.Layout
+	hash     string
+}
+
+func (r Runner) prepareMigrationExecution(ctx context.Context, state *protectedRunState) (executionPlanContext, error) {
+	planCtx, err := r.prepareExecutionPlan(ctx, state, executionPlanOptions{
+		layoutBase:     contracts.ErrInvalidInput,
+		buildPlanError: classifyMigrationPlanBuildError,
+		startRun: startRunOptions{
+			command:  contracts.CommandMigrate,
+			planFile: r.cfg.PlanFile,
+			planHash: planArtifactHash(r.cfg.PlanFile),
+		},
+	})
+	if err != nil {
+		return executionPlanContext{}, err
+	}
+	plan := planCtx.plan
+	if err := r.verifyMigrationPlan(plan); err != nil {
+		return executionPlanContext{}, state.fail(ctx, contracts.ErrInvalidInput, err)
+	}
+	r.log.Info("rollback_scope", fmt.Sprintf("Rollback scope: %s. Previous successful scripts remain committed. Use database backups or restore points for full recovery guarantees.", plan.Rollback))
+	return planCtx, nil
+}
+
+func (r Runner) executeMigrationPlan(ctx context.Context, state *protectedRunState, planCtx executionPlanContext) error {
+	return state.executeTrackedPlan(ctx, r, planCtx.layout.resolved, planCtx.plan, planCtx.itemIDs)
+}
+
+func (r Runner) validateMigrationScope(ctx context.Context, state *protectedRunState, planCtx executionPlanContext) error {
+	report := state.session.MigrationReport()
+	if r.cfg.SkipValidate {
 		report.ValidationSkipped = true
+		return nil
 	}
-	report.Result = "success"
-	report.FinishedAt = time.Now().UTC()
-	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
-	if err := session.FinishRun(ctx, recorder); err != nil {
-		return session.Fail("migration_failed", contracts.ErrCriticalState, err)
+	validationReport, validationErr := r.validateManagedScope(ctx, state.session, planCtx.layout.resolved, state.runID)
+	report.ValidationScope = validationReport.Scope
+	report.Validation = validationReport.Validation
+	if writeErr := runreport.WriteValidation(r.cfg.ReportDir, validationReport); writeErr != nil {
+		return state.fail(ctx, contracts.ErrCriticalState, writeErr)
 	}
-	return session.WriteMigrationReport()
+	if validationErr != nil {
+		return state.fail(ctx, contracts.ErrValidation, validationErr)
+	}
+	return nil
+}
+
+func (r Runner) loadProtectedPlanningInputs(ctx context.Context, state *protectedRunState, layoutBase error) (plannerLayoutContext, map[string]string, error) {
+	if err := state.session.BootstrapMetadata(ctx); err != nil {
+		return plannerLayoutContext{}, nil, state.fail(ctx, contracts.ErrCriticalState, err)
+	}
+	successfulByKey, err := state.session.LoadSuccessfulChecksums(ctx)
+	if err != nil {
+		return plannerLayoutContext{}, nil, state.fail(ctx, contracts.ErrCriticalState, err)
+	}
+	resolved, hash, err := state.session.ResolvePlanningLayout()
+	if err != nil {
+		return plannerLayoutContext{}, nil, state.fail(ctx, layoutBase, err)
+	}
+	state.setLayoutHash(hash)
+	return plannerLayoutContext{resolved: resolved, hash: hash}, successfulByKey, nil
+}
+
+type executionPlanOptions struct {
+	layoutBase     error
+	buildPlanError func(error) error
+	startRun       startRunOptions
+}
+
+type startRunOptions struct {
+	command  string
+	planFile string
+	planHash string
+}
+
+func (r Runner) prepareExecutionPlan(ctx context.Context, state *protectedRunState, options executionPlanOptions) (executionPlanContext, error) {
+	layout, successfulByKey, err := r.loadProtectedPlanningInputs(ctx, state, options.layoutBase)
+	if err != nil {
+		return executionPlanContext{}, err
+	}
+	plan, err := state.session.BuildPlan(ctx, successfulByKey, layout.resolved, layout.hash)
+	if err != nil {
+		return executionPlanContext{}, state.fail(ctx, options.buildPlanError(err), err)
+	}
+	if plan.Blocked {
+		return executionPlanContext{}, state.fail(ctx, contracts.ErrChecksumMismatch, fmt.Errorf("%v", plan.BlockReasons))
+	}
+	if err := state.startRun(ctx, options.startRun.command, options.startRun.planFile, options.startRun.planHash, plan.Rollback); err != nil {
+		return executionPlanContext{}, state.fail(ctx, contracts.ErrCriticalState, err)
+	}
+	itemIDs, err := state.recorder.scope.Migration(ctx, plan)
+	if err != nil {
+		return executionPlanContext{}, state.fail(ctx, contracts.ErrCriticalState, err)
+	}
+	return executionPlanContext{layout: layout, plan: plan, itemIDs: itemIDs}, nil
+}
+
+func classifyMigrationPlanBuildError(err error) error {
+	if errors.Is(err, contracts.ErrCriticalState) {
+		return contracts.ErrCriticalState
+	}
+	return contracts.ErrInvalidInput
+}
+
+func (r Runner) verifyMigrationPlan(plan contracts.MigrationPlan) error {
+	return planner.VerifyApprovedPlan(r.cfg, plan)
 }
 
 func (r Runner) openReservedConnection(ctx context.Context) (*sql.Conn, func() error, error) {
-	database, err := db.Open(ctx, r.cfg)
+	database, err := r.db.Open(ctx, r.cfg)
 	if err != nil {
 		return nil, nil, contracts.Wrap(contracts.ErrConnection, err)
 	}
@@ -165,7 +234,7 @@ func (r Runner) openReservedConnection(ctx context.Context) (*sql.Conn, func() e
 
 func (r Runner) newMigrationReport() contracts.MigrationReport {
 	return contracts.MigrationReport{
-		Tool:              "rmig",
+		Tool:              toolName,
 		Version:           r.cfg.ToolVersion,
 		ToolCommit:        r.cfg.ToolCommit,
 		Environment:       r.cfg.Env,
@@ -183,8 +252,4 @@ func (r Runner) newMigrationReport() contracts.MigrationReport {
 		Applied:           []contracts.ScriptResult{},
 		Skipped:           []contracts.ScriptResult{},
 	}
-}
-
-func (r Runner) writeFailedMigration(report contracts.MigrationReport, phase string, base error, cause error) error {
-	return FailureReporter{cfg: r.cfg}.Migration(report, phase, base, cause)
 }

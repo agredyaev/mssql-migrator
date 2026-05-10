@@ -10,6 +10,7 @@ import (
 	"reporting-db-migrations/internal/metadata"
 	"reporting-db-migrations/internal/parser"
 	"reporting-db-migrations/internal/planner"
+	"reporting-db-migrations/internal/runreport"
 )
 
 type runSession struct {
@@ -26,7 +27,8 @@ func (r Runner) startProtectedSession(ctx context.Context) (*runSession, error) 
 	}
 	session := &runSession{runner: r, report: report, conn: conn, closeFn: closeFn}
 	if err := r.acquireLock(ctx, conn); err != nil {
-		return session, err
+		session.Close()
+		return &runSession{runner: r, report: report}, err
 	}
 	return session, nil
 }
@@ -74,9 +76,9 @@ func (s *runSession) Close() {
 
 func (s *runSession) Fail(phase string, base error, cause error) error {
 	if s == nil {
-		return returnFailure(base, cause)
+		return runreport.ReturnFailure(base, cause)
 	}
-	return FailureReporter{cfg: s.runner.cfg}.Migration(s.report, phase, base, cause)
+	return runreport.WriteMigrationFailure(s.runner.cfg, s.report, phase, base, cause)
 }
 
 func (s *runSession) ResolvePlanningLayout() (parser.Layout, string, error) {
@@ -114,7 +116,7 @@ func (s *runSession) MigrationReport() *contracts.MigrationReport {
 }
 
 func (s *runSession) WriteMigrationReport() error {
-	return writeMigrationReport(s.runner.cfg.ReportDir, s.report)
+	return runreport.WriteMigration(s.runner.cfg.ReportDir, s.report)
 }
 
 func (s *runSession) WarnMetadataFinishFailure(err error) {

@@ -15,40 +15,74 @@ func SplitGO(content string) ([]Batch, error) {
 	lines := strings.Split(content, "\n")
 	batches := make([]Batch, 0)
 	current := make([]string, 0)
-	inBlockComment := false
+	state := goParseState{}
 	for _, line := range lines {
-		if inBlockComment {
-			current = append(current, line)
-			if strings.Contains(line, "*/") {
-				inBlockComment = false
-			}
-			continue
-		}
-		if strings.Contains(line, "/*") && !strings.Contains(line, "*/") {
-			inBlockComment = true
-			current = append(current, line)
-			continue
-		}
 		matches := goLinePattern.FindStringSubmatch(line)
+		if matches != nil && !state.inBlockComment && !state.inStringLiteral {
+			sql := strings.TrimSpace(strings.Join(current, "\n"))
+			if sql != "" {
+				repeat, err := parseRepeat(matches[1], line)
+				if err != nil {
+					return nil, err
+				}
+				batches = append(batches, Batch{SQL: sql, Repeat: repeat})
+			}
+			current = make([]string, 0)
+			continue
+		}
+
+		state = advanceGOParseState(line, state)
 		if matches == nil {
 			current = append(current, line)
 			continue
 		}
-		sql := strings.TrimSpace(strings.Join(current, "\n"))
-		if sql != "" {
-			repeat, err := parseRepeat(matches[1], line)
-			if err != nil {
-				return nil, err
-			}
-			batches = append(batches, Batch{SQL: sql, Repeat: repeat})
-		}
-		current = make([]string, 0)
+		current = append(current, line)
 	}
 	last := strings.TrimSpace(strings.Join(current, "\n"))
 	if last != "" {
 		batches = append(batches, Batch{SQL: last, Repeat: 1})
 	}
 	return batches, nil
+}
+
+type goParseState struct {
+	inBlockComment  bool
+	inStringLiteral bool
+}
+
+func advanceGOParseState(line string, state goParseState) goParseState {
+	for i := 0; i < len(line); i++ {
+		if state.inBlockComment {
+			if i+1 < len(line) && line[i] == '*' && line[i+1] == '/' {
+				state.inBlockComment = false
+				i++
+			}
+			continue
+		}
+		if state.inStringLiteral {
+			if line[i] != '\'' {
+				continue
+			}
+			if i+1 < len(line) && line[i+1] == '\'' {
+				i++
+				continue
+			}
+			state.inStringLiteral = false
+			continue
+		}
+		if i+1 < len(line) && line[i] == '-' && line[i+1] == '-' {
+			break
+		}
+		if i+1 < len(line) && line[i] == '/' && line[i+1] == '*' {
+			state.inBlockComment = true
+			i++
+			continue
+		}
+		if line[i] == '\'' {
+			state.inStringLiteral = true
+		}
+	}
+	return state
 }
 
 func parseRepeat(value string, line string) (int, error) {

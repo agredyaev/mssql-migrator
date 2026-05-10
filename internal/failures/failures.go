@@ -24,9 +24,7 @@ type causeCarrier interface {
 
 func Build(cfg config.Config, phase string, err error) contracts.Failure {
 	if err == nil {
-		failure := contracts.Failure{Phase: strings.TrimSpace(phase), SQLRoot: strings.TrimSpace(cfg.SQLRoot), Base: strings.TrimSpace(cfg.SQLBase)}
-		failure.Error = Envelope(failure)
-		return failure
+		return buildFailurePayload(cfg, phase, Classification{})
 	}
 	var wrapped causeCarrier
 	if errors.As(err, &wrapped) {
@@ -36,18 +34,7 @@ func Build(cfg config.Config, phase string, err error) contracts.Failure {
 }
 
 func BuildWithCause(cfg config.Config, phase string, base error, cause error) contracts.Failure {
-	details := ClassifyDetails(base, cause)
-	failure := contracts.Failure{
-		Script:  strings.TrimSpace(details.Path),
-		Phase:   strings.TrimSpace(phase),
-		SQLRoot: strings.TrimSpace(cfg.SQLRoot),
-		Base:    strings.TrimSpace(cfg.SQLBase),
-		Class:   strings.TrimSpace(details.Class),
-		Reason:  strings.TrimSpace(details.Reason),
-		SQL:     strings.TrimSpace(details.SQL),
-	}
-	failure.Error = Envelope(failure)
-	return failure
+	return buildFailurePayload(cfg, phase, ClassifyDetails(base, cause))
 }
 
 func BuildPlanBlocked(cfg config.Config, plan contracts.MigrationPlan) contracts.Failure {
@@ -57,13 +44,22 @@ func BuildPlanBlocked(cfg config.Config, plan contracts.MigrationPlan) contracts
 	} else if len(plan.Failures) > 0 {
 		reason = logger.Redact(strings.TrimSpace(plan.Failures[0]))
 	}
+	return buildFailurePayload(cfg, "plan_failed", Classification{
+		Path:   extractPathFromMessage(reason),
+		Class:  Classify(fmt.Errorf("%s", reason), nil),
+		Reason: reason,
+	})
+}
+
+func buildFailurePayload(cfg config.Config, phase string, details Classification) contracts.Failure {
 	failure := contracts.Failure{
-		Script:  extractPathFromMessage(reason),
-		Phase:   "plan_failed",
+		Script:  strings.TrimSpace(details.Path),
+		Phase:   strings.TrimSpace(phase),
 		SQLRoot: strings.TrimSpace(cfg.SQLRoot),
 		Base:    strings.TrimSpace(cfg.SQLBase),
-		Class:   Classify(fmt.Errorf("%s", reason), nil),
-		Reason:  reason,
+		Class:   strings.TrimSpace(details.Class),
+		Reason:  strings.TrimSpace(details.Reason),
+		SQL:     strings.TrimSpace(details.SQL),
 	}
 	failure.Error = Envelope(failure)
 	return failure

@@ -49,6 +49,7 @@ See `README.md` for the CLI wrapper contract.
 ## Off-Nominal Behavior And Failure Containment
 
 - Plan failure: fix the SQL root/base selection or repository layout, then rerun `plan`.
+- Plan metadata failure: `plan` is read-only and does not repair partial metadata. Use `migrate`, `baseline`, or `repair-checksum` when the environment needs metadata bootstrap under lock, then rerun `plan`.
 - Plan output now includes per-object reasoning in `reports/migration-plan.txt`. Use that file first to see why an object is being created, adopted, skipped, updated, or blocked.
 - Migration failure: inspect the migration report to see whether the failure happened during schema creation, object execution, managed-scope post-migrate validation, or metadata recording, then fix forward in Git and rerun `plan`.
 - Metadata failure after SQL success in repo-driven `migrate`, `baseline`, or `repair-checksum`: stop deployment and inspect database state before retrying.

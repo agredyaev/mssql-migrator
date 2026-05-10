@@ -149,6 +149,7 @@ func printUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "  rmig version")
 	fmt.Fprintln(writer, "  env values: pred, prod")
 	fmt.Fprintln(writer, "  optional: --env-file path/to/.env or RM_ENV_FILE=path/to/.env")
+	fmt.Fprintln(writer, "  plan is read-only and does not repair partial metadata; run migrate, baseline, or repair-checksum to bootstrap metadata under lock")
 	for _, spec := range commands.Specs() {
 		fmt.Fprintf(writer, "  rmig %s\n", spec.Usage)
 	}

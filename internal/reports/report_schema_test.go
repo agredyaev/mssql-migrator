@@ -136,10 +136,13 @@ func TestWritePlanRedactsBlockReasons(t *testing.T) {
 	}
 }
 
-func TestWriteFilePairAtomicRemovesPublishedFirstFileOnSecondRenameFailure(t *testing.T) {
+func TestWriteFilePairAtomicKeepsPublishedFirstFileOnSecondRenameFailure(t *testing.T) {
 	dir := t.TempDir()
 	firstPath := filepath.Join(dir, "pair.json")
 	secondPath := filepath.Join(dir, "pair.txt")
+	if err := os.WriteFile(firstPath, []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(secondPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -147,8 +150,12 @@ func TestWriteFilePairAtomicRemovesPublishedFirstFileOnSecondRenameFailure(t *te
 	if err == nil {
 		t.Fatal("expected pair write error")
 	}
-	if _, statErr := os.Stat(firstPath); !os.IsNotExist(statErr) {
-		t.Fatalf("expected first file cleanup after partial publish, got %v", statErr)
+	content, readErr := os.ReadFile(firstPath)
+	if readErr != nil {
+		t.Fatalf("expected first file to remain published, got %v", readErr)
+	}
+	if string(content) != "{}\n" {
+		t.Fatalf("expected renamed first file content, got %q", string(content))
 	}
 	if matches, globErr := filepath.Glob(filepath.Join(dir, "*.tmp-*")); globErr != nil {
 		t.Fatal(globErr)

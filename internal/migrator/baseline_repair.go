@@ -5,187 +5,205 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"reporting-db-migrations/internal/config"
 	"reporting-db-migrations/internal/contracts"
 	"reporting-db-migrations/internal/logger"
 	"reporting-db-migrations/internal/parser"
+	"reporting-db-migrations/internal/planner"
 )
 
 func (r Runner) Baseline(ctx context.Context) error {
 	baselineRunner := r
 	baselineRunner.cfg.UpdatePolicy = config.UpdatePolicyNone
-	session, err := baselineRunner.startProtectedSession(ctx)
+	state, err := baselineRunner.startProtectedRunState(ctx, "baseline_failed")
 	if err != nil {
-		return session.Fail("baseline_failed", err, nil)
-	}
-	defer session.Close()
-	conn := session.conn
-	report := session.MigrationReport()
-	if err := session.BootstrapMetadata(ctx); err != nil {
-		return session.Fail("baseline_failed", contracts.ErrCriticalState, err)
-	}
-	successfulByKey, err := session.LoadSuccessfulChecksums(ctx)
-	if err != nil {
-		return session.Fail("baseline_failed", contracts.ErrCriticalState, err)
-	}
-	layout, hash, err := session.ResolvePlanningLayout()
-	if err != nil {
-		return session.Fail("baseline_failed", contracts.ErrInvalidInput, err)
-	}
-	session.SetLayoutHash(hash)
-	plan, err := session.BuildPlan(ctx, successfulByKey, layout, hash)
-	if err != nil {
-		return session.Fail("baseline_failed", contracts.ErrInvalidInput, err)
-	}
-	runID, recorder, err := session.StartRun(ctx, contracts.CommandBaseline, "", "", contracts.RollbackScope(baselineRunner.cfg.TransactionMode))
-	if err != nil {
-		return session.Fail("baseline_failed", contracts.ErrCriticalState, err)
-	}
-	itemIDs, err := recorder.scope.Migration(ctx, plan)
-	if err != nil {
-		session.RecordRunFailure(ctx, recorder, contracts.ErrCriticalState, err)
-		return session.Fail("baseline_failed", contracts.ErrCriticalState, err)
-	}
-	plannedByKey := map[string]contracts.PlannedObject{}
-	for _, object := range plan.Objects {
-		plannedByKey[object.NormalizedKey] = object
-		itemID := lookupItemID(itemIDs, object.NormalizedKey)
-		switch object.PlannedAction {
-		case contracts.ActionSkipUnchanged, contracts.ActionAdoptExisting, contracts.ActionCreateObject:
-			continue
-		case contracts.ActionUpdateExistingModule, contracts.ActionUpdateExistingSupported, contracts.ActionReprocessChangedBlocked:
-			failure := fmt.Errorf("%w: baseline found existing metadata drift for %s; use repair-checksum", contracts.ErrMetadataDrift, object.ObjectPath)
-			if recordErr := recorder.attempt.ObjectFailure(ctx, baselineFailureMetadataObject(object, itemID, baselineRunner.cfg.TransactionMode), failure, true); recordErr != nil {
-				r.log.Warn("baseline_metadata_write_failed", logger.Redact(recordErr.Error()))
-			}
-			session.RecordRunFailure(ctx, recorder, failure, nil)
-			return session.Fail("baseline_failed", failure, nil)
-		default:
-			failure := fmt.Errorf("%w: unsupported baseline object state %s for %s", contracts.ErrInvalidInput, object.PlannedAction, object.ObjectPath)
-			if recordErr := recorder.attempt.ObjectFailure(ctx, baselineFailureMetadataObject(object, itemID, baselineRunner.cfg.TransactionMode), failure, true); recordErr != nil {
-				r.log.Warn("baseline_metadata_write_failed", logger.Redact(recordErr.Error()))
-			}
-			session.RecordRunFailure(ctx, recorder, failure, nil)
-			return session.Fail("baseline_failed", failure, nil)
-		}
-	}
-	if err := verifyBaselineCreatePermissions(ctx, conn, plan, layout); err != nil {
-		var failure *baselinePreflightFailure
-		if errors.As(err, &failure) {
-			if strings.TrimSpace(failure.schemaName) != "" {
-				if recordErr := recorder.attempt.SchemaFailure(ctx, failure.schemaName, err, true); recordErr != nil {
-					r.log.Warn("baseline_metadata_write_failed", logger.Redact(recordErr.Error()))
-				}
-			}
-			if strings.TrimSpace(failure.object.Path) != "" {
-				itemID := lookupItemID(itemIDs, failure.object.NormalizedKey)
-				planned := plannedByKey[failure.object.NormalizedKey]
-				if planned.NormalizedKey == "" {
-					planned = contracts.PlannedObject{ObjectPath: failure.object.Path, NormalizedKey: failure.object.NormalizedKey, Checksum: failure.object.Checksum}
-				}
-				if recordErr := recorder.attempt.ObjectFailure(ctx, baselineFailureMetadataObject(planned, itemID, baselineRunner.cfg.TransactionMode), err, true); recordErr != nil {
-					r.log.Warn("baseline_metadata_write_failed", logger.Redact(recordErr.Error()))
-				}
-			}
-		}
-		session.RecordRunFailure(ctx, recorder, err, nil)
-		return session.Fail("baseline_failed", err, nil)
-	}
-	if err := baselineRunner.executePlanTracked(ctx, conn, layout, plan, report, runID, itemIDs); err != nil {
-		if writeErr := session.WriteMigrationReport(); writeErr != nil {
-			return contracts.Wrap(contracts.ErrCriticalState, writeErr)
-		}
-		session.RecordRunFailure(ctx, recorder, err, nil)
 		return err
 	}
-	report.Result = "success"
-	report.FinishedAt = time.Now().UTC()
-	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
-	if err := session.FinishRun(ctx, recorder); err != nil {
-		return session.Fail("baseline_failed", contracts.ErrCriticalState, err)
+	defer state.Close()
+
+	planCtx, err := baselineRunner.prepareBaselineExecution(ctx, state)
+	if err != nil {
+		return err
 	}
-	return session.WriteMigrationReport()
+	if err := baselineRunner.validateBaselinePlan(ctx, state, planCtx); err != nil {
+		return err
+	}
+	if err := baselineRunner.verifyBaselineCreatePermissions(ctx, state, planCtx); err != nil {
+		return err
+	}
+	if err := state.executeTrackedPlan(ctx, baselineRunner, planCtx.layout.resolved, planCtx.plan, planCtx.itemIDs); err != nil {
+		return err
+	}
+	return state.finishSuccess(ctx)
 }
 
 func (r Runner) RepairChecksum(ctx context.Context) error {
-	session, err := r.startProtectedSession(ctx)
+	state, err := r.startProtectedRunState(ctx, "repair_checksum_failed")
 	if err != nil {
-		return session.Fail("repair_checksum_failed", err, nil)
+		return err
 	}
-	defer session.Close()
-	report := session.MigrationReport()
-	if err := session.BootstrapMetadata(ctx); err != nil {
-		return session.Fail("repair_checksum_failed", contracts.ErrCriticalState, err)
-	}
-	successfulByKey, err := session.LoadSuccessfulChecksums(ctx)
+	defer state.Close()
+
+	repairCtx, err := r.prepareRepairChecksum(ctx, state)
 	if err != nil {
-		return session.Fail("repair_checksum_failed", contracts.ErrCriticalState, err)
+		return err
 	}
-	layout, hash, err := session.ResolvePlanningLayout()
-	if err != nil {
-		return session.Fail("repair_checksum_failed", contracts.ErrInvalidInput, err)
+	if err := r.recordRepairChecksum(ctx, state, repairCtx); err != nil {
+		return err
 	}
-	session.SetLayoutHash(hash)
-	target, err := resolveRepairObject(layout, r.cfg.RepairTarget)
-	if err != nil {
-		return session.Fail("repair_checksum_failed", contracts.ErrInvalidInput, err)
+	return state.finishSuccess(ctx)
+}
+
+type repairChecksumContext struct {
+	target          parser.Object
+	plannedTarget   contracts.PlannedObject
+	currentChecksum string
+	itemID          *int64
+}
+
+func (r Runner) prepareBaselineExecution(ctx context.Context, state *protectedRunState) (executionPlanContext, error) {
+	return r.prepareExecutionPlan(ctx, state, executionPlanOptions{
+		layoutBase:     contracts.ErrInvalidInput,
+		buildPlanError: func(error) error { return contracts.ErrInvalidInput },
+		startRun: startRunOptions{
+			command: contracts.CommandBaseline,
+		},
+	})
+}
+
+func (r Runner) validateBaselinePlan(ctx context.Context, state *protectedRunState, planCtx executionPlanContext) error {
+	for _, object := range planCtx.plan.Objects {
+		if err := r.validateBaselineObject(ctx, state, planCtx.itemIDs, object); err != nil {
+			return err
+		}
 	}
-	plan, err := session.BuildPlan(ctx, successfulByKey, layout, hash)
+	return nil
+}
+
+func (r Runner) validateBaselineObject(ctx context.Context, state *protectedRunState, itemIDs map[string]int64, object contracts.PlannedObject) error {
+	itemID := lookupItemID(itemIDs, object.NormalizedKey)
+	switch object.PlannedAction {
+	case contracts.ActionSkipUnchanged, contracts.ActionAdoptExisting, contracts.ActionCreateObject:
+		return nil
+	case contracts.ActionUpdateExistingModule, contracts.ActionUpdateExistingSupported, contracts.ActionReprocessChangedBlocked:
+		failure := fmt.Errorf("%w: baseline found existing metadata drift for %s; use repair-checksum", contracts.ErrMetadataDrift, object.ObjectPath)
+		r.warnBaselineAttemptWriteFailure(state.recorder.attempt.ObjectFailure(ctx, baselineFailureMetadataObject(object, itemID, r.cfg.TransactionMode), failure, true))
+		return state.fail(ctx, failure, nil)
+	default:
+		failure := fmt.Errorf("%w: unsupported baseline object state %s for %s", contracts.ErrInvalidInput, object.PlannedAction, object.ObjectPath)
+		r.warnBaselineAttemptWriteFailure(state.recorder.attempt.ObjectFailure(ctx, baselineFailureMetadataObject(object, itemID, r.cfg.TransactionMode), failure, true))
+		return state.fail(ctx, failure, nil)
+	}
+}
+
+func (r Runner) verifyBaselineCreatePermissions(ctx context.Context, state *protectedRunState, planCtx executionPlanContext) error {
+	if err := verifyBaselineCreatePermissionsBestEffort(ctx, state.session.conn, planCtx.plan, planCtx.layout.resolved); err != nil {
+		r.recordBaselinePreflightFailure(ctx, state, planCtx, err)
+		return state.fail(ctx, err, nil)
+	}
+	return nil
+}
+
+func (r Runner) recordBaselinePreflightFailure(ctx context.Context, state *protectedRunState, planCtx executionPlanContext, err error) {
+	var failure *baselinePreflightFailure
+	if !errors.As(err, &failure) {
+		return
+	}
+	if strings.TrimSpace(failure.schemaName) != "" {
+		r.warnBaselineAttemptWriteFailure(state.recorder.attempt.SchemaFailure(ctx, failure.schemaName, err, true))
+	}
+	if strings.TrimSpace(failure.object.Path) == "" {
+		return
+	}
+	itemID := lookupItemID(planCtx.itemIDs, failure.object.NormalizedKey)
+	planned := findBaselinePlannedObject(planCtx.plan, failure.object)
+	r.warnBaselineAttemptWriteFailure(state.recorder.attempt.ObjectFailure(ctx, baselineFailureMetadataObject(planned, itemID, r.cfg.TransactionMode), err, true))
+}
+
+func findBaselinePlannedObject(plan contracts.MigrationPlan, object parser.Object) contracts.PlannedObject {
+	for _, planned := range plan.Objects {
+		if planned.NormalizedKey == object.NormalizedKey {
+			return planned
+		}
+	}
+	return contracts.PlannedObject{ObjectPath: object.Path, NormalizedKey: object.NormalizedKey, Checksum: object.Checksum}
+}
+
+func (r Runner) warnBaselineAttemptWriteFailure(err error) {
 	if err != nil {
-		return session.Fail("repair_checksum_failed", contracts.ErrCriticalState, err)
+		r.log.Warn("baseline_metadata_write_failed", logger.Redact(err.Error()))
+	}
+}
+
+func (r Runner) prepareRepairChecksum(ctx context.Context, state *protectedRunState) (repairChecksumContext, error) {
+	layout, successfulByKey, err := r.loadProtectedPlanningInputs(ctx, state, contracts.ErrInvalidInput)
+	if err != nil {
+		return repairChecksumContext{}, err
+	}
+	target, plannedTarget, err := r.resolveRepairTargets(ctx, state, layout, successfulByKey)
+	if err != nil {
+		return repairChecksumContext{}, err
+	}
+	catalog, currentChecksum, err := r.loadRepairTargetState(ctx, state, target, successfulByKey)
+	if err != nil {
+		return repairChecksumContext{}, err
+	}
+	if err := state.startRun(ctx, contracts.CommandRepairChecksum, "", "", contracts.RollbackScopeNone); err != nil {
+		return repairChecksumContext{}, state.fail(ctx, contracts.ErrCriticalState, err)
+	}
+	itemID, err := state.recorder.scope.Repair(ctx, target, plannedTarget, catalog, currentChecksum)
+	if err != nil {
+		return repairChecksumContext{}, state.fail(ctx, contracts.ErrCriticalState, err)
+	}
+	return repairChecksumContext{target: target, plannedTarget: plannedTarget, currentChecksum: currentChecksum, itemID: itemID}, nil
+}
+
+func (r Runner) resolveRepairTargets(ctx context.Context, state *protectedRunState, layout plannerLayoutContext, successfulByKey map[string]string) (parser.Object, contracts.PlannedObject, error) {
+	target, err := resolveRepairObject(layout.resolved, r.cfg.RepairTarget)
+	if err != nil {
+		return parser.Object{}, contracts.PlannedObject{}, state.fail(ctx, contracts.ErrInvalidInput, err)
+	}
+	plan, err := state.session.BuildPlan(ctx, successfulByKey, layout.resolved, layout.hash)
+	if err != nil {
+		return parser.Object{}, contracts.PlannedObject{}, state.fail(ctx, contracts.ErrCriticalState, err)
 	}
 	plannedTarget, err := resolveRepairPlanObject(plan, target.NormalizedKey)
 	if err != nil {
-		return session.Fail("repair_checksum_failed", contracts.ErrInvalidInput, err)
+		return parser.Object{}, contracts.PlannedObject{}, state.fail(ctx, contracts.ErrInvalidInput, err)
 	}
 	if err := validateRepairEligibility(target, plannedTarget); err != nil {
-		return session.Fail("repair_checksum_failed", contracts.ErrInvalidInput, err)
+		return parser.Object{}, contracts.PlannedObject{}, state.fail(ctx, contracts.ErrInvalidInput, err)
 	}
-	catalog, err := session.ReadPlanningCatalog(ctx)
+	return target, plannedTarget, nil
+}
+
+func (r Runner) loadRepairTargetState(ctx context.Context, state *protectedRunState, target parser.Object, successfulByKey map[string]string) (planner.CatalogState, string, error) {
+	catalog, err := state.session.ReadPlanningCatalog(ctx)
 	if err != nil {
-		return session.Fail("repair_checksum_failed", contracts.ErrCriticalState, err)
+		return planner.CatalogState{}, "", state.fail(ctx, contracts.ErrCriticalState, err)
 	}
 	if _, exists := catalog.Objects[target.NormalizedKey]; !exists {
-		return session.Fail("repair_checksum_failed", contracts.ErrInvalidInput, fmt.Errorf("repair target is missing from the database: %s", target.Path))
+		return planner.CatalogState{}, "", state.fail(ctx, contracts.ErrInvalidInput, fmt.Errorf("repair target is missing from the database: %s", target.Path))
 	}
 	currentChecksum, exists := successfulByKey[target.NormalizedKey]
 	if !exists {
-		return session.Fail("repair_checksum_failed", contracts.ErrInvalidInput, fmt.Errorf("repair target has no successful metadata row: %s", target.Path))
+		return planner.CatalogState{}, "", state.fail(ctx, contracts.ErrInvalidInput, fmt.Errorf("repair target has no successful metadata row: %s", target.Path))
 	}
-	_, recorder, err := session.StartRun(ctx, contracts.CommandRepairChecksum, "", "", contracts.RollbackScopeNone)
-	if err != nil {
-		return session.Fail("repair_checksum_failed", contracts.ErrCriticalState, err)
+	return catalog, currentChecksum, nil
+}
+
+func (r Runner) recordRepairChecksum(ctx context.Context, state *protectedRunState, repairCtx repairChecksumContext) error {
+	report := state.session.MigrationReport()
+	if repairCtx.currentChecksum == repairCtx.target.Checksum {
+		report.Skipped = append(report.Skipped, contracts.ScriptResult{Script: repairCtx.target.Path, Type: repairCtx.target.Kind, Checksum: repairCtx.target.Checksum, Reason: "checksum_already_matches"})
+		return nil
 	}
-	itemID, err := recorder.scope.Repair(ctx, target, plannedTarget, catalog, currentChecksum)
-	if err != nil {
-		session.RecordRunFailure(ctx, recorder, contracts.ErrCriticalState, err)
-		return session.Fail("repair_checksum_failed", contracts.ErrCriticalState, err)
+	if err := state.recorder.repair.recordSuccess(ctx, repairCtx.target, repairCtx.itemID); err != nil {
+		return state.fail(ctx, contracts.ErrCriticalState, err)
 	}
-	if currentChecksum == target.Checksum {
-		report.Skipped = append(report.Skipped, contracts.ScriptResult{Script: target.Path, Type: target.Kind, Checksum: target.Checksum, Reason: "checksum_already_matches"})
-		report.Result = "success"
-		report.FinishedAt = time.Now().UTC()
-		report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
-		if err := session.FinishRun(ctx, recorder); err != nil {
-			return session.Fail("repair_checksum_failed", contracts.ErrCriticalState, err)
-		}
-		return session.WriteMigrationReport()
-	}
-	err = recorder.repair.recordSuccess(ctx, target, itemID)
-	if err != nil {
-		session.RecordRunFailure(ctx, recorder, contracts.ErrCriticalState, err)
-		return session.Fail("repair_checksum_failed", contracts.ErrCriticalState, err)
-	}
-	report.Applied = append(report.Applied, contracts.ScriptResult{Script: target.Path, Type: target.Kind, Checksum: target.Checksum})
-	report.Result = "success"
-	report.FinishedAt = time.Now().UTC()
-	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
-	if err := session.FinishRun(ctx, recorder); err != nil {
-		return session.Fail("repair_checksum_failed", contracts.ErrCriticalState, err)
-	}
-	return session.WriteMigrationReport()
+	report.Applied = append(report.Applied, contracts.ScriptResult{Script: repairCtx.target.Path, Type: repairCtx.target.Kind, Checksum: repairCtx.target.Checksum})
+	return nil
 }
 
 func resolveRepairObject(layout parser.Layout, selector string) (parser.Object, error) {

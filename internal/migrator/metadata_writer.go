@@ -23,22 +23,21 @@ func (w metadataWriter) finishRun(ctx context.Context, success bool, base error,
 	return finishRun(ctx, w.execer, w.runID, success, base, cause)
 }
 
-func (w metadataWriter) updateSchema(ctx context.Context, normalizedSchemaName string, success bool, errorMessage string) error {
+func (w metadataWriter) updateItemResult(ctx context.Context, itemType string, normalizedKey string, success bool, errorMessage string) error {
 	if w.runID == "" {
 		return nil
 	}
 	metaCtx, cancel := metadataContext(ctx)
 	defer cancel()
-	return metadata.UpdateItemResult(metaCtx, w.execer, w.runID, metadata.ItemTypeSchema, normalizedSchemaName, success, errorMessage)
+	return metadata.UpdateItemResult(metaCtx, w.execer, w.runID, itemType, normalizedKey, success, errorMessage)
+}
+
+func (w metadataWriter) updateSchema(ctx context.Context, normalizedSchemaName string, success bool, errorMessage string) error {
+	return w.updateItemResult(ctx, metadata.ItemTypeSchema, normalizedSchemaName, success, errorMessage)
 }
 
 func (w metadataWriter) updateObject(ctx context.Context, normalizedKey string, success bool, errorMessage string) error {
-	if w.runID == "" {
-		return nil
-	}
-	metaCtx, cancel := metadataContext(ctx)
-	defer cancel()
-	return metadata.UpdateItemResult(metaCtx, w.execer, w.runID, metadata.ItemTypeObject, normalizedKey, success, errorMessage)
+	return w.updateItemResult(ctx, metadata.ItemTypeObject, normalizedKey, success, errorMessage)
 }
 
 func (w metadataWriter) insertAttempt(ctx context.Context, attempt metadata.AttemptRecord) error {

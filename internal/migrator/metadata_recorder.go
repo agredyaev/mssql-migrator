@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 
+	"reporting-db-migrations/internal/attempts"
 	"reporting-db-migrations/internal/config"
 	"reporting-db-migrations/internal/contracts"
-	"reporting-db-migrations/internal/logger"
 	"reporting-db-migrations/internal/metadata"
 	"reporting-db-migrations/internal/parser"
 )
@@ -127,10 +127,10 @@ func baselineFailureMetadataObject(planned contracts.PlannedObject, itemID *int6
 		actionValue:      planned.PlannedAction,
 		itemID:           itemID,
 		executionMS:      0,
-		transactionMode:  contracts.TransactionModeForObject(defaultMode, false),
-		transactionScope: contracts.TransactionModeForObject(defaultMode, false),
-		rollbackScope:    contracts.RollbackScope(defaultMode),
-		noTransaction:    contracts.NoTransactionForObject(defaultMode, false),
+		transactionMode:  transactionModeForObject(defaultMode, false),
+		transactionScope: transactionModeForObject(defaultMode, false),
+		rollbackScope:    rollbackScope(defaultMode),
+		noTransaction:    noTransactionForObject(defaultMode, false),
 	}
 }
 
@@ -143,7 +143,7 @@ func (o plannedMetadataObject) normalizedKey() string {
 }
 
 func (o plannedMetadataObject) successAttempt(cfg config.Config) metadata.AttemptRecord {
-	return metadata.AttemptRecord{
+	attempt := metadata.AttemptRecord{
 		ItemID:           o.itemID,
 		ScriptName:       o.normalizedKeyVal,
 		ScriptType:       o.scriptType,
@@ -155,12 +155,9 @@ func (o plannedMetadataObject) successAttempt(cfg config.Config) metadata.Attemp
 		TransactionScope: o.transactionScope,
 		RollbackScope:    o.rollbackScope,
 		NoTransaction:    o.noTransaction,
-		GitCommit:        cfg.GitCommit,
-		GitBranch:        cfg.GitBranch,
-		PipelineRunID:    cfg.PipelineRunID,
-		PipelineURL:      logger.Redact(cfg.PipelineURL),
-		AppliedBy:        cfg.Actor,
 	}
+	attempts.ApplyAuditFields(cfg, &attempt)
+	return attempt
 }
 
 func (o plannedMetadataObject) failureAttempt(cfg config.Config, message string) metadata.AttemptRecord {

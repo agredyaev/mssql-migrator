@@ -110,9 +110,9 @@ func (r Runner) applyObject(parent context.Context, conn txConn, object parser.O
 		NormalizedKey:   object.NormalizedKey,
 		Checksum:        object.Checksum,
 		PlannedAction:   contracts.ActionCreateObject,
-		TransactionMode: contracts.TransactionModeForObject(r.cfg.TransactionMode, object.NoTransaction),
-		RollbackScope:   contracts.RollbackScopeForObject(r.cfg.TransactionMode, object.NoTransaction),
-		NoTransaction:   contracts.NoTransactionForObject(r.cfg.TransactionMode, object.NoTransaction),
+		TransactionMode: transactionModeForObject(r.cfg.TransactionMode, object.NoTransaction),
+		RollbackScope:   rollbackScopeForObject(r.cfg.TransactionMode, object.NoTransaction),
+		NoTransaction:   noTransactionForObject(r.cfg.TransactionMode, object.NoTransaction),
 	}
 	return r.applyObjectTracked(parent, conn, object, planned, "", nil, report)
 }
@@ -153,7 +153,7 @@ func (r Runner) executeObject(ctx context.Context, conn txConn, object parser.Ob
 	if err != nil {
 		return err
 	}
-	if contracts.NoTransactionForObject(r.cfg.TransactionMode, object.NoTransaction) {
+	if noTransactionForObject(r.cfg.TransactionMode, object.NoTransaction) {
 		return executeBatches(ctx, conn, batches)
 	}
 	tx, err := conn.BeginTx(ctx, nil)

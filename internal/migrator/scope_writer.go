@@ -18,9 +18,29 @@ type scopeWriter struct {
 	conn   *sql.Conn
 }
 
+func (s scopeWriter) requireConn(operation string) error {
+	if s.conn == nil {
+		return fmt.Errorf("%s: missing metadata connection", operation)
+	}
+	return nil
+}
+
+func rollbackWithContext(tx *sql.Tx, err error, operation string) error {
+	if tx == nil {
+		return err
+	}
+	if rollbackErr := tx.Rollback(); rollbackErr != nil {
+		return fmt.Errorf("%s: %w; rollback failed: %v", operation, err, rollbackErr)
+	}
+	return err
+}
+
 func (s scopeWriter) Migration(ctx context.Context, plan contracts.MigrationPlan) (map[string]int64, error) {
 	if s.writer.runID == "" {
 		return nil, fmt.Errorf("persist migration scope: missing run id")
+	}
+	if err := s.requireConn("persist migration scope"); err != nil {
+		return nil, err
 	}
 	tx, err := s.conn.BeginTx(ctx, nil)
 	if err != nil {
@@ -41,8 +61,7 @@ func (s scopeWriter) Migration(ctx context.Context, plan contracts.MigrationPlan
 			record.Success = boolPtr(true)
 		}
 		if _, err := metadata.InsertItem(ctx, tx, record); err != nil {
-			_ = tx.Rollback()
-			return nil, err
+			return nil, rollbackWithContext(tx, err, "persist migration scope")
 		}
 	}
 	itemIDs := map[string]int64{}
@@ -73,8 +92,7 @@ func (s scopeWriter) Migration(ctx context.Context, plan contracts.MigrationPlan
 		}
 		id, err := metadata.InsertItem(ctx, tx, record)
 		if err != nil {
-			_ = tx.Rollback()
-			return nil, err
+			return nil, rollbackWithContext(tx, err, "persist migration scope")
 		}
 		itemIDs[object.NormalizedKey] = id
 	}
@@ -87,6 +105,9 @@ func (s scopeWriter) Migration(ctx context.Context, plan contracts.MigrationPlan
 func (s scopeWriter) Validation(ctx context.Context, layout parser.Layout, catalog validate.CatalogState, successfulByKey map[string]string) (map[string]int64, error) {
 	if s.writer.runID == "" {
 		return nil, fmt.Errorf("persist validation scope: missing run id")
+	}
+	if err := s.requireConn("persist validation scope"); err != nil {
+		return nil, err
 	}
 	tx, err := s.conn.BeginTx(ctx, nil)
 	if err != nil {
@@ -110,8 +131,7 @@ func (s scopeWriter) Validation(ctx context.Context, layout parser.Layout, catal
 			record.ErrorMessage = fmt.Sprintf("missing schema: %s", schema.Name)
 		}
 		if _, err := metadata.InsertItem(ctx, tx, record); err != nil {
-			_ = tx.Rollback()
-			return nil, err
+			return nil, rollbackWithContext(tx, err, "persist validation scope")
 		}
 	}
 	itemIDs := map[string]int64{}
@@ -144,8 +164,7 @@ func (s scopeWriter) Validation(ctx context.Context, layout parser.Layout, catal
 		}
 		id, err := metadata.InsertItem(ctx, tx, record)
 		if err != nil {
-			_ = tx.Rollback()
-			return nil, err
+			return nil, rollbackWithContext(tx, err, "persist validation scope")
 		}
 		itemIDs[object.NormalizedKey] = id
 	}
@@ -158,6 +177,9 @@ func (s scopeWriter) Validation(ctx context.Context, layout parser.Layout, catal
 func (s scopeWriter) Repair(ctx context.Context, object parser.Object, planned contracts.PlannedObject, catalog planner.CatalogState, currentChecksum string) (*int64, error) {
 	if s.writer.runID == "" {
 		return nil, fmt.Errorf("persist repair scope: missing run id")
+	}
+	if err := s.requireConn("persist repair scope"); err != nil {
+		return nil, err
 	}
 	tx, err := s.conn.BeginTx(ctx, nil)
 	if err != nil {
@@ -174,8 +196,7 @@ func (s scopeWriter) Repair(ctx context.Context, object parser.Object, planned c
 		Action:               contracts.SchemaActionExists,
 		Success:              boolPtr(schemaExists),
 	}); err != nil {
-		_ = tx.Rollback()
-		return nil, err
+		return nil, rollbackWithContext(tx, err, "persist repair scope")
 	}
 	metadataMatch := currentChecksum == object.Checksum
 	itemID, err := metadata.InsertItem(ctx, tx, metadata.ItemRecord{
@@ -196,8 +217,7 @@ func (s scopeWriter) Repair(ctx context.Context, object parser.Object, planned c
 		Action:               planned.PlannedAction,
 	})
 	if err != nil {
-		_ = tx.Rollback()
-		return nil, err
+		return nil, rollbackWithContext(tx, err, "persist repair scope")
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit repair scope transaction: %w", err)

@@ -62,6 +62,7 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 - `RM_SQL_BASE` must be a single directory name under `RM_SQL_ROOT`.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
 - `plan --json` writes machine-readable JSON to stdout. Human logs go to stderr for that mode.
+- `plan` is read-only. It reads metadata state directly and does not bootstrap or repair partial metadata. Use `migrate`, `baseline`, or `repair-checksum` when metadata must be bootstrapped under the session lock.
 - `RM_UPDATE_POLICY` supports `none`, `modules_only`, and `all_supported`. Existing module updates are allowed only when the repo SQL starts with the matching `CREATE OR ALTER` statement for that object kind.
 - `RM_TRANSACTION_MODE` supports `script` and `none`.
 - Logs, reports, and stored error text must not expose secrets.
@@ -89,6 +90,7 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 
 - Invalid SQL root or base selection: command validation fails before database work.
 - Invalid repository layout: `plan` or `validate` fails before object work.
+- Partial metadata state during `plan`: `plan` stays read-only and fails on metadata read errors instead of repairing state. Use `migrate`, `baseline`, or `repair-checksum` to bootstrap metadata under lock.
 - Approved-plan drift: `migrate` rejects the plan if `git_commit`, `layout_hash`, target, tool identity, comparison mode, update policy, transaction mode, rollback scope, base selection, or the approved schema/object set differs.
 - Metadata read or write failure: the run reports a critical state and stops. Metadata updates also fail closed when the target row is missing or duplicated.
 - Unsafe existing-module update SQL: `plan` blocks the object when the repo file does not start with the required `CREATE OR ALTER` statement.
@@ -100,6 +102,7 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 ## Verification And Validation
 
 - `PATH=/usr/local/go/bin:$PATH go test ./...`
+- `PATH=/usr/local/go/bin:$PATH test -z "$(gofmt -l .)"`
 - `PATH=/usr/local/go/bin:$PATH go test -race ./...`
 - `RMIG_RUN_SQLSERVER_INTEGRATION=1 PATH=/usr/local/go/bin:$PATH go test ./internal/migrator -run SQLServer`
 - `PATH=/usr/local/go/bin:$PATH go vet ./...`

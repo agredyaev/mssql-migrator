@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -31,6 +32,8 @@ var moduleKinds = map[string]struct{}{
 	"functions":  {},
 	"triggers":   {},
 }
+
+var sqlIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_@$#]*$`)
 
 type Layout struct {
 	RootPath string
@@ -284,6 +287,9 @@ func parseLayoutObject(root string, rel string, schemaName string, kind string) 
 			return Object{}, fmt.Errorf("invalid repository layout: %s path must be <schema>/%s/<parent>/<name>.sql: %s", kind, kind, rel)
 		}
 		object.ParentName = segments[2]
+		if err := validateSQLIdentifier("parent", object.ParentName); err != nil {
+			return Object{}, err
+		}
 		object.NormalizedParentName = strings.ToLower(object.ParentName)
 		object.ObjectName = strings.TrimSuffix(segments[3], filepath.Ext(segments[3]))
 	default:
@@ -294,6 +300,9 @@ func parseLayoutObject(root string, rel string, schemaName string, kind string) 
 	}
 	if strings.TrimSpace(object.ObjectName) == "" {
 		return Object{}, fmt.Errorf("invalid repository layout: empty object name in %s", rel)
+	}
+	if err := validateSQLIdentifier("object", object.ObjectName); err != nil {
+		return Object{}, err
 	}
 	if kind == "indexes" || kind == "triggers" {
 		if strings.TrimSpace(object.ParentName) == "" {
@@ -395,10 +404,21 @@ func rememberSchema(schemaSet map[string]Schema, schemaName string) error {
 	if normalized == "" {
 		return nil
 	}
+	if err := validateSQLIdentifier("schema", schemaName); err != nil {
+		return err
+	}
 	if existing, ok := schemaSet[normalized]; ok && existing.Name != schemaName {
 		return fmt.Errorf("invalid repository layout: schema casing conflict for %s and %s", existing.Name, schemaName)
 	}
 	schemaSet[normalized] = Schema{Name: schemaName, NormalizedName: normalized}
+	return nil
+}
+
+func validateSQLIdentifier(kind string, value string) error {
+	value = strings.TrimSpace(value)
+	if !sqlIdentifierPattern.MatchString(value) {
+		return fmt.Errorf("invalid repository layout: invalid %s identifier %q", kind, value)
+	}
 	return nil
 }
 

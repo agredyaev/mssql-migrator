@@ -55,6 +55,19 @@ func TestRedactMasksQuotedAndSpacedSecrets(t *testing.T) {
 	}
 }
 
+func TestRedactMasksJSONSecrets(t *testing.T) {
+	input := `{"password":"secret","access_token":"abc","safe":"ok"}`
+	got := Redact(input)
+	for _, forbidden := range []string{"secret", "abc"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("redaction leaked %q in %q", forbidden, got)
+		}
+	}
+	if !strings.Contains(got, `"safe":"ok"`) {
+		t.Fatalf("expected safe field to remain visible, got %q", got)
+	}
+}
+
 func TestLoggerConcurrentWrites(t *testing.T) {
 	buffer := bytes.Buffer{}
 	log := New(Options{Level: "info", Writer: &buffer})

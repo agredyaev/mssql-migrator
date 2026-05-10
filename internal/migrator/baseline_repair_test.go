@@ -1,7 +1,6 @@
 package migrator
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -10,28 +9,6 @@ import (
 	"reporting-db-migrations/internal/logger"
 	"reporting-db-migrations/internal/parser"
 )
-
-func TestWriteFailedMigrationRedactsSecretInFailure(t *testing.T) {
-	dir := t.TempDir()
-	runner := NewRunner(config.Config{ReportDir: dir}, logger.New(logger.Options{}))
-	err := runner.writeFailedMigration(runner.newMigrationReport(), "baseline_failed", contracts.ErrSQLExecution, fmt.Errorf("password=secret"))
-	if err == nil {
-		t.Fatal("expected wrapped error")
-	}
-	report, readErr := contractsReadMigrationReport(dir)
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if report.Failed == nil {
-		t.Fatal("expected failure report")
-	}
-	if report.Failed.Error == "" || containsSecret(report.Failed.Error) {
-		t.Fatalf("expected redacted failure, got %q", report.Failed.Error)
-	}
-	if !containsAll(report.Failed.Error, "ERROR baseline_failed:", "class=sql execution failure", "sql=password=***") {
-		t.Fatalf("expected failure envelope, got %q", report.Failed.Error)
-	}
-}
 
 func TestResolveRepairObjectAcceptsObjectPath(t *testing.T) {
 	layout := parser.Layout{Objects: []parser.Object{{Path: "reporting/views/monthly.sql", NormalizedKey: "reporting/views/monthly"}}}

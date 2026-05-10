@@ -94,6 +94,30 @@ func TestDiscoverLayoutRejectsUnsupportedKind(t *testing.T) {
 	}
 }
 
+func TestDiscoverLayoutRejectsInvalidSchemaIdentifier(t *testing.T) {
+	root := t.TempDir()
+	writeLayoutFile(t, filepath.Join(root, "reporting-prod", "views", "monthly.sql"), "SELECT 1;")
+	if _, err := DiscoverLayout(root); err == nil || !strings.Contains(err.Error(), `invalid schema identifier "reporting-prod"`) {
+		t.Fatalf("expected invalid schema identifier error, got %v", err)
+	}
+}
+
+func TestDiscoverLayoutRejectsInvalidObjectIdentifier(t *testing.T) {
+	root := t.TempDir()
+	writeLayoutFile(t, filepath.Join(root, "reporting", "views", "monthly-report.sql"), "SELECT 1;")
+	if _, err := DiscoverLayout(root); err == nil || !strings.Contains(err.Error(), `invalid object identifier "monthly-report"`) {
+		t.Fatalf("expected invalid object identifier error, got %v", err)
+	}
+}
+
+func TestDiscoverLayoutRejectsInvalidParentIdentifier(t *testing.T) {
+	root := t.TempDir()
+	writeLayoutFile(t, filepath.Join(root, "reporting", "indexes", "snapshot-prod", "ix_snapshot.sql"), "SELECT 1;")
+	if _, err := DiscoverLayout(root); err == nil || !strings.Contains(err.Error(), `invalid parent identifier "snapshot-prod"`) {
+		t.Fatalf("expected invalid parent identifier error, got %v", err)
+	}
+}
+
 func TestDiscoverLayoutRejectsTooShortPath(t *testing.T) {
 	root := t.TempDir()
 	writeLayoutFile(t, filepath.Join(root, "reporting", "bad.sql"), "SELECT 1;")

@@ -45,6 +45,15 @@ func TestUsageListsSupportedEnvironments(t *testing.T) {
 	}
 }
 
+func TestUsageExplainsPlanReadOnlyMetadataBehavior(t *testing.T) {
+	buffer := bytes.Buffer{}
+	printUsage(&buffer)
+	output := buffer.String()
+	if !strings.Contains(output, "plan is read-only and does not repair partial metadata") {
+		t.Fatalf("usage missing plan read-only note: %s", output)
+	}
+}
+
 func TestDefaultRuntimeUsesRealMigratorHandler(t *testing.T) {
 	runtime := defaultRuntime(BuildInfo{Version: "1.0.0", Commit: "abc"})
 	handler, ok := runtime.Handler.(migrator.Handler)

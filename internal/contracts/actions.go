@@ -1,8 +1,6 @@
 package contracts
 
-import (
-	"reporting-db-migrations/internal/commands"
-)
+import "reporting-db-migrations/internal/commands"
 
 const (
 	SchemaActionExists       = "exists"
@@ -34,30 +32,4 @@ const (
 
 	RollbackScopeScript = "script"
 	RollbackScopeNone   = "none"
-	transactionModeNone = "none"
 )
-
-func TransactionModeForObject(defaultMode string, noTransaction bool) string {
-	if noTransaction {
-		return transactionModeNone
-	}
-	return defaultMode
-}
-
-func NoTransactionForObject(defaultMode string, noTransaction bool) bool {
-	return noTransaction || defaultMode == transactionModeNone
-}
-
-func RollbackScope(defaultMode string) string {
-	if defaultMode == transactionModeNone {
-		return RollbackScopeNone
-	}
-	return RollbackScopeScript
-}
-
-func RollbackScopeForObject(defaultMode string, noTransaction bool) string {
-	if noTransaction || defaultMode == transactionModeNone {
-		return RollbackScopeNone
-	}
-	return RollbackScopeScript
-}

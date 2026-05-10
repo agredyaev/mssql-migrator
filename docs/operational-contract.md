@@ -37,6 +37,7 @@ See `README.md` for the CLI wrapper contract.
 - `RM_SQL_BASE` must be a single directory name under `RM_SQL_ROOT`.
 - `migrate` requires `--plan-file`.
 - `plan --json` emits machine-readable JSON to stdout and keeps human logs on stderr.
+- `plan` is read-only. It reads metadata state directly and does not bootstrap or repair partial metadata. Use `migrate`, `baseline`, or `repair-checksum` when metadata must be bootstrapped under lock.
 - SQL Server authentication settings are provided externally. `RM_DB_AUTH=sql` uses `RM_DB_USER` and `RM_DB_PASSWORD`. `RM_DB_AUTH=integrated` uses the current Windows session or an explicit Windows user value passed in `RM_DB_USER`.
 - Optional dotenv loading must be explicitly enabled. When enabled, CLI flags still win over process environment, and process environment still wins over values loaded from the env file.
 - The env file may contain only supported `RM_*` keys for current command inputs. Unknown keys and non-`RM_*` keys fail validation.
@@ -65,6 +66,7 @@ See `README.md` for the CLI wrapper contract.
 - Secret leakage: redaction must strip password and token-like values from logs, reports, and stored error text.
 - Invalid root or base selection: the command fails before any database work.
 - Invalid repository layout: planning or validation fails before object work.
+- Partial metadata state during `plan`: the command fails on metadata read errors instead of repairing metadata. Use `migrate`, `baseline`, or `repair-checksum` for metadata bootstrap under lock.
 - Plan drift: `migrate` checks the approved plan and fails closed if `git_commit`, `layout_hash`, target, tool identity, comparison mode, update policy, transaction mode, rollback scope, base selection, or the approved schema/object set changed.
 - Unsafe existing-module update SQL: `plan` blocks the object before execution.
 - Metadata failure: the run stops instead of reporting success. Metadata updates also fail closed when the target row is missing or duplicated.

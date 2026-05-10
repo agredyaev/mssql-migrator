@@ -97,12 +97,19 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)([?&][^=&\s]*(?:token|secret|sig|signature)[^=&\s]*=)[^&\s]+`),
 }
 
+var jsonSecretPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)("(?:password|pwd|token|access[_-]?token|secret|client_secret)"\s*:\s*)"[^"]*"`),
+}
+
 var sqlServerURLSecretPattern = regexp.MustCompile(`sqlserver://([^:]+):([^@]+)@`)
 
 func Redact(value string) string {
 	result := value
 	for _, pattern := range secretPatterns {
 		result = pattern.ReplaceAllString(result, `${1}***`)
+	}
+	for _, pattern := range jsonSecretPatterns {
+		result = pattern.ReplaceAllString(result, `${1}"***"`)
 	}
 	result = sqlServerURLSecretPattern.ReplaceAllString(result, `sqlserver://$1:***@`)
 	return result

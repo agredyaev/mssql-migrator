@@ -8,6 +8,7 @@ import (
 	"reporting-db-migrations/internal/contracts"
 	"reporting-db-migrations/internal/logger"
 	"reporting-db-migrations/internal/parser"
+	"reporting-db-migrations/internal/runreport"
 	"reporting-db-migrations/internal/validate"
 )
 
@@ -25,18 +26,12 @@ func (r Runner) Validate(ctx context.Context) error {
 		return r.writeValidationFailureReport(err, contracts.ErrCriticalState)
 	}
 	vr, err := r.validateScope(ctx, session, layout, true, "")
-	if writeErr := writeValidationReport(r.cfg.ReportDir, vr); writeErr != nil {
-		return contracts.Wrap(contracts.ErrCriticalState, writeErr)
-	}
-	if err != nil {
-		return contracts.Wrap(contracts.ErrValidation, err)
-	}
-	return nil
+	return runreport.WriteValidationOutcome(r.cfg.ReportDir, vr, err)
 }
 
 func (r Runner) writeValidationFailureReport(cause error, base error) error {
 	vr := contracts.ValidationReport{
-		Tool:           "rmig",
+		Tool:           toolName,
 		Version:        r.cfg.ToolVersion,
 		ToolCommit:     r.cfg.ToolCommit,
 		Environment:    r.cfg.Env,
@@ -53,7 +48,7 @@ func (r Runner) writeValidationFailureReport(cause error, base error) error {
 		Actor:          r.cfg.Actor,
 		StartedAt:      time.Now().UTC(),
 	}
-	return FailureReporter{cfg: r.cfg}.Validation(vr, "validation_failed", base, cause)
+	return runreport.WriteValidationFailure(r.cfg, vr, runreport.ValidationFailurePhase, base, cause)
 }
 
 func (r Runner) validateManagedScope(ctx context.Context, session *runSession, layout parser.Layout, runID string) (contracts.ValidationReport, error) {
@@ -61,96 +56,144 @@ func (r Runner) validateManagedScope(ctx context.Context, session *runSession, l
 }
 
 func (r Runner) validateScope(ctx context.Context, session *runSession, layout parser.Layout, includeChecks bool, existingRunID string) (contracts.ValidationReport, error) {
-	conn := session.conn
-	vr := contracts.ValidationReport{
-		Tool:           "rmig",
-		Version:        r.cfg.ToolVersion,
-		ToolCommit:     r.cfg.ToolCommit,
-		Environment:    r.cfg.Env,
-		Database:       r.cfg.Database,
-		GitCommit:      r.cfg.GitCommit,
-		GitBranch:      r.cfg.GitBranch,
+	vr := newValidationReport(r.cfg, layout, includeChecks)
+	catalog, successfulByKey, err := r.loadValidationInputs(ctx, session, &vr)
+	if err != nil {
+		return vr, err
+	}
+	runState, err := r.ensureValidationRunState(ctx, session, layout, catalog, successfulByKey, existingRunID, &vr)
+	if err != nil {
+		return vr, err
+	}
+	return r.executeValidationScope(ctx, session, layout, includeChecks, vr, runState)
+}
+
+type validationRunState struct {
+	runID      string
+	createdRun bool
+	recorder   metadataRecorder
+	itemIDs    map[string]int64
+}
+
+func newValidationReport(cfg config.Config, layout parser.Layout, includeChecks bool) contracts.ValidationReport {
+	return contracts.ValidationReport{
+		Tool:           toolName,
+		Version:        cfg.ToolVersion,
+		ToolCommit:     cfg.ToolCommit,
+		Environment:    cfg.Env,
+		Database:       cfg.Database,
+		GitCommit:      cfg.GitCommit,
+		GitBranch:      cfg.GitBranch,
 		Command:        validationCommand(includeChecks),
 		LayoutHash:     parser.HashLayout(layout, includeChecks),
-		SQLRoot:        r.cfg.SQLRoot,
-		Base:           r.cfg.SQLBase,
+		SQLRoot:        cfg.SQLRoot,
+		Base:           cfg.SQLBase,
 		Scope:          validationScope(includeChecks),
 		IncludesChecks: includeChecks,
-		PipelineRunID:  r.cfg.PipelineRunID,
-		PipelineURL:    logger.Redact(r.cfg.PipelineURL),
-		Actor:          r.cfg.Actor,
+		PipelineRunID:  cfg.PipelineRunID,
+		PipelineURL:    logger.Redact(cfg.PipelineURL),
+		Actor:          cfg.Actor,
 		StartedAt:      time.Now().UTC(),
 		Result:         "success",
 	}
-	catalog, err := validate.ReadCatalogState(ctx, conn)
+}
+
+func (r Runner) loadValidationInputs(ctx context.Context, session *runSession, vr *contracts.ValidationReport) (validate.CatalogState, map[string]string, error) {
+	catalog, err := validate.ReadCatalogState(ctx, session.conn)
 	if err != nil {
-		return finalizeValidationFailure(vr, err), err
+		*vr = runreport.FinalizeValidationFailureFromReport(*vr, runreport.ValidationFailurePhase, contracts.ErrCriticalState, err)
+		return validate.CatalogState{}, nil, err
 	}
 	successfulByKey, err := session.LoadSuccessfulChecksums(ctx)
 	if err != nil {
-		return finalizeValidationFailure(vr, err), err
+		*vr = runreport.FinalizeValidationFailureFromReport(*vr, runreport.ValidationFailurePhase, contracts.ErrCriticalState, err)
+		return validate.CatalogState{}, nil, err
 	}
-	runID := existingRunID
-	createdRun := false
-	itemIDs := map[string]int64{}
-	recorder := session.Recorder(runID)
-	if runID == "" {
-		runID, recorder, err = session.StartRun(ctx, contracts.CommandValidate, "", "", contracts.RollbackScope(r.cfg.TransactionMode))
-		if err != nil {
-			return finalizeValidationFailure(vr, err), err
-		}
-		createdRun = true
-		itemIDs, err = recorder.scope.Validation(ctx, layout, catalog, successfulByKey)
-		if err != nil {
-			if createdRun {
-				session.RecordRunFailure(ctx, recorder, contracts.ErrCriticalState, err)
-			}
-			return finalizeValidationFailure(vr, err), err
-		}
-	} else {
-		itemIDs, err = recorder.loadObjectItemIDs(ctx)
-		if err != nil {
-			return finalizeValidationFailure(vr, err), err
-		}
+	return catalog, successfulByKey, nil
+}
+
+func (r Runner) ensureValidationRunState(ctx context.Context, session *runSession, layout parser.Layout, catalog validate.CatalogState, successfulByKey map[string]string, existingRunID string, vr *contracts.ValidationReport) (validationRunState, error) {
+	runState := validationRunState{runID: existingRunID, recorder: session.Recorder(existingRunID), itemIDs: map[string]int64{}}
+	if existingRunID == "" {
+		return r.createValidationRunState(ctx, session, layout, catalog, successfulByKey, vr)
 	}
-	modules, err := validate.RefreshManagedObjects(ctx, conn, layout, r.log)
+	itemIDs, err := runState.recorder.loadObjectItemIDs(ctx)
+	if err != nil {
+		*vr = runreport.FinalizeValidationFailureFromReport(*vr, runreport.ValidationFailurePhase, contracts.ErrCriticalState, err)
+		return validationRunState{}, err
+	}
+	runState.itemIDs = itemIDs
+	return runState, nil
+}
+
+func (r Runner) createValidationRunState(ctx context.Context, session *runSession, layout parser.Layout, catalog validate.CatalogState, successfulByKey map[string]string, vr *contracts.ValidationReport) (validationRunState, error) {
+	runID, recorder, err := session.StartRun(ctx, contracts.CommandValidate, "", "", rollbackScope(r.cfg.TransactionMode))
+	if err != nil {
+		*vr = runreport.FinalizeValidationFailureFromReport(*vr, runreport.ValidationFailurePhase, contracts.ErrCriticalState, err)
+		return validationRunState{}, err
+	}
+	itemIDs, err := recorder.scope.Validation(ctx, layout, catalog, successfulByKey)
+	if err != nil {
+		session.RecordRunFailure(ctx, recorder, contracts.ErrCriticalState, err)
+		*vr = runreport.FinalizeValidationFailureFromReport(*vr, runreport.ValidationFailurePhase, contracts.ErrCriticalState, err)
+		return validationRunState{}, err
+	}
+	return validationRunState{runID: runID, createdRun: true, recorder: recorder, itemIDs: itemIDs}, nil
+}
+
+func (r Runner) executeValidationScope(ctx context.Context, session *runSession, layout parser.Layout, includeChecks bool, vr contracts.ValidationReport, runState validationRunState) (contracts.ValidationReport, error) {
+	modules, err := validate.RefreshManagedObjects(ctx, session.conn, layout, r.log)
 	vr.Validation.ModulesRefreshed = modules.ModulesRefreshed
 	if err != nil {
-		recorder.validation.recordFailure(ctx, layout.Objects, itemIDs, err, includeChecks, r.log)
-		if createdRun {
-			session.RecordRunFailure(ctx, recorder, contracts.ErrValidation, err)
+		runState.recorder.validation.recordFailure(ctx, layout.Objects, runState.itemIDs, err, includeChecks, r.log)
+		if runState.createdRun {
+			session.RecordRunFailure(ctx, runState.recorder, contracts.ErrValidation, err)
 		}
-		return finalizeValidationFailure(vr, err), err
+		return runreport.FinalizeValidationFailureFromReport(vr, runreport.ValidationFailurePhase, contracts.ErrValidation, err), err
 	}
-	if err := recorder.validation.markSuccesses(ctx, layout.Objects); err != nil {
-		if createdRun {
-			session.RecordRunFailure(ctx, recorder, contracts.ErrCriticalState, err)
+	if err := runState.recorder.validation.markSuccesses(ctx, layout.Objects); err != nil {
+		if runState.createdRun {
+			session.RecordRunFailure(ctx, runState.recorder, contracts.ErrCriticalState, err)
 		}
-		return finalizeValidationFailure(vr, err), err
+		return runreport.FinalizeValidationFailureFromReport(vr, runreport.ValidationFailurePhase, contracts.ErrCriticalState, err), err
 	}
-	if includeChecks {
-		checks, err := validate.RunChecks(ctx, conn, layout)
-		vr.Validation.ChecksPassed = checks.ChecksPassed
-		vr.Validation.ChecksFailed = checks.ChecksFailed
-		if err != nil {
-			recorder.validation.recordFailure(ctx, nil, nil, err, includeChecks, r.log)
-			if createdRun {
-				session.RecordRunFailure(ctx, recorder, contracts.ErrValidation, err)
-			}
-			return finalizeValidationFailure(vr, err), err
-		}
+	if err := r.runValidationChecks(ctx, session, layout, includeChecks, &vr, runState); err != nil {
+		return vr, err
 	}
-	vr.FinishedAt = time.Now().UTC()
-	if createdRun {
-		if err := session.FinishRun(ctx, recorder); err != nil {
-			return finalizeValidationFailure(vr, err), err
-		}
+	if err := completeValidationRun(ctx, session, runState, &vr); err != nil {
+		return vr, err
 	}
 	return vr, nil
 }
 
-func finalizeValidationFailure(vr contracts.ValidationReport, err error) contracts.ValidationReport {
-	return finalizeValidationFailureReport(config.Config{SQLRoot: vr.SQLRoot, SQLBase: vr.Base}, vr, "validation_failed", contracts.ErrValidation, err)
+func (r Runner) runValidationChecks(ctx context.Context, session *runSession, layout parser.Layout, includeChecks bool, vr *contracts.ValidationReport, runState validationRunState) error {
+	if !includeChecks {
+		return nil
+	}
+	checks, err := validate.RunChecks(ctx, session.conn, layout)
+	vr.Validation.ChecksPassed = checks.ChecksPassed
+	vr.Validation.ChecksFailed = checks.ChecksFailed
+	if err != nil {
+		runState.recorder.validation.recordFailure(ctx, nil, nil, err, includeChecks, r.log)
+		if runState.createdRun {
+			session.RecordRunFailure(ctx, runState.recorder, contracts.ErrValidation, err)
+		}
+		*vr = runreport.FinalizeValidationFailureFromReport(*vr, runreport.ValidationFailurePhase, contracts.ErrValidation, err)
+		return err
+	}
+	return nil
+}
+
+func completeValidationRun(ctx context.Context, session *runSession, runState validationRunState, vr *contracts.ValidationReport) error {
+	vr.FinishedAt = time.Now().UTC()
+	if !runState.createdRun {
+		return nil
+	}
+	if err := session.FinishRun(ctx, runState.recorder); err != nil {
+		*vr = runreport.FinalizeValidationFailureFromReport(*vr, runreport.ValidationFailurePhase, contracts.ErrCriticalState, err)
+		return err
+	}
+	return nil
 }
 
 func validationScope(includeChecks bool) string {

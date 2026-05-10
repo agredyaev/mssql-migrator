@@ -260,7 +260,7 @@ func newPlan(cfg config.Config, hash string, layout parser.Layout) contracts.Mig
 		ComparisonMode:  cfg.ComparisonMode,
 		UpdatePolicy:    cfg.UpdatePolicy,
 		TransactionMode: cfg.TransactionMode,
-		Rollback:        contracts.RollbackScope(cfg.TransactionMode),
+		Rollback:        rollbackScope(cfg.TransactionMode),
 		PlannedAt:       time.Now().UTC(),
 		Summary: contracts.PlanSummary{
 			SchemaCount: len(layout.Schemas),
@@ -304,9 +304,9 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 			ParentName:      object.ParentName,
 			NormalizedKey:   object.NormalizedKey,
 			Checksum:        object.Checksum,
-			TransactionMode: contracts.TransactionModeForObject(plan.TransactionMode, object.NoTransaction),
-			RollbackScope:   contracts.RollbackScopeForObject(plan.TransactionMode, object.NoTransaction),
-			NoTransaction:   contracts.NoTransactionForObject(plan.TransactionMode, object.NoTransaction),
+			TransactionMode: transactionModeForObject(plan.TransactionMode, object.NoTransaction),
+			RollbackScope:   rollbackScopeForObject(plan.TransactionMode, object.NoTransaction),
+			NoTransaction:   noTransactionForObject(plan.TransactionMode, object.NoTransaction),
 			SourceFile:      object.Path,
 		}
 		_, exists := catalog.Objects[object.NormalizedKey]
