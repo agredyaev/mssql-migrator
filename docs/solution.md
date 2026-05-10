@@ -57,6 +57,7 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - The append-only metadata history is stored in `[__migrator].attempts`.
 - `reports/migration-plan.txt` explains why each planned object is being created, adopted, skipped, updated, or blocked.
 - Metadata bootstrap records runtime schema state in `[__migrator].schema_version`, validates known schema versions before upgrade DDL, and avoids recurring DDL churn on current metadata.
+- Current builds are v2-only for metadata. Legacy metadata objects are treated as incompatible state, and no in-place upgrade path is implemented in `rmig`.
 
 ## Nominal Flow
 
@@ -77,6 +78,7 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - Unsafe existing-module update SQL: `plan` blocks the object when the repo file does not start with the required `CREATE OR ALTER` statement.
 - Metadata failure after SQL success: treated as a critical state in the active repo-driven `migrate`, `baseline`, and `repair-checksum` paths.
 - Metadata updates fail closed when the target row is missing or duplicated.
+- Legacy metadata state: treated as a breaking compatibility boundary. The runtime stops before bootstrap or checksum reads until the environment is upgraded outside the current CLI.
 - Missing schema creation permission, missing object DDL permission, or missing parent object: create paths fail closed with a specific classified error.
 - Scope persistence for repo-managed schemas and objects is written into `[__migrator].items` in one metadata transaction per run scope.
 - Validation failure: the run stops and writes `reports/validation-report.*`.

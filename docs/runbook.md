@@ -32,6 +32,7 @@ See `README.md` for the CLI wrapper contract.
 - `baseline` and `repair-checksum` require `--confirm`.
 - `repair-checksum` is only for already applied repo-managed objects that already have a successful metadata row and are currently in tracked checksum drift. The command appends a new successful metadata attempt row in `[__migrator].attempts`; it does not rewrite old checksum history.
 - When the runbook says metadata attempt history, it means the append-only history stored in `[__migrator].attempts`.
+- Current builds do not provide a legacy metadata upgrade path. If legacy objects such as `__migrator.migration_runs` or `__migrator.migration_attempts` exist, `plan`, `migrate`, `validate`, `baseline`, and `repair-checksum` fail closed when they reach metadata bootstrap or checksum reads.
 - `migrate` requires an approved plan file.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
 - `plan`, `migrate`, and `validate` require `--sql-root` and `--sql-base` or the matching `RM_*` environment variables.
@@ -52,6 +53,7 @@ See `README.md` for the CLI wrapper contract.
 - Migration failure: inspect the migration report to see whether the failure happened during schema creation, object execution, managed-scope post-migrate validation, or metadata recording, then fix forward in Git and rerun `plan`.
 - Metadata failure after SQL success in repo-driven `migrate`, `baseline`, or `repair-checksum`: stop deployment and inspect database state before retrying.
 - Metadata failure after SQL success should be treated as a split-brain risk between SQL Server state and `[__migrator]`. Do not retry blindly. Inspect `[__migrator].runs`, `[__migrator].items`, `[__migrator].attempts`, and the target object state first.
+- Legacy metadata incompatibility: stop and escalate. The current CLI does not upgrade legacy metadata in place, so do not drop or rewrite old metadata objects during deployment unless you have a separate approved migration procedure.
 - Baseline permission failure: grant the required metadata DDL, schema creation, or object DDL permission, then rerun `plan` or `baseline`.
 - Missing parent object for an index or trigger: add or restore the parent table or view in repo scope first, then rerun `plan`.
 - Validation failure: fix the broken object or check script, then re-run `validate`.
