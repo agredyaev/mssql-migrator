@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,11 @@ import (
 	"time"
 
 	"reporting-db-migrations/internal/commands"
+)
+
+var (
+	errConfigKind       = errors.New("configuration error")
+	errInvalidInputKind = errors.New("invalid input")
 )
 
 type Input struct {
@@ -93,15 +99,15 @@ func GetenvBool(key string, fallback bool) bool {
 func Load(input Input) (Config, error) {
 	commandTimeout, err := parseDuration("timeout", def(input.CommandTimeout, "900s"))
 	if err != nil {
-		return Config{}, err
+		return Config{}, wrapInvalidInputError(err)
 	}
 	scriptTimeout, err := parseDuration("script-timeout", def(input.ScriptTimeout, "600s"))
 	if err != nil {
-		return Config{}, err
+		return Config{}, wrapInvalidInputError(err)
 	}
 	lockTimeout, err := parseDuration("lock-timeout", def(input.LockTimeout, "60s"))
 	if err != nil {
-		return Config{}, err
+		return Config{}, wrapInvalidInputError(err)
 	}
 
 	cfg := Config{
@@ -156,7 +162,7 @@ func (cfg Config) ValidateCommon() error {
 		}
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("missing required config: %s", strings.Join(missing, ", "))
+		return wrapConfigError(fmt.Errorf("missing required config: %s", strings.Join(missing, ", ")))
 	}
 	if err := cfg.ValidateEnvironment(); err != nil {
 		return err
@@ -175,59 +181,59 @@ func (cfg Config) ValidateCommon() error {
 
 func (cfg Config) ValidateEnvironment() error {
 	if _, ok := allowedEnvironments[cfg.Env]; !ok {
-		return fmt.Errorf("invalid environment: %s (allowed: pred, prod)", cfg.Env)
+		return wrapConfigError(fmt.Errorf("invalid environment: %s (allowed: pred, prod)", cfg.Env))
 	}
 	return nil
 }
 
 func (cfg Config) ValidateDBAuth() error {
 	if _, ok := allowedDBAuthModes[cfg.DBAuthMode()]; !ok {
-		return fmt.Errorf("invalid RM_DB_AUTH: %s (allowed: sql, integrated)", strings.TrimSpace(cfg.DBAuth))
+		return wrapConfigError(fmt.Errorf("invalid RM_DB_AUTH: %s (allowed: sql, integrated)", strings.TrimSpace(cfg.DBAuth)))
 	}
 	return nil
 }
 
 func (cfg Config) ValidateGitCommit() error {
 	if strings.TrimSpace(cfg.GitCommit) == "" {
-		return fmt.Errorf("missing required config: RM_GIT_COMMIT")
+		return wrapConfigError(fmt.Errorf("missing required config: RM_GIT_COMMIT"))
 	}
 	return nil
 }
 
 func (cfg Config) ValidateUpdatePolicy() error {
 	if _, ok := allowedUpdatePolicies[cfg.UpdatePolicy]; !ok {
-		return fmt.Errorf("invalid_update_policy: %s", cfg.UpdatePolicy)
+		return wrapInvalidInputError(fmt.Errorf("invalid_update_policy: %s", cfg.UpdatePolicy))
 	}
 	return nil
 }
 
 func (cfg Config) ValidateTransactionMode() error {
 	if _, ok := allowedTransactionModes[cfg.TransactionMode]; !ok {
-		return fmt.Errorf("invalid_transaction_mode: %s", cfg.TransactionMode)
+		return wrapInvalidInputError(fmt.Errorf("invalid_transaction_mode: %s", cfg.TransactionMode))
 	}
 	return nil
 }
 
 func (cfg Config) ValidateSQLSelection() error {
 	if strings.TrimSpace(cfg.SQLRoot) == "" {
-		return fmt.Errorf("invalid_or_missing_sql_scripts_root: RM_SQL_ROOT is required")
+		return wrapInvalidInputError(fmt.Errorf("invalid_or_missing_sql_scripts_root: RM_SQL_ROOT is required"))
 	}
 	rootInfo, err := os.Stat(cfg.SQLRoot)
 	if err != nil {
-		return fmt.Errorf("invalid_or_missing_sql_scripts_root: %v", err)
+		return wrapInvalidInputError(fmt.Errorf("invalid_or_missing_sql_scripts_root: %v", err))
 	}
 	if !rootInfo.IsDir() {
-		return fmt.Errorf("invalid_or_missing_sql_scripts_root: %s is not a directory", cfg.SQLRoot)
+		return wrapInvalidInputError(fmt.Errorf("invalid_or_missing_sql_scripts_root: %s is not a directory", cfg.SQLRoot))
 	}
 	if err := validateSQLBaseName(cfg.SQLBase); err != nil {
-		return err
+		return wrapInvalidInputError(err)
 	}
 	baseInfo, err := os.Stat(cfg.SelectedBasePath())
 	if err != nil {
-		return fmt.Errorf("invalid_or_missing_base_selection: %v", err)
+		return wrapInvalidInputError(fmt.Errorf("invalid_or_missing_base_selection: %v", err))
 	}
 	if !baseInfo.IsDir() {
-		return fmt.Errorf("invalid_or_missing_base_selection: %s is not a directory", cfg.SelectedBasePath())
+		return wrapInvalidInputError(fmt.Errorf("invalid_or_missing_base_selection: %s is not a directory", cfg.SelectedBasePath()))
 	}
 	return nil
 }
@@ -235,7 +241,7 @@ func (cfg Config) ValidateSQLSelection() error {
 func (cfg Config) ValidateForCommand(command string) error {
 	spec, ok := commands.Lookup(command)
 	if !ok {
-		return fmt.Errorf("unknown command: %s", command)
+		return wrapInvalidInputError(fmt.Errorf("unknown command: %s", command))
 	}
 	if err := cfg.ValidateCommon(); err != nil {
 		return err
@@ -251,12 +257,49 @@ func (cfg Config) ValidateForCommand(command string) error {
 		}
 	}
 	if spec.RequiresPlanFile && strings.TrimSpace(cfg.PlanFile) == "" {
-		return fmt.Errorf("--plan-file is required")
+		return wrapInvalidInputError(fmt.Errorf("--plan-file is required"))
 	}
 	if spec.RequiresConfirm && !cfg.Confirm {
-		return fmt.Errorf("confirm flag required")
+		return wrapInvalidInputError(fmt.Errorf("confirm flag required"))
 	}
 	return nil
+}
+
+func wrapConfigError(err error) error {
+	if err == nil || errors.Is(err, errConfigKind) {
+		return err
+	}
+	return classifiedError{kind: errConfigKind.Error(), err: err}
+}
+
+func wrapInvalidInputError(err error) error {
+	if err == nil || errors.Is(err, errInvalidInputKind) {
+		return err
+	}
+	return classifiedError{kind: errInvalidInputKind.Error(), err: err}
+}
+
+type classifiedError struct {
+	kind string
+	err  error
+}
+
+func (e classifiedError) Error() string {
+	if e.err == nil {
+		return e.kind
+	}
+	return e.err.Error()
+}
+
+func (e classifiedError) Unwrap() error {
+	return e.err
+}
+
+func (e classifiedError) Is(target error) bool {
+	if target == nil {
+		return false
+	}
+	return target.Error() == e.kind
 }
 
 func (cfg Config) DBAuthMode() string {

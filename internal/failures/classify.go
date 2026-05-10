@@ -76,6 +76,12 @@ func classify(base error, cause error) string {
 		return "invalid update policy"
 	case strings.Contains(message, "invalid_transaction_mode"):
 		return "invalid transaction mode"
+	case strings.Contains(message, "missing required config"):
+		return contracts.ErrConfig.Error()
+	case errors.Is(base, contracts.ErrConfig):
+		return contracts.ErrConfig.Error()
+	case errors.Is(cause, contracts.ErrConfig):
+		return contracts.ErrConfig.Error()
 	case errors.Is(base, contracts.ErrConnection):
 		return "connection failed"
 	case errors.Is(cause, contracts.ErrConnection):
@@ -96,7 +102,7 @@ func classify(base error, cause error) string {
 		return "critical metadata state"
 	case errors.Is(cause, contracts.ErrCriticalState):
 		return "critical metadata state"
-	case strings.Contains(message, "missing required config") || strings.Contains(message, "unknown command") || strings.Contains(message, "confirm flag required") || errors.Is(base, contracts.ErrInvalidInput):
+	case strings.Contains(message, "unknown command") || strings.Contains(message, "confirm flag required") || errors.Is(base, contracts.ErrInvalidInput):
 		return "invalid input"
 	case errors.Is(cause, contracts.ErrInvalidInput):
 		return "invalid input"

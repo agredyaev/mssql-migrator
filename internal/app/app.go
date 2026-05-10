@@ -65,7 +65,7 @@ func (r Runtime) Run(args []string) int {
 	if ok {
 		return r.dispatch(spec, args[2:], stdout, stderr)
 	}
-	outcome := failures.EvaluateWithCause(config.Config{}, "config_failed", contracts.ErrConfig, fmt.Errorf("unknown command: %s", command))
+	outcome := failures.EvaluateWithCause(config.Config{}, "config_failed", contracts.ErrInvalidInput, fmt.Errorf("unknown command: %s", command))
 	fmt.Fprintln(stderr, outcome.Failure.Error)
 	printUsage(stdout)
 	return outcome.ExitCode
@@ -74,7 +74,7 @@ func (r Runtime) Run(args []string) int {
 func (r Runtime) dispatch(spec commands.Spec, args []string, stdout io.Writer, stderr io.Writer) int {
 	cfg, err := parseCommandConfig(spec.Name, args)
 	if err != nil {
-		outcome := failures.EvaluateWithCause(config.Config{}, "config_failed", contracts.ErrConfig, err)
+		outcome := failures.Evaluate(config.Config{}, "config_failed", err)
 		fmt.Fprintln(stderr, outcome.Failure.Error)
 		return outcome.ExitCode
 	}
@@ -120,7 +120,7 @@ func (r Runtime) dispatch(spec commands.Spec, args []string, stdout io.Writer, s
 func parseCommandConfig(command string, args []string) (config.Config, error) {
 	restoreEnv, err := applyEnvironmentFile(resolveEnvFilePath(args))
 	if err != nil {
-		return config.Config{}, err
+		return config.Config{}, contracts.Wrap(contracts.ErrInvalidInput, err)
 	}
 	defer restoreEnv()
 
@@ -131,7 +131,7 @@ func parseCommandConfig(command string, args []string) (config.Config, error) {
 	config.BindFlags(flags, &input)
 
 	if err := flags.Parse(args); err != nil {
-		return config.Config{}, err
+		return config.Config{}, contracts.Wrap(contracts.ErrInvalidInput, err)
 	}
 	cfg, err := config.Load(input)
 	if err != nil {

@@ -1,10 +1,16 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+)
+
+var (
+	configErrorSentinel       = errors.New("configuration error")
+	invalidInputErrorSentinel = errors.New("invalid input")
 )
 
 func TestValidateCommonAllowsIntegratedAuthWithoutUserAndPassword(t *testing.T) {
@@ -129,6 +135,31 @@ func TestValidateForCommandRequiresConfirmForBaseline(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "confirm flag required") {
 		t.Fatalf("expected confirm validation error, got %v", err)
 	}
+	if !errors.Is(err, invalidInputErrorSentinel) {
+		t.Fatalf("expected invalid input sentinel, got %v", err)
+	}
+}
+
+func TestValidateCommonWrapsMissingConfigAsConfigError(t *testing.T) {
+	cfg := Config{UpdatePolicy: UpdatePolicyNone, TransactionMode: TransactionModeScript}
+	err := cfg.ValidateCommon()
+	if err == nil {
+		t.Fatal("expected missing config error")
+	}
+	if !errors.Is(err, configErrorSentinel) {
+		t.Fatalf("expected config sentinel, got %v", err)
+	}
+}
+
+func TestValidateSQLSelectionWrapsPathErrorsAsInvalidInput(t *testing.T) {
+	cfg := Config{SQLRoot: t.TempDir(), SQLBase: ""}
+	err := cfg.ValidateSQLSelection()
+	if err == nil {
+		t.Fatal("expected sql selection error")
+	}
+	if !errors.Is(err, invalidInputErrorSentinel) {
+		t.Fatalf("expected invalid input sentinel, got %v", err)
+	}
 }
 
 func TestValidateRejectsUnknownEnvironment(t *testing.T) {
@@ -193,6 +224,9 @@ func TestValidateCommonRejectsInvalidUpdatePolicy(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "invalid_update_policy") {
 		t.Fatalf("expected invalid update policy error, got %v", err)
 	}
+	if !errors.Is(err, invalidInputErrorSentinel) {
+		t.Fatalf("expected invalid input sentinel, got %v", err)
+	}
 }
 
 func TestValidateCommonRejectsInvalidTransactionMode(t *testing.T) {
@@ -200,6 +234,9 @@ func TestValidateCommonRejectsInvalidTransactionMode(t *testing.T) {
 	err := cfg.ValidateCommon()
 	if err == nil || !strings.Contains(err.Error(), "invalid_transaction_mode") {
 		t.Fatalf("expected invalid transaction mode error, got %v", err)
+	}
+	if !errors.Is(err, invalidInputErrorSentinel) {
+		t.Fatalf("expected invalid input sentinel, got %v", err)
 	}
 }
 

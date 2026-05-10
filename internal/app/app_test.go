@@ -115,8 +115,40 @@ func TestRunWritesConfigFailureEnvelopeToStderr(t *testing.T) {
 		t.Fatalf("expected config error exit, got %d", code)
 	}
 	output := stderr.String()
-	if !strings.Contains(output, "ERROR config_failed:") || !strings.Contains(output, "sql_root=-") || !strings.Contains(output, "base=-") || !strings.Contains(output, "class=invalid input") {
+	if !strings.Contains(output, "ERROR config_failed:") || !strings.Contains(output, "sql_root=-") || !strings.Contains(output, "base=-") || !strings.Contains(output, "class=configuration error") {
 		t.Fatalf("expected config envelope on stderr, got %q", output)
+	}
+}
+
+func TestRunReturnsInvalidInputExitForMissingPlanFile(t *testing.T) {
+	root, base := createSQLLayout(t)
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+	t.Setenv("RM_GIT_COMMIT", "deadbeef")
+	stdout := bytes.Buffer{}
+	stderr := bytes.Buffer{}
+	runtime := Runtime{BuildInfo: BuildInfo{Version: "1.0.0", Commit: "abc"}, Stdout: &stdout, Stderr: &stderr}
+	code := runtime.Run([]string{"rmig", "migrate", "--env", "prod", "--sql-root", root, "--sql-base", base})
+	if code != contracts.ExitInvalidInput {
+		t.Fatalf("expected invalid input exit, got %d stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "class=invalid input") || !strings.Contains(stderr.String(), "reason=--plan-file is required") {
+		t.Fatalf("expected invalid input envelope, got %q", stderr.String())
+	}
+}
+
+func TestRunReturnsInvalidInputExitForUnknownCommand(t *testing.T) {
+	stdout := bytes.Buffer{}
+	stderr := bytes.Buffer{}
+	runtime := Runtime{BuildInfo: BuildInfo{Version: "1.0.0", Commit: "abc"}, Stdout: &stdout, Stderr: &stderr}
+	code := runtime.Run([]string{"rmig", "wat"})
+	if code != contracts.ExitInvalidInput {
+		t.Fatalf("expected invalid input exit, got %d stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "class=invalid input") || !strings.Contains(stderr.String(), "reason=unknown command: wat") {
+		t.Fatalf("expected unknown command envelope, got %q", stderr.String())
 	}
 }
 
