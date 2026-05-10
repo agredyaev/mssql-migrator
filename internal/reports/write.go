@@ -112,6 +112,8 @@ func writeFileAtomic(path string, content []byte) error {
 }
 
 func writeFilePairAtomic(firstPath string, firstContent []byte, secondPath string, secondContent []byte) error {
+	// Publish the human-readable companion first and the JSON artifact last.
+	// The JSON file is the commit marker for readers that need a consistent pair.
 	secondTemp, err := writeTempFile(secondPath, secondContent)
 	if err != nil {
 		return err

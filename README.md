@@ -71,7 +71,7 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 - `baseline` preflights metadata DDL, schema creation permission, object DDL permission, and missing parent objects before create work.
 - `repair-checksum` targets one repo object selected by path or normalized key, but only when the current plan shows tracked checksum drift for that object. It appends a new successful metadata attempt row in `[__migrator].attempts` instead of editing old checksum history in place.
 - The text form of `migration-plan.txt` explains why each object is planned for create, adopt, skip, update, or block so operators do not need to infer planner state from action codes alone.
-- Report files are written as consistent JSON and text pairs through `internal/reports/write.go` by staging `*.tmp` files and publishing both final artifacts together.
+- Report files are written through `internal/reports/write.go` by staging `*.tmp` files, publishing the text companion first, and publishing JSON last as the commit marker for readers that require a consistent pair.
 - Metadata writes use a short bounded context in `internal/migrator/metadata_context.go` so post-SQL metadata updates do not hang until the full command timeout.
 - Catalog reads are shared through `internal/catalog/catalog.go` so plan and validation classify the live SQL Server object set the same way.
 - Metadata bootstrap records schema version state in `[__migrator].schema_version`, validates known schema versions before upgrade DDL, and does not churn existing indexes and view definitions on every run.

@@ -49,6 +49,7 @@ See `README.md` for the CLI wrapper contract.
 - Current builds do not migrate legacy metadata objects such as `__migrator.migration_runs` or `__migrator.migration_attempts` to the current schema. This is a breaking migration requirement for existing environments: legacy metadata must be upgraded or removed outside the current CLI before v2-only builds can run. If any legacy metadata object is present, bootstrap and checksum reads fail closed with `metadata_schema_incompatible`.
 - In operator-facing wording, `[__migrator].attempts` is the append-only attempt log, and `[__migrator].items` is the per-run managed scope snapshot for schemas and objects.
 - `reports/migration-plan.txt` is the human-oriented operator view. It explains why each object is planned for create, adopt, skip, update, or block.
+- `internal/reports/write.go` publishes the text companion first and the JSON file last. The JSON artifact is the commit marker for readers that require a consistent report pair.
 - Existing module updates are allowed only when the repo SQL starts with the matching `CREATE OR ALTER` statement for that object kind.
 
 ## Nominal Flow
