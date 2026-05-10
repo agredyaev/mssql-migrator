@@ -27,10 +27,7 @@ func WriteValidationOutcome(dir string, report contracts.ValidationReport, err e
 	if writeErr := WriteValidation(dir, report); writeErr != nil {
 		return contracts.Wrap(contracts.ErrCriticalState, writeErr)
 	}
-	if err != nil {
-		return contracts.Wrap(contracts.ErrValidation, err)
-	}
-	return nil
+	return err
 }
 
 func WriteMigrationFailure(cfg config.Config, report contracts.MigrationReport, phase string, base error, cause error) error {
@@ -48,11 +45,11 @@ func WriteValidationFailure(cfg config.Config, report contracts.ValidationReport
 }
 
 func FinalizeMigrationFailure(cfg config.Config, report contracts.MigrationReport, phase string, base error, cause error) contracts.MigrationReport {
+	finish := failedFinish(cfg, phase, base, cause)
 	report.Result = resultFailed
-	report.FinishedAt = time.Now().UTC()
+	report.FinishedAt = finish.finishedAt
 	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
-	outcome := failures.EvaluateWithCause(cfg, phase, base, cause)
-	report.Failed = &outcome.Failure
+	report.Failed = &finish.failure
 	return report
 }
 
@@ -66,10 +63,10 @@ func FinalizeMigrationSuccess(report *contracts.MigrationReport) {
 }
 
 func FinalizeValidationFailure(cfg config.Config, report contracts.ValidationReport, phase string, base error, cause error) contracts.ValidationReport {
+	finish := failedFinish(cfg, phase, base, cause)
 	report.Result = resultFailed
-	report.FinishedAt = time.Now().UTC()
-	outcome := failures.EvaluateWithCause(cfg, phase, base, cause)
-	report.Failed = &outcome.Failure
+	report.FinishedAt = finish.finishedAt
+	report.Failed = &finish.failure
 	return report
 }
 
@@ -92,4 +89,14 @@ func writeFailureReport(write func() error, base error, cause error) error {
 		return contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	return ReturnFailure(base, cause)
+}
+
+type failedReportFinish struct {
+	finishedAt time.Time
+	failure    contracts.Failure
+}
+
+func failedFinish(cfg config.Config, phase string, base error, cause error) failedReportFinish {
+	outcome := failures.EvaluateWithCause(cfg, phase, base, cause)
+	return failedReportFinish{finishedAt: time.Now().UTC(), failure: outcome.Failure}
 }

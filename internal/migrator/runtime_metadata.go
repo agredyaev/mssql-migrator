@@ -2,6 +2,7 @@ package migrator
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -71,15 +72,15 @@ func finishRun(ctx context.Context, execer metadata.Execer, runID string, succes
 	return metadata.FinishRun(metaCtx, execer, runID, success, errorClass, errorMessage)
 }
 
-func planArtifactHash(planFile string) string {
+func planArtifactHash(planFile string) (string, error) {
 	if strings.TrimSpace(planFile) == "" {
-		return ""
+		return "", nil
 	}
 	hash, err := checksum.SHA256File(planFile)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("hash approved plan file: %w", err)
 	}
-	return hash
+	return hash, nil
 }
 
 func boolPtr(value bool) *bool {

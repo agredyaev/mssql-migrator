@@ -428,38 +428,16 @@ ORDER BY a.applied_at ASC, a.id ASC`, contracts.ScriptTypeObject, contracts.Scri
 }
 
 func bootstrapStatements() []string {
-	commandNames := commands.Names()
-	kindNames := []string{"tables", "views", "procedures", "functions", "triggers", "indexes", "types", "sequences", "synonyms"}
-	itemActions := []string{
-		contracts.SchemaActionExists,
-		contracts.SchemaActionCreateSchema,
-		contracts.ActionCreateObject,
-		contracts.ActionAdoptExisting,
-		contracts.ActionSkipUnchanged,
-		contracts.ActionReprocessChanged,
-		contracts.ActionReprocessChangedBlocked,
-		contracts.ActionUpdateExistingModule,
-		contracts.ActionUpdateExistingSupported,
-		contracts.ActionValidateChecked,
-		contracts.ActionValidateSkipped,
-		contracts.ActionRepairChecksum,
-		contracts.ActionFail,
-	}
-	attemptActions := []string{
-		contracts.SchemaActionExists,
-		contracts.SchemaActionCreateSchema,
-		contracts.ActionCreateObject,
-		contracts.ActionAdoptExisting,
-		contracts.ActionSkipUnchanged,
-		contracts.ActionReprocessChanged,
-		contracts.ActionReprocessChangedBlocked,
-		contracts.ActionUpdateExistingModule,
-		contracts.ActionUpdateExistingSupported,
-		contracts.ActionValidateChecked,
-		contracts.ActionValidateSkipped,
-		contracts.ActionRepairChecksum,
-		contracts.ActionFail,
-	}
+	statements := []string{}
+	statements = append(statements, bootstrapSchemaStatements()...)
+	statements = append(statements, bootstrapTableStatements()...)
+	statements = append(statements, bootstrapForeignKeyStatements()...)
+	statements = append(statements, bootstrapCheckConstraintStatements()...)
+	statements = append(statements, bootstrapIndexStatements()...)
+	return statements
+}
+
+func bootstrapSchemaStatements() []string {
 	return []string{
 		`IF SCHEMA_ID('__migrator') IS NULL EXEC('CREATE SCHEMA __migrator')`,
 		`IF OBJECT_ID('__migrator.schema_version', 'U') IS NULL
@@ -471,6 +449,11 @@ CREATE TABLE __migrator.schema_version (
 END`,
 		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM __migrator.schema_version WHERE version = %d)
 INSERT INTO __migrator.schema_version(version) VALUES (%d)`, metadataSchemaVersion, metadataSchemaVersion),
+	}
+}
+
+func bootstrapTableStatements() []string {
+	return []string{
 		`IF OBJECT_ID('__migrator.runs', 'U') IS NULL
 BEGIN
 CREATE TABLE __migrator.runs (
@@ -552,12 +535,25 @@ CREATE TABLE __migrator.attempts (
     applied_by NVARCHAR(255) NULL
 )
 END`,
+	}
+}
+
+func bootstrapForeignKeyStatements() []string {
+	return []string{
 		`IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_items_run' AND parent_object_id = OBJECT_ID('__migrator.items'))
 ALTER TABLE __migrator.items ADD CONSTRAINT FK_items_run FOREIGN KEY (run_id) REFERENCES __migrator.runs(run_id)`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_attempts_run' AND parent_object_id = OBJECT_ID('__migrator.attempts'))
 ALTER TABLE __migrator.attempts ADD CONSTRAINT FK_attempts_run FOREIGN KEY (run_id) REFERENCES __migrator.runs(run_id)`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_attempts_item' AND parent_object_id = OBJECT_ID('__migrator.attempts'))
 ALTER TABLE __migrator.attempts ADD CONSTRAINT FK_attempts_item FOREIGN KEY (item_id) REFERENCES __migrator.items(item_id)`,
+	}
+}
+
+func bootstrapCheckConstraintStatements() []string {
+	commandNames := commands.Names()
+	kindNames := bootstrapKindNames()
+	actionNames := bootstrapActionNames()
+	return []string{
 		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_runs_command' AND parent_object_id = OBJECT_ID('__migrator.runs'))
 ALTER TABLE __migrator.runs WITH CHECK ADD CONSTRAINT CK_runs_command CHECK (command IN ('%s'))`, strings.Join(commandNames, `', '`)),
 		`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_runs_comparison_mode' AND parent_object_id = OBJECT_ID('__migrator.runs'))
@@ -573,17 +569,22 @@ ALTER TABLE __migrator.items WITH CHECK ADD CONSTRAINT CK_items_type CHECK (item
 		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_items_kind' AND parent_object_id = OBJECT_ID('__migrator.items'))
 ALTER TABLE __migrator.items WITH CHECK ADD CONSTRAINT CK_items_kind CHECK (kind IS NULL OR kind IN ('%s'))`, strings.Join(kindNames, `', '`)),
 		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_items_action' AND parent_object_id = OBJECT_ID('__migrator.items'))
-ALTER TABLE __migrator.items WITH CHECK ADD CONSTRAINT CK_items_action CHECK (action IN ('%s'))`, strings.Join(itemActions, `', '`)),
+ALTER TABLE __migrator.items WITH CHECK ADD CONSTRAINT CK_items_action CHECK (action IN ('%s'))`, strings.Join(actionNames, `', '`)),
 		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_attempts_script_type' AND parent_object_id = OBJECT_ID('__migrator.attempts'))
 ALTER TABLE __migrator.attempts WITH CHECK ADD CONSTRAINT CK_attempts_script_type CHECK (script_type IN ('%s', '%s', '%s', '%s', '%s'))`, contracts.ScriptTypeSchema, contracts.ScriptTypeObject, contracts.ScriptTypeValidate, contracts.ScriptTypeBaseline, contracts.ScriptTypeRepair),
 		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_attempts_action' AND parent_object_id = OBJECT_ID('__migrator.attempts'))
-ALTER TABLE __migrator.attempts WITH CHECK ADD CONSTRAINT CK_attempts_action CHECK (action IN ('%s'))`, strings.Join(attemptActions, `', '`)),
+ALTER TABLE __migrator.attempts WITH CHECK ADD CONSTRAINT CK_attempts_action CHECK (action IN ('%s'))`, strings.Join(actionNames, `', '`)),
 		`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_attempts_transaction_mode' AND parent_object_id = OBJECT_ID('__migrator.attempts'))
 ALTER TABLE __migrator.attempts WITH CHECK ADD CONSTRAINT CK_attempts_transaction_mode CHECK (transaction_mode IS NULL OR transaction_mode IN ('script', 'none'))`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_attempts_transaction_scope' AND parent_object_id = OBJECT_ID('__migrator.attempts'))
 ALTER TABLE __migrator.attempts WITH CHECK ADD CONSTRAINT CK_attempts_transaction_scope CHECK (transaction_scope IS NULL OR transaction_scope IN ('script', 'none'))`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_attempts_rollback_scope' AND parent_object_id = OBJECT_ID('__migrator.attempts'))
 ALTER TABLE __migrator.attempts WITH CHECK ADD CONSTRAINT CK_attempts_rollback_scope CHECK (rollback_scope IS NULL OR rollback_scope IN ('script', 'none'))`,
+	}
+}
+
+func bootstrapIndexStatements() []string {
+	return []string{
 		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_runs_base' AND object_id = OBJECT_ID('__migrator.runs'))
 CREATE INDEX IX_runs_base ON __migrator.runs (base_name, started_at DESC)`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_runs_pipeline' AND object_id = OBJECT_ID('__migrator.runs'))
@@ -602,6 +603,28 @@ CREATE INDEX IX_attempts_success ON __migrator.attempts (success, script_type, a
 CREATE INDEX IX_attempts_run_id ON __migrator.attempts (run_id, id) WHERE run_id IS NOT NULL`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_attempts_item' AND object_id = OBJECT_ID('__migrator.attempts'))
 CREATE INDEX IX_attempts_item ON __migrator.attempts (item_id, success, applied_at DESC, id DESC) WHERE item_id IS NOT NULL`,
+	}
+}
+
+func bootstrapKindNames() []string {
+	return []string{"tables", "views", "procedures", "functions", "triggers", "indexes", "types", "sequences", "synonyms"}
+}
+
+func bootstrapActionNames() []string {
+	return []string{
+		contracts.SchemaActionExists,
+		contracts.SchemaActionCreateSchema,
+		contracts.ActionCreateObject,
+		contracts.ActionAdoptExisting,
+		contracts.ActionSkipUnchanged,
+		contracts.ActionReprocessChanged,
+		contracts.ActionReprocessChangedBlocked,
+		contracts.ActionUpdateExistingModule,
+		contracts.ActionUpdateExistingSupported,
+		contracts.ActionValidateChecked,
+		contracts.ActionValidateSkipped,
+		contracts.ActionRepairChecksum,
+		contracts.ActionFail,
 	}
 }
 

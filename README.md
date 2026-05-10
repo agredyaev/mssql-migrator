@@ -90,6 +90,8 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 
 - Invalid SQL root or base selection: command validation fails before database work.
 - Invalid repository layout: `plan` or `validate` fails before object work.
+- Repository schema, object, and parent identifiers must match `^[A-Za-z_][A-Za-z0-9_@$#]*$`.
+- Bracketed, spaced, hyphenated, and Unicode SQL identifiers are not supported in repository paths.
 - Partial metadata state during `plan`: `plan` stays read-only and fails on metadata read errors instead of repairing state. Use `migrate`, `baseline`, or `repair-checksum` to bootstrap metadata under lock.
 - Approved-plan drift: `migrate` rejects the plan if `git_commit`, `layout_hash`, target, tool identity, comparison mode, update policy, transaction mode, rollback scope, base selection, or the approved schema/object set differs.
 - Metadata read or write failure: the run reports a critical state and stops. Metadata updates also fail closed when the target row is missing or duplicated.
@@ -104,6 +106,7 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 - `PATH=/usr/local/go/bin:$PATH go test ./...`
 - `PATH=/usr/local/go/bin:$PATH test -z "$(gofmt -l .)"`
 - `PATH=/usr/local/go/bin:$PATH go test -race ./...`
+- `PATH=/usr/local/go/bin:$PATH staticcheck ./...`
 - `RMIG_RUN_SQLSERVER_INTEGRATION=1 PATH=/usr/local/go/bin:$PATH go test ./internal/migrator -run SQLServer`
 - `PATH=/usr/local/go/bin:$PATH go vet ./...`
 - `PATH=/usr/local/go/bin:$PATH go build -ldflags "-X main.version=0.1.0-dev -X main.commit=$(git rev-parse HEAD)" -o rmig ./cmd/rmig`

@@ -112,23 +112,23 @@ func writeFileAtomic(path string, content []byte) error {
 }
 
 func writeFilePairAtomic(firstPath string, firstContent []byte, secondPath string, secondContent []byte) error {
-	firstTemp, err := writeTempFile(firstPath, firstContent)
-	if err != nil {
-		return err
-	}
 	secondTemp, err := writeTempFile(secondPath, secondContent)
 	if err != nil {
-		_ = os.Remove(firstTemp)
 		return err
 	}
-	if err := os.Rename(firstTemp, firstPath); err != nil {
-		_ = os.Remove(firstTemp)
+	firstTemp, err := writeTempFile(firstPath, firstContent)
+	if err != nil {
 		_ = os.Remove(secondTemp)
 		return err
 	}
 	if err := os.Rename(secondTemp, secondPath); err != nil {
 		_ = os.Remove(secondTemp)
-		return fmt.Errorf("write secondary report file: %w", err)
+		_ = os.Remove(firstTemp)
+		return err
+	}
+	if err := os.Rename(firstTemp, firstPath); err != nil {
+		_ = os.Remove(firstTemp)
+		return fmt.Errorf("write primary report commit marker: %w", err)
 	}
 	return nil
 }

@@ -19,7 +19,9 @@ type Failure struct {
 	Class   string `json:"class,omitempty"`
 	Reason  string `json:"reason,omitempty"`
 	SQL     string `json:"sql,omitempty"`
-	Error   string `json:"error"`
+	// Error keeps the legacy human-readable envelope.
+	// Machine consumers should read the sibling structured fields.
+	Error string `json:"error"`
 }
 
 type ValidationSummary struct {

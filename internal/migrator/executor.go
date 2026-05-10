@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"reporting-db-migrations/internal/contracts"
-	"reporting-db-migrations/internal/logger"
 	"reporting-db-migrations/internal/metadata"
 	"reporting-db-migrations/internal/parser"
 )
@@ -26,35 +25,8 @@ func (r Runner) executePlan(ctx context.Context, conn txConn, layout parser.Layo
 func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout parser.Layout, plan contracts.MigrationPlan, report *contracts.MigrationReport, runID string, itemIDs map[string]int64) error {
 	recorder := newMetadataRecorder(r.cfg, conn, nil, runID)
 	for _, schema := range plan.Schemas {
-		if schema.Action == contracts.SchemaActionExists && runID != "" {
-			err := recorder.attempt.SchemaSuccess(ctx, schema.SchemaName, schema.Action, false)
-			if err != nil {
-				report.Result = "failed"
-				report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: "critical metadata failure after schema discovery: " + logger.Redact(err.Error())}
-				return contracts.Wrap(contracts.ErrCriticalState, err)
-			}
-		}
-		if schema.Action != contracts.SchemaActionCreateSchema {
-			continue
-		}
-		statement := fmt.Sprintf("IF SCHEMA_ID('%s') IS NULL EXEC('CREATE SCHEMA [%s]')", escapeSQLString(schema.SchemaName), escapeSQLIdentifier(schema.SchemaName))
-		if _, err := conn.ExecContext(ctx, statement); err != nil {
-			classifiedErr := classifySchemaExecutionError(schema.SchemaName, err)
-			message := logger.Redact(classifiedErr.Error())
-			if runID != "" {
-				_ = recorder.attempt.SchemaFailure(ctx, schema.SchemaName, classifiedErr, true)
-			}
-			report.Result = "failed"
-			report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: message}
-			return classifiedErr
-		}
-		if runID != "" {
-			err := recorder.attempt.SchemaSuccess(ctx, schema.SchemaName, contracts.SchemaActionCreateSchema, true)
-			if err != nil {
-				report.Result = "failed"
-				report.Failed = &contracts.Failure{Script: schema.SchemaName, Error: logger.Redact(err.Error())}
-				return contracts.Wrap(contracts.ErrCriticalState, err)
-			}
+		if err := r.executePlannedSchema(ctx, conn, recorder, schema, runID, report); err != nil {
+			return err
 		}
 	}
 
@@ -63,32 +35,63 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 		byKey[object.NormalizedKey] = object
 	}
 	for _, planned := range plannedObjectsInExecutionOrder(plan.Objects) {
-		itemID := lookupItemID(itemIDs, planned.NormalizedKey)
-		if planned.PlannedAction != contracts.ActionCreateObject && planned.PlannedAction != contracts.ActionUpdateExistingModule && planned.PlannedAction != contracts.ActionUpdateExistingSupported {
-			if planned.PlannedAction == contracts.ActionSkipUnchanged || planned.PlannedAction == contracts.ActionAdoptExisting {
-				if err := r.recordPassiveObjectAction(ctx, conn, planned, runID, itemID); err != nil {
-					report.Result = "failed"
-					report.Failed = &contracts.Failure{Script: planned.ObjectPath, Error: logger.Redact(err.Error())}
-					return contracts.Wrap(contracts.ErrCriticalState, err)
-				}
-				report.Skipped = append(report.Skipped, contracts.ScriptResult{Script: planned.ObjectPath, Type: planned.Kind, Checksum: planned.Checksum, Reason: planned.PlannedAction})
-				continue
-			}
-			report.Result = "failed"
-			report.Failed = &contracts.Failure{Script: planned.ObjectPath, Error: "unsupported planned action: " + planned.PlannedAction}
-			return fmt.Errorf("%w: unsupported planned action %s for %s", contracts.ErrInvalidInput, planned.PlannedAction, planned.ObjectPath)
-		}
-		object, ok := byKey[planned.NormalizedKey]
-		if !ok {
-			report.Result = "failed"
-			report.Failed = &contracts.Failure{Script: planned.ObjectPath, Error: "object missing from verified layout"}
-			return fmt.Errorf("%w: object missing from layout for %s", contracts.ErrInvalidInput, planned.NormalizedKey)
-		}
-		if err := r.applyObjectTracked(ctx, conn, object, planned, runID, itemID, report); err != nil {
+		if err := r.executePlannedObject(ctx, conn, byKey, planned, runID, itemIDs, report); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (r Runner) executePlannedSchema(ctx context.Context, conn txConn, recorder metadataRecorder, schema contracts.PlannedSchema, runID string, report *contracts.MigrationReport) error {
+	if schema.Action == contracts.SchemaActionExists && runID != "" {
+		err := recorder.attempt.SchemaSuccess(ctx, schema.SchemaName, schema.Action, false)
+		if err != nil {
+			setCriticalMetadataFailure(report, schema.SchemaName, "critical metadata failure after schema discovery: ", err)
+			return contracts.Wrap(contracts.ErrCriticalState, err)
+		}
+	}
+	if schema.Action != contracts.SchemaActionCreateSchema {
+		return nil
+	}
+	statement := fmt.Sprintf("IF SCHEMA_ID('%s') IS NULL EXEC('CREATE SCHEMA [%s]')", escapeSQLString(schema.SchemaName), escapeSQLIdentifier(schema.SchemaName))
+	if _, err := conn.ExecContext(ctx, statement); err != nil {
+		classifiedErr := classifySchemaExecutionError(schema.SchemaName, err)
+		if runID != "" {
+			_ = recorder.attempt.SchemaFailure(ctx, schema.SchemaName, classifiedErr, true)
+		}
+		setFailedResult(report, schema.SchemaName, classifiedErr.Error())
+		return classifiedErr
+	}
+	if runID == "" {
+		return nil
+	}
+	if err := recorder.attempt.SchemaSuccess(ctx, schema.SchemaName, contracts.SchemaActionCreateSchema, true); err != nil {
+		setFailedResult(report, schema.SchemaName, err.Error())
+		return contracts.Wrap(contracts.ErrCriticalState, err)
+	}
+	return nil
+}
+
+func (r Runner) executePlannedObject(ctx context.Context, conn txConn, byKey map[string]parser.Object, planned contracts.PlannedObject, runID string, itemIDs map[string]int64, report *contracts.MigrationReport) error {
+	itemID := lookupItemID(itemIDs, planned.NormalizedKey)
+	if planned.PlannedAction == contracts.ActionSkipUnchanged || planned.PlannedAction == contracts.ActionAdoptExisting {
+		if err := r.recordPassiveObjectAction(ctx, conn, planned, runID, itemID); err != nil {
+			setFailedResult(report, planned.ObjectPath, err.Error())
+			return contracts.Wrap(contracts.ErrCriticalState, err)
+		}
+		report.Skipped = append(report.Skipped, contracts.ScriptResult{Script: planned.ObjectPath, Type: planned.Kind, Checksum: planned.Checksum, Reason: planned.PlannedAction})
+		return nil
+	}
+	if planned.PlannedAction != contracts.ActionCreateObject && planned.PlannedAction != contracts.ActionUpdateExistingModule && planned.PlannedAction != contracts.ActionUpdateExistingSupported {
+		setFailedResult(report, planned.ObjectPath, "unsupported planned action: "+planned.PlannedAction)
+		return fmt.Errorf("%w: unsupported planned action %s for %s", contracts.ErrInvalidInput, planned.PlannedAction, planned.ObjectPath)
+	}
+	object, ok := byKey[planned.NormalizedKey]
+	if !ok {
+		setFailedResult(report, planned.ObjectPath, "object missing from verified layout")
+		return fmt.Errorf("%w: object missing from layout for %s", contracts.ErrInvalidInput, planned.NormalizedKey)
+	}
+	return r.applyObjectTracked(ctx, conn, object, planned, runID, itemID, report)
 }
 
 func (r Runner) recordAdoptedObject(ctx context.Context, execer metadata.Execer, planned contracts.PlannedObject) error {
@@ -130,17 +133,14 @@ func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object p
 	if executionErr != nil {
 		classifiedErr := classifyObjectExecutionError(object, planned, executionErr)
 		if err := recorder.attempt.ObjectFailure(parent, recordedObject, classifiedErr, true); err != nil {
-			report.Result = "failed"
-			report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after failed SQL: " + logger.Redact(err.Error())}
+			setCriticalMetadataFailure(report, object.Path, "critical metadata failure after failed SQL: ", err)
 			return contracts.Wrap(contracts.ErrCriticalState, err)
 		}
-		report.Result = "failed"
-		report.Failed = &contracts.Failure{Script: object.Path, Error: logger.Redact(classifiedErr.Error())}
+		setFailedResult(report, object.Path, classifiedErr.Error())
 		return classifiedErr
 	}
 	if err := recorder.attempt.ObjectSuccess(parent, recordedObject, true); err != nil {
-		report.Result = "failed"
-		report.Failed = &contracts.Failure{Script: object.Path, Error: "critical metadata failure after successful SQL: " + logger.Redact(err.Error())}
+		setCriticalMetadataFailure(report, object.Path, "critical metadata failure after successful SQL: ", err)
 		return contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	report.Applied = append(report.Applied, contracts.ScriptResult{Script: object.Path, Type: object.Kind, Checksum: object.Checksum, ExecutionMS: executionMS})

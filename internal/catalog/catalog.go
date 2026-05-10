@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 
 	"reporting-db-migrations/internal/contracts"
@@ -44,7 +45,7 @@ func Read(ctx context.Context, conn *sql.Conn) (State, error) {
 		Objects: map[string]Object{},
 	}
 	if conn == nil {
-		return state, nil
+		return State{}, contracts.Wrap(contracts.ErrCriticalState, fmt.Errorf("catalog read: missing database connection"))
 	}
 	schemaRows, err := conn.QueryContext(ctx, `SELECT name FROM sys.schemas WHERE name NOT IN ('sys', 'INFORMATION_SCHEMA') ORDER BY name`)
 	if err != nil {

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"reporting-db-migrations/internal/contracts"
 )
 
 func TestBootstrapExecutesAllStatements(t *testing.T) {
@@ -38,6 +40,33 @@ func TestBootstrapExecutesAllStatements(t *testing.T) {
 	}
 	if containsExec(state.execs, "CREATE VIEW __migrator.v_migration_state") {
 		t.Fatalf("expected bootstrap not to create legacy view, got %#v", state.execs)
+	}
+}
+
+func TestBootstrapTableStatementsContainRunsItemsAttempts(t *testing.T) {
+	statements := bootstrapTableStatements()
+	for _, expected := range []string{"CREATE TABLE __migrator.runs", "CREATE TABLE __migrator.items", "CREATE TABLE __migrator.attempts"} {
+		if !containsExec(statements, expected) {
+			t.Fatalf("expected table bootstrap to contain %q, got %#v", expected, statements)
+		}
+	}
+}
+
+func TestBootstrapConstraintStatementsContainAllowedActions(t *testing.T) {
+	statements := strings.Join(bootstrapCheckConstraintStatements(), "\n")
+	for _, expected := range []string{"CK_runs_command", "CK_items_action", "CK_attempts_action", contracts.ActionRepairChecksum, contracts.ActionValidateSkipped} {
+		if !strings.Contains(statements, expected) {
+			t.Fatalf("expected constraint bootstrap to contain %q, got %s", expected, statements)
+		}
+	}
+}
+
+func TestBootstrapIndexStatementsContainExpectedIndexes(t *testing.T) {
+	statements := strings.Join(bootstrapIndexStatements(), "\n")
+	for _, expected := range []string{"IX_runs_base", "UX_items_run_key", "IX_attempts_item"} {
+		if !strings.Contains(statements, expected) {
+			t.Fatalf("expected index bootstrap to contain %q, got %s", expected, statements)
+		}
 	}
 }
 

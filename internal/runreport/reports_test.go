@@ -73,7 +73,7 @@ func TestWriteValidationOutcomeWritesReportAndReturnsValidationError(t *testing.
 		Result:    "failed",
 		Failed:    &contracts.Failure{Error: "ERROR validation_failed: sql_root=/sql base=dwh path=- class=validation failure reason=boom; sql=boom"},
 	}
-	err := runreport.WriteValidationOutcome(dir, report, assertErr("boom"))
+	err := runreport.WriteValidationOutcome(dir, report, contracts.Wrap(contracts.ErrValidation, assertErr("boom")))
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
@@ -86,6 +86,18 @@ func TestWriteValidationOutcomeWritesReportAndReturnsValidationError(t *testing.
 	written := readValidationReport(t, dir)
 	if written.Result != "failed" || written.Failed == nil || written.Failed.Error != report.Failed.Error {
 		t.Fatalf("unexpected written validation report: %#v", written)
+	}
+}
+
+func TestWriteValidationOutcomePreservesCriticalStateClassification(t *testing.T) {
+	dir := t.TempDir()
+	report := contracts.ValidationReport{StartedAt: time.Now().UTC(), Result: "failed"}
+	err := runreport.WriteValidationOutcome(dir, report, contracts.Wrap(contracts.ErrCriticalState, assertErr("boom")))
+	if err == nil {
+		t.Fatal("expected validation outcome error")
+	}
+	if !errors.Is(err, contracts.ErrCriticalState) {
+		t.Fatalf("expected critical state sentinel, got %v", err)
 	}
 }
 

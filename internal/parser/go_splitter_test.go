@@ -76,3 +76,15 @@ func TestSplitGOSkipsEmptyBatches(t *testing.T) {
 		t.Fatalf("expected 1 batch, got %d", len(batches))
 	}
 }
+
+func TestSplitGORejectsUnterminatedString(t *testing.T) {
+	if _, err := SplitGO("SELECT 'oops"); err == nil || err.Error() != "unterminated SQL string literal" {
+		t.Fatalf("expected unterminated string error, got %v", err)
+	}
+}
+
+func TestSplitGORejectsUnterminatedBlockComment(t *testing.T) {
+	if _, err := SplitGO("/* oops"); err == nil || err.Error() != "unterminated SQL block comment" {
+		t.Fatalf("expected unterminated block comment error, got %v", err)
+	}
+}

@@ -106,8 +106,7 @@ func openSessionTestDB(t *testing.T, lockErr error) (*sql.DB, *sessionTestState)
 
 func TestStartProtectedSessionClosesConnectionOnLockFailure(t *testing.T) {
 	db, state := openSessionTestDB(t, errors.New("lock failed"))
-	runner := NewRunner(config.Config{LockTimeout: time.Second}, logger.New(logger.Options{}))
-	runner.db = sessionTestOpener{db: db}
+	runner := NewRunnerWithDBOpener(config.Config{LockTimeout: time.Second}, logger.New(logger.Options{}), sessionTestOpener{db: db})
 
 	session, err := runner.startProtectedSession(context.Background())
 	if err == nil {
@@ -132,8 +131,7 @@ func TestStartProtectedSessionClosesConnectionOnLockFailure(t *testing.T) {
 }
 
 func TestStartProtectedSessionReturnsFallbackSessionOnOpenFailure(t *testing.T) {
-	runner := NewRunner(config.Config{}, logger.New(logger.Options{}))
-	runner.db = sessionTestOpener{err: errors.New("open failed")}
+	runner := NewRunnerWithDBOpener(config.Config{}, logger.New(logger.Options{}), sessionTestOpener{err: errors.New("open failed")})
 
 	session, err := runner.startProtectedSession(context.Background())
 	if err == nil {

@@ -154,13 +154,36 @@ func TestWriteFilePairAtomicKeepsPublishedFirstFileOnSecondRenameFailure(t *test
 	if readErr != nil {
 		t.Fatalf("expected first file to remain published, got %v", readErr)
 	}
-	if string(content) != "{}\n" {
-		t.Fatalf("expected renamed first file content, got %q", string(content))
+	if string(content) != "old\n" {
+		t.Fatalf("expected original first file content, got %q", string(content))
 	}
 	if matches, globErr := filepath.Glob(filepath.Join(dir, "*.tmp-*")); globErr != nil {
 		t.Fatal(globErr)
 	} else if len(matches) != 0 {
 		t.Fatalf("unexpected temp files after failed pair write: %#v", matches)
+	}
+}
+
+func TestWriteFilePairAtomicLeavesOldJSONIfTextWriteFails(t *testing.T) {
+	dir := t.TempDir()
+	jsonPath := filepath.Join(dir, "pair.json")
+	textPath := filepath.Join(dir, "pair.txt")
+	if err := os.WriteFile(jsonPath, []byte("old-json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(textPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := writeFilePairAtomic(jsonPath, []byte("new-json\n"), textPath, []byte("new-text\n"))
+	if err == nil {
+		t.Fatal("expected pair write error")
+	}
+	content, readErr := os.ReadFile(jsonPath)
+	if readErr != nil {
+		t.Fatalf("expected previous json file, got %v", readErr)
+	}
+	if string(content) != "old-json\n" {
+		t.Fatalf("expected old json content, got %q", string(content))
 	}
 }
 

@@ -1,3 +1,7 @@
 package migrator
 
-const toolName = "rmig"
+const (
+	toolName            = "rmig"
+	reportResultFailed  = "failed"
+	reportResultSuccess = "success"
+)

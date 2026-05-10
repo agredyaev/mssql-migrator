@@ -18,7 +18,7 @@ import (
 	"reporting-db-migrations/internal/runreport"
 )
 
-type dbOpener interface {
+type DBOpener interface {
 	Open(context.Context, config.Config) (*sql.DB, error)
 }
 
@@ -31,11 +31,18 @@ func (defaultDBOpener) Open(ctx context.Context, cfg config.Config) (*sql.DB, er
 type Runner struct {
 	cfg config.Config
 	log logger.Logger
-	db  dbOpener
+	db  DBOpener
 }
 
 func NewRunner(cfg config.Config, log logger.Logger) Runner {
-	return Runner{cfg: cfg, log: log, db: defaultDBOpener{}}
+	return NewRunnerWithDBOpener(cfg, log, nil)
+}
+
+func NewRunnerWithDBOpener(cfg config.Config, log logger.Logger, opener DBOpener) Runner {
+	if opener == nil {
+		opener = defaultDBOpener{}
+	}
+	return Runner{cfg: cfg, log: log, db: opener}
 }
 
 func (r Runner) Info(ctx context.Context) error {
@@ -114,7 +121,6 @@ func (r Runner) prepareMigrationExecution(ctx context.Context, state *protectedR
 		startRun: startRunOptions{
 			command:  contracts.CommandMigrate,
 			planFile: r.cfg.PlanFile,
-			planHash: planArtifactHash(r.cfg.PlanFile),
 		},
 	})
 	if err != nil {
@@ -189,6 +195,13 @@ func (r Runner) prepareExecutionPlan(ctx context.Context, state *protectedRunSta
 	}
 	if plan.Blocked {
 		return executionPlanContext{}, state.fail(ctx, contracts.ErrChecksumMismatch, fmt.Errorf("%v", plan.BlockReasons))
+	}
+	if options.startRun.planFile != "" && options.startRun.planHash == "" {
+		planHash, err := planArtifactHash(options.startRun.planFile)
+		if err != nil {
+			return executionPlanContext{}, state.fail(ctx, contracts.ErrInvalidInput, err)
+		}
+		options.startRun.planHash = planHash
 	}
 	if err := state.startRun(ctx, options.startRun.command, options.startRun.planFile, options.startRun.planHash, plan.Rollback); err != nil {
 		return executionPlanContext{}, state.fail(ctx, contracts.ErrCriticalState, err)

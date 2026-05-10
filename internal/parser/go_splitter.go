@@ -38,6 +38,12 @@ func SplitGO(content string) ([]Batch, error) {
 		}
 		current = append(current, line)
 	}
+	if state.inStringLiteral {
+		return nil, fmt.Errorf("unterminated SQL string literal")
+	}
+	if state.inBlockComment {
+		return nil, fmt.Errorf("unterminated SQL block comment")
+	}
 	last := strings.TrimSpace(strings.Join(current, "\n"))
 	if last != "" {
 		batches = append(batches, Batch{SQL: last, Repeat: 1})
