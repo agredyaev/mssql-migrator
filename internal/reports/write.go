@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"reporting-db-migrations/internal/contracts"
@@ -168,7 +169,20 @@ func syncPathDir(path string) error {
 		return err
 	}
 	defer dir.Close()
-	return dir.Sync()
+	if err := dir.Sync(); err != nil && isWindowsAccessDenied(err) {
+		return nil
+	}
+	return err
+}
+
+func isWindowsAccessDenied(err error) bool {
+	if err == nil {
+		return false
+	}
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "access is denied")
 }
 
 func redactPlan(plan contracts.MigrationPlan) contracts.MigrationPlan {

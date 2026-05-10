@@ -2,8 +2,10 @@ package reports
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -203,6 +205,18 @@ func TestSyncPathDirSyncsExistingDirectory(t *testing.T) {
 	}
 	if err := syncPathDir(path); err != nil {
 		t.Fatalf("expected directory sync to succeed, got %v", err)
+	}
+}
+
+func TestIsWindowsAccessDeniedOnlyMatchesWindows(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		if !isWindowsAccessDenied(errors.New("Access is denied.")) {
+			t.Fatal("expected windows access denied match")
+		}
+		return
+	}
+	if isWindowsAccessDenied(errors.New("Access is denied.")) {
+		t.Fatal("did not expect access denied match on non-windows")
 	}
 }
 
