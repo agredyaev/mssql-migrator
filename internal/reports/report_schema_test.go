@@ -187,6 +187,25 @@ func TestWriteFilePairAtomicLeavesOldJSONIfTextWriteFails(t *testing.T) {
 	}
 }
 
+func TestWriteTempFileRemovesTempOnSyncFailure(t *testing.T) {
+	missingDir := filepath.Join(t.TempDir(), "missing")
+	path := filepath.Join(missingDir, "report.json")
+	if _, err := writeTempFile(path, []byte("{}\n")); err == nil {
+		t.Fatal("expected temp file error")
+	}
+}
+
+func TestSyncPathDirSyncsExistingDirectory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	if err := os.WriteFile(path, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncPathDir(path); err != nil {
+		t.Fatalf("expected directory sync to succeed, got %v", err)
+	}
+}
+
 func TestFormatPlanTextExplainsObjectDecisions(t *testing.T) {
 	text := formatPlanText(contracts.MigrationPlan{
 		SchemaVersion: "v8",

@@ -108,7 +108,7 @@ func writeFileAtomic(path string, content []byte) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	return nil
+	return syncPathDir(path)
 }
 
 func writeFilePairAtomic(firstPath string, firstContent []byte, secondPath string, secondContent []byte) error {
@@ -128,11 +128,15 @@ func writeFilePairAtomic(firstPath string, firstContent []byte, secondPath strin
 		_ = os.Remove(firstTemp)
 		return err
 	}
+	if err := syncPathDir(secondPath); err != nil {
+		_ = os.Remove(firstTemp)
+		return err
+	}
 	if err := os.Rename(firstTemp, firstPath); err != nil {
 		_ = os.Remove(firstTemp)
 		return fmt.Errorf("write primary report commit marker: %w", err)
 	}
-	return nil
+	return syncPathDir(firstPath)
 }
 
 func writeTempFile(path string, content []byte) (string, error) {
@@ -146,11 +150,25 @@ func writeTempFile(path string, content []byte) (string, error) {
 		_ = os.Remove(tmp)
 		return "", err
 	}
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmp)
+		return "", err
+	}
 	if err := tmpFile.Close(); err != nil {
 		_ = os.Remove(tmp)
 		return "", err
 	}
 	return tmp, nil
+}
+
+func syncPathDir(path string) error {
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
 
 func redactPlan(plan contracts.MigrationPlan) contracts.MigrationPlan {
