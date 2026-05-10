@@ -30,24 +30,7 @@ func (r Runner) Validate(ctx context.Context) error {
 }
 
 func (r Runner) writeValidationFailureReport(cause error, base error) error {
-	vr := contracts.ValidationReport{
-		Tool:           toolName,
-		Version:        r.cfg.ToolVersion,
-		ToolCommit:     r.cfg.ToolCommit,
-		Environment:    r.cfg.Env,
-		Database:       r.cfg.Database,
-		GitCommit:      r.cfg.GitCommit,
-		GitBranch:      r.cfg.GitBranch,
-		Command:        contracts.CommandValidate,
-		SQLRoot:        r.cfg.SQLRoot,
-		Base:           r.cfg.SQLBase,
-		Scope:          validationScope(true),
-		IncludesChecks: true,
-		PipelineRunID:  r.cfg.PipelineRunID,
-		PipelineURL:    logger.Redact(r.cfg.PipelineURL),
-		Actor:          r.cfg.Actor,
-		StartedAt:      time.Now().UTC(),
-	}
+	vr := newValidationFailureReport(r.cfg, true)
 	return runreport.WriteValidationFailure(r.cfg, vr, runreport.ValidationFailurePhase, base, cause)
 }
 
@@ -76,6 +59,20 @@ type validationRunState struct {
 }
 
 func newValidationReport(cfg config.Config, layout parser.Layout, includeChecks bool) contracts.ValidationReport {
+	report := newValidationReportBase(cfg, includeChecks)
+	report.LayoutHash = parser.HashLayout(layout, includeChecks)
+	report.StartedAt = time.Now().UTC()
+	report.Result = reportResultSuccess
+	return report
+}
+
+func newValidationFailureReport(cfg config.Config, includeChecks bool) contracts.ValidationReport {
+	report := newValidationReportBase(cfg, includeChecks)
+	report.StartedAt = time.Now().UTC()
+	return report
+}
+
+func newValidationReportBase(cfg config.Config, includeChecks bool) contracts.ValidationReport {
 	return contracts.ValidationReport{
 		Tool:           toolName,
 		Version:        cfg.ToolVersion,
@@ -85,7 +82,6 @@ func newValidationReport(cfg config.Config, layout parser.Layout, includeChecks 
 		GitCommit:      cfg.GitCommit,
 		GitBranch:      cfg.GitBranch,
 		Command:        validationCommand(includeChecks),
-		LayoutHash:     parser.HashLayout(layout, includeChecks),
 		SQLRoot:        cfg.SQLRoot,
 		Base:           cfg.SQLBase,
 		Scope:          validationScope(includeChecks),
@@ -93,20 +89,18 @@ func newValidationReport(cfg config.Config, layout parser.Layout, includeChecks 
 		PipelineRunID:  cfg.PipelineRunID,
 		PipelineURL:    logger.Redact(cfg.PipelineURL),
 		Actor:          cfg.Actor,
-		StartedAt:      time.Now().UTC(),
-		Result:         "success",
 	}
 }
 
 func (r Runner) loadValidationInputs(ctx context.Context, session *runSession, vr *contracts.ValidationReport) (validate.CatalogState, map[string]string, error) {
 	catalog, err := validate.ReadCatalogState(ctx, session.conn)
 	if err != nil {
-		*vr = runreport.FinalizeValidationFailureFromReport(*vr, runreport.ValidationFailurePhase, contracts.ErrCriticalState, err)
+		finalizeValidationFailure(vr, contracts.ErrCriticalState, err)
 		return validate.CatalogState{}, nil, err
 	}
 	successfulByKey, err := session.LoadSuccessfulChecksums(ctx)
 	if err != nil {
-		*vr = runreport.FinalizeValidationFailureFromReport(*vr, runreport.ValidationFailurePhase, contracts.ErrCriticalState, err)
+		finalizeValidationFailure(vr, contracts.ErrCriticalState, err)
 		return validate.CatalogState{}, nil, err
 	}
 	return catalog, successfulByKey, nil
@@ -119,7 +113,7 @@ func (r Runner) ensureValidationRunState(ctx context.Context, session *runSessio
 	}
 	itemIDs, err := runState.recorder.loadObjectItemIDs(ctx)
 	if err != nil {
-		*vr = runreport.FinalizeValidationFailureFromReport(*vr, runreport.ValidationFailurePhase, contracts.ErrCriticalState, err)
+		finalizeValidationFailure(vr, contracts.ErrCriticalState, err)
 		return validationRunState{}, err
 	}
 	runState.itemIDs = itemIDs
@@ -129,13 +123,12 @@ func (r Runner) ensureValidationRunState(ctx context.Context, session *runSessio
 func (r Runner) createValidationRunState(ctx context.Context, session *runSession, layout parser.Layout, catalog validate.CatalogState, successfulByKey map[string]string, vr *contracts.ValidationReport) (validationRunState, error) {
 	runID, recorder, err := session.StartRun(ctx, contracts.CommandValidate, "", "", rollbackScope(r.cfg.TransactionMode))
 	if err != nil {
-		*vr = runreport.FinalizeValidationFailureFromReport(*vr, runreport.ValidationFailurePhase, contracts.ErrCriticalState, err)
+		finalizeValidationFailure(vr, contracts.ErrCriticalState, err)
 		return validationRunState{}, err
 	}
 	itemIDs, err := recorder.scope.Validation(ctx, layout, catalog, successfulByKey)
 	if err != nil {
-		session.RecordRunFailure(ctx, recorder, contracts.ErrCriticalState, err)
-		*vr = runreport.FinalizeValidationFailureFromReport(*vr, runreport.ValidationFailurePhase, contracts.ErrCriticalState, err)
+		validationRunState{runID: runID, createdRun: true, recorder: recorder}.fail(ctx, session, vr, contracts.ErrCriticalState, err)
 		return validationRunState{}, err
 	}
 	return validationRunState{runID: runID, createdRun: true, recorder: recorder, itemIDs: itemIDs}, nil
@@ -146,21 +139,15 @@ func (r Runner) executeValidationScope(ctx context.Context, session *runSession,
 	vr.Validation.ModulesRefreshed = modules.ModulesRefreshed
 	if err != nil {
 		runState.recorder.validation.recordFailure(ctx, layout.Objects, runState.itemIDs, err, includeChecks, r.log)
-		if runState.createdRun {
-			session.RecordRunFailure(ctx, runState.recorder, contracts.ErrValidation, err)
-		}
-		return runreport.FinalizeValidationFailureFromReport(vr, runreport.ValidationFailurePhase, contracts.ErrValidation, err), err
+		return vr, runState.fail(ctx, session, &vr, contracts.ErrValidation, err)
 	}
 	if err := runState.recorder.validation.markSuccesses(ctx, layout.Objects); err != nil {
-		if runState.createdRun {
-			session.RecordRunFailure(ctx, runState.recorder, contracts.ErrCriticalState, err)
-		}
-		return runreport.FinalizeValidationFailureFromReport(vr, runreport.ValidationFailurePhase, contracts.ErrCriticalState, err), err
+		return vr, runState.fail(ctx, session, &vr, contracts.ErrCriticalState, err)
 	}
 	if err := r.runValidationChecks(ctx, session, layout, includeChecks, &vr, runState); err != nil {
 		return vr, err
 	}
-	if err := completeValidationRun(ctx, session, runState, &vr); err != nil {
+	if err := runState.finish(ctx, session, &vr); err != nil {
 		return vr, err
 	}
 	return vr, nil
@@ -175,25 +162,45 @@ func (r Runner) runValidationChecks(ctx context.Context, session *runSession, la
 	vr.Validation.ChecksFailed = checks.ChecksFailed
 	if err != nil {
 		runState.recorder.validation.recordFailure(ctx, nil, nil, err, includeChecks, r.log)
-		if runState.createdRun {
-			session.RecordRunFailure(ctx, runState.recorder, contracts.ErrValidation, err)
-		}
-		*vr = runreport.FinalizeValidationFailureFromReport(*vr, runreport.ValidationFailurePhase, contracts.ErrValidation, err)
+		return runState.fail(ctx, session, vr, contracts.ErrValidation, err)
+	}
+	return nil
+}
+
+func (s validationRunState) finish(ctx context.Context, session *runSession, vr *contracts.ValidationReport) error {
+	vr.FinishedAt = time.Now().UTC()
+	if !s.createdRun {
+		return nil
+	}
+	if err := session.FinishRun(ctx, s.recorder); err != nil {
+		finalizeValidationFailure(vr, contracts.ErrCriticalState, err)
 		return err
 	}
 	return nil
 }
 
-func completeValidationRun(ctx context.Context, session *runSession, runState validationRunState, vr *contracts.ValidationReport) error {
-	vr.FinishedAt = time.Now().UTC()
-	if !runState.createdRun {
-		return nil
+func (s validationRunState) recordRunFailure(ctx context.Context, session *runSession, base error, cause error) {
+	if !s.createdRun {
+		return
 	}
-	if err := session.FinishRun(ctx, runState.recorder); err != nil {
-		*vr = runreport.FinalizeValidationFailureFromReport(*vr, runreport.ValidationFailurePhase, contracts.ErrCriticalState, err)
-		return err
+	session.RecordRunFailure(ctx, s.recorder, base, cause)
+}
+
+func (s validationRunState) fail(ctx context.Context, session *runSession, vr *contracts.ValidationReport, base error, cause error) error {
+	s.recordRunFailure(ctx, session, base, cause)
+	finalizeValidationFailure(vr, base, cause)
+	return cause
+}
+
+func validationFailureReport(vr contracts.ValidationReport, base error, cause error) contracts.ValidationReport {
+	return runreport.FinalizeValidationFailureFromReport(vr, runreport.ValidationFailurePhase, base, cause)
+}
+
+func finalizeValidationFailure(vr *contracts.ValidationReport, base error, cause error) {
+	if vr == nil {
+		return
 	}
-	return nil
+	*vr = validationFailureReport(*vr, base, cause)
 }
 
 func validationScope(includeChecks bool) string {
