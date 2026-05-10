@@ -19,7 +19,9 @@ func Open(ctx context.Context, cfg config.Config) (*sql.DB, error) {
 		return nil, err
 	}
 	if err := database.PingContext(ctx); err != nil {
-		database.Close()
+		if closeErr := database.Close(); closeErr != nil {
+			return nil, fmt.Errorf("ping database: %w; close failed: %v", err, closeErr)
+		}
 		return nil, err
 	}
 	return database, nil
