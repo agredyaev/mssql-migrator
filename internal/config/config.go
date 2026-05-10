@@ -18,6 +18,7 @@ type Input struct {
 	RepairTarget, UpdatePolicy, TransactionMode                                                               string
 	JSONLogs, SkipValidate, Confirm, PlanJSON                                                                 bool
 	commandTimeoutFromFlag, scriptTimeoutFromFlag, lockTimeoutFromFlag                                        bool
+	jsonLogsFromFlag, skipValidateFromFlag, confirmFromFlag, planJSONFromFlag                                 bool
 }
 
 type Config struct {
@@ -74,22 +75,22 @@ func Getenv(key, fallback string) string {
 	return fallback
 }
 
-func GetenvBool(key string, fallback bool) bool {
+func GetenvBool(key string, fallback bool) (bool, error) {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
-		return fallback
+		return fallback, nil
 	}
 	parsed, err := strconv.ParseBool(value)
 	if err == nil {
-		return parsed
+		return parsed, nil
 	}
 	switch strings.ToLower(value) {
-	case "yes", "y", "1":
-		return true
-	case "no", "n", "0":
-		return false
+	case "yes", "y":
+		return true, nil
+	case "no", "n":
+		return false, nil
 	default:
-		return fallback
+		return false, fmt.Errorf("invalid %s: %q (allowed: true, false, 1, 0, yes, no, y, n)", key, value)
 	}
 }
 
@@ -106,6 +107,22 @@ func Load(input Input) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	jsonLogs, err := loadBoolInput("RM_JSON_LOGS", input.JSONLogs, false, input.jsonLogsFromFlag)
+	if err != nil {
+		return Config{}, wrapConfigError(err)
+	}
+	planJSON, err := loadBoolInput("RM_PLAN_JSON", input.PlanJSON, false, input.planJSONFromFlag)
+	if err != nil {
+		return Config{}, wrapConfigError(err)
+	}
+	confirm, err := loadBoolInput("RM_CONFIRM", input.Confirm, false, input.confirmFromFlag)
+	if err != nil {
+		return Config{}, wrapConfigError(err)
+	}
+	skipValidate, err := loadBoolInput("RM_SKIP_VALIDATE", input.SkipValidate, false, input.skipValidateFromFlag)
+	if err != nil {
+		return Config{}, wrapConfigError(err)
+	}
 
 	cfg := Config{
 		Env:             normalizeEnv(input.Env),
@@ -113,10 +130,10 @@ func Load(input Input) (Config, error) {
 		SQLBase:         strings.TrimSpace(input.SQLBase),
 		ReportDir:       def(input.ReportDir, "./reports"),
 		LogLevel:        def(input.LogLevel, "info"),
-		JSONLogs:        input.JSONLogs,
-		SkipValidate:    input.SkipValidate,
-		Confirm:         input.Confirm,
-		PlanJSON:        input.PlanJSON,
+		JSONLogs:        jsonLogs,
+		SkipValidate:    skipValidate,
+		Confirm:         confirm,
+		PlanJSON:        planJSON,
 		CommandTimeout:  commandTimeout,
 		ScriptTimeout:   scriptTimeout,
 		LockTimeout:     lockTimeout,
@@ -126,7 +143,9 @@ func Load(input Input) (Config, error) {
 		UpdatePolicy:    normalizeUpdatePolicy(def(input.UpdatePolicy, UpdatePolicyNone)),
 		TransactionMode: normalizeTransactionMode(def(input.TransactionMode, TransactionModeScript)),
 	}
-	cfg.loadEnvironment()
+	if err := cfg.loadEnvironment(); err != nil {
+		return Config{}, err
+	}
 	cfg.EffectiveBasePath = joinEffectiveBasePath(cfg.SQLRoot, cfg.SQLBase)
 	return cfg, cfg.ValidateCommon()
 }
@@ -302,20 +321,36 @@ func (cfg Config) SelectedBasePath() string {
 	return joinEffectiveBasePath(cfg.SQLRoot, cfg.SQLBase)
 }
 
-func (cfg *Config) loadEnvironment() {
+func (cfg *Config) loadEnvironment() error {
 	cfg.Server = strings.TrimSpace(os.Getenv("RM_DB_SERVER"))
 	cfg.Port = def(os.Getenv("RM_DB_PORT"), "1433")
 	cfg.Database = strings.TrimSpace(os.Getenv("RM_DB_DATABASE"))
 	cfg.DBAuth = normalizeDBAuth(os.Getenv("RM_DB_AUTH"))
 	cfg.User = strings.TrimSpace(os.Getenv("RM_DB_USER"))
 	cfg.Password = os.Getenv("RM_DB_PASSWORD")
-	cfg.Encrypt = GetenvBool("RM_DB_ENCRYPT", true)
-	cfg.TrustServerCertificate = GetenvBool("RM_DB_TRUST_SERVER_CERTIFICATE", false)
+	encrypt, err := GetenvBool("RM_DB_ENCRYPT", true)
+	if err != nil {
+		return wrapConfigError(err)
+	}
+	trustServerCertificate, err := GetenvBool("RM_DB_TRUST_SERVER_CERTIFICATE", false)
+	if err != nil {
+		return wrapConfigError(err)
+	}
+	cfg.Encrypt = encrypt
+	cfg.TrustServerCertificate = trustServerCertificate
 	cfg.GitCommit = os.Getenv("RM_GIT_COMMIT")
 	cfg.GitBranch = os.Getenv("RM_GIT_BRANCH")
 	cfg.PipelineRunID = os.Getenv("RM_PIPELINE_RUN_ID")
 	cfg.PipelineURL = os.Getenv("RM_PIPELINE_URL")
 	cfg.Actor = os.Getenv("RM_ACTOR")
+	return nil
+}
+
+func loadBoolInput(envKey string, value bool, fallback bool, fromFlag bool) (bool, error) {
+	if fromFlag {
+		return value, nil
+	}
+	return GetenvBool(envKey, fallback)
 }
 
 func parseDuration(name, value string) (time.Duration, error) {

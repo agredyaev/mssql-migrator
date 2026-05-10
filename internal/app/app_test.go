@@ -190,6 +190,24 @@ func TestRunReturnsConfigErrorForInvalidDurationEnvironment(t *testing.T) {
 	}
 }
 
+func TestRunReturnsConfigErrorForInvalidBooleanEnvironment(t *testing.T) {
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+	t.Setenv("RM_DB_ENCRYPT", "maybe")
+	stdout := bytes.Buffer{}
+	stderr := bytes.Buffer{}
+	runtime := Runtime{BuildInfo: BuildInfo{Version: "1.0.0", Commit: "abc"}, Stdout: &stdout, Stderr: &stderr}
+	code := runtime.Run([]string{"rmig", "info", "--env", "prod"})
+	if code != contracts.ExitConfigError {
+		t.Fatalf("expected config error exit, got %d stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "class=configuration error") || !strings.Contains(stderr.String(), "RM_DB_ENCRYPT") {
+		t.Fatalf("expected boolean config error envelope, got %q", stderr.String())
+	}
+}
+
 func TestRunReturnsInvalidInputForInvalidDurationFlag(t *testing.T) {
 	t.Setenv("RM_DB_SERVER", "server")
 	t.Setenv("RM_DB_DATABASE", "db")

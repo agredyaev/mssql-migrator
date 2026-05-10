@@ -111,6 +111,36 @@ func TestLoadClassifiesInvalidTimeoutEnvironmentAsConfigError(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsInvalidEncryptEnvironmentAsConfigError(t *testing.T) {
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+	t.Setenv("RM_DB_ENCRYPT", "maybe")
+
+	_, err := Load(Input{Env: "prod"})
+	if err == nil {
+		t.Fatal("expected encrypt error")
+	}
+	if !errors.Is(err, contracts.ErrConfig) {
+		t.Fatalf("expected config sentinel, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "RM_DB_ENCRYPT") {
+		t.Fatalf("expected env key in error, got %v", err)
+	}
+}
+
+func TestGetenvBoolRejectsInvalidValue(t *testing.T) {
+	t.Setenv("RM_DB_ENCRYPT", "maybe")
+	_, err := GetenvBool("RM_DB_ENCRYPT", true)
+	if err == nil {
+		t.Fatal("expected bool parse error")
+	}
+	if !strings.Contains(err.Error(), "RM_DB_ENCRYPT") {
+		t.Fatalf("expected key in error, got %v", err)
+	}
+}
+
 func TestValidateForCommandDoesNotRequireManagedSchemasForValidate(t *testing.T) {
 	root := t.TempDir()
 	base := "dwh"

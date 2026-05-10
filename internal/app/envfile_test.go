@@ -166,6 +166,32 @@ func TestParseCommandConfigSupportsEnvFileFromEnvironment(t *testing.T) {
 	}
 }
 
+func TestParseCommandConfigRejectsInvalidBoolInEnvFile(t *testing.T) {
+	path := writeEnvFile(t, "config.env", "RM_DB_SERVER=file-server\nRM_DB_DATABASE=file-db\nRM_DB_USER=file-user\nRM_DB_PASSWORD=file-password\nRM_DB_ENCRYPT=maybe\n")
+	_, err := parseCommandConfig("info", []string{"--env", "prod", "--env-file", path})
+	if err == nil {
+		t.Fatal("expected config error")
+	}
+	if !strings.Contains(err.Error(), "RM_DB_ENCRYPT") {
+		t.Fatalf("expected bool env key in error, got %v", err)
+	}
+}
+
+func TestParseCommandConfigFlagOverridesInvalidBoolEnvironment(t *testing.T) {
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+	t.Setenv("RM_JSON_LOGS", "maybe")
+	cfg, err := parseCommandConfig("info", []string{"--env", "prod", "--json-logs=false"})
+	if err != nil {
+		t.Fatalf("expected flag to override invalid env bool, got %v", err)
+	}
+	if cfg.JSONLogs {
+		t.Fatalf("expected json logs false, got %#v", cfg)
+	}
+}
+
 func writeEnvFile(t *testing.T, name string, content string) string {
 	t.Helper()
 	dir := t.TempDir()

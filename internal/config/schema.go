@@ -38,6 +38,14 @@ func BindFlags(flags *flag.FlagSet, input *Input) {
 func MarkExplicitFlags(flags *flag.FlagSet, input *Input) {
 	flags.Visit(func(f *flag.Flag) {
 		switch f.Name {
+		case "json-logs":
+			input.jsonLogsFromFlag = true
+		case "json":
+			input.planJSONFromFlag = true
+		case "confirm":
+			input.confirmFromFlag = true
+		case "skip-validate":
+			input.skipValidateFromFlag = true
 		case "timeout":
 			input.commandTimeoutFromFlag = true
 		case "script-timeout":
@@ -93,7 +101,7 @@ func boolField(flagName string, envName string, fallback bool, usage string, tar
 		Env:   envName,
 		Usage: usage,
 		Bind: func(flags *flag.FlagSet, input *Input) {
-			flags.BoolVar(target(input), flagName, GetenvBool(envName, fallback), usage)
+			flags.BoolVar(target(input), flagName, fallback, usage)
 		},
 	}
 }

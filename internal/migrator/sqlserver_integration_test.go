@@ -345,15 +345,23 @@ func openSQLServerIntegrationConn(t *testing.T) (*sql.Conn, config.Config) {
 		t.Skip("set RMIG_RUN_SQLSERVER_INTEGRATION=1 to run live SQL Server integration tests")
 	}
 	cfg := config.Config{
-		Server:                 strings.TrimSpace(os.Getenv("RM_DB_SERVER")),
-		Port:                   strings.TrimSpace(os.Getenv("RM_DB_PORT")),
-		Database:               strings.TrimSpace(os.Getenv("RM_DB_DATABASE")),
-		DBAuth:                 strings.TrimSpace(os.Getenv("RM_DB_AUTH")),
-		User:                   os.Getenv("RM_DB_USER"),
-		Password:               os.Getenv("RM_DB_PASSWORD"),
-		Encrypt:                config.GetenvBool("RM_DB_ENCRYPT", true),
-		TrustServerCertificate: config.GetenvBool("RM_DB_TRUST_SERVER_CERTIFICATE", false),
+		Server:   strings.TrimSpace(os.Getenv("RM_DB_SERVER")),
+		Port:     strings.TrimSpace(os.Getenv("RM_DB_PORT")),
+		Database: strings.TrimSpace(os.Getenv("RM_DB_DATABASE")),
+		DBAuth:   strings.TrimSpace(os.Getenv("RM_DB_AUTH")),
+		User:     os.Getenv("RM_DB_USER"),
+		Password: os.Getenv("RM_DB_PASSWORD"),
 	}
+	encrypt, err := config.GetenvBool("RM_DB_ENCRYPT", true)
+	if err != nil {
+		t.Fatalf("parse RM_DB_ENCRYPT: %v", err)
+	}
+	trustServerCertificate, err := config.GetenvBool("RM_DB_TRUST_SERVER_CERTIFICATE", false)
+	if err != nil {
+		t.Fatalf("parse RM_DB_TRUST_SERVER_CERTIFICATE: %v", err)
+	}
+	cfg.Encrypt = encrypt
+	cfg.TrustServerCertificate = trustServerCertificate
 	if cfg.Port == "" {
 		cfg.Port = "1433"
 	}
