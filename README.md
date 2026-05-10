@@ -31,7 +31,7 @@ It calls `internal/app.Run(os.Args, buildInfo)` and passes `internal/app.BuildIn
 
 The expected flow is branch work on `main`, a PR to `main`, then a production pipeline that runs `rmig` against SQL Server.
 Use `--env pred` for pre-production validation runs and `--env prod` for production runs.
-The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes reports to `./reports`, and persists run state in `[__migrator].migration_runs`, `[__migrator].tracked_schemas`, `[__migrator].tracked_objects`, and `[__migrator].schema_migrations`.
+The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes reports to `./reports`, and persists run state in `[__migrator].schema_version`, `[__migrator].runs`, `[__migrator].items`, and the append-only `[__migrator].attempts` log.
 
 ## Interfaces And Boundaries
 
@@ -68,7 +68,8 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 - `migrate` executes approved create paths and safe existing-module update paths after approved-plan verification, treats `adopt_existing` as a no-DDL adoption path, records attempts into `[__migrator]`, and limits post-migrate validation to the verified managed object scope.
 - `baseline` uses the same repo-driven layout as `plan` and `migrate`. It creates missing repo-managed schemas and objects, adopts already existing objects without DDL, and fails closed on checksum drift.
 - `baseline` preflights metadata DDL, schema creation permission, object DDL permission, and missing parent objects before create work.
-- `repair-checksum` targets one repo object selected by path or normalized key, but only when the current plan shows tracked checksum drift for that object. It writes an append-only `repair_checksum` attempt row.
+- `repair-checksum` targets one repo object selected by path or normalized key, but only when the current plan shows tracked checksum drift for that object. It appends a new successful metadata attempt row in `[__migrator].attempts` instead of editing old checksum history in place.
+- The text form of `migration-plan.txt` explains why each object is planned for create, adopt, skip, update, or block so operators do not need to infer planner state from action codes alone.
 - Report files are written as consistent JSON and text pairs through `internal/reports/write.go` by staging `*.tmp` files and publishing both final artifacts together.
 - Metadata writes use a short bounded context in `internal/migrator/metadata_context.go` so post-SQL metadata updates do not hang until the full command timeout.
 - Catalog reads are shared through `internal/catalog/catalog.go` so plan and validation classify the live SQL Server object set the same way.

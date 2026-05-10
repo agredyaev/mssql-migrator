@@ -101,7 +101,7 @@ func TestBuildBlocksChangedModuleWithoutCreateOrAlter(t *testing.T) {
 	if !plan.Blocked {
 		t.Fatal("expected unsafe module update to block plan")
 	}
-	if len(plan.BlockReasons) == 0 || !strings.Contains(plan.BlockReasons[0], "CREATE OR ALTER") {
+	if len(plan.BlockReasons) == 0 || !strings.Contains(plan.BlockReasons[0], "must start with CREATE OR ALTER") {
 		t.Fatalf("expected CREATE OR ALTER block reason, got %#v", plan.BlockReasons)
 	}
 	for _, object := range plan.Objects {

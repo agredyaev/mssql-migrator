@@ -156,3 +156,26 @@ func TestWriteFilePairAtomicRemovesPublishedFirstFileOnSecondRenameFailure(t *te
 		t.Fatalf("unexpected temp files after failed pair write: %#v", matches)
 	}
 }
+
+func TestFormatPlanTextExplainsObjectDecisions(t *testing.T) {
+	text := formatPlanText(contracts.MigrationPlan{
+		SchemaVersion: "v8",
+		Command:       "plan",
+		Target:        contracts.PlanTarget{Environment: "pred", Database: "db"},
+		Objects: []contracts.PlannedObject{
+			{ObjectPath: "reporting/views/monthly.sql", Kind: "views", PlannedAction: contracts.ActionAdoptExisting},
+			{ObjectPath: "reporting/views/daily.sql", Kind: "views", PlannedAction: contracts.ActionSkipUnchanged},
+			{ObjectPath: "reporting/views/blocked.sql", Kind: "views", PlannedAction: contracts.ActionReprocessChangedBlocked},
+		},
+	})
+	for _, expected := range []string{
+		"Plan object decisions:",
+		"adopt existing database object without DDL",
+		"latest successful metadata checksum already matches the current repo SQL",
+		"blocked because the object is already tracked",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected plan text to contain %q, got %s", expected, text)
+		}
+	}
+}

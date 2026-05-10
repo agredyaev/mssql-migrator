@@ -17,6 +17,7 @@ import (
 	"reporting-db-migrations/internal/logger"
 	"reporting-db-migrations/internal/metadata"
 
+	"github.com/google/uuid"
 	_ "github.com/microsoft/go-mssqldb"
 )
 
@@ -38,7 +39,18 @@ func TestSQLServerPlanBlocksChangedModuleWithoutCreateOrAlter(t *testing.T) {
 	if err := metadata.Bootstrap(ctx, conn); err != nil {
 		t.Fatalf("bootstrap metadata: %v", err)
 	}
-	if err := metadata.InsertAttempt(ctx, conn, metadata.AttemptRecord{
+	if err := seedSuccessfulMetadataObject(ctx, conn, cfg.Database, metadata.ItemRecord{
+		ItemType:             metadata.ItemTypeObject,
+		ObjectPath:           schemaName + "/views/monthly.sql",
+		SchemaName:           schemaName,
+		NormalizedSchemaName: strings.ToLower(schemaName),
+		Kind:                 "views",
+		ObjectName:           "monthly",
+		NormalizedObjectName: "monthly",
+		NormalizedKey:        schemaName + "/views/monthly",
+		Checksum:             "previous-checksum",
+		Action:               contracts.ActionCreateObject,
+	}, metadata.AttemptRecord{
 		ScriptName:       schemaName + "/views/monthly.sql",
 		ScriptType:       contracts.ScriptTypeObject,
 		Checksum:         "previous-checksum",
@@ -220,4 +232,28 @@ func resetIntegrationSchema(t *testing.T, ctx context.Context, conn *sql.Conn, s
 
 func integrationSchemaName(prefix string) string {
 	return "itest_" + prefix + "_" + strconv.FormatInt(time.Now().UnixNano(), 36)
+}
+
+func seedSuccessfulMetadataObject(ctx context.Context, conn *sql.Conn, targetDatabase string, item metadata.ItemRecord, attempt metadata.AttemptRecord) error {
+	runID := uuid.NewString()
+	if err := metadata.StartRun(ctx, conn, metadata.RunRecord{
+		RunID:             runID,
+		Command:           contracts.CommandMigrate,
+		ToolVersion:       "test",
+		TargetEnvironment: "pred",
+		TargetDatabase:    targetDatabase,
+	}); err != nil {
+		return err
+	}
+	item.RunID = runID
+	itemID, err := metadata.InsertItem(ctx, conn, item)
+	if err != nil {
+		return err
+	}
+	attempt.RunID = runID
+	attempt.ItemID = &itemID
+	if err := metadata.InsertAttempt(ctx, conn, attempt); err != nil {
+		return err
+	}
+	return metadata.FinishRun(ctx, conn, runID, true, "", "")
 }

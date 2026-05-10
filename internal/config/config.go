@@ -12,9 +12,9 @@ import (
 )
 
 type Input struct {
-	Env, SQLRoot, SQLBase, ReportDir, LogLevel, CommandTimeout, ScriptTimeout, LockTimeout, PlanFile string
-	RepairTarget, UpdatePolicy, TransactionMode                                                      string
-	JSONLogs, SkipValidate, Confirm, PlanJSON                                                        bool
+	Env, SQLRoot, SQLBase, ReportDir, LogLevel, CommandTimeout, ScriptTimeout, LockTimeout, EnvFile, PlanFile string
+	RepairTarget, UpdatePolicy, TransactionMode                                                               string
+	JSONLogs, SkipValidate, Confirm, PlanJSON                                                                 bool
 }
 
 type Config struct {
@@ -246,7 +246,15 @@ func (cfg Config) ValidateForCommand(command string) error {
 		}
 	}
 	if spec.RequiresGitCommit {
-		return cfg.ValidateGitCommit()
+		if err := cfg.ValidateGitCommit(); err != nil {
+			return err
+		}
+	}
+	if spec.RequiresPlanFile && strings.TrimSpace(cfg.PlanFile) == "" {
+		return fmt.Errorf("--plan-file is required")
+	}
+	if spec.RequiresConfirm && !cfg.Confirm {
+		return fmt.Errorf("confirm flag required")
 	}
 	return nil
 }

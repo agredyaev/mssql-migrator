@@ -23,7 +23,7 @@ func (r Runner) executePlan(ctx context.Context, conn txConn, layout parser.Layo
 	return r.executePlanTracked(ctx, conn, layout, plan, report, "", nil)
 }
 
-func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout parser.Layout, plan contracts.MigrationPlan, report *contracts.MigrationReport, runID string, trackedObjectIDs map[string]int64) error {
+func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout parser.Layout, plan contracts.MigrationPlan, report *contracts.MigrationReport, runID string, itemIDs map[string]int64) error {
 	recorder := newMetadataRecorder(r.cfg, conn, runID)
 	for _, schema := range plan.Schemas {
 		if schema.Action == contracts.SchemaActionExists && runID != "" {
@@ -63,10 +63,10 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 		byKey[object.NormalizedKey] = object
 	}
 	for _, planned := range plannedObjectsInExecutionOrder(plan.Objects) {
-		trackedObjectID := lookupTrackedObjectID(trackedObjectIDs, planned.NormalizedKey)
+		itemID := lookupItemID(itemIDs, planned.NormalizedKey)
 		if planned.PlannedAction != contracts.ActionCreateObject && planned.PlannedAction != contracts.ActionUpdateExistingModule && planned.PlannedAction != contracts.ActionUpdateExistingSupported {
 			if planned.PlannedAction == contracts.ActionSkipUnchanged || planned.PlannedAction == contracts.ActionAdoptExisting {
-				if err := r.recordPassiveObjectAction(ctx, conn, planned, runID, trackedObjectID); err != nil {
+				if err := r.recordPassiveObjectAction(ctx, conn, planned, runID, itemID); err != nil {
 					report.Result = "failed"
 					report.Failed = &contracts.Failure{Script: planned.ObjectPath, Error: logger.Redact(err.Error())}
 					return contracts.Wrap(contracts.ErrCriticalState, err)
@@ -84,7 +84,7 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 			report.Failed = &contracts.Failure{Script: planned.ObjectPath, Error: "object missing from verified layout"}
 			return fmt.Errorf("%w: object missing from layout for %s", contracts.ErrInvalidInput, planned.NormalizedKey)
 		}
-		if err := r.applyObjectTracked(ctx, conn, object, planned, runID, trackedObjectID, report); err != nil {
+		if err := r.applyObjectTracked(ctx, conn, object, planned, runID, itemID, report); err != nil {
 			return err
 		}
 	}
@@ -95,9 +95,9 @@ func (r Runner) recordAdoptedObject(ctx context.Context, execer metadata.Execer,
 	return r.recordPassiveObjectAction(ctx, execer, planned, "", nil)
 }
 
-func (r Runner) recordPassiveObjectAction(ctx context.Context, execer metadata.Execer, planned contracts.PlannedObject, runID string, trackedObjectID *int64) error {
+func (r Runner) recordPassiveObjectAction(ctx context.Context, execer metadata.Execer, planned contracts.PlannedObject, runID string, itemID *int64) error {
 	recorder := newMetadataRecorder(r.cfg, execer, runID)
-	return recorder.recordObjectSuccess(ctx, passiveMetadataObject(planned, trackedObjectID), true)
+	return recorder.recordObjectSuccess(ctx, passiveMetadataObject(planned, itemID), true)
 }
 
 func (r Runner) applyObject(parent context.Context, conn txConn, object parser.Object, report *contracts.MigrationReport) error {
@@ -117,7 +117,7 @@ func (r Runner) applyObject(parent context.Context, conn txConn, object parser.O
 	return r.applyObjectTracked(parent, conn, object, planned, "", nil, report)
 }
 
-func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object parser.Object, planned contracts.PlannedObject, runID string, trackedObjectID *int64, report *contracts.MigrationReport) error {
+func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object parser.Object, planned contracts.PlannedObject, runID string, itemID *int64, report *contracts.MigrationReport) error {
 	ctx, cancel := context.WithTimeout(parent, r.cfg.ScriptTimeout)
 	defer cancel()
 	startedAt := time.Now()
@@ -126,7 +126,7 @@ func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object p
 	stopProgress()
 	executionMS := int(time.Since(startedAt).Milliseconds())
 	recorder := newMetadataRecorder(r.cfg, conn, runID)
-	recordedObject := executedMetadataObject(object, planned, trackedObjectID, executionMS)
+	recordedObject := executedMetadataObject(object, planned, itemID, executionMS)
 	if executionErr != nil {
 		classifiedErr := classifyObjectExecutionError(object, planned, executionErr)
 		if err := recorder.recordObjectFailure(parent, recordedObject, classifiedErr, true); err != nil {
@@ -216,11 +216,11 @@ func escapeSQLIdentifier(value string) string {
 	return strings.ReplaceAll(value, "]", "]]")
 }
 
-func lookupTrackedObjectID(trackedObjectIDs map[string]int64, normalizedKey string) *int64 {
-	if len(trackedObjectIDs) == 0 {
+func lookupItemID(itemIDs map[string]int64, normalizedKey string) *int64 {
+	if len(itemIDs) == 0 {
 		return nil
 	}
-	id, ok := trackedObjectIDs[normalizedKey]
+	id, ok := itemIDs[normalizedKey]
 	if !ok {
 		return nil
 	}

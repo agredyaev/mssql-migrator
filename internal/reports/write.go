@@ -227,8 +227,16 @@ func formatPlanText(plan contracts.MigrationPlan) string {
 	if len(plan.BlockReasons) > 0 {
 		reasons = strings.Join(plan.BlockReasons, "\n")
 	}
+	objectActions := "-"
+	if len(plan.Objects) > 0 {
+		lines := make([]string, 0, len(plan.Objects))
+		for _, object := range plan.Objects {
+			lines = append(lines, summarizePlannedObject(object))
+		}
+		objectActions = strings.Join(lines, "\n")
+	}
 	return fmt.Sprintf(
-		"Plan for %s/%s\nSchema version: %s\nCommand: %s\nTool version: %s\nTool commit: %s\nGit commit: %s\nBase: %s/%s\nEffective base path: %s\nLayout hash: %s\nComparison mode: %s\nUpdate policy: %s\nTransaction mode: %s\nRollback: %s\nBlocked: %t\nSchemas: %d\nObjects: %d\nChecks: %d\nCreate: %d\nAdopt: %d\nSkip: %d\nChanged: %d\nFailures:\n%s\nBlock reasons:\n%s\n",
+		"Plan for %s/%s\nSchema version: %s\nCommand: %s\nTool version: %s\nTool commit: %s\nGit commit: %s\nBase: %s/%s\nEffective base path: %s\nLayout hash: %s\nComparison mode: %s\nUpdate policy: %s\nTransaction mode: %s\nRollback: %s\nBlocked: %t\nSchemas: %d\nObjects: %d\nChecks: %d\nCreate: %d\nAdopt: %d\nSkip: %d\nChanged: %d\nPlan object decisions:\n%s\nFailures:\n%s\nBlock reasons:\n%s\n",
 		plan.Target.Environment,
 		plan.Target.Database,
 		plan.SchemaVersion,
@@ -252,6 +260,7 @@ func formatPlanText(plan contracts.MigrationPlan) string {
 		plan.Summary.AdoptCount,
 		plan.Summary.SkipCount,
 		plan.Summary.ChangedCount,
+		objectActions,
 		failures,
 		reasons,
 	)
@@ -286,4 +295,27 @@ func formatValidationText(report contracts.ValidationReport, failure string) str
 		report.Validation.ChecksFailed,
 		failure,
 	)
+}
+
+func summarizePlannedObject(object contracts.PlannedObject) string {
+	return fmt.Sprintf("- %s [%s]: %s", object.ObjectPath, object.Kind, describePlannedAction(object))
+}
+
+func describePlannedAction(object contracts.PlannedObject) string {
+	switch object.PlannedAction {
+	case contracts.ActionCreateObject:
+		return "create in database because the object is missing from the live catalog"
+	case contracts.ActionAdoptExisting:
+		return "adopt existing database object without DDL because no successful metadata checksum exists yet"
+	case contracts.ActionSkipUnchanged:
+		return "skip DDL because the latest successful metadata checksum already matches the current repo SQL"
+	case contracts.ActionUpdateExistingModule:
+		return "apply repo SQL to the existing tracked object because checksum drift was detected and module updates are allowed"
+	case contracts.ActionUpdateExistingSupported:
+		return "apply repo SQL to the existing tracked object because checksum drift was detected and supported existing-object updates are allowed"
+	case contracts.ActionReprocessChangedBlocked:
+		return "blocked because the object is already tracked, the repo checksum changed, and this change is not on a safe automatic DDL path"
+	default:
+		return object.PlannedAction
+	}
 }

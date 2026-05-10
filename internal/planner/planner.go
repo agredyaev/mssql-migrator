@@ -322,7 +322,7 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 		planned.PlannedAction = determineObjectAction(object, catalog, updatePolicy)
 		if isUnsafeUpdateAction(planned.PlannedAction) && !parser.SupportsExistingObjectUpdate(object) {
 			planned.PlannedAction = contracts.ActionReprocessChangedBlocked
-			plan.BlockReasons = append(plan.BlockReasons, "existing object update requires CREATE OR ALTER: "+object.Path)
+			plan.BlockReasons = append(plan.BlockReasons, "blocked existing object update: "+object.Path+" must start with CREATE OR ALTER for "+strings.TrimSuffix(strings.ToUpper(object.Kind), "S"))
 		}
 		metadataMatch := inferMetadataMatch(object, catalog)
 		if metadataMatch != nil {
@@ -337,8 +337,8 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 		case contracts.ActionSkipUnchanged:
 			plan.Summary.SkipCount++
 		case contracts.ActionReprocessChangedBlocked:
-			if !containsBlockReason(plan.BlockReasons, "existing object update requires CREATE OR ALTER: "+object.Path) {
-				plan.BlockReasons = append(plan.BlockReasons, "existing object changed: "+object.Path)
+			if !containsBlockReason(plan.BlockReasons, "blocked existing object update: "+object.Path+" must start with CREATE OR ALTER for "+strings.TrimSuffix(strings.ToUpper(object.Kind), "S")) {
+				plan.BlockReasons = append(plan.BlockReasons, "blocked existing object change: "+object.Path+" is already tracked, repo checksum changed, and the current update policy does not allow automatic DDL for this object kind")
 			}
 			plan.Summary.ChangedCount++
 		case contracts.ActionUpdateExistingModule, contracts.ActionUpdateExistingSupported:

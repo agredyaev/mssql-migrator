@@ -10,7 +10,7 @@ This document defines the required live SQL Server checks for the current `rmig`
 
 - Disposable SQL Server database only
 - `plan`, `migrate`, `validate`, `baseline`, and `repair-checksum`
-- Metadata objects `[__migrator].migration_runs`, `[__migrator].tracked_schemas`, `[__migrator].tracked_objects`, `[__migrator].schema_migrations`, and `[__migrator].v_migration_state`
+- Metadata objects `[__migrator].runs`, `[__migrator].items`, and `[__migrator].attempts`
 - Metadata version object `[__migrator].schema_version`
 - Report files in `reports/migration-plan.*`, `reports/migration-report.*`, and `reports/validation-report.*`
 
@@ -34,8 +34,8 @@ See `README.md` for the CLI wrapper contract.
 - Repo-driven `migrate` execution is expected to create missing schemas, apply the approved repo object set, record `adopt_existing` metadata rows, and validate the managed object scope.
 - Repo-driven `baseline` is expected to create missing repo-managed schemas and objects, adopt already existing objects, and fail closed on checksum drift or missing DDL permission.
 - Existing module updates are expected to run only when the repo SQL starts with the matching `CREATE OR ALTER` statement for that object kind.
-- Repo-driven `repair-checksum` is expected to resolve one object by repo path or normalized key only when the current plan shows tracked checksum drift for that object, then append a `repair_checksum` attempt row.
-- This build persists run state in `[__migrator].migration_runs`, `[__migrator].tracked_schemas`, `[__migrator].tracked_objects`, `[__migrator].schema_migrations`, and `[__migrator].v_migration_state`.
+- Repo-driven `repair-checksum` is expected to resolve one object by repo path or normalized key only when the current plan shows tracked checksum drift for that object, then append a `repair_checksum` row in `[__migrator].attempts`.
+- This build persists run state in `[__migrator].runs`, `[__migrator].items`, and `[__migrator].attempts`.
 - This build is expected to keep `[__migrator].schema_version` at the current checked-in metadata schema version.
 
 ## Nominal Flow

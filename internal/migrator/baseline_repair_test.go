@@ -2,6 +2,7 @@ package migrator
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"reporting-db-migrations/internal/config"
@@ -96,14 +97,14 @@ func TestValidateRepairEligibilityAllowsChangedTrackedObject(t *testing.T) {
 
 func TestValidateRepairEligibilityRejectsUnchangedObject(t *testing.T) {
 	err := validateRepairEligibility(parser.Object{Path: "reporting/views/monthly.sql"}, contracts.PlannedObject{PlannedAction: contracts.ActionSkipUnchanged})
-	if err == nil || err.Error() == "" {
+	if err == nil || !strings.Contains(err.Error(), "repair-checksum is not needed") {
 		t.Fatal("expected unchanged object to be rejected")
 	}
 }
 
 func TestValidateRepairEligibilityRejectsAdoptExistingObject(t *testing.T) {
 	err := validateRepairEligibility(parser.Object{Path: "reporting/views/monthly.sql"}, contracts.PlannedObject{PlannedAction: contracts.ActionAdoptExisting})
-	if err == nil || err.Error() == "" {
+	if err == nil || !strings.Contains(err.Error(), "use baseline or migrate to adopt it first") {
 		t.Fatal("expected adopt_existing object to be rejected")
 	}
 }

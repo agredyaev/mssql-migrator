@@ -153,10 +153,16 @@ func extractPathFromMessage(message string) string {
 		prefix string
 		suffix string
 	}{
+		{prefix: "blocked existing object update: ", suffix: " must start with create or alter"},
+		{prefix: "blocked existing object change: ", suffix: " is already tracked"},
 		{prefix: "existing object changed: ", suffix: ""},
 		{prefix: "invalid object state: ", suffix: ""},
+		{prefix: "repair-checksum is not needed for ", suffix: ":"},
+		{prefix: "repair-checksum cannot run for ", suffix: ":"},
 		{prefix: "repair target is missing from the database: ", suffix: ""},
 		{prefix: "repair target has no successful metadata row: ", suffix: ""},
+		{prefix: "repair-checksum target not found in repo layout: ", suffix: ""},
+		{prefix: "repair-checksum target not found in current plan: ", suffix: ""},
 		{prefix: "repair target not found in repo layout: ", suffix: ""},
 		{prefix: "missing parent object for ", suffix: ":"},
 		{prefix: "missing object ddl permission for ", suffix: ":"},

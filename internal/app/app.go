@@ -61,27 +61,28 @@ func (r Runtime) Run(args []string) int {
 		return contracts.ExitOK
 	}
 
-	if _, ok := commands.Lookup(command); ok {
-		return r.dispatch(command, args[2:], stdout, stderr)
+	spec, ok := commands.Lookup(command)
+	if ok {
+		return r.dispatch(spec, args[2:], stdout, stderr)
 	}
-	failure := failures.BuildWithCause(config.Config{}, "config_failed", contracts.ErrInvalidInput, fmt.Errorf("unknown command: %s", command))
-	fmt.Fprintln(stderr, failure.Error)
+	outcome := failures.EvaluateWithCause(config.Config{}, "config_failed", contracts.ErrConfig, fmt.Errorf("unknown command: %s", command))
+	fmt.Fprintln(stderr, outcome.Failure.Error)
 	printUsage(stdout)
-	return contracts.ExitConfigError
+	return outcome.ExitCode
 }
 
-func (r Runtime) dispatch(command string, args []string, stdout io.Writer, stderr io.Writer) int {
-	cfg, err := parseCommandConfig(command, args)
+func (r Runtime) dispatch(spec commands.Spec, args []string, stdout io.Writer, stderr io.Writer) int {
+	cfg, err := parseCommandConfig(spec.Name, args)
 	if err != nil {
-		failure := failures.BuildWithCause(config.Config{}, "config_failed", contracts.ErrInvalidInput, err)
-		fmt.Fprintln(stderr, failure.Error)
-		return contracts.ExitConfigError
+		outcome := failures.EvaluateWithCause(config.Config{}, "config_failed", contracts.ErrConfig, err)
+		fmt.Fprintln(stderr, outcome.Failure.Error)
+		return outcome.ExitCode
 	}
 	cfg.ToolVersion = r.BuildInfo.Version
 	cfg.ToolCommit = r.BuildInfo.Commit
 
 	logWriter := stdout
-	if command == contracts.CommandPlan && cfg.PlanJSON {
+	if spec.Name == contracts.CommandPlan && cfg.PlanJSON {
 		logWriter = stderr
 	}
 	log := logger.New(logger.Options{JSON: cfg.JSONLogs, Level: cfg.LogLevel, Writer: logWriter})
@@ -93,41 +94,27 @@ func (r Runtime) dispatch(command string, args []string, stdout io.Writer, stder
 		handler = migrator.Handler{}
 	}
 
-	spec, ok := commands.Lookup(command)
+	runner, ok := commandRunners[spec.Name]
 	if !ok {
 		return contracts.ExitConfigError
 	}
-
-	switch spec.Name {
-	case commands.Info:
-		return exitCode(cfg, handler.Info(ctx, cfg, log), log, "info_failed")
-	case commands.Plan:
-		plan, err := handler.Plan(ctx, cfg, log)
-		if err != nil {
-			return exitCode(cfg, err, log, "plan_failed")
+	result, err := runner(ctx, handler, cfg, log, stdout)
+	if err != nil {
+		event := spec.FailureEvent
+		var carrier failureEventCarrier
+		if errors.As(err, &carrier) {
+			event = carrier.FailureEvent()
 		}
-		if cfg.PlanJSON {
-			if err := writePlanJSON(stdout, plan); err != nil {
-				return exitCode(cfg, err, log, "plan_output_failed")
-			}
-		}
-		if plan.Blocked {
-			failure := failures.BuildPlanBlocked(cfg, plan)
-			log.Error("plan_failed", failure.Error)
-			return contracts.ExitChecksumMismatch
-		}
-		return contracts.ExitOK
-	case commands.Migrate:
-		return exitCode(cfg, handler.Migrate(ctx, cfg, log), log, "migration_failed")
-	case commands.Validate:
-		return exitCode(cfg, handler.Validate(ctx, cfg, log), log, "validation_failed")
-	case commands.Baseline:
-		return exitCode(cfg, handler.Baseline(ctx, cfg, log), log, "baseline_failed")
-	case commands.RepairChecksum:
-		return exitCode(cfg, handler.RepairChecksum(ctx, cfg, log), log, "repair_checksum_failed")
-	default:
-		return contracts.ExitConfigError
+		outcome := failures.Evaluate(cfg, event, err)
+		log.Error(event, outcome.Failure.Error)
+		return outcome.ExitCode
 	}
+	if result.plan != nil && result.plan.Blocked {
+		outcome := failures.EvaluatePlanBlocked(cfg, *result.plan)
+		log.Error(spec.FailureEvent, outcome.Failure.Error)
+		return outcome.ExitCode
+	}
+	return contracts.ExitOK
 }
 
 func parseCommandConfig(command string, args []string) (config.Config, error) {
@@ -141,25 +128,7 @@ func parseCommandConfig(command string, args []string) (config.Config, error) {
 	flags.SetOutput(io.Discard)
 
 	input := config.Input{}
-	var envFile string
-	flags.StringVar(&input.Env, "env", config.Getenv("RM_ENV", ""), "target environment")
-	flags.StringVar(&input.SQLRoot, "sql-root", config.Getenv("RM_SQL_ROOT", ""), "SQL scripts root directory")
-	flags.StringVar(&input.SQLBase, "sql-base", config.Getenv("RM_SQL_BASE", ""), "SQL base directory under the root")
-	flags.StringVar(&input.ReportDir, "report-dir", config.Getenv("RM_REPORT_DIR", "./reports"), "report output directory")
-	flags.StringVar(&input.LogLevel, "log-level", config.Getenv("RM_LOG_LEVEL", "info"), "log level")
-	flags.BoolVar(&input.JSONLogs, "json-logs", config.GetenvBool("RM_JSON_LOGS", false), "emit JSON logs")
-	flags.BoolVar(&input.PlanJSON, "json", config.GetenvBool("RM_PLAN_JSON", false), "emit plan JSON to stdout")
-	flags.StringVar(&input.CommandTimeout, "timeout", config.Getenv("RM_TIMEOUT", "900s"), "command timeout")
-	flags.StringVar(&input.ScriptTimeout, "script-timeout", config.Getenv("RM_SCRIPT_TIMEOUT", "600s"), "per-script timeout")
-	flags.StringVar(&input.LockTimeout, "lock-timeout", config.Getenv("RM_LOCK_TIMEOUT", "60s"), "SQL app lock timeout")
-	flags.StringVar(&envFile, "env-file", config.Getenv("RM_ENV_FILE", ""), "optional env file with RM_* values")
-	_ = envFile
-	flags.StringVar(&input.PlanFile, "plan-file", config.Getenv("RM_PLAN_FILE", ""), "approved migration plan file")
-	flags.StringVar(&input.RepairTarget, "script", config.Getenv("RM_REPAIR_SCRIPT", ""), "repo object path or normalized key to repair")
-	flags.StringVar(&input.UpdatePolicy, "update-policy", config.Getenv("RM_UPDATE_POLICY", config.UpdatePolicyNone), "existing object update policy")
-	flags.StringVar(&input.TransactionMode, "transaction-mode", config.Getenv("RM_TRANSACTION_MODE", config.TransactionModeScript), "transaction mode")
-	flags.BoolVar(&input.Confirm, "confirm", config.GetenvBool("RM_CONFIRM", false), "confirm destructive command")
-	flags.BoolVar(&input.SkipValidate, "skip-validate", config.GetenvBool("RM_SKIP_VALIDATE", false), "skip validation after migrate")
+	config.BindFlags(flags, &input)
 
 	if err := flags.Parse(args); err != nil {
 		return config.Config{}, err
@@ -168,42 +137,10 @@ func parseCommandConfig(command string, args []string) (config.Config, error) {
 	if err != nil {
 		return config.Config{}, err
 	}
-	if spec, ok := commands.Lookup(command); ok && spec.RequiresPlanFile && cfg.PlanFile == "" {
-		return config.Config{}, fmt.Errorf("--plan-file is required")
-	}
 	if err := cfg.ValidateForCommand(command); err != nil {
 		return config.Config{}, err
 	}
 	return cfg, nil
-}
-
-func exitCode(cfg config.Config, err error, log logger.Logger, event string) int {
-	if err == nil {
-		return contracts.ExitOK
-	}
-	failure := failures.Build(cfg, event, err)
-	log.Error(event, failure.Error)
-
-	switch {
-	case errors.Is(err, contracts.ErrConfig):
-		return contracts.ExitConfigError
-	case errors.Is(err, contracts.ErrConnection):
-		return contracts.ExitConnError
-	case errors.Is(err, contracts.ErrChecksumMismatch):
-		return contracts.ExitChecksumMismatch
-	case errors.Is(err, contracts.ErrSQLExecution):
-		return contracts.ExitSQLExecution
-	case errors.Is(err, contracts.ErrValidation):
-		return contracts.ExitValidation
-	case errors.Is(err, contracts.ErrLockTimeout):
-		return contracts.ExitLockTimeout
-	case errors.Is(err, contracts.ErrInvalidInput):
-		return contracts.ExitInvalidInput
-	case errors.Is(err, contracts.ErrCriticalState):
-		return contracts.ExitCriticalState
-	default:
-		return contracts.ExitGeneralError
-	}
 }
 
 func printUsage(writer io.Writer) {

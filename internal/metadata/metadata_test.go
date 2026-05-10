@@ -21,29 +21,33 @@ func TestBootstrapExecutesAllStatements(t *testing.T) {
 	}
 
 	state := metadataTestStateForConn(t, conn)
-	if got, want := len(state.execs), len(bootstrapStatements())+len(bootstrapUpgradeStatements()); got != want {
+	if got, want := len(state.execs), len(bootstrapStatements()); got != want {
 		t.Fatalf("Bootstrap() executed %d statements, want %d", got, want)
 	}
 	if !strings.Contains(state.execs[0], "CREATE SCHEMA __migrator") {
 		t.Fatalf("first bootstrap statement = %q", state.execs[0])
 	}
-	if !containsExec(state.execs, "CREATE TABLE __migrator.schema_version") {
-		t.Fatalf("expected bootstrap to create schema_version table, got %#v", state.execs)
+	if !containsExec(state.execs, "CREATE TABLE __migrator.runs") {
+		t.Fatalf("expected bootstrap to create runs table, got %#v", state.execs)
 	}
-	if !strings.Contains(state.execs[len(state.execs)-1], "CREATE VIEW __migrator.v_migration_state") {
-		t.Fatalf("last bootstrap statement = %q", state.execs[len(state.execs)-1])
+	if !containsExec(state.execs, "CREATE TABLE __migrator.items") {
+		t.Fatalf("expected bootstrap to create items table, got %#v", state.execs)
+	}
+	if !containsExec(state.execs, "CREATE TABLE __migrator.attempts") {
+		t.Fatalf("expected bootstrap to create attempts table, got %#v", state.execs)
+	}
+	if containsExec(state.execs, "CREATE VIEW __migrator.v_migration_state") {
+		t.Fatalf("expected bootstrap not to create legacy view, got %#v", state.execs)
 	}
 }
 
 func TestBootstrapCurrentMetadataDoesNotRewriteObjects(t *testing.T) {
 	conn := openMetadataTestConn(t, &metadataTestScenario{
 		objectExists: map[string]bool{
-			keyForArgs("__migrator.schema_version", "U"):     true,
-			keyForArgs("__migrator.migration_runs", "U"):     true,
-			keyForArgs("__migrator.tracked_schemas", "U"):    true,
-			keyForArgs("__migrator.tracked_objects", "U"):    true,
-			keyForArgs("__migrator.schema_migrations", "U"):  true,
-			keyForArgs("__migrator.v_migration_state", "V"): true,
+			keyForArgs("__migrator.schema_version", "U"): true,
+			keyForArgs("__migrator.runs", "U"):           true,
+			keyForArgs("__migrator.items", "U"):          true,
+			keyForArgs("__migrator.attempts", "U"):       true,
 		},
 	})
 	defer conn.Close()
@@ -55,6 +59,30 @@ func TestBootstrapCurrentMetadataDoesNotRewriteObjects(t *testing.T) {
 	state := metadataTestStateForConn(t, conn)
 	if got := len(state.execs); got != 0 {
 		t.Fatalf("Bootstrap() executed %d statements for current metadata, want 0", got)
+	}
+}
+
+func TestBootstrapRejectsLegacyMetadataShape(t *testing.T) {
+	conn := openMetadataTestConn(t, &metadataTestScenario{
+		objectExists: map[string]bool{
+			keyForArgs("__migrator.migration_runs", "U"): true,
+		},
+	})
+	defer conn.Close()
+
+	err := Bootstrap(context.Background(), conn)
+	if err == nil {
+		t.Fatal("Bootstrap() error = nil, want incompatible metadata error")
+	}
+	if !errors.Is(err, ErrSchemaIncompatible) {
+		t.Fatalf("Bootstrap() error = %v, want ErrSchemaIncompatible", err)
+	}
+	if got := err.Error(); !strings.Contains(got, "__migrator.migration_runs") {
+		t.Fatalf("Bootstrap() error = %q, want legacy object name", got)
+	}
+	state := metadataTestStateForConn(t, conn)
+	if got := len(state.execs); got != 0 {
+		t.Fatalf("Bootstrap() executed %d statements for legacy metadata, want 0", got)
 	}
 }
 
@@ -75,7 +103,7 @@ func TestBootstrapClassifiesMissingDDLPermission(t *testing.T) {
 }
 
 func TestBootstrapClassifiesIncompatibleMetadataShape(t *testing.T) {
-	conn := openMetadataTestConn(t, &metadataTestScenario{execErrAt: map[int]error{3: errors.New("column name 'run_id' specified more than once")}})
+	conn := openMetadataTestConn(t, &metadataTestScenario{execErrAt: map[int]error{0: errors.New("column name 'run_id' specified more than once")}})
 	defer conn.Close()
 
 	err := Bootstrap(context.Background(), conn)
@@ -96,13 +124,14 @@ func TestBootstrapFailsWhenSchemaVersionIsNewer(t *testing.T) {
 			keyForArgs("__migrator.schema_version", "U"): true,
 		},
 		queryResponses: map[string]metadataTestRows{
-			`SELECT MAX(version) FROM __migrator.schema_version`: {
+			schemaVersionQuery: {
 				columns: []string{""},
 				rows:    [][]driver.Value{{int64(metadataSchemaVersion + 1)}},
 			},
 		},
 	})
 	defer conn.Close()
+
 	err := Bootstrap(context.Background(), conn)
 	if err == nil {
 		t.Fatal("expected schema version failure")
@@ -123,31 +152,22 @@ func TestFinishRunRejectsZeroRowsAffected(t *testing.T) {
 	}
 }
 
-func TestUpdateTrackedSchemaResultRejectsZeroRowsAffected(t *testing.T) {
-	err := UpdateTrackedSchemaResult(context.Background(), stubMetadataExecer{result: stubMetadataResult{rows: 0}}, "run-1", "reporting", true, "")
+func TestUpdateItemResultRejectsZeroRowsAffected(t *testing.T) {
+	err := UpdateItemResult(context.Background(), stubMetadataExecer{result: stubMetadataResult{rows: 0}}, "run-1", ItemTypeSchema, "reporting", true, "")
 	if err == nil || !strings.Contains(err.Error(), "expected 1 row affected") {
 		t.Fatalf("expected rows affected failure, got %v", err)
 	}
 }
 
-func TestUpdateTrackedObjectResultRejectsMultipleRowsAffected(t *testing.T) {
-	err := UpdateTrackedObjectResult(context.Background(), stubMetadataExecer{result: stubMetadataResult{rows: 2}}, "run-1", "reporting/views/monthly", true, "")
+func TestUpdateItemResultRejectsMultipleRowsAffected(t *testing.T) {
+	err := UpdateItemResult(context.Background(), stubMetadataExecer{result: stubMetadataResult{rows: 2}}, "run-1", ItemTypeObject, "reporting/views/monthly", true, "")
 	if err == nil || !strings.Contains(err.Error(), "expected 1 row affected") {
 		t.Fatalf("expected rows affected failure, got %v", err)
 	}
 }
 
-func TestLoadSuccessfulChecksumsIfPresentWithoutMetadataTable(t *testing.T) {
-	conn := openMetadataTestConn(t, &metadataTestScenario{
-		queryResponses: map[string]metadataTestRows{
-			objectExistsQuery: {
-				columns: []string{"exists"},
-				rowsByArgs: map[string][][]driver.Value{
-					keyForArgs("__migrator.schema_migrations", "U"): {{int64(0)}},
-				},
-			},
-		},
-	})
+func TestLoadSuccessfulChecksumsIfPresentWithoutMetadataTables(t *testing.T) {
+	conn := openMetadataTestConn(t, &metadataTestScenario{})
 	defer conn.Close()
 
 	got, err := LoadSuccessfulChecksumsIfPresent(context.Background(), conn)
@@ -159,17 +179,16 @@ func TestLoadSuccessfulChecksumsIfPresentWithoutMetadataTable(t *testing.T) {
 	}
 }
 
-func TestLoadSuccessfulChecksumsIfPresentUsesTrackedObjectKeys(t *testing.T) {
+func TestLoadSuccessfulChecksumsIfPresentUsesItemKeys(t *testing.T) {
 	conn := openMetadataTestConn(t, &metadataTestScenario{
+		objectExists: map[string]bool{
+			keyForArgs("__migrator.schema_version", "U"): true,
+			keyForArgs("__migrator.runs", "U"):           true,
+			keyForArgs("__migrator.items", "U"):          true,
+			keyForArgs("__migrator.attempts", "U"):       true,
+		},
 		queryResponses: map[string]metadataTestRows{
-			objectExistsQuery: {
-				columns: []string{"exists"},
-				rowsByArgs: map[string][][]driver.Value{
-					keyForArgs("__migrator.schema_migrations", "U"): {{int64(1)}},
-					keyForArgs("__migrator.tracked_objects", "U"):   {{int64(1)}},
-				},
-			},
-			trackedObjectChecksumsQuery: {
+			successfulChecksumsQuery(): {
 				columns: []string{"normalized_key", "script_name", "checksum"},
 				rows: [][]driver.Value{
 					{"reporting/views/monthly", "ignored", "abc"},
@@ -185,10 +204,48 @@ func TestLoadSuccessfulChecksumsIfPresentUsesTrackedObjectKeys(t *testing.T) {
 		t.Fatalf("LoadSuccessfulChecksumsIfPresent() error = %v", err)
 	}
 	if got["reporting/views/monthly"] != "abc" {
-		t.Fatalf("tracked object checksum missing, got %#v", got)
+		t.Fatalf("item checksum missing, got %#v", got)
 	}
 	if got["reporting/procedures/refreshmonthly"] != "def" {
 		t.Fatalf("fallback normalized key missing, got %#v", got)
+	}
+}
+
+func TestLoadSuccessfulChecksumsIfPresentRejectsLegacyMetadataShape(t *testing.T) {
+	conn := openMetadataTestConn(t, &metadataTestScenario{
+		objectExists: map[string]bool{
+			keyForArgs("__migrator.migration_attempts", "U"): true,
+		},
+	})
+	defer conn.Close()
+
+	_, err := LoadSuccessfulChecksumsIfPresent(context.Background(), conn)
+	if err == nil {
+		t.Fatal("expected incompatible metadata error")
+	}
+	if !errors.Is(err, ErrSchemaIncompatible) {
+		t.Fatalf("expected ErrSchemaIncompatible, got %v", err)
+	}
+}
+
+func TestLoadSuccessfulChecksumsIfPresentRejectsPartialCurrentShape(t *testing.T) {
+	conn := openMetadataTestConn(t, &metadataTestScenario{
+		objectExists: map[string]bool{
+			keyForArgs("__migrator.schema_version", "U"): true,
+			keyForArgs("__migrator.attempts", "U"):       true,
+		},
+	})
+	defer conn.Close()
+
+	_, err := LoadSuccessfulChecksumsIfPresent(context.Background(), conn)
+	if err == nil {
+		t.Fatal("expected incompatible metadata error")
+	}
+	if !errors.Is(err, ErrSchemaIncompatible) {
+		t.Fatalf("expected ErrSchemaIncompatible, got %v", err)
+	}
+	if got := err.Error(); !strings.Contains(got, "__migrator.runs") || !strings.Contains(got, "__migrator.items") {
+		t.Fatalf("expected missing object names, got %q", got)
 	}
 }
 
@@ -221,14 +278,8 @@ func TestClassifyBootstrapError(t *testing.T) {
 }
 
 const (
-	objectExistsQuery           = `SELECT CASE WHEN OBJECT_ID(@p1, @p2) IS NULL THEN 0 ELSE 1 END`
-	schemaVersionQuery          = `SELECT MAX(version) FROM __migrator.schema_version`
-	trackedObjectChecksumsQuery = `
-SELECT ISNULL(o.normalized_key, ''), m.script_name, m.checksum
-FROM __migrator.schema_migrations m
-LEFT JOIN __migrator.tracked_objects o ON o.tracked_object_id = m.tracked_object_id
-WHERE m.success = 1
-ORDER BY m.applied_at ASC, m.id ASC`
+	objectExistsQuery  = `SELECT CASE WHEN OBJECT_ID(@p1, @p2) IS NULL THEN 0 ELSE 1 END`
+	schemaVersionQuery = `SELECT MAX(version) FROM __migrator.schema_version`
 )
 
 type metadataTestScenario struct {

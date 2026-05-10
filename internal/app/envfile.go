@@ -5,6 +5,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"reporting-db-migrations/internal/config"
 )
 
 type envState struct {
@@ -12,38 +14,7 @@ type envState struct {
 	existed bool
 }
 
-var allowedEnvFileKeys = map[string]struct{}{
-	"RM_ENV":                         {},
-	"RM_SQL_ROOT":                    {},
-	"RM_SQL_BASE":                    {},
-	"RM_REPORT_DIR":                  {},
-	"RM_LOG_LEVEL":                   {},
-	"RM_JSON_LOGS":                   {},
-	"RM_PLAN_JSON":                   {},
-	"RM_TIMEOUT":                     {},
-	"RM_SCRIPT_TIMEOUT":              {},
-	"RM_LOCK_TIMEOUT":                {},
-	"RM_PLAN_FILE":                   {},
-	"RM_REPAIR_SCRIPT":               {},
-	"RM_UPDATE_POLICY":               {},
-	"RM_TRANSACTION_MODE":            {},
-	"RM_CONFIRM":                     {},
-	"RM_SKIP_VALIDATE":               {},
-	"RM_DB_SERVER":                   {},
-	"RM_DB_PORT":                     {},
-	"RM_DB_DATABASE":                 {},
-	"RM_DB_AUTH":                     {},
-	"RM_DB_USER":                     {},
-	"RM_DB_PASSWORD":                 {},
-	"RM_DB_ENCRYPT":                  {},
-	"RM_DB_TRUST_SERVER_CERTIFICATE": {},
-	"RM_GIT_COMMIT":                  {},
-	"RM_GIT_BRANCH":                  {},
-	"RM_PIPELINE_RUN_ID":             {},
-	"RM_PIPELINE_URL":                {},
-	"RM_ACTOR":                       {},
-	"RM_ENV_FILE":                    {},
-}
+var allowedEnvFileKeys = config.AllowedEnvKeys()
 
 func resolveEnvFilePath(args []string) string {
 	path := strings.TrimSpace(os.Getenv("RM_ENV_FILE"))

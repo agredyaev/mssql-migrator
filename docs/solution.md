@@ -53,8 +53,8 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - Repo-driven `validate` refreshes module objects, checks existence for the full managed object scope, creates one validation run row, updates tracked object results for successful validation scope, and writes attempt rows only for validation failures and failed checks.
 - Repo-driven `baseline` uses the same discovered schema and object scope as `plan` and `migrate`, creates missing schemas and objects, adopts already existing objects, and blocks when a tracked object already exists with checksum drift.
 - Repo-driven `baseline` preflights metadata DDL, schema creation permission, object DDL permission, and parent-object availability before create work.
-- Repo-driven `repair-checksum` resolves one object by repo path or normalized key, but only when the current plan shows tracked checksum drift for that object. It appends a new successful metadata attempt row instead of mutating old rows in place.
-- The append-only metadata history is stored in `[__migrator].migration_attempts`.
+- Repo-driven `repair-checksum` resolves one object by repo path or normalized key, but only when the current plan shows tracked checksum drift for that object. It appends a new successful metadata attempt row in `[__migrator].attempts` instead of mutating old rows in place.
+- The append-only metadata history is stored in `[__migrator].attempts`.
 - `reports/migration-plan.txt` explains why each planned object is being created, adopted, skipped, updated, or blocked.
 - Metadata bootstrap records runtime schema state in `[__migrator].schema_version`, validates known schema versions before upgrade DDL, and avoids recurring DDL churn on current metadata.
 
@@ -78,7 +78,7 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - Metadata failure after SQL success: treated as a critical state in the active repo-driven `migrate`, `baseline`, and `repair-checksum` paths.
 - Metadata updates fail closed when the target row is missing or duplicated.
 - Missing schema creation permission, missing object DDL permission, or missing parent object: create paths fail closed with a specific classified error.
-- Scope persistence for tracked schemas and tracked objects is written in one metadata transaction per run scope.
+- Scope persistence for repo-managed schemas and objects is written into `[__migrator].items` in one metadata transaction per run scope.
 - Validation failure: the run stops and writes `reports/validation-report.*`.
 - Repo-driven migrate execution: only the approved repo-driven schema/object set is executed. Repo-discovered checks are outside the `migrate` approval boundary and run only through standalone `validate`.
 
