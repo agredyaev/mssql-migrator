@@ -73,6 +73,9 @@ func (s *runSession) Close() {
 }
 
 func (s *runSession) Fail(base error, cause error) error {
+	if s == nil {
+		return returnFailure(base, cause)
+	}
 	return FailureReporter{cfg: s.runner.cfg}.Migration(s.report, base, cause)
 }
 

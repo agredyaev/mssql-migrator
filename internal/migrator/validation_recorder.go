@@ -47,7 +47,7 @@ func (r validationRecorder) recordFailure(ctx context.Context, objects []parser.
 	}
 }
 
-func (r validationRecorder) recordSuccesses(ctx context.Context, objects []parser.Object) error {
+func (r validationRecorder) markSuccesses(ctx context.Context, objects []parser.Object) error {
 	for _, object := range objects {
 		if err := r.writer.updateObject(ctx, object.NormalizedKey, true, ""); err != nil {
 			return err

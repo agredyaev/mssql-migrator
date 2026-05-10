@@ -1,10 +1,12 @@
 package migrator
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"reporting-db-migrations/internal/config"
+	"reporting-db-migrations/internal/contracts"
 	"reporting-db-migrations/internal/logger"
 )
 
@@ -71,3 +73,18 @@ func TestWriteValidationFailureReportIncludesScopeMetadata(t *testing.T) {
 type assertErr string
 
 func (e assertErr) Error() string { return string(e) }
+
+func TestRunSessionFailIsNilSafe(t *testing.T) {
+	var session *runSession
+
+	err := session.Fail(contracts.ErrConnection, assertErr("boom"))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, contracts.ErrConnection) {
+		t.Fatalf("expected connection sentinel, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("expected wrapped cause, got %v", err)
+	}
+}

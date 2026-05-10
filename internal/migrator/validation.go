@@ -122,7 +122,7 @@ func (r Runner) validateScope(ctx context.Context, session *runSession, layout p
 		}
 		return finalizeValidationFailure(vr, err), err
 	}
-	if err := recorder.validation.recordSuccesses(ctx, layout.Objects); err != nil {
+	if err := recorder.validation.markSuccesses(ctx, layout.Objects); err != nil {
 		if createdRun {
 			session.RecordRunFailure(ctx, recorder, contracts.ErrCriticalState, err)
 		}

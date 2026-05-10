@@ -136,7 +136,7 @@ func (s scopeWriter) Validation(ctx context.Context, layout parser.Layout, catal
 			Checksum:             object.Checksum,
 			ExistsInDatabase:     boolPtr(exists),
 			MetadataMatch:        metadataMatch,
-			Action:               contracts.ActionValidateChecked,
+			Action:               validationObjectAction(object.Kind),
 		}
 		if !exists {
 			record.Success = boolPtr(false)

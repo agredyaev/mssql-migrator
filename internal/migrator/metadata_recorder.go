@@ -94,17 +94,13 @@ func executedMetadataObject(object parser.Object, planned contracts.PlannedObjec
 }
 
 func validationMetadataObject(object parser.Object, itemID *int64) plannedMetadataObject {
-	action := contracts.ActionValidateChecked
-	if !parser.IsModuleKind(object.Kind) {
-		action = contracts.ActionValidateSkipped
-	}
 	return plannedMetadataObject{
 		objectPath:       object.Path,
 		kind:             object.Kind,
 		normalizedKeyVal: object.NormalizedKey,
 		checksum:         object.Checksum,
 		scriptType:       contracts.ScriptTypeValidate,
-		actionValue:      action,
+		actionValue:      validationObjectAction(object.Kind),
 		itemID:           itemID,
 		executionMS:      0,
 		transactionMode:  config.TransactionModeNone,
@@ -112,6 +108,13 @@ func validationMetadataObject(object parser.Object, itemID *int64) plannedMetada
 		rollbackScope:    contracts.RollbackScopeNone,
 		noTransaction:    true,
 	}
+}
+
+func validationObjectAction(kind string) string {
+	if parser.IsModuleKind(kind) {
+		return contracts.ActionValidateChecked
+	}
+	return contracts.ActionValidateSkipped
 }
 
 func baselineFailureMetadataObject(planned contracts.PlannedObject, itemID *int64, defaultMode string) plannedMetadataObject {
