@@ -193,7 +193,10 @@ func (s validationRunState) fail(ctx context.Context, session *runSession, vr *c
 }
 
 func validationFailureError(base error, cause error) error {
-	if cause == nil || base == nil || errors.Is(cause, base) {
+	if cause == nil {
+		return base
+	}
+	if base == nil || errors.Is(cause, base) {
 		return cause
 	}
 	return contracts.Wrap(base, cause)

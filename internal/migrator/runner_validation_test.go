@@ -129,6 +129,13 @@ func TestValidationFailureBasePreservesCriticalState(t *testing.T) {
 	}
 }
 
+func TestValidationFailureErrorReturnsBaseWhenCauseNil(t *testing.T) {
+	err := validationFailureError(contracts.ErrCriticalState, nil)
+	if !errors.Is(err, contracts.ErrCriticalState) {
+		t.Fatalf("expected critical state, got %v", err)
+	}
+}
+
 type assertErr string
 
 func (e assertErr) Error() string { return string(e) }
