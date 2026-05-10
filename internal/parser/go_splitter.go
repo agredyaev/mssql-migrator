@@ -18,7 +18,7 @@ func SplitGO(content string) ([]Batch, error) {
 	state := goParseState{}
 	for _, line := range lines {
 		matches := goLinePattern.FindStringSubmatch(line)
-		if matches != nil && !state.inBlockComment && !state.inStringLiteral {
+		if matches != nil && !state.inBlockComment() && !state.inStringLiteral {
 			sql := strings.TrimSpace(strings.Join(current, "\n"))
 			if sql != "" {
 				repeat, err := parseRepeat(matches[1], line)
@@ -41,7 +41,7 @@ func SplitGO(content string) ([]Batch, error) {
 	if state.inStringLiteral {
 		return nil, fmt.Errorf("unterminated SQL string literal")
 	}
-	if state.inBlockComment {
+	if state.inBlockComment() {
 		return nil, fmt.Errorf("unterminated SQL block comment")
 	}
 	last := strings.TrimSpace(strings.Join(current, "\n"))
@@ -52,15 +52,24 @@ func SplitGO(content string) ([]Batch, error) {
 }
 
 type goParseState struct {
-	inBlockComment  bool
-	inStringLiteral bool
+	blockCommentDepth int
+	inStringLiteral   bool
+}
+
+func (s goParseState) inBlockComment() bool {
+	return s.blockCommentDepth > 0
 }
 
 func advanceGOParseState(line string, state goParseState) goParseState {
 	for i := 0; i < len(line); i++ {
-		if state.inBlockComment {
+		if state.inBlockComment() {
+			if i+1 < len(line) && line[i] == '/' && line[i+1] == '*' {
+				state.blockCommentDepth++
+				i++
+				continue
+			}
 			if i+1 < len(line) && line[i] == '*' && line[i+1] == '/' {
-				state.inBlockComment = false
+				state.blockCommentDepth--
 				i++
 			}
 			continue
@@ -80,7 +89,7 @@ func advanceGOParseState(line string, state goParseState) goParseState {
 			break
 		}
 		if i+1 < len(line) && line[i] == '/' && line[i+1] == '*' {
-			state.inBlockComment = true
+			state.blockCommentDepth++
 			i++
 			continue
 		}
