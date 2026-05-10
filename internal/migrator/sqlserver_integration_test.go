@@ -337,6 +337,17 @@ func TestSQLServerMigrateBootstrapsPartialMetadataBeforeChecksumLoad(t *testing.
 	if !integrationObjectExists(t, ctx, conn, "["+schemaName+"].[monthly]", "V") {
 		t.Fatal("expected migrate to create repo-managed view")
 	}
+	content, err := os.ReadFile(filepath.Join(reportDir, "migration-report.json"))
+	if err != nil {
+		t.Fatalf("read migration report: %v", err)
+	}
+	var report contracts.MigrationReport
+	if err := json.Unmarshal(content, &report); err != nil {
+		t.Fatalf("decode migration report: %v", err)
+	}
+	if report.Validation.ModulesRefreshed != 0 {
+		t.Fatalf("expected post-migrate validation to skip module refresh, got %#v", report.Validation)
+	}
 }
 
 func openSQLServerIntegrationConn(t *testing.T) (*sql.Conn, config.Config) {
