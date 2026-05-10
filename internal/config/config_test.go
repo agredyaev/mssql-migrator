@@ -175,9 +175,54 @@ func TestValidateForCommandRequiresGitCommitForPlan(t *testing.T) {
 		t.Fatalf("mkdir base: %v", err)
 	}
 	cfg := Config{Env: "prod", Server: "server", Database: "db", User: "user", Password: "password", SQLRoot: root, SQLBase: base, EffectiveBasePath: joinEffectiveBasePath(root, base), UpdatePolicy: UpdatePolicyNone, TransactionMode: TransactionModeScript}
+	cfg.applyRepositoryDefaults()
 	err := cfg.ValidateForCommand("plan")
 	if err == nil || !strings.Contains(err.Error(), "RM_GIT_COMMIT") {
 		t.Fatalf("expected git commit validation error, got %v", err)
+	}
+}
+
+func TestApplyRepositoryDefaultsUsesSingleSQLBase(t *testing.T) {
+	root := t.TempDir()
+	if err := osMkdirAll(filepath.Join(root, "dwh")); err != nil {
+		t.Fatalf("mkdir base: %v", err)
+	}
+	cfg := Config{SQLRoot: root}
+	cfg.applyRepositoryDefaults()
+	if cfg.SQLBase != "dwh" {
+		t.Fatalf("expected detected base dwh, got %q", cfg.SQLBase)
+	}
+}
+
+func TestApplyRepositoryDefaultsDoesNotGuessMultipleSQLBases(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"dwh", "mart"} {
+		if err := osMkdirAll(filepath.Join(root, name)); err != nil {
+			t.Fatalf("mkdir base %s: %v", name, err)
+		}
+	}
+	cfg := Config{SQLRoot: root}
+	cfg.applyRepositoryDefaults()
+	if cfg.SQLBase != "" {
+		t.Fatalf("expected empty base when multiple candidates exist, got %q", cfg.SQLBase)
+	}
+}
+
+func TestApplyRepositoryDefaultsUsesGitHeadCommit(t *testing.T) {
+	root := t.TempDir()
+	if err := osMkdirAll(filepath.Join(root, ".git", "refs", "heads")); err != nil {
+		t.Fatalf("mkdir git refs: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatalf("write HEAD: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".git", "refs", "heads", "main"), []byte("deadbeef\n"), 0o644); err != nil {
+		t.Fatalf("write ref: %v", err)
+	}
+	cfg := Config{SQLRoot: root}
+	cfg.applyRepositoryDefaults()
+	if cfg.GitCommit != "deadbeef" {
+		t.Fatalf("expected detected git commit, got %q", cfg.GitCommit)
 	}
 }
 

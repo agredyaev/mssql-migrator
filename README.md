@@ -59,14 +59,16 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 - `.env` loading is opt-in only. Without `--env-file` or `RM_ENV_FILE`, startup behavior stays unchanged.
 - `--env` and `RM_ENV` accept only `pred` and `prod`.
 - `RM_SQL_ROOT` and `RM_SQL_BASE` are required for `plan`, `migrate`, `validate`, `baseline`, and `repair-checksum`.
+- If `RM_SQL_BASE` is omitted and `RM_SQL_ROOT` contains exactly one base directory, `rmig` uses that directory automatically.
 - `RM_SQL_BASE` must be a single directory name under `RM_SQL_ROOT`.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
+- If `RM_GIT_COMMIT` is omitted, `rmig` tries to read `HEAD` from the nearest `.git` directory above `RM_SQL_ROOT`.
 - `plan --json` writes machine-readable JSON to stdout. Human logs go to stderr for that mode.
 - `plan` is read-only. It reads metadata state directly and does not bootstrap or repair partial metadata. Use `migrate`, `baseline`, or `repair-checksum` when metadata must be bootstrapped under the session lock.
 - `RM_UPDATE_POLICY` supports `none`, `modules_only`, and `all_supported`. Existing module updates are allowed only when the repo SQL starts with the matching `CREATE OR ALTER` statement for that object kind.
 - `RM_TRANSACTION_MODE` supports `script` and `none`.
 - Logs, reports, and stored error text must not expose secrets.
-- `migrate` executes approved create paths and safe existing-module update paths after approved-plan verification, treats `adopt_existing` as a no-DDL adoption path, records attempts into `[__migrator]`, and limits post-migrate validation to the verified managed object scope.
+- `migrate` executes approved create paths and safe existing-module update paths after approved-plan verification, treats `adopt_existing` as a no-DDL adoption path, records attempts into `[__migrator]`, and limits post-migrate validation to managed-scope existence and metadata checks without module refresh work.
 - `baseline` uses the same repo-driven layout as `plan` and `migrate`. It creates missing repo-managed schemas and objects, adopts already existing objects without DDL, and fails closed on checksum drift.
 - `baseline` preflights metadata DDL, schema creation permission, object DDL permission, and missing parent objects before create work.
 - `repair-checksum` targets one repo object selected by path or normalized key, but only when the current plan shows tracked checksum drift for that object. It appends a new successful metadata attempt row in `[__migrator].attempts` instead of editing old checksum history in place.

@@ -146,6 +146,7 @@ func Load(input Input) (Config, error) {
 	if err := cfg.loadEnvironment(); err != nil {
 		return Config{}, err
 	}
+	cfg.applyRepositoryDefaults()
 	cfg.EffectiveBasePath = joinEffectiveBasePath(cfg.SQLRoot, cfg.SQLBase)
 	return cfg, cfg.ValidateCommon()
 }
@@ -344,6 +345,104 @@ func (cfg *Config) loadEnvironment() error {
 	cfg.PipelineURL = os.Getenv("RM_PIPELINE_URL")
 	cfg.Actor = os.Getenv("RM_ACTOR")
 	return nil
+}
+
+func (cfg *Config) applyRepositoryDefaults() {
+	if cfg == nil {
+		return
+	}
+	if strings.TrimSpace(cfg.SQLBase) == "" {
+		cfg.SQLBase = detectSingleSQLBase(cfg.SQLRoot)
+	}
+	if strings.TrimSpace(cfg.GitCommit) == "" {
+		cfg.GitCommit = detectGitCommit(cfg.SQLRoot)
+	}
+}
+
+func detectSingleSQLBase(root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return ""
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return ""
+	}
+	bases := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		bases = append(bases, entry.Name())
+	}
+	if len(bases) != 1 {
+		return ""
+	}
+	return bases[0]
+}
+
+func detectGitCommit(root string) string {
+	for dir := detectGitStart(root); strings.TrimSpace(dir) != ""; dir = filepath.Dir(dir) {
+		if value := readGitHead(dir); value != "" {
+			return value
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+	}
+	return ""
+}
+
+func detectGitStart(root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return ""
+		}
+		return cwd
+	}
+	if info, err := os.Stat(root); err == nil && !info.IsDir() {
+		return filepath.Dir(root)
+	}
+	return root
+}
+
+func readGitHead(dir string) string {
+	headPath := filepath.Join(dir, ".git", "HEAD")
+	head, err := os.ReadFile(headPath)
+	if err != nil {
+		return ""
+	}
+	line := strings.TrimSpace(string(head))
+	if line == "" {
+		return ""
+	}
+	if !strings.HasPrefix(line, "ref: ") {
+		return line
+	}
+	refPath := filepath.Join(dir, ".git", filepath.FromSlash(strings.TrimSpace(strings.TrimPrefix(line, "ref: "))))
+	ref, err := os.ReadFile(refPath)
+	if err == nil {
+		return strings.TrimSpace(string(ref))
+	}
+	packedRefs, err := os.ReadFile(filepath.Join(dir, ".git", "packed-refs"))
+	if err != nil {
+		return ""
+	}
+	refName := strings.TrimSpace(strings.TrimPrefix(line, "ref: "))
+	for _, entry := range strings.Split(string(packedRefs), "\n") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" || strings.HasPrefix(entry, "#") || strings.HasPrefix(entry, "^") {
+			continue
+		}
+		hash, name, ok := strings.Cut(entry, " ")
+		if ok && strings.TrimSpace(name) == refName {
+			return strings.TrimSpace(hash)
+		}
+	}
+	return ""
 }
 
 func loadBoolInput(envKey string, value bool, fallback bool, fromFlag bool) (bool, error) {

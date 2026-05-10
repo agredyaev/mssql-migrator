@@ -134,7 +134,32 @@ func TestParseCommandConfigAllowsMissingManagedSchemasForPlan(t *testing.T) {
 	}
 }
 
-func TestParseCommandConfigRequiresGitCommitForPlan(t *testing.T) {
+func TestParseCommandConfigDetectsGitCommitForPlan(t *testing.T) {
+	root, base := createSQLLayout(t)
+	if err := os.MkdirAll(filepath.Join(root, ".git", "refs", "heads"), 0o755); err != nil {
+		t.Fatalf("mkdir git refs: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatalf("write HEAD: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".git", "refs", "heads", "main"), []byte("deadbeef\n"), 0o644); err != nil {
+		t.Fatalf("write main ref: %v", err)
+	}
+	t.Setenv("RM_DB_SERVER", "server")
+	t.Setenv("RM_DB_DATABASE", "db")
+	t.Setenv("RM_DB_USER", "user")
+	t.Setenv("RM_DB_PASSWORD", "password")
+	t.Setenv("RM_GIT_COMMIT", "")
+	cfg, err := parseCommandConfig("plan", []string{"--env", "prod", "--sql-root", root, "--sql-base", base})
+	if err != nil {
+		t.Fatalf("expected auto-detected git commit, got %v", err)
+	}
+	if cfg.GitCommit != "deadbeef" {
+		t.Fatalf("expected detected git commit, got %q", cfg.GitCommit)
+	}
+}
+
+func TestParseCommandConfigRequiresGitCommitForPlanWithoutRepo(t *testing.T) {
 	root, base := createSQLLayout(t)
 	t.Setenv("RM_DB_SERVER", "server")
 	t.Setenv("RM_DB_DATABASE", "db")
@@ -143,7 +168,7 @@ func TestParseCommandConfigRequiresGitCommitForPlan(t *testing.T) {
 	t.Setenv("RM_GIT_COMMIT", "")
 	_, err := parseCommandConfig("plan", []string{"--env", "prod", "--sql-root", root, "--sql-base", base})
 	if err == nil || !strings.Contains(err.Error(), "RM_GIT_COMMIT") {
-		t.Fatalf("expected git commit error, got %v", err)
+		t.Fatalf("expected git commit error without repo metadata, got %v", err)
 	}
 }
 

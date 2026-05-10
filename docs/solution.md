@@ -39,8 +39,10 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - The env file is trusted operator input, but `rmig` accepts only the supported `RM_*` keys that map to current command inputs. Unknown keys fail before command execution.
 - `--env` and `RM_ENV` accept only `pred` and `prod`.
 - `RM_SQL_ROOT` and `RM_SQL_BASE` are required for planning, execution, validation, and repair commands.
+- If `RM_SQL_BASE` is omitted and `RM_SQL_ROOT` contains exactly one base directory, the runtime uses that directory automatically.
 - `RM_SQL_BASE` must be a single directory name under `RM_SQL_ROOT`.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
+- If `RM_GIT_COMMIT` is omitted, the runtime tries to resolve `HEAD` from the nearest `.git` directory above `RM_SQL_ROOT`.
 - `migrate` requires an approved plan file.
 - `plan --json` writes stable machine-readable JSON to stdout and keeps logs on stderr.
 - `plan` is read-only. It reads metadata state directly and does not bootstrap or repair partial metadata. Use `migrate`, `baseline`, or `repair-checksum` when metadata must be bootstrapped under lock.
@@ -50,7 +52,7 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - Logs, reports, and stored error text must not expose secrets.
 - Post-SQL metadata writes use `internal/migrator/metadata_context.go` and a short timeout so metadata paths fail quickly instead of waiting for the full command timeout.
 - `internal/reports/write.go` stages report artifacts through temporary files, publishes the text companion first, and publishes JSON last as the commit marker for readers that require a consistent pair.
-- Repo-driven `migrate` creates missing schemas, applies approved create paths and safe existing-module update paths after plan verification, adopts existing objects without DDL by default, records attempts in `[__migrator]`, and validates the managed object scope by default unless skipped.
+- Repo-driven `migrate` creates missing schemas, applies approved create paths and safe existing-module update paths after plan verification, adopts existing objects without DDL by default, records attempts in `[__migrator]`, and validates the managed object scope by default unless skipped. That post-migrate validation checks managed-scope existence and metadata state, but leaves module refresh work to standalone `validate`.
 - Repo-driven `validate` refreshes module objects, checks existence for the full managed object scope, creates one validation run row, updates tracked object results for successful validation scope, and writes attempt rows only for validation failures and failed checks.
 - Repo-driven `baseline` uses the same discovered schema and object scope as `plan` and `migrate`, creates missing schemas and objects, adopts already existing objects, and blocks when a tracked object already exists with checksum drift.
 - Repo-driven `baseline` preflights metadata DDL, schema creation permission, object DDL permission, and parent-object availability before create work.

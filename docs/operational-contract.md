@@ -32,8 +32,10 @@ See `README.md` for the CLI wrapper contract.
 - The binary is built with `-ldflags` so `rmig version` reports a real commit SHA.
 - `baseline` and `repair-checksum` require `--confirm`.
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
+- If `RM_GIT_COMMIT` is omitted, the runtime tries to resolve `HEAD` from the nearest `.git` directory above `RM_SQL_ROOT`.
 - `--env` and `RM_ENV` accept only `pred` and `prod`.
 - `RM_SQL_ROOT` and `RM_SQL_BASE` must point to unpacked repository files on disk.
+- If `RM_SQL_BASE` is omitted and `RM_SQL_ROOT` contains exactly one base directory, the runtime uses that base automatically.
 - `RM_SQL_BASE` must be a single directory name under `RM_SQL_ROOT`.
 - `migrate` requires `--plan-file`.
 - `plan --json` emits machine-readable JSON to stdout and keeps human logs on stderr.
@@ -42,7 +44,7 @@ See `README.md` for the CLI wrapper contract.
 - Optional dotenv loading must be explicitly enabled. When enabled, CLI flags still win over process environment, and process environment still wins over values loaded from the env file.
 - The env file may contain only supported `RM_*` keys for current command inputs. Unknown keys and non-`RM_*` keys fail validation.
 - Malformed `RM_TIMEOUT`, `RM_SCRIPT_TIMEOUT`, and `RM_LOCK_TIMEOUT` values, including values loaded through `--env-file`, are configuration errors. Malformed `--timeout`, `--script-timeout`, and `--lock-timeout` flag values are invalid input.
-- Repo-driven object execution runs only after approved-plan verification succeeds. Post-migrate validation is limited to the verified managed object scope.
+- Repo-driven object execution runs only after approved-plan verification succeeds. Post-migrate validation is limited to managed-scope existence and metadata checks without module refresh work.
 - `baseline` uses the repo-driven layout, creates missing schemas and objects, adopts existing objects, and requires `--confirm`.
 - `baseline` fails closed on missing metadata DDL permission, missing schema creation permission, missing object DDL permission, checksum drift, or missing parent objects.
 - `repair-checksum` uses one repo object selected by `--script <repo-path-or-normalized-key>`, but only when the current plan shows tracked checksum drift for that object. It appends a new successful metadata attempt row in `[__migrator].attempts` and does not rewrite old checksum history.
