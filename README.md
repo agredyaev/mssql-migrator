@@ -111,6 +111,7 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, writes 
 - `PATH=/usr/local/go/bin:$PATH go vet ./...`
 - `PATH=/usr/local/go/bin:$PATH go build -ldflags "-X main.version=0.1.0-dev -X main.commit=$(git rev-parse HEAD)" -o rmig ./cmd/rmig`
 - `./rmig version`
+- Review dumps produced with `./export_code_to_txt.sh` must include `go.mod` and `go.sum` together with `cmd/**` and `internal/**` so dependency resolution can be validated from the artifact.
 - Unit and contract tests in `internal/app/app_test.go`, `internal/config/config_test.go`, `internal/logger/logger_test.go`, `internal/planner/planner_test.go`, `internal/parser/*_test.go`, `internal/migrator/*_test.go`, `internal/checksum/checksum_test.go`, `internal/validate/validate_test.go`, `internal/reports/report_schema_test.go`
 - Documentation governance: `docs/specs/documentation-spec.md` and `docs/specs/nasa-document-spec.md`
 
