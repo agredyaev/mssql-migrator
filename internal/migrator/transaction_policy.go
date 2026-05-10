@@ -1,29 +1,30 @@
 package migrator
 
-import "reporting-db-migrations/internal/contracts"
-
-const transactionModeNone = "none"
+import (
+	"reporting-db-migrations/internal/config"
+	"reporting-db-migrations/internal/contracts"
+)
 
 func transactionModeForObject(defaultMode string, noTransaction bool) string {
 	if noTransaction {
-		return transactionModeNone
+		return config.TransactionModeNone
 	}
 	return defaultMode
 }
 
 func noTransactionForObject(defaultMode string, noTransaction bool) bool {
-	return noTransaction || defaultMode == transactionModeNone
+	return noTransaction || defaultMode == config.TransactionModeNone
 }
 
 func rollbackScope(defaultMode string) string {
-	if defaultMode == transactionModeNone {
+	if defaultMode == config.TransactionModeNone {
 		return contracts.RollbackScopeNone
 	}
 	return contracts.RollbackScopeScript
 }
 
 func rollbackScopeForObject(defaultMode string, noTransaction bool) string {
-	if noTransaction || defaultMode == transactionModeNone {
+	if noTransaction || defaultMode == config.TransactionModeNone {
 		return contracts.RollbackScopeNone
 	}
 	return contracts.RollbackScopeScript

@@ -38,7 +38,8 @@ type sessionTestState struct {
 }
 
 type sessionTestOpener struct {
-	db *sql.DB
+	db  *sql.DB
+	err error
 }
 
 func init() {
@@ -89,6 +90,9 @@ func (r *sessionTestRows) Next(dest []driver.Value) error {
 }
 
 func (o sessionTestOpener) Open(context.Context, config.Config) (*sql.DB, error) {
+	if o.err != nil {
+		return nil, o.err
+	}
 	return o.db, nil
 }
 
@@ -124,5 +128,27 @@ func TestStartProtectedSessionClosesConnectionOnLockFailure(t *testing.T) {
 	state.mu.Unlock()
 	if closes != 1 {
 		t.Fatalf("expected closeFn to close connection once, got %d", closes)
+	}
+}
+
+func TestStartProtectedSessionReturnsFallbackSessionOnOpenFailure(t *testing.T) {
+	runner := NewRunner(config.Config{}, logger.New(logger.Options{}))
+	runner.db = sessionTestOpener{err: errors.New("open failed")}
+
+	session, err := runner.startProtectedSession(context.Background())
+	if err == nil {
+		t.Fatal("expected open failure")
+	}
+	if !errors.Is(err, contracts.ErrConnection) {
+		t.Fatalf("expected connection wrapper, got %v", err)
+	}
+	if session == nil {
+		t.Fatal("expected non-nil fallback session")
+	}
+	if session.conn != nil {
+		t.Fatalf("expected fallback session without connection, got %#v", session)
+	}
+	if session.report.Tool != toolName {
+		t.Fatalf("expected initialized fallback report, got %#v", session.report)
 	}
 }

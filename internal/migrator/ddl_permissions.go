@@ -39,7 +39,7 @@ func (e *baselinePreflightFailure) Unwrap() error {
 }
 
 // verifyBaselineCreatePermissionsBestEffort catches common permission failures early.
-// Final DDL execution remains authoritative.
+// It is not a guarantee. Final DDL execution remains authoritative.
 func verifyBaselineCreatePermissionsBestEffort(ctx context.Context, conn *sql.Conn, plan contracts.MigrationPlan, layout parser.Layout) error {
 	resolver := objectDependencyResolver{}
 	for _, schema := range plan.Schemas {
