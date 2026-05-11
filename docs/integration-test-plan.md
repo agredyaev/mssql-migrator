@@ -34,7 +34,8 @@ See `README.md` for the CLI wrapper contract.
 - Repo-driven `migrate` execution is expected to create missing schemas, apply the current repo object set, record `adopt_existing` metadata rows, and validate the managed object scope.
 - Repo-driven `baseline` is expected to create missing repo-managed schemas and objects, adopt already existing objects, and fail closed on checksum drift or missing DDL permission.
 - Existing module updates are expected to run only when the repo SQL starts with the matching `CREATE OR ALTER` statement for that object kind.
-- Tracked table drift is expected to require checked-in transition scripts under `<schema>/tables/_migrations/<table>/` before `migrate` can execute the change.
+- Safe tracked table drift is expected to auto-create a real repo transition file at `<schema>/tables/_migrations/<table>/001_<commit>_auto_add_columns.sql`, replan, and then execute that checked-in transition path.
+- Non-safe tracked table drift is expected to auto-create the technical transition directory and scaffold file under `<schema>/tables/_migrations/<table>/` before `migrate` can execute the change.
 - Repo-driven `repair-checksum` is expected to resolve one object by repo path or normalized key only when the current plan shows tracked checksum drift for that object and the object is not already on the active transition-backed migrate path, then append a `repair_checksum` row in `[__migrator].attempts`.
 - This build persists run state in `[__migrator].runs`, `[__migrator].items`, and `[__migrator].attempts`.
 - This build is expected to keep `[__migrator].schema_version` at the current checked-in metadata schema version.
@@ -57,11 +58,14 @@ See `README.md` for the CLI wrapper contract.
 14. Verify `[__migrator].schema_version` contains the expected current version row.
 15. Interrupt a report-writing step in a controlled run with `--report-dir ./reports` and confirm the final report path is never left as a partial file.
 16. Run `plan` for a changed existing module without `CREATE OR ALTER` and confirm the plan is blocked before `migrate`.
-17. Run `plan` for a tracked table change without a checked-in transition and confirm the plan stays informational, reports `Blocked: true`, and names the required `<schema>/tables/_migrations/<table>/` path.
-18. Add a checked-in table transition under `<schema>/tables/_migrations/<table>/001_<commit>_<slug>.sql`, rerun `plan`, and confirm the planned object carries `transition_paths`.
-19. Run `migrate` for that tracked table change and confirm the transition SQL executes before the repo table SQL.
-20. Confirm `baseline` stops on the same tracked table change and directs the operator to `migrate` instead of executing the transition path.
-21. Try `repair-checksum` for the same transition-backed tracked table change and confirm the command rejects it and tells the operator to use `migrate`.
+17. Run `plan` for a tracked table change that only adds a nullable column and confirm it auto-creates `<schema>/tables/_migrations/<table>/001_<commit>_auto_add_columns.sql`, replans, and carries `transition_paths` for that file.
+18. Run `migrate` for that tracked table change and confirm the generated checked-in transition executes without replaying the repo table file as raw `CREATE TABLE` against the existing table.
+19. Run `plan` for a non-safe tracked table change without a checked-in transition and confirm the plan stays informational, reports `Blocked: true`, and auto-creates `<schema>/tables/_migrations/<table>/001_<commit>_describe_change.sql`.
+20. Rerun `migrate` with only that scaffold in place and confirm the command still fails closed.
+21. Replace the scaffold with a checked-in table transition under `<schema>/tables/_migrations/<table>/001_<commit>_<slug>.sql`, rerun `plan`, and confirm the planned object carries `transition_paths`.
+22. Run `migrate` for that tracked table change and confirm the transition SQL executes without replaying the repo table file as raw `CREATE TABLE` against the existing table.
+23. Confirm `baseline` stops on the same tracked table change and directs the operator to `migrate` instead of executing the transition path.
+24. Try `repair-checksum` for the same transition-backed tracked table change and confirm the command rejects it and tells the operator to use `migrate`.
 
 ## Off-Nominal Behavior And Failure Containment
 
@@ -69,7 +73,8 @@ See `README.md` for the CLI wrapper contract.
 - If validation fails, the report must show the failing object or check script.
 - If plan drift appears, the migration must stop.
 - If repo-driven migrate execution is reached, the current build must apply the current repo object set and run managed-scope post-migrate validation unless skipped. When `--plan-file` is used, the current set must still match the approved artifact.
-- If tracked table drift has no checked-in transition, `plan` must remain read-only and informational while `migrate` continues to fail closed.
+- If tracked table drift is on the safe additive path, `plan` must auto-create the checked-in migration file, replan onto that transition path, and `migrate` must execute the transition without replaying `tables/*.sql` as raw create DDL.
+- If tracked table drift has no executable checked-in transition and is not on the safe additive path, `plan` must remain informational, auto-create the scaffold file, and `migrate` must continue to fail closed until the scaffold is replaced.
 
 ## Verification And Validation
 

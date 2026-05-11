@@ -51,7 +51,8 @@ See `README.md` for the CLI wrapper contract.
 - Plan failure: fix the SQL root/base selection or repository layout, then rerun `plan`.
 - Plan metadata failure: `plan` is read-only and does not repair partial metadata. Use `migrate`, `baseline`, or `repair-checksum` when the environment needs metadata bootstrap under lock, then rerun `plan`.
 - Plan output includes per-object reasoning. Use stdout by default, or `migration-plan.txt` when `--report-dir` was used, to see why an object is being created, adopted, skipped, updated, or blocked.
-- Tracked table drift without transitions: add a checked-in migration under `<schema>/tables/_migrations/<table>/001_<commit>_<slug>.sql`, rerun `plan`, and confirm the block reason is gone before `migrate`.
+- Safe additive tracked table drift: rerun `plan` and confirm it auto-created `<schema>/tables/_migrations/<table>/001_<commit>_auto_add_columns.sql` and now lists that transition path. Then run `migrate` on that transition-backed path.
+- Non-safe tracked table drift without transitions: rerun `plan` if needed and inspect the auto-created scaffold under `<schema>/tables/_migrations/<table>/001_<commit>_describe_change.sql`. Replace that scaffold with real checked-in SQL, rename it if needed to the final `<nnn>_<commit>_<slug>.sql` form, rerun `plan`, and confirm the block reason is gone before `migrate`.
 - Transition-backed tracked table drift: review the listed transition paths in the plan output, then use `migrate`. Do not use `baseline` for that path.
 - Migration failure: inspect the migration report to see whether the failure happened during schema creation, object execution, managed-scope post-migrate validation, or metadata recording, then fix forward in Git and rerun `plan`.
 - Metadata failure after SQL success in repo-driven `migrate`, `baseline`, or `repair-checksum`: stop deployment and inspect database state before retrying.

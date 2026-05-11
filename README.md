@@ -65,11 +65,12 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, prints 
 - `plan`, `migrate`, `baseline`, and `repair-checksum` require `RM_GIT_COMMIT`.
 - If `RM_GIT_COMMIT` is omitted, `rmig` tries to read `HEAD` from the nearest `.git` directory above `RM_SQL_ROOT`.
 - `plan` writes a human-readable plan to stdout by default. `plan --json` writes machine-readable JSON to stdout. `plan` logs go to stderr in both modes.
-- `plan` is read-only. It reads metadata state directly and does not bootstrap or repair partial metadata. Use `migrate`, `baseline`, or `repair-checksum` when metadata must be bootstrapped under the session lock.
+- `plan` is read-only against SQL Server. It reads metadata state directly and does not bootstrap or repair partial metadata. For tracked table drift, `plan` may create repo-managed transition files under `<RM_SQL_ROOT>/<RM_SQL_BASE>` so the next plan can follow the checked-in transition path. Use `migrate`, `baseline`, or `repair-checksum` when metadata must be bootstrapped under the session lock.
 - `--report-dir` or `RM_REPORT_DIR` enables persisted report files. Without it, `rmig` does not write plan, migration, or validation report files to disk.
 - Existing module updates are enabled by default for `views`, `procedures`, `functions`, and `triggers`, but only when the repo SQL starts with the matching `CREATE OR ALTER` statement for that object kind.
-- Tracked table drift is executable only when the repo includes checked-in transition scripts under `<schema>/tables/_migrations/<table>/` with file names `<nnn>_<commit>_<slug>.sql`.
-- Without a checked-in table transition, `plan` stays informational, reports `Blocked: true`, explains the required transition path, and `migrate` fails closed.
+- Safe tracked table drift for additive nullable columns is converted into a repo-managed transition automatically. `plan` and `migrate` preflight create `<schema>/tables/_migrations/<table>/001_<commit>_auto_add_columns.sql`, replan, and then execute that checked-in transition path.
+- When tracked table drift is not on that safe automatic path and no transition file exists yet, `plan` and `migrate` preflight automatically create the technical directory and a scaffold file under `<schema>/tables/_migrations/<table>/001_<commit>_describe_change.sql`.
+- Non-safe tracked table drift becomes executable only after that scaffold is replaced with real checked-in transition SQL.
 - `RM_TRANSACTION_MODE` supports `script` and `none`.
 - Logs, reports, and stored error text must not expose secrets.
 - `migrate` executes create paths and safe existing-module update paths from the current in-memory plan, treats `adopt_existing` as a no-DDL adoption path, records attempts into `[__migrator]`, and limits post-migrate validation to managed-scope existence and metadata checks without module refresh work.
@@ -78,7 +79,7 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, prints 
 - `baseline` preflights metadata DDL, schema creation permission, object DDL permission, and missing parent objects before create work.
 - `repair-checksum` targets one repo object selected by path or normalized key, but only when the current plan shows tracked checksum drift for that object and the drift is not on the active transition-backed migrate path. It appends a new successful metadata attempt row in `[__migrator].attempts` instead of editing old checksum history in place.
 - The text plan view explains why each object is planned for create, adopt, skip, update, or block so operators do not need to infer planner state from action codes alone. It is printed to stdout by default and persisted as `migration-plan.txt` only when `--report-dir` is set.
-- For transition-backed table updates, the text plan view lists the checked-in transition paths that `migrate` will execute before the repo table SQL.
+- For transition-backed table updates, the text plan view lists the checked-in transition paths that `migrate` will execute. For tracked tables, `migrate` records the table object update in metadata after the transition set and does not replay `tables/*.sql` as a raw `CREATE TABLE` path against an existing table.
 - When `--report-dir` is set, report files are written through `internal/reports/write.go` by staging `*.tmp` files, publishing the text companion first, and publishing JSON last as the commit marker for readers that require a consistent pair.
 - Metadata writes use a short bounded context in `internal/migrator/metadata_context.go` so post-SQL metadata updates do not hang until the full command timeout.
 - Catalog reads are shared through `internal/catalog/catalog.go` so plan and validation classify the live SQL Server object set the same way.
@@ -93,9 +94,10 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, prints 
 5. Run `rmig migrate --env prod --sql-root ./sql --sql-base dwh` to create missing schemas, apply planned repo objects, record `adopt_existing` metadata rows, and validate the managed object scope.
 6. Run `rmig migrate --env prod --sql-root ./sql --sql-base dwh --plan-file ./reports/migration-plan.json` only when an approved plan artifact must be enforced.
 7. Run `rmig validate --env prod --sql-root ./sql --sql-base dwh` to bootstrap metadata if needed, refresh repo-discovered module objects, and execute repo-discovered check scripts.
-8. For tracked table drift, add checked-in transition scripts under `<schema>/tables/_migrations/<table>/001_<commit>_<slug>.sql`, rerun `rmig plan`, and then run `rmig migrate --env prod --sql-root ./sql --sql-base dwh`.
-9. Run `rmig baseline --env prod --sql-root ./sql --sql-base dwh --confirm` to create or adopt the current repo-managed scope without an approved plan artifact.
-10. Run `rmig repair-checksum --env prod --sql-root ./sql --sql-base dwh --script reporting/views/monthly.sql --confirm` only when the current plan shows tracked checksum drift for that repo object and `migrate` is not the intended execution path.
+8. For safe additive tracked table drift, rerun `rmig plan`, confirm it created `<schema>/tables/_migrations/<table>/001_<commit>_auto_add_columns.sql` and now lists that transition path, then run `rmig migrate --env prod --sql-root ./sql --sql-base dwh`.
+9. For non-safe tracked table drift, add checked-in transition scripts under `<schema>/tables/_migrations/<table>/001_<commit>_<slug>.sql`, rerun `rmig plan`, and then run `rmig migrate --env prod --sql-root ./sql --sql-base dwh`.
+10. Run `rmig baseline --env prod --sql-root ./sql --sql-base dwh --confirm` to create or adopt the current repo-managed scope without an approved plan artifact.
+11. Run `rmig repair-checksum --env prod --sql-root ./sql --sql-base dwh --script reporting/views/monthly.sql --confirm` only when the current plan shows tracked checksum drift for that repo object and `migrate` is not the intended execution path.
 
 ## Off-Nominal Behavior And Failure Containment
 
@@ -108,8 +110,10 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, prints 
 - Approved-plan drift: when `--plan-file` is set, `migrate` rejects the plan if `git_commit`, `layout_hash`, target, tool identity, comparison mode, update policy, transaction mode, rollback scope, base selection, or the approved schema/object set differs.
 - Metadata read or write failure: the run reports a critical state and stops. Metadata updates also fail closed when the target row is missing or duplicated.
 - Unsafe existing-module update SQL: `plan` blocks the object when the repo file does not start with the required `CREATE OR ALTER` statement.
-- Tracked table drift without transitions: `plan` reports `transition required` and names the required `<schema>/tables/_migrations/<table>/` path.
-- Transition-backed table update: `migrate` executes checked-in transition scripts from the verified layout before the repo table SQL.
+- Safe additive tracked table drift: `plan` auto-creates `<schema>/tables/_migrations/<table>/001_<commit>_auto_add_columns.sql`, replans onto that checked-in transition path, and `migrate` executes the transition without replaying `tables/*.sql` as raw create DDL.
+- Non-safe tracked table drift without transitions: `plan` auto-creates the scaffold path, reports `transition required`, and tells the operator to replace the scaffold with real SQL.
+- Scaffold-only table transition: `migrate` still fails closed until the scaffold directive is removed and real transition SQL exists for the current commit.
+- Transition-backed table update: `migrate` executes checked-in transition scripts from the verified layout and then records the tracked table update without replaying the repo table file as raw create DDL.
 - Missing schema creation permission or missing object DDL permission: `baseline` or `migrate` stops with a permission-specific error.
 - Missing parent object for `indexes` or `triggers`: execution stops with a parent-object failure.
 - Validation failure: the run stops and writes `validation-report.*` only when `--report-dir` is set.
