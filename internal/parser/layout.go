@@ -14,6 +14,8 @@ import (
 	"reporting-db-migrations/internal/checksum"
 )
 
+const TransitionScaffoldDirective = "-- rmig: transition-scaffold"
+
 var allowedKinds = map[string]struct{}{
 	"tables":     {},
 	"views":      {},
@@ -84,8 +86,10 @@ type TransitionScript struct {
 	NormalizedKey string
 	Checksum      string
 	Ordinal       string
+	Commit        string
 	Slug          string
 	NoTransaction bool
+	Scaffold      bool
 }
 
 type Batch struct {
@@ -382,6 +386,7 @@ func parseCheckScript(root string, rel string, schemaName string) (CheckScript, 
 }
 
 var transitionFilePattern = regexp.MustCompile(`^(\d{3})_([A-Fa-f0-9]{7,40})_([A-Za-z0-9_]+)\.sql$`)
+var gitCommitPattern = regexp.MustCompile(`^[A-Fa-f0-9]{7,40}$`)
 
 func parseTransitionScript(root string, rel string, schemaName string) (TransitionScript, error) {
 	segments := strings.Split(rel, "/")
@@ -415,8 +420,10 @@ func parseTransitionScript(root string, rel string, schemaName string) (Transiti
 		NormalizedKey: strings.ToLower(strings.TrimSpace(schemaName)) + "/tables/" + strings.ToLower(tableName),
 		Checksum:      fileChecksum,
 		Ordinal:       matches[1],
+		Commit:        strings.ToLower(matches[2]),
 		Slug:          matches[3],
 		NoTransaction: hasNoTransactionDirective(string(body)),
+		Scaffold:      hasTransitionScaffoldDirective(string(body)),
 	}, nil
 }
 
@@ -524,10 +531,44 @@ func HashLayout(layout Layout, includeChecks bool) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func TransitionCommitToken(gitCommit string) string {
+	normalized := strings.ToLower(strings.TrimSpace(gitCommit))
+	if normalized == "" {
+		return ""
+	}
+	if gitCommitPattern.MatchString(normalized) {
+		if len(normalized) <= 7 {
+			return normalized
+		}
+		return normalized[:7]
+	}
+	sum := sha256.Sum256([]byte(normalized))
+	return hex.EncodeToString(sum[:])[:7]
+}
+
+func HasExecutableTransition(items []TransitionScript) bool {
+	for _, item := range items {
+		if !item.Scaffold {
+			return true
+		}
+	}
+	return false
+}
+
 func hasNoTransactionDirective(content string) bool {
 	for _, line := range strings.Split(content, "\n") {
 		trimmed := strings.TrimSpace(strings.TrimPrefix(line, "\ufeff"))
 		if trimmed == "-- migrator: no-transaction" {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTransitionScaffoldDirective(content string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(strings.TrimPrefix(line, "\ufeff"))
+		if trimmed == TransitionScaffoldDirective {
 			return true
 		}
 	}

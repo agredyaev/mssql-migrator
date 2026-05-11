@@ -99,6 +99,12 @@ func (r Runner) executePlannedObject(ctx context.Context, conn txConn, byKey map
 		if err := r.applyTransitionScripts(ctx, conn, transitionsByPath, planned, report); err != nil {
 			return err
 		}
+		if planned.Kind == "tables" {
+			if err := r.recordTransitionBackedTableSuccess(ctx, conn, planned, runID, itemID, report); err != nil {
+				return err
+			}
+			return nil
+		}
 	}
 	return r.applyObjectTracked(ctx, conn, object, planned, runID, itemID, report)
 }
@@ -207,6 +213,17 @@ func (r Runner) applyTransitionScripts(parent context.Context, conn txConn, tran
 		report.Applied = append(report.Applied, contracts.ScriptResult{Script: path, Type: contracts.ScriptTypeBaseline, Reason: contracts.ActionReprocessChanged})
 		r.log.Info("transition_applied", fmt.Sprintf("script=%s", path))
 	}
+	return nil
+}
+
+func (r Runner) recordTransitionBackedTableSuccess(ctx context.Context, execer metadata.Execer, planned contracts.PlannedObject, runID string, itemID *int64, report *contracts.MigrationReport) error {
+	recorder := newMetadataRecorder(r.cfg, execer, nil, runID)
+	if err := recorder.attempt.ObjectSuccess(ctx, passiveMetadataObject(planned, itemID), true); err != nil {
+		setCriticalMetadataFailure(report, planned.ObjectPath, "critical metadata failure after transition-backed table update: ", err)
+		return contracts.Wrap(contracts.ErrCriticalState, err)
+	}
+	report.Skipped = append(report.Skipped, contracts.ScriptResult{Script: planned.ObjectPath, Type: planned.Kind, Checksum: planned.Checksum, Reason: contracts.ActionReprocessChanged})
+	r.log.Info("table_transition_applied", fmt.Sprintf("object=%s transitions=%d", planned.ObjectPath, len(planned.TransitionPaths)))
 	return nil
 }
 

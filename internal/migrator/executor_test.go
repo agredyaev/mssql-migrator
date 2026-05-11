@@ -130,16 +130,18 @@ func TestExecutePlanAppliesCheckedInTransitionsBeforeTableObject(t *testing.T) {
 	if err := runner.executePlan(context.Background(), execer, layout, plan, &report); err != nil {
 		t.Fatalf("unexpected executePlan error: %v", err)
 	}
-	if len(execer.calls) < 2 {
-		t.Fatalf("expected transition SQL and table SQL, got %#v", execer.calls)
-	}
 	if !containsAll(execer.calls[0].query, "ALTER TABLE", "snapshot", "name") {
 		t.Fatalf("expected transition SQL first, got %#v", execer.calls)
 	}
-	if !containsAll(execer.calls[1].query, "CREATE TABLE", "snapshot") {
-		t.Fatalf("expected table SQL after transition, got %#v", execer.calls)
+	for _, call := range execer.calls[1:] {
+		if containsAll(call.query, "CREATE TABLE", "snapshot") {
+			t.Fatalf("expected no table DDL replay after transition-backed update, got %#v", execer.calls)
+		}
 	}
-	if len(report.Applied) != 2 {
-		t.Fatalf("expected transition and table in applied report, got %#v", report.Applied)
+	if len(report.Applied) != 1 || report.Applied[0].Script != "reporting/tables/_migrations/snapshot/001_deadbee_expand_snapshot.sql" {
+		t.Fatalf("expected transition in applied report, got %#v", report.Applied)
+	}
+	if len(report.Skipped) != 1 || report.Skipped[0].Script != "reporting/tables/snapshot.sql" || report.Skipped[0].Reason != contracts.ActionReprocessChanged {
+		t.Fatalf("expected table metadata completion without table DDL replay, got applied=%#v skipped=%#v", report.Applied, report.Skipped)
 	}
 }

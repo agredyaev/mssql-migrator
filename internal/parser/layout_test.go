@@ -211,6 +211,23 @@ func TestDiscoverLayoutRejectsInvalidTableTransitionName(t *testing.T) {
 	}
 }
 
+func TestTransitionCommitTokenUsesGitPrefix(t *testing.T) {
+	if got := TransitionCommitToken("deadbeefcafebabe"); got != "deadbee" {
+		t.Fatalf("unexpected transition commit token: %q", got)
+	}
+}
+
+func TestHasExecutableTransitionIgnoresScaffoldOnly(t *testing.T) {
+	items := []TransitionScript{{Path: "a", Commit: "deadbee", Scaffold: true}}
+	if HasExecutableTransition(items) {
+		t.Fatalf("expected scaffold-only transition set to stay non-executable")
+	}
+	items = append(items, TransitionScript{Path: "b", Commit: "deadbee"})
+	if !HasExecutableTransition(items) {
+		t.Fatalf("expected real transition to make set executable")
+	}
+}
+
 func writeLayoutFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

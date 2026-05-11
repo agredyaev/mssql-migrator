@@ -10,8 +10,9 @@ import (
 )
 
 type State struct {
-	Schemas map[string]struct{}
-	Objects map[string]Object
+	Schemas      map[string]struct{}
+	Objects      map[string]Object
+	TableColumns map[string][]TableColumn
 }
 
 type Object struct {
@@ -19,6 +20,16 @@ type Object struct {
 	Kind       string
 	ObjectName string
 	ParentName string
+}
+
+type TableColumn struct {
+	Name           string
+	NormalizedName string
+	TypeName       string
+	Length         int
+	Precision      int
+	Scale          int
+	Nullable       bool
 }
 
 const StateQuery = `
@@ -41,8 +52,9 @@ ORDER BY 1, 3`
 
 func Read(ctx context.Context, conn *sql.Conn) (State, error) {
 	state := State{
-		Schemas: map[string]struct{}{},
-		Objects: map[string]Object{},
+		Schemas:      map[string]struct{}{},
+		Objects:      map[string]Object{},
+		TableColumns: map[string][]TableColumn{},
 	}
 	if conn == nil {
 		return State{}, contracts.Wrap(contracts.ErrCriticalState, fmt.Errorf("catalog read: missing database connection"))
@@ -92,7 +104,56 @@ func Read(ctx context.Context, conn *sql.Conn) (State, error) {
 	if err := rows.Err(); err != nil {
 		return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
 	}
+	columnRows, err := conn.QueryContext(ctx, `
+SELECT s.name, t.name, c.name, TYPE_NAME(c.user_type_id), c.max_length, c.precision, c.scale, c.is_nullable
+FROM sys.tables t
+JOIN sys.schemas s ON s.schema_id = t.schema_id
+JOIN sys.columns c ON c.object_id = t.object_id
+WHERE t.is_ms_shipped = 0
+ORDER BY s.name, t.name, c.column_id`)
+	if err != nil {
+		return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
+	}
+	defer columnRows.Close()
+	for columnRows.Next() {
+		var schemaName string
+		var tableName string
+		var columnName string
+		var typeName string
+		var maxLength int
+		var precision int
+		var scale int
+		var nullable bool
+		if err := columnRows.Scan(&schemaName, &tableName, &columnName, &typeName, &maxLength, &precision, &scale, &nullable); err != nil {
+			return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
+		}
+		key := NormalizedKey(schemaName, "tables", "", tableName)
+		state.TableColumns[key] = append(state.TableColumns[key], TableColumn{
+			Name:           columnName,
+			NormalizedName: strings.ToLower(columnName),
+			TypeName:       strings.ToLower(strings.TrimSpace(typeName)),
+			Length:         normalizeCatalogColumnLength(typeName, maxLength),
+			Precision:      precision,
+			Scale:          scale,
+			Nullable:       nullable,
+		})
+	}
+	if err := columnRows.Err(); err != nil {
+		return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
+	}
 	return state, nil
+}
+
+func normalizeCatalogColumnLength(typeName string, maxLength int) int {
+	switch strings.ToLower(strings.TrimSpace(typeName)) {
+	case "nchar", "nvarchar":
+		if maxLength < 0 {
+			return maxLength
+		}
+		return maxLength / 2
+	default:
+		return maxLength
+	}
 }
 
 func MapTypeDescToKind(typeDesc string) string {

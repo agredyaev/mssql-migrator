@@ -78,6 +78,22 @@ func (r Runner) Plan(ctx context.Context) (contracts.MigrationPlan, error) {
 	if err != nil {
 		return contracts.MigrationPlan{}, err
 	}
+	catalogState, err := planner.SQLCatalogReader(conn).ReadCatalogState(ctx)
+	if err != nil {
+		return contracts.MigrationPlan{}, contracts.Wrap(contracts.ErrCriticalState, err)
+	}
+	if created, scaffoldErr := ensureTableTransitionFiles(r.cfg, layout, plan, catalogState.TableColumns); scaffoldErr != nil {
+		return contracts.MigrationPlan{}, contracts.Wrap(contracts.ErrInvalidInput, scaffoldErr)
+	} else if created {
+		layout, hash, err = planner.ResolvePlanningLayoutForRunner(r.cfg)
+		if err != nil {
+			return contracts.MigrationPlan{}, err
+		}
+		plan, err = planner.BuildResolved(ctx, r.cfg, successfulByKey, layout, hash, planner.SQLCatalogReader(conn))
+		if err != nil {
+			return contracts.MigrationPlan{}, err
+		}
+	}
 	if err := reports.WritePlan(r.cfg.ReportDir, plan); err != nil {
 		return contracts.MigrationPlan{}, err
 	}
@@ -197,6 +213,22 @@ func (r Runner) prepareExecutionPlan(ctx context.Context, state *protectedRunSta
 	plan, err := state.session.BuildPlan(ctx, successfulByKey, layout.resolved, layout.hash)
 	if err != nil {
 		return executionPlanContext{}, state.fail(ctx, options.buildPlanError(err), err)
+	}
+	catalogState, err := state.session.ReadPlanningCatalog(ctx)
+	if err != nil {
+		return executionPlanContext{}, state.fail(ctx, contracts.ErrCriticalState, err)
+	}
+	if created, scaffoldErr := ensureTableTransitionFiles(r.cfg, layout.resolved, plan, catalogState.TableColumns); scaffoldErr != nil {
+		return executionPlanContext{}, state.fail(ctx, contracts.ErrInvalidInput, scaffoldErr)
+	} else if created {
+		layout, successfulByKey, err = r.loadProtectedPlanningInputs(ctx, state, options.layoutBase)
+		if err != nil {
+			return executionPlanContext{}, err
+		}
+		plan, err = state.session.BuildPlan(ctx, successfulByKey, layout.resolved, layout.hash)
+		if err != nil {
+			return executionPlanContext{}, state.fail(ctx, options.buildPlanError(err), err)
+		}
 	}
 	if plan.Blocked {
 		return executionPlanContext{}, state.fail(ctx, contracts.ErrChecksumMismatch, fmt.Errorf("%v", plan.BlockReasons))

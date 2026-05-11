@@ -31,6 +31,7 @@ func SQLCatalogReader(conn *sql.Conn) CatalogReader {
 type CatalogState struct {
 	Schemas         map[string]struct{}
 	Objects         map[string]CatalogObject
+	TableColumns    map[string][]catalog.TableColumn
 	SuccessfulByKey map[string]string
 }
 
@@ -200,6 +201,7 @@ func (r sqlCatalogReader) ReadCatalogState(ctx context.Context) (CatalogState, e
 	}
 	state.Schemas = catalogState.Schemas
 	state.Objects = catalogState.Objects
+	state.TableColumns = catalogState.TableColumns
 	return state, nil
 }
 
@@ -207,26 +209,29 @@ func loadCatalogState(ctx context.Context, reader CatalogReader, successfulByKey
 	if reader == nil {
 		return CatalogState{Schemas: map[string]struct{}{}, Objects: map[string]CatalogObject{}, SuccessfulByKey: cloneChecksums(successfulByKey)}, nil
 	}
-	catalog, err := reader.ReadCatalogState(ctx)
+	state, err := reader.ReadCatalogState(ctx)
 	if err != nil {
 		return CatalogState{}, err
 	}
-	if catalog.SuccessfulByKey == nil {
-		catalog.SuccessfulByKey = cloneChecksums(successfulByKey)
+	if state.SuccessfulByKey == nil {
+		state.SuccessfulByKey = cloneChecksums(successfulByKey)
 	} else {
 		for key, checksum := range successfulByKey {
-			if _, exists := catalog.SuccessfulByKey[key]; !exists {
-				catalog.SuccessfulByKey[key] = checksum
+			if _, exists := state.SuccessfulByKey[key]; !exists {
+				state.SuccessfulByKey[key] = checksum
 			}
 		}
 	}
-	if catalog.Schemas == nil {
-		catalog.Schemas = map[string]struct{}{}
+	if state.Schemas == nil {
+		state.Schemas = map[string]struct{}{}
 	}
-	if catalog.Objects == nil {
-		catalog.Objects = map[string]CatalogObject{}
+	if state.Objects == nil {
+		state.Objects = map[string]CatalogObject{}
 	}
-	return catalog, nil
+	if state.TableColumns == nil {
+		state.TableColumns = map[string][]catalog.TableColumn{}
+	}
+	return state, nil
 }
 
 func cloneChecksums(values map[string]string) map[string]string {
@@ -313,10 +318,11 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 			NoTransaction:   noTransactionForObject(plan.TransactionMode, object.NoTransaction),
 			SourceFile:      object.Path,
 		}
-		planned.TransitionPaths = transitionPaths(transitionsByKey[object.NormalizedKey])
+		transitions := transitionsByKey[object.NormalizedKey]
+		planned.TransitionPaths = transitionPaths(transitions)
 		_, exists := catalog.Objects[object.NormalizedKey]
 		planned.Exists = exists
-		planned.PlannedAction = determineObjectAction(object, catalog, updatePolicy, len(planned.TransitionPaths) > 0)
+		planned.PlannedAction = determineObjectAction(object, catalog, updatePolicy, parser.HasExecutableTransition(transitions))
 		if isUnsafeUpdateAction(planned.PlannedAction) && !parser.SupportsExistingObjectUpdate(object) {
 			planned.PlannedAction = contracts.ActionReprocessChangedBlocked
 			plan.BlockReasons = append(plan.BlockReasons, "blocked existing object update: "+object.Path+" must start with CREATE OR ALTER for "+strings.TrimSuffix(strings.ToUpper(object.Kind), "S"))
@@ -335,7 +341,7 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 			plan.Summary.SkipCount++
 		case contracts.ActionReprocessChangedBlocked:
 			if !containsBlockReason(plan.BlockReasons, "blocked existing object update: "+object.Path+" must start with CREATE OR ALTER for "+strings.TrimSuffix(strings.ToUpper(object.Kind), "S")) {
-				plan.BlockReasons = append(plan.BlockReasons, blockedExistingObjectReason(object, planned.TransitionPaths))
+				plan.BlockReasons = append(plan.BlockReasons, blockedExistingObjectReason(object, transitions))
 			}
 			plan.Summary.ChangedCount++
 		case contracts.ActionReprocessChanged:
@@ -399,10 +405,15 @@ func transitionPaths(items []parser.TransitionScript) []string {
 	return paths
 }
 
-func blockedExistingObjectReason(object parser.Object, transitions []string) string {
+func blockedExistingObjectReason(object parser.Object, transitions []parser.TransitionScript) string {
 	if object.Kind == "tables" {
 		if len(transitions) == 0 {
 			return "transition required: " + object.Path + " is already tracked, repo checksum changed, and table drift needs a checked-in migration under " + object.SchemaName + "/tables/_migrations/" + object.ObjectName + "/"
+		}
+		for _, transition := range transitions {
+			if transition.Scaffold {
+				return "transition required: " + object.Path + " is already tracked, repo checksum changed, and the auto-created scaffold at " + transition.Path + " must be replaced with real transition SQL before migrate can run"
+			}
 		}
 		return "blocked existing object change: " + object.Path + " is already tracked, repo checksum changed, and the current transition set is not executable"
 	}
