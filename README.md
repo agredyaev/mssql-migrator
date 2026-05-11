@@ -83,7 +83,9 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, prints 
 - When `--report-dir` is set, report files are written through `internal/reports/write.go` by staging `*.tmp` files, publishing the text companion first, and publishing JSON last as the commit marker for readers that require a consistent pair.
 - Metadata writes use a short bounded context in `internal/migrator/metadata_context.go` so post-SQL metadata updates do not hang until the full command timeout.
 - Catalog reads are shared through `internal/catalog/catalog.go` so plan and validation classify the live SQL Server object set the same way.
+- Planning and validation catalog reads are filtered to repo-managed schemas from `parser.Layout` so large unrelated database areas are not scanned during normal repo-driven runs.
 - Metadata bootstrap records schema version state in `[__migrator].schema_version`, validates known schema versions before upgrade DDL, and does not churn existing indexes and view definitions on every run.
+- `plan` and repo-driven execution paths reuse a single planning catalog read per run stage, load the latest successful checksum row per managed object instead of replaying full attempt history, batch `__migrator.items` scope inserts in chunks, and emit per-phase `*_ms` timing logs for layout, metadata, catalog, plan, scope persistence, execution, validation, and report writes.
 
 ## Nominal Flow
 
@@ -114,6 +116,7 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, prints 
 - Non-safe tracked table drift without transitions: `plan` auto-creates the scaffold path, reports `transition required`, and tells the operator to replace the scaffold with real SQL.
 - Scaffold-only table transition: `migrate` still fails closed until the scaffold directive is removed and real transition SQL exists for the current commit.
 - Transition-backed table update: `migrate` executes checked-in transition scripts from the verified layout and then records the tracked table update without replaying the repo table file as raw create DDL.
+- Missing `staticcheck` binary in the local environment blocks that optional verifier until the tool is installed on the runner host.
 - Missing schema creation permission or missing object DDL permission: `baseline` or `migrate` stops with a permission-specific error.
 - Missing parent object for `indexes` or `triggers`: execution stops with a parent-object failure.
 - Validation failure: the run stops and writes `validation-report.*` only when `--report-dir` is set.

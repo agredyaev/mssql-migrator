@@ -55,6 +55,7 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - When checked-in table transitions exist, the planner exposes their paths in `contracts.PlannedObject.TransitionPaths`, the plan text explains that they will run, and `migrate` executes them from the verified layout.
 - For tracked table drift, `migrate` records success for the table object after the transition set and does not replay the repo `tables/*.sql` file as raw create DDL against the existing live table.
 - Safe additive transition generation is derived from parsed repo `CREATE TABLE` columns in `internal/parser/table_parser.go` and live table column metadata from `internal/catalog/catalog.go`.
+- Planning and managed-scope validation limit catalog reads to schemas present in the resolved repo layout so large unrelated SQL Server schemas are excluded from normal `plan`, `migrate`, `validate`, and `repair-checksum` catalog scans.
 - Without a real checked-in table transition, `plan` remains informational, marks the run as blocked, and emits a `transition required` reason that points at the generated scaffold path.
 - `RM_TRANSACTION_MODE` defaults to `script`.
 - Logs, reports, and stored error text must not expose secrets.
@@ -70,6 +71,13 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - The text plan view explains why each planned object is being created, adopted, skipped, updated, or blocked. It is printed to stdout by default and is persisted as `migration-plan.txt` only when `--report-dir` is set.
 - For tracked table drift, that text view includes the checked-in transition paths that `migrate` will apply before the repo table SQL, or the required transition directory when the change is still blocked.
 - Metadata bootstrap records runtime schema state in `[__migrator].schema_version`, validates known schema versions before upgrade DDL, and avoids recurring DDL churn on current metadata.
+- `inspectMetadataShape()` reads current and legacy metadata objects in one `sys.objects` query instead of per-object `OBJECT_ID()` round-trips.
+- After successful metadata bootstrap in locked execution paths, checksum loading uses `LoadSuccessfulChecksums()` directly and skips a second metadata shape inspection.
+- Successful checksum reads return only the latest successful action per tracked object key from `[__migrator].attempts` instead of replaying the full append-only attempt history.
+- `plan` and repo-driven execution paths reuse one planning catalog read per stage and pass that resolved catalog state into the planner and transition scaffold checks.
+- Scope persistence batches `__migrator.items` inserts in chunks of 100 rows and reloads object item ids in one follow-up query per scope transaction.
+- Repo SQL files are read once per discovery path and reused for both content parsing and normalized checksum calculation.
+- `internal/migrator/runner.go` emits per-phase duration logs such as `resolve_layout_ms`, `read_catalog_ms`, `build_plan_ms`, `persist_scope_ms`, `execute_plan_ms`, `validate_scope_ms`, and report-write timings so SQL Server latency and repo I/O can be separated during diagnostics.
 - Current builds are v2-only for metadata. Legacy metadata objects are treated as incompatible state, and no in-place upgrade path is implemented in `rmig`.
 
 ## Nominal Flow
@@ -106,6 +114,7 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - Scope persistence for repo-managed schemas and objects is written into `[__migrator].items` in one metadata transaction per run scope.
 - Validation failure: the run stops and writes `validation-report.*` only when `--report-dir` is set.
 - Repo-driven migrate execution: the current repo-driven schema/object set is executed. When `--plan-file` is supplied, the current set must still match the approved artifact. Repo-discovered checks are outside the `migrate` approval boundary and run only through standalone `validate`.
+- Local verification still depends on `staticcheck` being installed on the runner host. The current workspace did not provide that binary.
 
 ## Verification And Validation
 
