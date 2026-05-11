@@ -42,26 +42,21 @@ func TestSQLServerPlanBlocksChangedModuleWithoutCreateOrAlter(t *testing.T) {
 		t.Fatalf("bootstrap metadata: %v", err)
 	}
 	if err := seedSuccessfulMetadataObject(ctx, conn, cfg.Database, metadata.ItemRecord{
-		ItemType:             metadata.ItemTypeObject,
-		ObjectPath:           schemaName + "/views/monthly.sql",
-		SchemaName:           schemaName,
-		NormalizedSchemaName: strings.ToLower(schemaName),
-		Kind:                 "views",
-		ObjectName:           "monthly",
-		NormalizedObjectName: "monthly",
-		NormalizedKey:        schemaName + "/views/monthly",
-		Checksum:             "previous-checksum",
-		Action:               contracts.ActionCreateObject,
+		ObjectPath:    schemaName + "/views/monthly.sql",
+		SchemaName:    schemaName,
+		Kind:          "views",
+		ObjectName:    "monthly",
+		NormalizedKey: schemaName + "/views/monthly",
+		Checksum:      "previous-checksum",
+		Action:        contracts.ActionCreateObject,
 	}, metadata.AttemptRecord{
-		ScriptName:       schemaName + "/views/monthly.sql",
-		ScriptType:       contracts.ScriptTypeObject,
-		Checksum:         "previous-checksum",
-		Action:           contracts.ActionCreateObject,
-		Success:          true,
-		TransactionMode:  config.TransactionModeScript,
-		TransactionScope: config.TransactionModeScript,
-		RollbackScope:    contracts.RollbackScopeScript,
-		NoTransaction:    false,
+		ScriptName:      schemaName + "/views/monthly.sql",
+		Checksum:        "previous-checksum",
+		Action:          contracts.ActionCreateObject,
+		Success:         true,
+		TransactionMode: config.TransactionModeScript,
+		RollbackScope:   contracts.RollbackScopeScript,
+		NoTransaction:   false,
 	}); err != nil {
 		t.Fatalf("seed metadata drift: %v", err)
 	}
@@ -209,26 +204,21 @@ func TestSQLServerBaselineForcesUpdatePolicyNone(t *testing.T) {
 		t.Fatalf("bootstrap metadata: %v", err)
 	}
 	if err := seedSuccessfulMetadataObject(ctx, conn, cfg.Database, metadata.ItemRecord{
-		ItemType:             metadata.ItemTypeObject,
-		ObjectPath:           schemaName + "/views/monthly.sql",
-		SchemaName:           schemaName,
-		NormalizedSchemaName: strings.ToLower(schemaName),
-		Kind:                 "views",
-		ObjectName:           "monthly",
-		NormalizedObjectName: "monthly",
-		NormalizedKey:        schemaName + "/views/monthly",
-		Checksum:             "previous-checksum",
-		Action:               contracts.ActionCreateObject,
+		ObjectPath:    schemaName + "/views/monthly.sql",
+		SchemaName:    schemaName,
+		Kind:          "views",
+		ObjectName:    "monthly",
+		NormalizedKey: schemaName + "/views/monthly",
+		Checksum:      "previous-checksum",
+		Action:        contracts.ActionCreateObject,
 	}, metadata.AttemptRecord{
-		ScriptName:       schemaName + "/views/monthly.sql",
-		ScriptType:       contracts.ScriptTypeObject,
-		Checksum:         "previous-checksum",
-		Action:           contracts.ActionCreateObject,
-		Success:          true,
-		TransactionMode:  config.TransactionModeScript,
-		TransactionScope: config.TransactionModeScript,
-		RollbackScope:    contracts.RollbackScopeScript,
-		NoTransaction:    false,
+		ScriptName:      schemaName + "/views/monthly.sql",
+		Checksum:        "previous-checksum",
+		Action:          contracts.ActionCreateObject,
+		Success:         true,
+		TransactionMode: config.TransactionModeScript,
+		RollbackScope:   contracts.RollbackScopeScript,
+		NoTransaction:   false,
 	}); err != nil {
 		t.Fatalf("seed metadata drift: %v", err)
 	}

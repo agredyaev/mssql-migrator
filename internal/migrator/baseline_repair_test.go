@@ -86,7 +86,7 @@ func TestBaselineDriftFailureForTransitionBackedTableUsesMigrateMessage(t *testi
 		Kind:            "tables",
 		TransitionPaths: []string{"reporting/tables/_migrations/snapshot/001_deadbee_expand_snapshot.sql"},
 	})
-	if err == nil || !strings.Contains(err.Error(), "use migrate to apply checked-in transitions") || !strings.Contains(err.Error(), "001_deadbee_expand_snapshot.sql") {
+	if err == nil || !strings.Contains(err.Error(), "Run migrate to apply") || !strings.Contains(err.Error(), "001_deadbee_expand_snapshot.sql") {
 		t.Fatalf("expected transition-backed baseline drift message, got %v", err)
 	}
 }

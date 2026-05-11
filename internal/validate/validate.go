@@ -34,8 +34,16 @@ func ReadCatalogState(ctx context.Context, conn *sql.Conn) (CatalogState, error)
 	return CatalogState{Schemas: state.Schemas, Objects: state.Objects}, nil
 }
 
+func ReadCatalogStateForLayout(ctx context.Context, conn *sql.Conn, layout parser.Layout) (CatalogState, error) {
+	state, err := catalog.ReadForSchemas(ctx, conn, parser.ManagedSchemaNames(layout))
+	if err != nil {
+		return CatalogState{}, err
+	}
+	return CatalogState{Schemas: state.Schemas, Objects: state.Objects}, nil
+}
+
 func RefreshManagedObjects(ctx context.Context, conn *sql.Conn, layout parser.Layout, log logger.Logger) (contracts.ValidationSummary, error) {
-	catalog, err := ReadCatalogState(ctx, conn)
+	catalog, err := ReadCatalogStateForLayout(ctx, conn, layout)
 	if err != nil {
 		return contracts.ValidationSummary{}, err
 	}

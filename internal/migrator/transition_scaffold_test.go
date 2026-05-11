@@ -188,7 +188,7 @@ func TestEnsureTableTransitionFilesReplanKeepsScaffoldBlocked(t *testing.T) {
 	if len(plan.Objects) != 1 || len(plan.Objects[0].TransitionPaths) != 1 || !strings.Contains(plan.Objects[0].TransitionPaths[0], "001_deadbee_describe_change.sql") {
 		t.Fatalf("expected scaffold transition path in replanned object, got %#v", plan.Objects)
 	}
-	if len(plan.BlockReasons) == 0 || !strings.Contains(plan.BlockReasons[0], "auto-created scaffold") {
+	if len(plan.BlockReasons) == 0 || !strings.Contains(plan.BlockReasons[0], "Replace the scaffold") {
 		t.Fatalf("expected scaffold blocker after replan, got %#v", plan.BlockReasons)
 	}
 }

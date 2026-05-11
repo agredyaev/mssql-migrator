@@ -24,7 +24,6 @@ func ApplyAuditFields(cfg config.Config, attempt *metadata.AttemptRecord) {
 func Schema(schemaName string, action string, success bool, message string, cfg config.Config) metadata.AttemptRecord {
 	attempt := metadata.AttemptRecord{
 		ScriptName:   schemaName,
-		ScriptType:   contracts.ScriptTypeSchema,
 		Checksum:     "-",
 		Action:       action,
 		ExecutionMS:  0,
@@ -37,17 +36,15 @@ func Schema(schemaName string, action string, success bool, message string, cfg 
 
 func ValidationCheckFailure(message string, cfg config.Config) metadata.AttemptRecord {
 	attempt := metadata.AttemptRecord{
-		ScriptName:       "validation/checks",
-		ScriptType:       contracts.ScriptTypeValidate,
-		Checksum:         "-",
-		Action:           contracts.ActionFail,
-		ExecutionMS:      0,
-		Success:          false,
-		ErrorMessage:     strings.TrimSpace(message),
-		TransactionMode:  config.TransactionModeNone,
-		TransactionScope: config.TransactionModeNone,
-		RollbackScope:    contracts.RollbackScopeNone,
-		NoTransaction:    true,
+		ScriptName:      "validation/checks",
+		Checksum:        "-",
+		Action:          contracts.ActionFail,
+		ExecutionMS:     0,
+		Success:         false,
+		ErrorMessage:    strings.TrimSpace(message),
+		TransactionMode: config.TransactionModeNone,
+		RollbackScope:   contracts.RollbackScopeNone,
+		NoTransaction:   true,
 	}
 	ApplyAuditFields(cfg, &attempt)
 	return attempt
@@ -55,17 +52,15 @@ func ValidationCheckFailure(message string, cfg config.Config) metadata.AttemptR
 
 func RepairSuccess(object parser.Object, itemID *int64, cfg config.Config) metadata.AttemptRecord {
 	attempt := metadata.AttemptRecord{
-		ItemID:           itemID,
-		ScriptName:       object.NormalizedKey,
-		ScriptType:       contracts.ScriptTypeRepair,
-		Checksum:         object.Checksum,
-		Action:           contracts.ActionRepairChecksum,
-		ExecutionMS:      0,
-		Success:          true,
-		TransactionMode:  config.TransactionModeNone,
-		TransactionScope: config.TransactionModeNone,
-		RollbackScope:    contracts.RollbackScopeNone,
-		NoTransaction:    true,
+		ItemID:          itemID,
+		ScriptName:      object.NormalizedKey,
+		Checksum:        object.Checksum,
+		Action:          contracts.ActionRepairChecksum,
+		ExecutionMS:     0,
+		Success:         true,
+		TransactionMode: config.TransactionModeNone,
+		RollbackScope:   contracts.RollbackScopeNone,
+		NoTransaction:   true,
 	}
 	ApplyAuditFields(cfg, &attempt)
 	return attempt

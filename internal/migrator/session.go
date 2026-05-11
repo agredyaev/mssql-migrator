@@ -21,12 +21,21 @@ type runSession struct {
 }
 
 func (r Runner) startProtectedSession(ctx context.Context) (*runSession, error) {
-	report, conn, closeFn, err := r.prepareProtectedRun(ctx)
+	var (
+		report  contracts.MigrationReport
+		conn    *sql.Conn
+		closeFn func() error
+		err     error
+	)
+	err = timedErr(r.log, "open_connection_ms", func() error {
+		report, conn, closeFn, err = r.prepareProtectedRun(ctx)
+		return err
+	})
 	if err != nil {
 		return &runSession{runner: r, report: report}, err
 	}
 	session := &runSession{runner: r, report: report, conn: conn, closeFn: closeFn}
-	if err := r.acquireLock(ctx, conn); err != nil {
+	if err := timedErr(r.log, "acquire_lock_ms", func() error { return r.acquireLock(ctx, conn) }); err != nil {
 		session.Close()
 		return &runSession{runner: r, report: report}, err
 	}
@@ -44,7 +53,7 @@ func (s *runSession) LoadSuccessfulChecksums(ctx context.Context) (map[string]st
 	if err := s.requireConnection(); err != nil {
 		return nil, err
 	}
-	return metadata.LoadSuccessfulChecksumsIfPresent(ctx, s.conn)
+	return metadata.LoadSuccessfulChecksums(ctx, s.conn)
 }
 
 func (s *runSession) StartRun(ctx context.Context, command string, planFile string, planHash string, rollbackScope string) (string, metadataRecorder, error) {
@@ -89,7 +98,15 @@ func (s *runSession) BuildPlan(ctx context.Context, successfulByKey map[string]s
 	if err := s.requireConnection(); err != nil {
 		return contracts.MigrationPlan{}, err
 	}
-	return planner.BuildResolved(ctx, s.runner.cfg, successfulByKey, layout, hash, planner.SQLCatalogReader(s.conn))
+	catalogState, err := s.ReadPlanningCatalogForLayout(ctx, layout)
+	if err != nil {
+		return contracts.MigrationPlan{}, err
+	}
+	return s.BuildPlanWithCatalog(ctx, successfulByKey, layout, hash, catalogState)
+}
+
+func (s *runSession) BuildPlanWithCatalog(_ context.Context, successfulByKey map[string]string, layout parser.Layout, hash string, catalogState planner.CatalogState) (contracts.MigrationPlan, error) {
+	return planner.BuildResolvedWithCatalog(s.runner.cfg, successfulByKey, layout, hash, catalogState)
 }
 
 func (s *runSession) ReadPlanningCatalog(ctx context.Context) (planner.CatalogState, error) {
@@ -97,6 +114,13 @@ func (s *runSession) ReadPlanningCatalog(ctx context.Context) (planner.CatalogSt
 		return planner.CatalogState{}, err
 	}
 	return planner.SQLCatalogReader(s.conn).ReadCatalogState(ctx)
+}
+
+func (s *runSession) ReadPlanningCatalogForLayout(ctx context.Context, layout parser.Layout) (planner.CatalogState, error) {
+	if err := s.requireConnection(); err != nil {
+		return planner.CatalogState{}, err
+	}
+	return planner.SQLCatalogReaderForSchemas(s.conn, parser.ManagedSchemaNames(layout)).ReadCatalogState(ctx)
 }
 
 func (s *runSession) RecordRunFailure(ctx context.Context, recorder metadataRecorder, base error, cause error) {

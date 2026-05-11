@@ -182,16 +182,26 @@ func TestFinishRunRejectsZeroRowsAffected(t *testing.T) {
 }
 
 func TestUpdateItemResultRejectsZeroRowsAffected(t *testing.T) {
-	err := UpdateItemResult(context.Background(), stubMetadataExecer{result: stubMetadataResult{rows: 0}}, "run-1", ItemTypeSchema, "reporting", true, "")
+	err := UpdateItemResult(context.Background(), stubMetadataExecer{result: stubMetadataResult{rows: 0}}, "run-1", "reporting", true, "")
 	if err == nil || !strings.Contains(err.Error(), "expected 1 row affected") {
 		t.Fatalf("expected rows affected failure, got %v", err)
 	}
 }
 
 func TestUpdateItemResultRejectsMultipleRowsAffected(t *testing.T) {
-	err := UpdateItemResult(context.Background(), stubMetadataExecer{result: stubMetadataResult{rows: 2}}, "run-1", ItemTypeObject, "reporting/views/monthly", true, "")
+	err := UpdateItemResult(context.Background(), stubMetadataExecer{result: stubMetadataResult{rows: 2}}, "run-1", "reporting/views/monthly", true, "")
 	if err == nil || !strings.Contains(err.Error(), "expected 1 row affected") {
 		t.Fatalf("expected rows affected failure, got %v", err)
+	}
+}
+
+func TestUpdateItemResultUsesExpectedPlaceholders(t *testing.T) {
+	execer := captureMetadataExecer{result: stubMetadataResult{rows: 1}}
+	if err := UpdateItemResult(context.Background(), &execer, "run-1", "reporting/views/monthly", true, "boom"); err != nil {
+		t.Fatalf("UpdateItemResult() error = %v", err)
+	}
+	if !strings.Contains(execer.query, "success = @p3") || !strings.Contains(execer.query, "error_message = @p4") {
+		t.Fatalf("unexpected update query: %s", execer.query)
 	}
 }
 
@@ -237,6 +247,39 @@ func TestLoadSuccessfulChecksumsIfPresentUsesItemKeys(t *testing.T) {
 	}
 	if got["reporting/procedures/refreshmonthly"] != "def" {
 		t.Fatalf("fallback normalized key missing, got %#v", got)
+	}
+}
+
+func TestLoadSuccessfulChecksumsSkipsShapeInspection(t *testing.T) {
+	conn := openMetadataTestConn(t, &metadataTestScenario{
+		queryResponses: map[string]metadataTestRows{
+			successfulChecksumsQuery(): {
+				columns: []string{"normalized_key", "script_name", "checksum"},
+				rows:    [][]driver.Value{{"reporting/views/monthly", "ignored", "abc"}},
+			},
+		},
+	})
+	defer conn.Close()
+
+	got, err := LoadSuccessfulChecksums(context.Background(), conn)
+	if err != nil {
+		t.Fatalf("LoadSuccessfulChecksums() error = %v", err)
+	}
+	if got["reporting/views/monthly"] != "abc" {
+		t.Fatalf("LoadSuccessfulChecksums() = %#v", got)
+	}
+	state := metadataTestStateForConn(t, conn)
+	if len(state.queries) != 1 || state.queries[0] != successfulChecksumsQuery() {
+		t.Fatalf("expected direct checksum query, got %#v", state.queries)
+	}
+}
+
+func TestSuccessfulChecksumsQueryUsesLatestRowPerObject(t *testing.T) {
+	query := successfulChecksumsQuery()
+	for _, expected := range []string{"ROW_NUMBER() OVER", "PARTITION BY", contracts.ActionSkipUnchanged, contracts.ActionRepairChecksum} {
+		if !strings.Contains(query, expected) {
+			t.Fatalf("expected query to contain %q, got %s", expected, query)
+		}
 	}
 }
 
@@ -307,7 +350,6 @@ func TestClassifyBootstrapError(t *testing.T) {
 }
 
 const (
-	objectExistsQuery  = `SELECT CASE WHEN OBJECT_ID(@p1, @p2) IS NULL THEN 0 ELSE 1 END`
 	schemaVersionQuery = `SELECT MAX(version) FROM __migrator.schema_version`
 )
 
@@ -396,7 +438,7 @@ func (c *metadataTestConn) QueryContext(_ context.Context, query string, args []
 	defer c.state.mu.Unlock()
 	c.state.queries = append(c.state.queries, query)
 	c.state.queryArgs = append(c.state.queryArgs, cloneNamedValues(args))
-	if query == objectExistsQuery {
+	if query == metadataShapeQuery() {
 		if response, ok := c.state.scenario.queryResponses[query]; ok {
 			rows := response.rows
 			if len(response.rowsByArgs) > 0 {
@@ -404,11 +446,15 @@ func (c *metadataTestConn) QueryContext(_ context.Context, query string, args []
 			}
 			return &metadataTestRowsResult{columns: response.columns, rows: rows}, nil
 		}
-		exists := int64(0)
-		if c.state.scenario.objectExists != nil && c.state.scenario.objectExists[keyForNamedValues(args)] {
-			exists = 1
+		rows := [][]driver.Value{}
+		for key, exists := range c.state.scenario.objectExists {
+			if !exists {
+				continue
+			}
+			schemaName, objectName, objectType := metadataShapeRow(key)
+			rows = append(rows, []driver.Value{schemaName, objectName, objectType})
 		}
-		return &metadataTestRowsResult{columns: []string{"exists"}, rows: [][]driver.Value{{exists}}}, nil
+		return &metadataTestRowsResult{columns: []string{"schema_name", "object_name", "type"}, rows: rows}, nil
 	}
 	response, ok := c.state.scenario.queryResponses[query]
 	if !ok {
@@ -424,6 +470,15 @@ func (c *metadataTestConn) QueryContext(_ context.Context, query string, args []
 	return &metadataTestRowsResult{columns: response.columns, rows: rows}, nil
 }
 
+func metadataShapeRow(key string) (string, string, string) {
+	parts := strings.Split(key, "|")
+	if len(parts) != 2 {
+		return "", "", ""
+	}
+	schemaName, objectName := splitQualifiedObjectName(parts[0])
+	return schemaName, objectName, parts[1]
+}
+
 type stubMetadataExecer struct {
 	result sql.Result
 	err    error
@@ -433,6 +488,18 @@ func (s stubMetadataExecer) ExecContext(context.Context, string, ...any) (sql.Re
 	if s.err != nil {
 		return nil, s.err
 	}
+	return s.result, nil
+}
+
+type captureMetadataExecer struct {
+	query  string
+	args   []any
+	result sql.Result
+}
+
+func (s *captureMetadataExecer) ExecContext(_ context.Context, query string, args ...any) (sql.Result, error) {
+	s.query = query
+	s.args = append([]any(nil), args...)
 	return s.result, nil
 }
 
@@ -493,8 +560,6 @@ func metadataTestStateForConn(t *testing.T, conn *sql.Conn) *metadataTestState {
 		if state == nil {
 			return errors.New("missing test state")
 		}
-		state.mu.Lock()
-		state.mu.Unlock()
 		return nil
 	})
 	if err != nil {

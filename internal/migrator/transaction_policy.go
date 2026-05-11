@@ -22,10 +22,3 @@ func rollbackScope(defaultMode string) string {
 	}
 	return contracts.RollbackScopeScript
 }
-
-func rollbackScopeForObject(defaultMode string, noTransaction bool) string {
-	if noTransaction || defaultMode == config.TransactionModeNone {
-		return contracts.RollbackScopeNone
-	}
-	return contracts.RollbackScopeScript
-}

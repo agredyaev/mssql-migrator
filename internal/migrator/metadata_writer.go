@@ -3,6 +3,7 @@ package migrator
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 
 	"reporting-db-migrations/internal/config"
@@ -23,21 +24,21 @@ func (w metadataWriter) finishRun(ctx context.Context, success bool, base error,
 	return finishRun(ctx, w.execer, w.runID, success, base, cause)
 }
 
-func (w metadataWriter) updateItemResult(ctx context.Context, itemType string, normalizedKey string, success bool, errorMessage string) error {
+func (w metadataWriter) updateItemResult(ctx context.Context, normalizedKey string, success bool, errorMessage string) error {
 	if w.runID == "" {
 		return nil
 	}
 	metaCtx, cancel := metadataContext(ctx)
 	defer cancel()
-	return metadata.UpdateItemResult(metaCtx, w.execer, w.runID, itemType, normalizedKey, success, errorMessage)
+	return metadata.UpdateItemResult(metaCtx, w.execer, w.runID, normalizedKey, success, errorMessage)
 }
 
 func (w metadataWriter) updateSchema(ctx context.Context, normalizedSchemaName string, success bool, errorMessage string) error {
-	return w.updateItemResult(ctx, metadata.ItemTypeSchema, normalizedSchemaName, success, errorMessage)
+	return w.updateItemResult(ctx, normalizedSchemaName, success, errorMessage)
 }
 
 func (w metadataWriter) updateObject(ctx context.Context, normalizedKey string, success bool, errorMessage string) error {
-	return w.updateItemResult(ctx, metadata.ItemTypeObject, normalizedKey, success, errorMessage)
+	return w.updateItemResult(ctx, normalizedKey, success, errorMessage)
 }
 
 func (w metadataWriter) insertAttempt(ctx context.Context, attempt metadata.AttemptRecord) error {
@@ -48,25 +49,12 @@ func (w metadataWriter) insertAttempt(ctx context.Context, attempt metadata.Atte
 }
 
 func (w metadataWriter) loadObjectItemIDs(ctx context.Context, conn *sql.Conn) (map[string]int64, error) {
-	rows, err := conn.QueryContext(ctx, `
-SELECT normalized_key, item_id
-FROM __migrator.items
-WHERE run_id = @p1 AND item_type = @p2`, w.runID, metadata.ItemTypeObject)
-	if err != nil {
-		return nil, err
+	return metadata.LoadItemIDs(ctx, conn, w.runID, false)
+}
+
+func (w metadataWriter) loadItemIDs(ctx context.Context, queryer metadata.Queryer, includeSchemas bool) (map[string]int64, error) {
+	if strings.TrimSpace(w.runID) == "" {
+		return nil, fmt.Errorf("load item ids: missing run id")
 	}
-	defer rows.Close()
-	result := map[string]int64{}
-	for rows.Next() {
-		var normalizedKey string
-		var itemID int64
-		if err := rows.Scan(&normalizedKey, &itemID); err != nil {
-			return nil, err
-		}
-		result[normalizedKey] = itemID
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return result, nil
+	return metadata.LoadItemIDs(ctx, queryer, w.runID, includeSchemas)
 }

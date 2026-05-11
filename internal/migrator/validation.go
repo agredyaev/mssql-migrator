@@ -3,6 +3,7 @@ package migrator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"reporting-db-migrations/internal/config"
@@ -16,7 +17,7 @@ import (
 func (r Runner) Validate(ctx context.Context) error {
 	layout, err := validate.LoadLayout(r.cfg)
 	if err != nil {
-		return r.writeValidationFailureReport(err, contracts.ErrInvalidInput)
+		return r.writeValidationFailureReport(fmt.Errorf("validation requires a readable repo layout under --sql-root/--sql-base: %w", err), contracts.ErrInvalidInput)
 	}
 	session, err := r.startProtectedSession(ctx)
 	if err != nil {
@@ -24,7 +25,7 @@ func (r Runner) Validate(ctx context.Context) error {
 	}
 	defer session.Close()
 	if err := session.BootstrapMetadata(ctx); err != nil {
-		return r.writeValidationFailureReport(err, contracts.ErrCriticalState)
+		return r.writeValidationFailureReport(fmt.Errorf("validation could not bootstrap metadata; fix the database state or permissions and rerun validate: %w", err), contracts.ErrCriticalState)
 	}
 	vr, err := r.validateScope(ctx, session, layout, true, "", true)
 	return runreport.WriteValidationOutcome(r.cfg.ReportDir, vr, err)
@@ -41,7 +42,7 @@ func (r Runner) validateManagedScope(ctx context.Context, session *runSession, l
 
 func (r Runner) validateScope(ctx context.Context, session *runSession, layout parser.Layout, includeChecks bool, existingRunID string, refreshModules bool) (contracts.ValidationReport, error) {
 	vr := newValidationReport(r.cfg, layout, includeChecks)
-	catalog, successfulByKey, err := r.loadValidationInputs(ctx, session, &vr)
+	catalog, successfulByKey, err := r.loadValidationInputs(ctx, session, layout, &vr)
 	if err != nil {
 		return vr, err
 	}
@@ -93,8 +94,8 @@ func newValidationReportBase(cfg config.Config, includeChecks bool) contracts.Va
 	}
 }
 
-func (r Runner) loadValidationInputs(ctx context.Context, session *runSession, vr *contracts.ValidationReport) (validate.CatalogState, map[string]string, error) {
-	catalog, err := validate.ReadCatalogState(ctx, session.conn)
+func (r Runner) loadValidationInputs(ctx context.Context, session *runSession, layout parser.Layout, vr *contracts.ValidationReport) (validate.CatalogState, map[string]string, error) {
+	catalog, err := validate.ReadCatalogStateForLayout(ctx, session.conn, layout)
 	if err != nil {
 		finalizeValidationFailure(vr, contracts.ErrCriticalState, err)
 		return validate.CatalogState{}, nil, validationFailureError(contracts.ErrCriticalState, err)

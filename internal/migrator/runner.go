@@ -35,6 +35,11 @@ type Runner struct {
 	db  DBOpener
 }
 
+type reservedConnection struct {
+	conn    *sql.Conn
+	closeFn func() error
+}
+
 func NewRunner(cfg config.Config, log logger.Logger) Runner {
 	return NewRunnerWithDBOpener(cfg, log, nil)
 }
@@ -57,44 +62,74 @@ func (r Runner) Info(ctx context.Context) error {
 }
 
 func (r Runner) Plan(ctx context.Context) (contracts.MigrationPlan, error) {
-	layout, hash, err := planner.ResolvePlanningLayoutForRunner(r.cfg)
+	layout, err := timedValue(r.log, "resolve_layout_ms", func() (plannerLayoutContext, error) {
+		resolved, hash, err := planner.ResolvePlanningLayoutForRunner(r.cfg)
+		if err != nil {
+			return plannerLayoutContext{}, err
+		}
+		return plannerLayoutContext{resolved: resolved, hash: hash}, nil
+	})
 	if err != nil {
 		return contracts.MigrationPlan{}, err
 	}
-	conn, closeFn, err := r.openReservedConnection(ctx)
+	connection, err := timedValue(r.log, "open_connection_ms", func() (reservedConnection, error) {
+		conn, closeFn, err := r.openReservedConnection(ctx)
+		if err != nil {
+			return reservedConnection{}, err
+		}
+		return reservedConnection{conn: conn, closeFn: closeFn}, nil
+	})
 	if err != nil {
 		return contracts.MigrationPlan{}, err
 	}
 	defer func() {
-		if err := closeFn(); err != nil {
+		if err := connection.closeFn(); err != nil {
 			r.log.Warn("db_close_failed", err.Error())
 		}
 	}()
-	successfulByKey, err := metadata.LoadSuccessfulChecksumsIfPresent(ctx, conn)
+	successfulByKey, err := timedValue(r.log, "load_successful_checksums_ms", func() (map[string]string, error) {
+		return metadata.LoadSuccessfulChecksumsIfPresent(ctx, connection.conn)
+	})
 	if err != nil {
 		return contracts.MigrationPlan{}, contracts.Wrap(contracts.ErrCriticalState, err)
 	}
-	plan, err := planner.BuildResolved(ctx, r.cfg, successfulByKey, layout, hash, planner.SQLCatalogReader(conn))
+	catalogState, err := timedValue(r.log, "read_catalog_ms", func() (planner.CatalogState, error) {
+		return planner.SQLCatalogReaderForSchemas(connection.conn, parser.ManagedSchemaNames(layout.resolved)).ReadCatalogState(ctx)
+	})
+	if err != nil {
+		return contracts.MigrationPlan{}, contracts.Wrap(contracts.ErrCriticalState, err)
+	}
+	plan, err := timedValue(r.log, "build_plan_ms", func() (contracts.MigrationPlan, error) {
+		return planner.BuildResolvedWithCatalog(r.cfg, successfulByKey, layout.resolved, layout.hash, catalogState)
+	})
 	if err != nil {
 		return contracts.MigrationPlan{}, err
 	}
-	catalogState, err := planner.SQLCatalogReader(conn).ReadCatalogState(ctx)
-	if err != nil {
-		return contracts.MigrationPlan{}, contracts.Wrap(contracts.ErrCriticalState, err)
-	}
-	if created, scaffoldErr := ensureTableTransitionFiles(r.cfg, layout, plan, catalogState.TableColumns); scaffoldErr != nil {
+	created, scaffoldErr := timedValue(r.log, "ensure_table_transitions_ms", func() (bool, error) {
+		return ensureTableTransitionFiles(r.cfg, layout.resolved, plan, catalogState.TableColumns)
+	})
+	if scaffoldErr != nil {
 		return contracts.MigrationPlan{}, contracts.Wrap(contracts.ErrInvalidInput, scaffoldErr)
-	} else if created {
-		layout, hash, err = planner.ResolvePlanningLayoutForRunner(r.cfg)
+	}
+	if created {
+		layout, err = timedValue(r.log, "resolve_layout_ms", func() (plannerLayoutContext, error) {
+			resolved, hash, err := planner.ResolvePlanningLayoutForRunner(r.cfg)
+			if err != nil {
+				return plannerLayoutContext{}, err
+			}
+			return plannerLayoutContext{resolved: resolved, hash: hash}, nil
+		})
 		if err != nil {
 			return contracts.MigrationPlan{}, err
 		}
-		plan, err = planner.BuildResolved(ctx, r.cfg, successfulByKey, layout, hash, planner.SQLCatalogReader(conn))
+		plan, err = timedValue(r.log, "build_plan_ms", func() (contracts.MigrationPlan, error) {
+			return planner.BuildResolvedWithCatalog(r.cfg, successfulByKey, layout.resolved, layout.hash, catalogState)
+		})
 		if err != nil {
 			return contracts.MigrationPlan{}, err
 		}
 	}
-	if err := reports.WritePlan(r.cfg.ReportDir, plan); err != nil {
+	if err := timedErr(r.log, "write_plan_report_ms", func() error { return reports.WritePlan(r.cfg.ReportDir, plan) }); err != nil {
 		return contracts.MigrationPlan{}, err
 	}
 	return plan, nil
@@ -111,10 +146,10 @@ func (r Runner) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := r.executeMigrationPlan(ctx, state, planCtx); err != nil {
+	if err := timedErr(r.log, "execute_plan_ms", func() error { return r.executeMigrationPlan(ctx, state, planCtx) }); err != nil {
 		return err
 	}
-	if err := r.validateMigrationScope(ctx, state, planCtx); err != nil {
+	if err := timedErr(r.log, "validate_scope_ms", func() error { return r.validateMigrationScope(ctx, state, planCtx) }); err != nil {
 		return err
 	}
 	return state.finishSuccess(ctx)
@@ -164,7 +199,7 @@ func (r Runner) validateMigrationScope(ctx context.Context, state *protectedRunS
 	validationReport, validationErr := r.validateManagedScope(ctx, state.session, planCtx.layout.resolved, state.runID)
 	report.ValidationScope = validationReport.Scope
 	report.Validation = validationReport.Validation
-	if writeErr := runreport.WriteValidation(r.cfg.ReportDir, validationReport); writeErr != nil {
+	if writeErr := timedErr(r.log, "write_validation_report_ms", func() error { return runreport.WriteValidation(r.cfg.ReportDir, validationReport) }); writeErr != nil {
 		return state.fail(ctx, contracts.ErrCriticalState, writeErr)
 	}
 	if validationErr != nil {
@@ -178,19 +213,27 @@ func (r Runner) validateMigrationScope(ctx context.Context, state *protectedRunS
 }
 
 func (r Runner) loadProtectedPlanningInputs(ctx context.Context, state *protectedRunState, layoutBase error) (plannerLayoutContext, map[string]string, error) {
-	if err := state.session.BootstrapMetadata(ctx); err != nil {
+	if err := timedErr(r.log, "bootstrap_metadata_ms", func() error { return state.session.BootstrapMetadata(ctx) }); err != nil {
 		return plannerLayoutContext{}, nil, state.fail(ctx, contracts.ErrCriticalState, err)
 	}
-	successfulByKey, err := state.session.LoadSuccessfulChecksums(ctx)
+	successfulByKey, err := timedValue(r.log, "load_successful_checksums_ms", func() (map[string]string, error) {
+		return state.session.LoadSuccessfulChecksums(ctx)
+	})
 	if err != nil {
 		return plannerLayoutContext{}, nil, state.fail(ctx, contracts.ErrCriticalState, err)
 	}
-	resolved, hash, err := state.session.ResolvePlanningLayout()
+	layout, err := timedValue(r.log, "resolve_layout_ms", func() (plannerLayoutContext, error) {
+		resolved, hash, err := state.session.ResolvePlanningLayout()
+		if err != nil {
+			return plannerLayoutContext{}, err
+		}
+		return plannerLayoutContext{resolved: resolved, hash: hash}, nil
+	})
 	if err != nil {
 		return plannerLayoutContext{}, nil, state.fail(ctx, layoutBase, err)
 	}
-	state.setLayoutHash(hash)
-	return plannerLayoutContext{resolved: resolved, hash: hash}, successfulByKey, nil
+	state.setLayoutHash(layout.hash)
+	return layout, successfulByKey, nil
 }
 
 type executionPlanOptions struct {
@@ -210,28 +253,45 @@ func (r Runner) prepareExecutionPlan(ctx context.Context, state *protectedRunSta
 	if err != nil {
 		return executionPlanContext{}, err
 	}
-	plan, err := state.session.BuildPlan(ctx, successfulByKey, layout.resolved, layout.hash)
-	if err != nil {
-		return executionPlanContext{}, state.fail(ctx, options.buildPlanError(err), err)
-	}
-	catalogState, err := state.session.ReadPlanningCatalog(ctx)
+	catalogState, err := timedValue(r.log, "read_catalog_ms", func() (planner.CatalogState, error) {
+		return state.session.ReadPlanningCatalogForLayout(ctx, layout.resolved)
+	})
 	if err != nil {
 		return executionPlanContext{}, state.fail(ctx, contracts.ErrCriticalState, err)
 	}
-	if created, scaffoldErr := ensureTableTransitionFiles(r.cfg, layout.resolved, plan, catalogState.TableColumns); scaffoldErr != nil {
+	plan, err := timedValue(r.log, "build_plan_ms", func() (contracts.MigrationPlan, error) {
+		return state.session.BuildPlanWithCatalog(ctx, successfulByKey, layout.resolved, layout.hash, catalogState)
+	})
+	if err != nil {
+		return executionPlanContext{}, state.fail(ctx, options.buildPlanError(err), err)
+	}
+	created, scaffoldErr := timedValue(r.log, "ensure_table_transitions_ms", func() (bool, error) {
+		return ensureTableTransitionFiles(r.cfg, layout.resolved, plan, catalogState.TableColumns)
+	})
+	if scaffoldErr != nil {
 		return executionPlanContext{}, state.fail(ctx, contracts.ErrInvalidInput, scaffoldErr)
-	} else if created {
-		layout, successfulByKey, err = r.loadProtectedPlanningInputs(ctx, state, options.layoutBase)
+	}
+	if created {
+		layout, err = timedValue(r.log, "resolve_layout_ms", func() (plannerLayoutContext, error) {
+			resolved, hash, err := state.session.ResolvePlanningLayout()
+			if err != nil {
+				return plannerLayoutContext{}, err
+			}
+			return plannerLayoutContext{resolved: resolved, hash: hash}, nil
+		})
 		if err != nil {
-			return executionPlanContext{}, err
+			return executionPlanContext{}, state.fail(ctx, options.layoutBase, err)
 		}
-		plan, err = state.session.BuildPlan(ctx, successfulByKey, layout.resolved, layout.hash)
+		state.setLayoutHash(layout.hash)
+		plan, err = timedValue(r.log, "build_plan_ms", func() (contracts.MigrationPlan, error) {
+			return state.session.BuildPlanWithCatalog(ctx, successfulByKey, layout.resolved, layout.hash, catalogState)
+		})
 		if err != nil {
 			return executionPlanContext{}, state.fail(ctx, options.buildPlanError(err), err)
 		}
 	}
 	if plan.Blocked {
-		return executionPlanContext{}, state.fail(ctx, contracts.ErrChecksumMismatch, fmt.Errorf("%v", plan.BlockReasons))
+		return executionPlanContext{}, state.fail(ctx, contracts.ErrChecksumMismatch, fmt.Errorf("plan is blocked: %s", strings.Join(plan.BlockReasons, " | ")))
 	}
 	if options.startRun.planFile != "" && options.startRun.planHash == "" {
 		planHash, err := planArtifactHash(options.startRun.planFile)
@@ -243,7 +303,9 @@ func (r Runner) prepareExecutionPlan(ctx context.Context, state *protectedRunSta
 	if err := state.startRun(ctx, options.startRun.command, options.startRun.planFile, options.startRun.planHash, plan.Rollback); err != nil {
 		return executionPlanContext{}, state.fail(ctx, contracts.ErrCriticalState, err)
 	}
-	itemIDs, err := state.recorder.scope.Migration(ctx, plan)
+	itemIDs, err := timedValue(r.log, "persist_scope_ms", func() (map[string]int64, error) {
+		return state.recorder.scope.Migration(ctx, plan)
+	})
 	if err != nil {
 		return executionPlanContext{}, state.fail(ctx, contracts.ErrCriticalState, err)
 	}
@@ -305,4 +367,18 @@ func (r Runner) newMigrationReport() contracts.MigrationReport {
 		Applied:           []contracts.ScriptResult{},
 		Skipped:           []contracts.ScriptResult{},
 	}
+}
+
+func timedErr(log logger.Logger, event string, fn func() error) error {
+	started := time.Now()
+	err := fn()
+	log.Info(event, fmt.Sprintf("duration_ms=%d", time.Since(started).Milliseconds()))
+	return err
+}
+
+func timedValue[T any](log logger.Logger, event string, fn func() (T, error)) (T, error) {
+	started := time.Now()
+	result, err := fn()
+	log.Info(event, fmt.Sprintf("duration_ms=%d", time.Since(started).Milliseconds()))
+	return result, err
 }

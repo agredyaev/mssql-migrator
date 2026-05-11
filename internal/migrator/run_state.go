@@ -64,11 +64,15 @@ func (s *protectedRunState) finishSuccess(ctx context.Context) error {
 	if err := s.session.FinishRun(ctx, s.recorder); err != nil {
 		return s.session.Fail(s.phase, contracts.ErrCriticalState, err)
 	}
-	return s.session.WriteMigrationReport()
+	return timedErr(s.session.runner.log, "write_report_ms", func() error {
+		return s.session.WriteMigrationReport()
+	})
 }
 
 func (s *protectedRunState) failAfterReportWrite(ctx context.Context, err error) error {
-	if writeErr := s.session.WriteMigrationReport(); writeErr != nil {
+	if writeErr := timedErr(s.session.runner.log, "write_report_ms", func() error {
+		return s.session.WriteMigrationReport()
+	}); writeErr != nil {
 		return contracts.Wrap(contracts.ErrCriticalState, writeErr)
 	}
 	s.recordRunFailure(ctx, err, nil)

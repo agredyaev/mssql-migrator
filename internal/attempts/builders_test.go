@@ -22,7 +22,7 @@ func TestSchemaAppliesAuditFieldsAndTrimsMessage(t *testing.T) {
 		PipelineURL:   "https://ci.example/run?token=secret",
 		Actor:         "tester",
 	})
-	if attempt.ScriptName != "reporting" || attempt.ScriptType != contracts.ScriptTypeSchema {
+	if attempt.ScriptName != "reporting" {
 		t.Fatalf("unexpected schema attempt identity: %#v", attempt)
 	}
 	if attempt.Action != contracts.SchemaActionCreateSchema || attempt.Success {
@@ -41,7 +41,7 @@ func TestSchemaAppliesAuditFieldsAndTrimsMessage(t *testing.T) {
 
 func TestValidationCheckFailureUsesNoTransactionContract(t *testing.T) {
 	attempt := attempts.ValidationCheckFailure(" failure ", config.Config{})
-	if attempt.ScriptName != "validation/checks" || attempt.ScriptType != contracts.ScriptTypeValidate {
+	if attempt.ScriptName != "validation/checks" {
 		t.Fatalf("unexpected validation attempt identity: %#v", attempt)
 	}
 	if attempt.Action != contracts.ActionFail || attempt.Success {
@@ -50,7 +50,7 @@ func TestValidationCheckFailureUsesNoTransactionContract(t *testing.T) {
 	if attempt.ErrorMessage != "failure" {
 		t.Fatalf("expected trimmed validation error message, got %#v", attempt)
 	}
-	if attempt.TransactionMode != config.TransactionModeNone || attempt.TransactionScope != config.TransactionModeNone || attempt.RollbackScope != contracts.RollbackScopeNone || !attempt.NoTransaction {
+	if attempt.TransactionMode != config.TransactionModeNone || attempt.RollbackScope != contracts.RollbackScopeNone || !attempt.NoTransaction {
 		t.Fatalf("expected no-transaction validation contract, got %#v", attempt)
 	}
 }
@@ -61,10 +61,10 @@ func TestRepairSuccessUsesRepairContract(t *testing.T) {
 	if attempt.ItemID == nil || *attempt.ItemID != id {
 		t.Fatalf("expected repair item id, got %#v", attempt)
 	}
-	if attempt.ScriptType != contracts.ScriptTypeRepair || attempt.Action != contracts.ActionRepairChecksum || !attempt.Success {
+	if attempt.Action != contracts.ActionRepairChecksum || !attempt.Success {
 		t.Fatalf("unexpected repair attempt: %#v", attempt)
 	}
-	if attempt.TransactionMode != config.TransactionModeNone || attempt.TransactionScope != config.TransactionModeNone || attempt.RollbackScope != contracts.RollbackScopeNone || !attempt.NoTransaction {
+	if attempt.TransactionMode != config.TransactionModeNone || attempt.RollbackScope != contracts.RollbackScopeNone || !attempt.NoTransaction {
 		t.Fatalf("expected no-transaction repair contract, got %#v", attempt)
 	}
 }

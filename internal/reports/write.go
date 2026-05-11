@@ -93,36 +93,12 @@ func MarshalPlanJSON(plan contracts.MigrationPlan) ([]byte, error) {
 	return marshalJSON(redactPlan(plan))
 }
 
-func writeJSONAtomic(path string, value any) error {
-	b, err := marshalJSON(value)
-	if err != nil {
-		return err
-	}
-	return writeFileAtomic(path, b)
-}
-
 func marshalJSON(value any) ([]byte, error) {
 	b, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return nil, err
 	}
 	return append(b, '\n'), nil
-}
-
-func writeTextAtomic(path string, value string) error {
-	return writeFileAtomic(path, []byte(value))
-}
-
-func writeFileAtomic(path string, content []byte) error {
-	tmp, err := writeTempFile(path, content)
-	if err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return syncPathDir(path)
 }
 
 func writeFilePairAtomic(firstPath string, firstContent []byte, secondPath string, secondContent []byte) error {

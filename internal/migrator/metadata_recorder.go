@@ -50,12 +50,10 @@ type plannedMetadataObject struct {
 	kind             string
 	normalizedKeyVal string
 	checksum         string
-	scriptType       string
 	actionValue      string
 	itemID           *int64
 	executionMS      int
 	transactionMode  string
-	transactionScope string
 	rollbackScope    string
 	noTransaction    bool
 }
@@ -66,11 +64,9 @@ func passiveMetadataObject(planned contracts.PlannedObject, itemID *int64) plann
 		kind:             planned.Kind,
 		normalizedKeyVal: planned.NormalizedKey,
 		checksum:         planned.Checksum,
-		scriptType:       contracts.ScriptTypeObject,
 		actionValue:      planned.PlannedAction,
 		itemID:           itemID,
 		transactionMode:  planned.TransactionMode,
-		transactionScope: planned.TransactionMode,
 		rollbackScope:    planned.RollbackScope,
 		noTransaction:    planned.NoTransaction,
 	}
@@ -82,12 +78,10 @@ func executedMetadataObject(object parser.Object, planned contracts.PlannedObjec
 		kind:             object.Kind,
 		normalizedKeyVal: object.NormalizedKey,
 		checksum:         object.Checksum,
-		scriptType:       contracts.ScriptTypeObject,
 		actionValue:      planned.PlannedAction,
 		itemID:           itemID,
 		executionMS:      executionMS,
 		transactionMode:  planned.TransactionMode,
-		transactionScope: planned.TransactionMode,
 		rollbackScope:    planned.RollbackScope,
 		noTransaction:    planned.NoTransaction,
 	}
@@ -99,12 +93,10 @@ func validationMetadataObject(object parser.Object, itemID *int64) plannedMetada
 		kind:             object.Kind,
 		normalizedKeyVal: object.NormalizedKey,
 		checksum:         object.Checksum,
-		scriptType:       contracts.ScriptTypeValidate,
 		actionValue:      validationObjectAction(object.Kind),
 		itemID:           itemID,
 		executionMS:      0,
 		transactionMode:  config.TransactionModeNone,
-		transactionScope: config.TransactionModeNone,
 		rollbackScope:    contracts.RollbackScopeNone,
 		noTransaction:    true,
 	}
@@ -123,12 +115,10 @@ func baselineFailureMetadataObject(planned contracts.PlannedObject, itemID *int6
 		kind:             planned.Kind,
 		normalizedKeyVal: planned.NormalizedKey,
 		checksum:         planned.Checksum,
-		scriptType:       contracts.ScriptTypeObject,
 		actionValue:      planned.PlannedAction,
 		itemID:           itemID,
 		executionMS:      0,
 		transactionMode:  transactionModeForObject(defaultMode, false),
-		transactionScope: transactionModeForObject(defaultMode, false),
 		rollbackScope:    rollbackScope(defaultMode),
 		noTransaction:    noTransactionForObject(defaultMode, false),
 	}
@@ -144,17 +134,15 @@ func (o plannedMetadataObject) normalizedKey() string {
 
 func (o plannedMetadataObject) successAttempt(cfg config.Config) metadata.AttemptRecord {
 	attempt := metadata.AttemptRecord{
-		ItemID:           o.itemID,
-		ScriptName:       o.normalizedKeyVal,
-		ScriptType:       o.scriptType,
-		Checksum:         o.checksum,
-		Action:           o.actionValue,
-		ExecutionMS:      o.executionMS,
-		Success:          true,
-		TransactionMode:  o.transactionMode,
-		TransactionScope: o.transactionScope,
-		RollbackScope:    o.rollbackScope,
-		NoTransaction:    o.noTransaction,
+		ItemID:          o.itemID,
+		ScriptName:      o.normalizedKeyVal,
+		Checksum:        o.checksum,
+		Action:          o.actionValue,
+		ExecutionMS:     o.executionMS,
+		Success:         true,
+		TransactionMode: o.transactionMode,
+		RollbackScope:   o.rollbackScope,
+		NoTransaction:   o.noTransaction,
 	}
 	attempts.ApplyAuditFields(cfg, &attempt)
 	return attempt

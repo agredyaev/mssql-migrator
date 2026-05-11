@@ -82,11 +82,6 @@ func Classify(base error, cause error) string {
 	return classify(base, cause)
 }
 
-func describe(base error, cause error) (string, string, string, string) {
-	details := ClassifyDetails(base, cause)
-	return details.Path, details.Class, details.Reason, details.SQL
-}
-
 func firstDetail(values ...error) detailCarrier {
 	for _, value := range values {
 		if value == nil {

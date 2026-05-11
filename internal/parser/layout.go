@@ -97,6 +97,20 @@ type Batch struct {
 	Repeat int
 }
 
+func ManagedSchemaNames(layout Layout) []string {
+	if len(layout.Schemas) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(layout.Schemas))
+	for _, schema := range layout.Schemas {
+		if strings.TrimSpace(schema.Name) == "" {
+			continue
+		}
+		result = append(result, schema.Name)
+	}
+	return result
+}
+
 func DiscoverLayout(root string) (Layout, error) {
 	return discoverLayout(root, false)
 }
@@ -304,23 +318,19 @@ func validateLayoutDirectory(root string, path string, schemaSet map[string]Sche
 func parseLayoutObject(root string, rel string, schemaName string, kind string) (Object, error) {
 	segments := strings.Split(rel, "/")
 	abs := filepath.Join(root, filepath.FromSlash(rel))
-	fileChecksum, err := checksum.SHA256File(abs)
-	if err != nil {
-		return Object{}, err
-	}
-	body, err := os.ReadFile(abs)
+	content, fileChecksum, err := readSQLFileWithChecksum(abs)
 	if err != nil {
 		return Object{}, err
 	}
 	object := Object{
 		Path:                 rel,
 		AbsolutePath:         abs,
-		Content:              string(body),
+		Content:              content,
 		SchemaName:           schemaName,
 		NormalizedSchemaName: strings.ToLower(schemaName),
 		Kind:                 kind,
 		Checksum:             fileChecksum,
-		NoTransaction:        hasNoTransactionDirective(string(body)),
+		NoTransaction:        hasNoTransactionDirective(content),
 		Extension:            filepath.Ext(segments[len(segments)-1]),
 	}
 	if object.Extension != ".sql" {
@@ -362,11 +372,7 @@ func parseLayoutObject(root string, rel string, schemaName string, kind string) 
 
 func parseCheckScript(root string, rel string, schemaName string) (CheckScript, error) {
 	abs := filepath.Join(root, filepath.FromSlash(rel))
-	fileChecksum, err := checksum.SHA256File(abs)
-	if err != nil {
-		return CheckScript{}, err
-	}
-	body, err := os.ReadFile(abs)
+	content, fileChecksum, err := readSQLFileWithChecksum(abs)
 	if err != nil {
 		return CheckScript{}, err
 	}
@@ -377,11 +383,11 @@ func parseCheckScript(root string, rel string, schemaName string) (CheckScript, 
 	return CheckScript{
 		Path:          rel,
 		AbsolutePath:  abs,
-		Content:       string(body),
+		Content:       content,
 		SchemaName:    schemaName,
 		Checksum:      fileChecksum,
 		Name:          name,
-		NoTransaction: hasNoTransactionDirective(string(body)),
+		NoTransaction: hasNoTransactionDirective(content),
 	}, nil
 }
 
@@ -403,18 +409,14 @@ func parseTransitionScript(root string, rel string, schemaName string) (Transiti
 		return TransitionScript{}, fmt.Errorf("invalid repository layout: table migration file must match <nnn>_<commit>_<slug>.sql: %s", rel)
 	}
 	abs := filepath.Join(root, filepath.FromSlash(rel))
-	fileChecksum, err := checksum.SHA256File(abs)
-	if err != nil {
-		return TransitionScript{}, err
-	}
-	body, err := os.ReadFile(abs)
+	content, fileChecksum, err := readSQLFileWithChecksum(abs)
 	if err != nil {
 		return TransitionScript{}, err
 	}
 	return TransitionScript{
 		Path:          rel,
 		AbsolutePath:  abs,
-		Content:       string(body),
+		Content:       content,
 		SchemaName:    schemaName,
 		TableName:     tableName,
 		NormalizedKey: strings.ToLower(strings.TrimSpace(schemaName)) + "/tables/" + strings.ToLower(tableName),
@@ -422,9 +424,18 @@ func parseTransitionScript(root string, rel string, schemaName string) (Transiti
 		Ordinal:       matches[1],
 		Commit:        strings.ToLower(matches[2]),
 		Slug:          matches[3],
-		NoTransaction: hasNoTransactionDirective(string(body)),
-		Scaffold:      hasTransitionScaffoldDirective(string(body)),
+		NoTransaction: hasNoTransactionDirective(content),
+		Scaffold:      hasTransitionScaffoldDirective(content),
 	}, nil
+}
+
+func readSQLFileWithChecksum(path string) (string, string, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return "", "", err
+	}
+	content := string(body)
+	return content, checksum.SHA256String(content), nil
 }
 
 func buildNormalizedKey(object Object) string {

@@ -35,6 +35,8 @@ func rollbackWithContext(tx *sql.Tx, err error, operation string) error {
 	return err
 }
 
+const scopeInsertChunkSize = 100
+
 func (s scopeWriter) Migration(ctx context.Context, plan contracts.MigrationPlan) (map[string]int64, error) {
 	if s.writer.runID == "" {
 		return nil, fmt.Errorf("persist migration scope: missing run id")
@@ -46,43 +48,40 @@ func (s scopeWriter) Migration(ctx context.Context, plan contracts.MigrationPlan
 	if err != nil {
 		return nil, fmt.Errorf("begin metadata scope transaction: %w", err)
 	}
+	schemaRecords := make([]metadata.ItemRecord, 0, len(plan.Schemas))
 	for _, schema := range plan.Schemas {
 		exists := schema.Exists
 		record := metadata.ItemRecord{
-			RunID:                s.writer.runID,
-			ItemType:             metadata.ItemTypeSchema,
-			SchemaName:           schema.SchemaName,
-			NormalizedSchemaName: strings.ToLower(schema.SchemaName),
-			NormalizedKey:        strings.ToLower(schema.SchemaName),
-			ExistsInDatabase:     boolPtr(exists),
-			Action:               schema.Action,
+			RunID:            s.writer.runID,
+			SchemaName:       schema.SchemaName,
+			Kind:             "schema",
+			NormalizedKey:    strings.ToLower(schema.SchemaName),
+			ExistsInDatabase: boolPtr(exists),
+			Action:           schema.Action,
 		}
 		if schema.Action == contracts.SchemaActionExists {
 			record.Success = boolPtr(true)
 		}
-		if _, err := metadata.InsertItem(ctx, tx, record); err != nil {
-			return nil, rollbackWithContext(tx, err, "persist migration scope")
-		}
+		schemaRecords = append(schemaRecords, record)
 	}
-	itemIDs := map[string]int64{}
+	if err := insertItemRecordsInChunks(ctx, tx, schemaRecords); err != nil {
+		return nil, rollbackWithContext(tx, err, "persist migration scope")
+	}
+	objectRecords := make([]metadata.ItemRecord, 0, len(plan.Objects))
 	for _, object := range plan.Objects {
 		exists := object.Exists
 		record := metadata.ItemRecord{
-			RunID:                s.writer.runID,
-			ItemType:             metadata.ItemTypeObject,
-			ObjectPath:           object.ObjectPath,
-			SchemaName:           object.SchemaName,
-			NormalizedSchemaName: strings.ToLower(object.SchemaName),
-			Kind:                 object.Kind,
-			ObjectName:           object.ObjectName,
-			NormalizedObjectName: strings.ToLower(object.ObjectName),
-			ParentName:           object.ParentName,
-			NormalizedParentName: strings.ToLower(object.ParentName),
-			NormalizedKey:        object.NormalizedKey,
-			Checksum:             object.Checksum,
-			ExistsInDatabase:     boolPtr(exists),
-			MetadataMatch:        object.MetadataMatch,
-			Action:               object.PlannedAction,
+			RunID:            s.writer.runID,
+			ObjectPath:       object.ObjectPath,
+			SchemaName:       object.SchemaName,
+			Kind:             object.Kind,
+			ObjectName:       object.ObjectName,
+			ParentName:       object.ParentName,
+			NormalizedKey:    object.NormalizedKey,
+			Checksum:         object.Checksum,
+			ExistsInDatabase: boolPtr(exists),
+			MetadataMatch:    object.MetadataMatch,
+			Action:           object.PlannedAction,
 		}
 		switch object.PlannedAction {
 		case contracts.ActionSkipUnchanged, contracts.ActionAdoptExisting:
@@ -90,11 +89,14 @@ func (s scopeWriter) Migration(ctx context.Context, plan contracts.MigrationPlan
 		case contracts.ActionFail, contracts.ActionReprocessChangedBlocked:
 			record.Success = boolPtr(false)
 		}
-		id, err := metadata.InsertItem(ctx, tx, record)
-		if err != nil {
-			return nil, rollbackWithContext(tx, err, "persist migration scope")
-		}
-		itemIDs[object.NormalizedKey] = id
+		objectRecords = append(objectRecords, record)
+	}
+	if err := insertItemRecordsInChunks(ctx, tx, objectRecords); err != nil {
+		return nil, rollbackWithContext(tx, err, "persist migration scope")
+	}
+	itemIDs, err := s.writer.loadItemIDs(ctx, tx, false)
+	if err != nil {
+		return nil, rollbackWithContext(tx, err, "persist migration scope")
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit metadata scope transaction: %w", err)
@@ -113,28 +115,29 @@ func (s scopeWriter) Validation(ctx context.Context, layout parser.Layout, catal
 	if err != nil {
 		return nil, fmt.Errorf("begin validation scope transaction: %w", err)
 	}
+	schemaRecords := make([]metadata.ItemRecord, 0, len(layout.Schemas))
 	for _, schema := range layout.Schemas {
 		_, exists := catalog.Schemas[schema.NormalizedName]
 		action := contracts.SchemaActionExists
 		record := metadata.ItemRecord{
-			RunID:                s.writer.runID,
-			ItemType:             metadata.ItemTypeSchema,
-			SchemaName:           schema.Name,
-			NormalizedSchemaName: schema.NormalizedName,
-			NormalizedKey:        schema.NormalizedName,
-			ExistsInDatabase:     boolPtr(exists),
-			Action:               action,
-			Success:              boolPtr(exists),
+			RunID:            s.writer.runID,
+			SchemaName:       schema.Name,
+			Kind:             "schema",
+			NormalizedKey:    schema.NormalizedName,
+			ExistsInDatabase: boolPtr(exists),
+			Action:           action,
+			Success:          boolPtr(exists),
 		}
 		if !exists {
 			record.Action = contracts.ActionFail
 			record.ErrorMessage = fmt.Sprintf("missing schema: %s", schema.Name)
 		}
-		if _, err := metadata.InsertItem(ctx, tx, record); err != nil {
-			return nil, rollbackWithContext(tx, err, "persist validation scope")
-		}
+		schemaRecords = append(schemaRecords, record)
 	}
-	itemIDs := map[string]int64{}
+	if err := insertItemRecordsInChunks(ctx, tx, schemaRecords); err != nil {
+		return nil, rollbackWithContext(tx, err, "persist validation scope")
+	}
+	objectRecords := make([]metadata.ItemRecord, 0, len(layout.Objects))
 	for _, object := range layout.Objects {
 		_, exists := catalog.Objects[object.NormalizedKey]
 		var metadataMatch *bool
@@ -142,31 +145,30 @@ func (s scopeWriter) Validation(ctx context.Context, layout parser.Layout, catal
 			metadataMatch = boolPtr(checksum == object.Checksum)
 		}
 		record := metadata.ItemRecord{
-			RunID:                s.writer.runID,
-			ItemType:             metadata.ItemTypeObject,
-			ObjectPath:           object.Path,
-			SchemaName:           object.SchemaName,
-			NormalizedSchemaName: object.NormalizedSchemaName,
-			Kind:                 object.Kind,
-			ObjectName:           object.ObjectName,
-			NormalizedObjectName: object.NormalizedObjectName,
-			ParentName:           object.ParentName,
-			NormalizedParentName: object.NormalizedParentName,
-			NormalizedKey:        object.NormalizedKey,
-			Checksum:             object.Checksum,
-			ExistsInDatabase:     boolPtr(exists),
-			MetadataMatch:        metadataMatch,
-			Action:               validationObjectAction(object.Kind),
+			RunID:            s.writer.runID,
+			ObjectPath:       object.Path,
+			SchemaName:       object.SchemaName,
+			Kind:             object.Kind,
+			ObjectName:       object.ObjectName,
+			ParentName:       object.ParentName,
+			NormalizedKey:    object.NormalizedKey,
+			Checksum:         object.Checksum,
+			ExistsInDatabase: boolPtr(exists),
+			MetadataMatch:    metadataMatch,
+			Action:           validationObjectAction(object.Kind),
 		}
 		if !exists {
 			record.Success = boolPtr(false)
 			record.ErrorMessage = fmt.Sprintf("missing managed object: %s", object.Path)
 		}
-		id, err := metadata.InsertItem(ctx, tx, record)
-		if err != nil {
-			return nil, rollbackWithContext(tx, err, "persist validation scope")
-		}
-		itemIDs[object.NormalizedKey] = id
+		objectRecords = append(objectRecords, record)
+	}
+	if err := insertItemRecordsInChunks(ctx, tx, objectRecords); err != nil {
+		return nil, rollbackWithContext(tx, err, "persist validation scope")
+	}
+	itemIDs, err := s.writer.loadItemIDs(ctx, tx, false)
+	if err != nil {
+		return nil, rollbackWithContext(tx, err, "persist validation scope")
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit validation scope transaction: %w", err)
@@ -187,34 +189,29 @@ func (s scopeWriter) Repair(ctx context.Context, object parser.Object, planned c
 	}
 	_, schemaExists := catalog.Schemas[object.NormalizedSchemaName]
 	if _, err := metadata.InsertItem(ctx, tx, metadata.ItemRecord{
-		RunID:                s.writer.runID,
-		ItemType:             metadata.ItemTypeSchema,
-		SchemaName:           object.SchemaName,
-		NormalizedSchemaName: object.NormalizedSchemaName,
-		NormalizedKey:        object.NormalizedSchemaName,
-		ExistsInDatabase:     boolPtr(schemaExists),
-		Action:               contracts.SchemaActionExists,
-		Success:              boolPtr(schemaExists),
+		RunID:            s.writer.runID,
+		SchemaName:       object.SchemaName,
+		Kind:             "schema",
+		NormalizedKey:    object.NormalizedSchemaName,
+		ExistsInDatabase: boolPtr(schemaExists),
+		Action:           contracts.SchemaActionExists,
+		Success:          boolPtr(schemaExists),
 	}); err != nil {
 		return nil, rollbackWithContext(tx, err, "persist repair scope")
 	}
 	metadataMatch := currentChecksum == object.Checksum
 	itemID, err := metadata.InsertItem(ctx, tx, metadata.ItemRecord{
-		RunID:                s.writer.runID,
-		ItemType:             metadata.ItemTypeObject,
-		ObjectPath:           object.Path,
-		SchemaName:           object.SchemaName,
-		NormalizedSchemaName: object.NormalizedSchemaName,
-		Kind:                 object.Kind,
-		ObjectName:           object.ObjectName,
-		NormalizedObjectName: object.NormalizedObjectName,
-		ParentName:           object.ParentName,
-		NormalizedParentName: object.NormalizedParentName,
-		NormalizedKey:        object.NormalizedKey,
-		Checksum:             object.Checksum,
-		ExistsInDatabase:     boolPtr(true),
-		MetadataMatch:        boolPtr(metadataMatch),
-		Action:               planned.PlannedAction,
+		RunID:            s.writer.runID,
+		ObjectPath:       object.Path,
+		SchemaName:       object.SchemaName,
+		Kind:             object.Kind,
+		ObjectName:       object.ObjectName,
+		ParentName:       object.ParentName,
+		NormalizedKey:    object.NormalizedKey,
+		Checksum:         object.Checksum,
+		ExistsInDatabase: boolPtr(true),
+		MetadataMatch:    boolPtr(metadataMatch),
+		Action:           planned.PlannedAction,
 	})
 	if err != nil {
 		return nil, rollbackWithContext(tx, err, "persist repair scope")
@@ -223,4 +220,17 @@ func (s scopeWriter) Repair(ctx context.Context, object parser.Object, planned c
 		return nil, fmt.Errorf("commit repair scope transaction: %w", err)
 	}
 	return &itemID, nil
+}
+
+func insertItemRecordsInChunks(ctx context.Context, tx *sql.Tx, records []metadata.ItemRecord) error {
+	for start := 0; start < len(records); start += scopeInsertChunkSize {
+		end := start + scopeInsertChunkSize
+		if end > len(records) {
+			end = len(records)
+		}
+		if err := metadata.InsertItems(ctx, tx, records[start:end]); err != nil {
+			return err
+		}
+	}
+	return nil
 }

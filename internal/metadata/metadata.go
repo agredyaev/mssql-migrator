@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"reporting-db-migrations/internal/commands"
@@ -13,11 +14,6 @@ import (
 )
 
 const metadataSchemaVersion = 2
-
-const (
-	ItemTypeSchema = "schema"
-	ItemTypeObject = "object"
-)
 
 var (
 	ErrSchemaIncompatible   = errors.New("metadata_schema_incompatible")
@@ -35,6 +31,15 @@ type QueryRower interface {
 type ExecQueryRower interface {
 	Execer
 	QueryRower
+}
+
+type Queryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+type ExecQueryer interface {
+	Execer
+	Queryer
 }
 
 type RunRecord struct {
@@ -64,46 +69,40 @@ type RunRecord struct {
 }
 
 type ItemRecord struct {
-	RunID                string
-	ItemType             string
-	ObjectPath           string
-	SchemaName           string
-	NormalizedSchemaName string
-	Kind                 string
-	ObjectName           string
-	NormalizedObjectName string
-	ParentName           string
-	NormalizedParentName string
-	NormalizedKey        string
-	Checksum             string
-	ExistsInDatabase     *bool
-	MetadataMatch        *bool
-	Action               string
-	Success              *bool
-	ErrorMessage         string
+	RunID            string
+	ObjectPath       string
+	SchemaName       string
+	Kind             string
+	ObjectName       string
+	ParentName       string
+	NormalizedKey    string
+	Checksum         string
+	ExistsInDatabase *bool
+	MetadataMatch    *bool
+	Action           string
+	Success          *bool
+	ErrorMessage     string
 }
 
 type AttemptRecord struct {
-	RunID            string
-	ItemID           *int64
-	ScriptName       string
-	ScriptType       string
-	Checksum         string
-	Action           string
-	ExecutionMS      int
-	Success          bool
-	ErrorMessage     string
-	SQLErrorNumber   *int
-	SQLErrorState    *int
-	TransactionMode  string
-	TransactionScope string
-	RollbackScope    string
-	NoTransaction    bool
-	GitCommit        string
-	GitBranch        string
-	PipelineRunID    string
-	PipelineURL      string
-	AppliedBy        string
+	RunID           string
+	ItemID          *int64
+	ScriptName      string
+	Checksum        string
+	Action          string
+	ExecutionMS     int
+	Success         bool
+	ErrorMessage    string
+	SQLErrorNumber  *int
+	SQLErrorState   *int
+	TransactionMode string
+	RollbackScope   string
+	NoTransaction   bool
+	GitCommit       string
+	GitBranch       string
+	PipelineRunID   string
+	PipelineURL     string
+	AppliedBy       string
 }
 
 type metadataShape struct {
@@ -157,6 +156,13 @@ func LoadSuccessfulChecksumsIfPresent(ctx context.Context, conn *sql.Conn) (map[
 	}
 	if err := verifySchemaVersion(ctx, conn); err != nil {
 		return nil, err
+	}
+	return LoadSuccessfulChecksums(ctx, conn)
+}
+
+func LoadSuccessfulChecksums(ctx context.Context, conn *sql.Conn) (map[string]string, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("load successful checksums: missing connection")
 	}
 	rows, err := conn.QueryContext(ctx, successfulChecksumsQuery())
 	if err != nil {
@@ -236,19 +242,15 @@ func InsertItem(ctx context.Context, execer ExecQueryRower, record ItemRecord) (
 	var itemID int64
 	err := execer.QueryRowContext(ctx, `
 INSERT INTO __migrator.items
-(run_id, item_type, object_path, schema_name, normalized_schema_name, kind, object_name, normalized_object_name, parent_name, normalized_parent_name, normalized_key, checksum, exists_in_database, metadata_match, action, success, error_message)
+(run_id, object_path, schema_name, kind, object_name, parent_name, normalized_key, checksum, exists_in_database, metadata_match, action, success, error_message)
 OUTPUT INSERTED.item_id
-VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15, @p16, @p17)`,
+VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13)`,
 		record.RunID,
-		record.ItemType,
 		nullable(record.ObjectPath),
 		record.SchemaName,
-		record.NormalizedSchemaName,
-		nullable(record.Kind),
+		record.Kind,
 		nullable(record.ObjectName),
-		nullable(record.NormalizedObjectName),
 		nullable(record.ParentName),
-		nullable(record.NormalizedParentName),
 		record.NormalizedKey,
 		nullable(record.Checksum),
 		nullableBool(record.ExistsInDatabase),
@@ -263,12 +265,85 @@ VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p1
 	return itemID, nil
 }
 
-func UpdateItemResult(ctx context.Context, execer Execer, runID string, itemType string, normalizedKey string, success bool, errorMessage string) error {
+func InsertItems(ctx context.Context, execer Execer, records []ItemRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+	const columnsPerRow = 13
+	queryBuilder := strings.Builder{}
+	queryBuilder.WriteString(`
+INSERT INTO __migrator.items
+(run_id, object_path, schema_name, kind, object_name, parent_name, normalized_key, checksum, exists_in_database, metadata_match, action, success, error_message)
+VALUES `)
+	args := make([]any, 0, len(records)*columnsPerRow)
+	placeholderIndex := 1
+	for i, record := range records {
+		if i > 0 {
+			queryBuilder.WriteString(",")
+		}
+		queryBuilder.WriteString("(")
+		for j := 0; j < columnsPerRow; j++ {
+			if j > 0 {
+				queryBuilder.WriteString(", ")
+			}
+			queryBuilder.WriteString(fmt.Sprintf("@p%d", placeholderIndex))
+			placeholderIndex++
+		}
+		queryBuilder.WriteString(")")
+		args = append(args,
+			record.RunID,
+			nullable(record.ObjectPath),
+			record.SchemaName,
+			record.Kind,
+			nullable(record.ObjectName),
+			nullable(record.ParentName),
+			record.NormalizedKey,
+			nullable(record.Checksum),
+			nullableBool(record.ExistsInDatabase),
+			nullableBool(record.MetadataMatch),
+			record.Action,
+			nullableBool(record.Success),
+			nullable(record.ErrorMessage),
+		)
+	}
+	_, err := execer.ExecContext(ctx, queryBuilder.String(), args...)
+	return err
+}
+
+func LoadItemIDs(ctx context.Context, queryer Queryer, runID string, includeSchemas bool) (map[string]int64, error) {
+	where := "WHERE run_id = @p1"
+	if !includeSchemas {
+		where += " AND kind <> 'schema'"
+	}
+	rows, err := queryer.QueryContext(ctx, `
+SELECT normalized_key, item_id
+FROM __migrator.items
+`+where, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string]int64{}
+	for rows.Next() {
+		var normalizedKey string
+		var itemID int64
+		if err := rows.Scan(&normalizedKey, &itemID); err != nil {
+			return nil, err
+		}
+		result[normalizedKey] = itemID
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func UpdateItemResult(ctx context.Context, execer Execer, runID string, normalizedKey string, success bool, errorMessage string) error {
 	result, err := execer.ExecContext(ctx, `
 UPDATE __migrator.items
-SET success = @p4,
-    error_message = @p5
-WHERE run_id = @p1 AND item_type = @p2 AND normalized_key = @p3`, runID, itemType, normalizedKey, success, nullable(errorMessage))
+SET success = @p3,
+    error_message = @p4
+WHERE run_id = @p1 AND normalized_key = @p2`, runID, normalizedKey, success, nullable(errorMessage))
 	if err != nil {
 		return err
 	}
@@ -278,12 +353,11 @@ WHERE run_id = @p1 AND item_type = @p2 AND normalized_key = @p3`, runID, itemTyp
 func InsertAttempt(ctx context.Context, execer Execer, record AttemptRecord) error {
 	_, err := execer.ExecContext(ctx, `
 INSERT INTO __migrator.attempts
-(run_id, item_id, script_name, script_type, checksum, action, execution_ms, success, error_message, sql_error_number, sql_error_state, transaction_mode, transaction_scope, rollback_scope, no_transaction, git_commit, git_branch, pipeline_run_id, pipeline_url, applied_by)
-VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15, @p16, @p17, @p18, @p19, @p20)`,
+(run_id, item_id, script_name, checksum, action, execution_ms, success, error_message, sql_error_number, sql_error_state, transaction_mode, rollback_scope, no_transaction, git_commit, git_branch, pipeline_run_id, pipeline_url, applied_by)
+VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15, @p16, @p17, @p18, @p19)`,
 		nullable(record.RunID),
 		nullableInt64(record.ItemID),
 		record.ScriptName,
-		record.ScriptType,
 		record.Checksum,
 		record.Action,
 		record.ExecutionMS,
@@ -292,7 +366,6 @@ VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p1
 		nullableInt(record.SQLErrorNumber),
 		nullableInt(record.SQLErrorState),
 		nullable(record.TransactionMode),
-		nullable(record.TransactionScope),
 		nullable(record.RollbackScope),
 		record.NoTransaction,
 		nullable(record.GitCommit),
@@ -304,42 +377,37 @@ VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p1
 	return err
 }
 
-func objectExists(ctx context.Context, conn *sql.Conn, name string, objectType string) (bool, error) {
-	var exists int
-	if err := conn.QueryRowContext(ctx, `SELECT CASE WHEN OBJECT_ID(@p1, @p2) IS NULL THEN 0 ELSE 1 END`, name, objectType).Scan(&exists); err != nil {
-		return false, err
-	}
-	return exists == 1, nil
-}
-
 func inspectMetadataShape(ctx context.Context, conn *sql.Conn) (metadataShape, error) {
 	shape := metadataShape{}
-	currentChecks := []struct {
-		name       string
-		objectType string
-		apply      func(bool)
-	}{
-		{name: "__migrator.schema_version", objectType: "U", apply: func(exists bool) { shape.schemaVersionExists = exists }},
-		{name: "__migrator.runs", objectType: "U", apply: func(exists bool) { shape.runsExists = exists }},
-		{name: "__migrator.items", objectType: "U", apply: func(exists bool) { shape.itemsExists = exists }},
-		{name: "__migrator.attempts", objectType: "U", apply: func(exists bool) { shape.attemptsExists = exists }},
+	rows, err := conn.QueryContext(ctx, metadataShapeQuery())
+	if err != nil {
+		return metadataShape{}, err
 	}
-	for _, item := range currentChecks {
-		exists, err := objectExists(ctx, conn, item.name, item.objectType)
-		if err != nil {
+	defer rows.Close()
+	exists := map[string]bool{}
+	for rows.Next() {
+		var schemaName string
+		var objectName string
+		var objectType string
+		if err := rows.Scan(&schemaName, &objectName, &objectType); err != nil {
 			return metadataShape{}, err
 		}
-		item.apply(exists)
+		exists[metadataShapeKey(schemaName, objectName, objectType)] = true
 	}
+	if err := rows.Err(); err != nil {
+		return metadataShape{}, err
+	}
+	shape.schemaVersionExists = exists[metadataShapeKey("__migrator", "schema_version", "U")]
+	shape.runsExists = exists[metadataShapeKey("__migrator", "runs", "U")]
+	shape.itemsExists = exists[metadataShapeKey("__migrator", "items", "U")]
+	shape.attemptsExists = exists[metadataShapeKey("__migrator", "attempts", "U")]
 	for _, item := range legacyMetadataObjects() {
-		exists, err := objectExists(ctx, conn, item.name, item.objectType)
-		if err != nil {
-			return metadataShape{}, err
-		}
-		if exists {
+		schemaName, objectName := splitQualifiedObjectName(item.name)
+		if exists[metadataShapeKey(schemaName, objectName, item.objectType)] {
 			shape.legacyObjects = append(shape.legacyObjects, item.name)
 		}
 	}
+	sort.Strings(shape.legacyObjects)
 	return shape, nil
 }
 
@@ -419,12 +487,67 @@ func verifySchemaVersion(ctx context.Context, conn *sql.Conn) error {
 
 func successfulChecksumsQuery() string {
 	return fmt.Sprintf(`
-SELECT ISNULL(i.normalized_key, ''), a.script_name, a.checksum
-FROM __migrator.attempts a
-LEFT JOIN __migrator.items i ON i.item_id = a.item_id
-WHERE a.success = 1
-  AND a.script_type IN ('%s', '%s')
-ORDER BY a.applied_at ASC, a.id ASC`, contracts.ScriptTypeObject, contracts.ScriptTypeRepair)
+WITH ranked AS (
+    SELECT
+        ISNULL(i.normalized_key, '') AS normalized_key,
+        a.script_name,
+        a.checksum,
+        ROW_NUMBER() OVER (
+            PARTITION BY ISNULL(NULLIF(i.normalized_key, ''), a.script_name)
+            ORDER BY a.applied_at DESC, a.id DESC
+        ) AS rn
+    FROM __migrator.attempts a
+    LEFT JOIN __migrator.items i ON i.item_id = a.item_id
+    WHERE a.success = 1
+      AND a.action IN ('%s', '%s', '%s', '%s', '%s', '%s', '%s')
+)
+SELECT normalized_key, script_name, checksum
+FROM ranked
+WHERE rn = 1`,
+		contracts.ActionSkipUnchanged,
+		contracts.ActionAdoptExisting,
+		contracts.ActionCreateObject,
+		contracts.ActionReprocessChanged,
+		contracts.ActionUpdateExistingModule,
+		contracts.ActionUpdateExistingSupported,
+		contracts.ActionRepairChecksum,
+	)
+}
+
+func metadataShapeQuery() string {
+	return `
+SELECT
+    s.name,
+    o.name,
+    o.type
+FROM sys.objects o
+JOIN sys.schemas s ON s.schema_id = o.schema_id
+WHERE s.name = '__migrator'
+  AND o.name IN (
+      'schema_version',
+      'runs',
+      'items',
+      'attempts',
+      'schema_migrations',
+      'migration_runs',
+      'tracked_schemas',
+      'tracked_objects',
+      'migration_attempts',
+      'v_migration_state'
+  )`
+}
+
+func metadataShapeKey(schemaName string, objectName string, objectType string) string {
+	return strings.ToLower(strings.TrimSpace(schemaName)) + "." + strings.ToLower(strings.TrimSpace(objectName)) + ":" + strings.ToUpper(strings.TrimSpace(objectType))
+}
+
+func splitQualifiedObjectName(value string) (string, string) {
+	trimmed := strings.TrimSpace(value)
+	parts := strings.SplitN(trimmed, ".", 2)
+	if len(parts) != 2 {
+		return "", trimmed
+	}
+	return parts[0], parts[1]
 }
 
 func bootstrapStatements() []string {
@@ -489,15 +612,11 @@ BEGIN
 CREATE TABLE __migrator.items (
     item_id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
     run_id UNIQUEIDENTIFIER NOT NULL,
-    item_type NVARCHAR(32) NOT NULL,
     object_path NVARCHAR(2048) NULL,
     schema_name NVARCHAR(256) NOT NULL,
-    normalized_schema_name NVARCHAR(256) NOT NULL,
-    kind NVARCHAR(64) NULL,
+    kind NVARCHAR(64) NOT NULL,
     object_name NVARCHAR(256) NULL,
-    normalized_object_name NVARCHAR(256) NULL,
     parent_name NVARCHAR(256) NULL,
-    normalized_parent_name NVARCHAR(256) NULL,
     normalized_key NVARCHAR(2048) NOT NULL,
     checksum NVARCHAR(64) NULL,
     exists_in_database BIT NULL,
@@ -515,7 +634,6 @@ CREATE TABLE __migrator.attempts (
     run_id UNIQUEIDENTIFIER NULL,
     item_id BIGINT NULL,
     script_name NVARCHAR(512) NOT NULL,
-    script_type NVARCHAR(64) NOT NULL,
     checksum NVARCHAR(64) NOT NULL,
     action NVARCHAR(64) NOT NULL,
     execution_ms INT NOT NULL,
@@ -524,7 +642,6 @@ CREATE TABLE __migrator.attempts (
     sql_error_number INT NULL,
     sql_error_state INT NULL,
     transaction_mode NVARCHAR(32) NULL,
-    transaction_scope NVARCHAR(32) NULL,
     rollback_scope NVARCHAR(32) NULL,
     no_transaction BIT NOT NULL CONSTRAINT DF_attempts_no_transaction DEFAULT 0,
     applied_at DATETIME2 NOT NULL CONSTRAINT DF_attempts_applied_at DEFAULT SYSUTCDATETIME(),
@@ -564,20 +681,14 @@ ALTER TABLE __migrator.runs WITH CHECK ADD CONSTRAINT CK_runs_update_policy CHEC
 ALTER TABLE __migrator.runs WITH CHECK ADD CONSTRAINT CK_runs_transaction_mode CHECK (transaction_mode IS NULL OR transaction_mode IN ('script', 'none'))`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_runs_rollback_scope' AND parent_object_id = OBJECT_ID('__migrator.runs'))
 ALTER TABLE __migrator.runs WITH CHECK ADD CONSTRAINT CK_runs_rollback_scope CHECK (rollback_scope IS NULL OR rollback_scope IN ('script', 'none'))`,
-		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_items_type' AND parent_object_id = OBJECT_ID('__migrator.items'))
-ALTER TABLE __migrator.items WITH CHECK ADD CONSTRAINT CK_items_type CHECK (item_type IN ('%s', '%s'))`, ItemTypeSchema, ItemTypeObject),
 		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_items_kind' AND parent_object_id = OBJECT_ID('__migrator.items'))
-ALTER TABLE __migrator.items WITH CHECK ADD CONSTRAINT CK_items_kind CHECK (kind IS NULL OR kind IN ('%s'))`, strings.Join(kindNames, `', '`)),
+ALTER TABLE __migrator.items WITH CHECK ADD CONSTRAINT CK_items_kind CHECK (kind IN ('schema', '%s'))`, strings.Join(kindNames, `', '`)),
 		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_items_action' AND parent_object_id = OBJECT_ID('__migrator.items'))
 ALTER TABLE __migrator.items WITH CHECK ADD CONSTRAINT CK_items_action CHECK (action IN ('%s'))`, strings.Join(actionNames, `', '`)),
-		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_attempts_script_type' AND parent_object_id = OBJECT_ID('__migrator.attempts'))
-ALTER TABLE __migrator.attempts WITH CHECK ADD CONSTRAINT CK_attempts_script_type CHECK (script_type IN ('%s', '%s', '%s', '%s', '%s'))`, contracts.ScriptTypeSchema, contracts.ScriptTypeObject, contracts.ScriptTypeValidate, contracts.ScriptTypeBaseline, contracts.ScriptTypeRepair),
 		fmt.Sprintf(`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_attempts_action' AND parent_object_id = OBJECT_ID('__migrator.attempts'))
 ALTER TABLE __migrator.attempts WITH CHECK ADD CONSTRAINT CK_attempts_action CHECK (action IN ('%s'))`, strings.Join(actionNames, `', '`)),
 		`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_attempts_transaction_mode' AND parent_object_id = OBJECT_ID('__migrator.attempts'))
 ALTER TABLE __migrator.attempts WITH CHECK ADD CONSTRAINT CK_attempts_transaction_mode CHECK (transaction_mode IS NULL OR transaction_mode IN ('script', 'none'))`,
-		`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_attempts_transaction_scope' AND parent_object_id = OBJECT_ID('__migrator.attempts'))
-ALTER TABLE __migrator.attempts WITH CHECK ADD CONSTRAINT CK_attempts_transaction_scope CHECK (transaction_scope IS NULL OR transaction_scope IN ('script', 'none'))`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_attempts_rollback_scope' AND parent_object_id = OBJECT_ID('__migrator.attempts'))
 ALTER TABLE __migrator.attempts WITH CHECK ADD CONSTRAINT CK_attempts_rollback_scope CHECK (rollback_scope IS NULL OR rollback_scope IN ('script', 'none'))`,
 	}
@@ -593,12 +704,12 @@ CREATE INDEX IX_runs_pipeline ON __migrator.runs (pipeline_run_id) WHERE pipelin
 CREATE UNIQUE INDEX UX_items_run_key ON __migrator.items (run_id, normalized_key)`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_items_key' AND object_id = OBJECT_ID('__migrator.items'))
 CREATE INDEX IX_items_key ON __migrator.items (normalized_key, created_at DESC)`,
-		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_items_run_type' AND object_id = OBJECT_ID('__migrator.items'))
-CREATE INDEX IX_items_run_type ON __migrator.items (run_id, item_type, item_id)`,
+		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_items_run_kind' AND object_id = OBJECT_ID('__migrator.items'))
+		CREATE INDEX IX_items_run_kind ON __migrator.items (run_id, kind, item_id)`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_attempts_script_name' AND object_id = OBJECT_ID('__migrator.attempts'))
 CREATE INDEX IX_attempts_script_name ON __migrator.attempts (script_name)`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_attempts_success' AND object_id = OBJECT_ID('__migrator.attempts'))
-CREATE INDEX IX_attempts_success ON __migrator.attempts (success, script_type, applied_at, id)`,
+		CREATE INDEX IX_attempts_success ON __migrator.attempts (success, applied_at, id)`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_attempts_run_id' AND object_id = OBJECT_ID('__migrator.attempts'))
 CREATE INDEX IX_attempts_run_id ON __migrator.attempts (run_id, id) WHERE run_id IS NOT NULL`,
 		`IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_attempts_item' AND object_id = OBJECT_ID('__migrator.attempts'))

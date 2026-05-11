@@ -21,11 +21,16 @@ type CatalogReader interface {
 }
 
 type sqlCatalogReader struct {
-	conn *sql.Conn
+	conn    *sql.Conn
+	schemas []string
 }
 
 func SQLCatalogReader(conn *sql.Conn) CatalogReader {
 	return sqlCatalogReader{conn: conn}
+}
+
+func SQLCatalogReaderForSchemas(conn *sql.Conn, schemas []string) CatalogReader {
+	return sqlCatalogReader{conn: conn, schemas: append([]string(nil), schemas...)}
 }
 
 type CatalogState struct {
@@ -53,12 +58,41 @@ func BuildWithCatalog(ctx context.Context, cfg config.Config, successfulByKey ma
 	return BuildResolved(ctx, cfg, successfulByKey, layout, hash, reader)
 }
 
+func BuildResolvedWithCatalog(cfg config.Config, successfulByKey map[string]string, layout parser.Layout, hash string, catalogState CatalogState) (contracts.MigrationPlan, error) {
+	state := catalogState
+	if state.SuccessfulByKey == nil {
+		state.SuccessfulByKey = cloneChecksums(successfulByKey)
+	} else {
+		merged := cloneChecksums(state.SuccessfulByKey)
+		for key, checksum := range successfulByKey {
+			if _, exists := merged[key]; !exists {
+				merged[key] = checksum
+			}
+		}
+		state.SuccessfulByKey = merged
+	}
+	if state.Schemas == nil {
+		state.Schemas = map[string]struct{}{}
+	}
+	if state.Objects == nil {
+		state.Objects = map[string]CatalogObject{}
+	}
+	if state.TableColumns == nil {
+		state.TableColumns = map[string][]catalog.TableColumn{}
+	}
+	return buildResolvedWithCatalogState(cfg, layout, hash, state), nil
+}
+
 func BuildResolved(ctx context.Context, cfg config.Config, successfulByKey map[string]string, layout parser.Layout, hash string, reader CatalogReader) (contracts.MigrationPlan, error) {
-	plan := newPlan(cfg, hash, layout)
 	catalog, err := loadCatalogState(ctx, reader, successfulByKey)
 	if err != nil {
 		return contracts.MigrationPlan{}, err
 	}
+	return BuildResolvedWithCatalog(cfg, successfulByKey, layout, hash, catalog)
+}
+
+func buildResolvedWithCatalogState(cfg config.Config, layout parser.Layout, hash string, catalog CatalogState) contracts.MigrationPlan {
+	plan := newPlan(cfg, hash, layout)
 	planSchemas(&plan, layout, catalog)
 	planObjects(&plan, layout, catalog, cfg.UpdatePolicy)
 	plan.Summary.CheckCount = len(layout.Checks)
@@ -68,7 +102,7 @@ func BuildResolved(ctx context.Context, cfg config.Config, successfulByKey map[s
 	if plan.Blocked {
 		plan.Summary.BlockedCount = len(plan.BlockReasons) + len(plan.Failures)
 	}
-	return plan, nil
+	return plan
 }
 
 func resolvePlanningLayout(cfg config.Config) (parser.Layout, string, error) {
@@ -195,7 +229,7 @@ func stableObjects(items []contracts.PlannedObject) []contracts.PlannedObject {
 
 func (r sqlCatalogReader) ReadCatalogState(ctx context.Context) (CatalogState, error) {
 	state := CatalogState{Schemas: map[string]struct{}{}, Objects: map[string]CatalogObject{}, SuccessfulByKey: map[string]string{}}
-	catalogState, err := catalog.Read(ctx, r.conn)
+	catalogState, err := catalog.ReadForSchemas(ctx, r.conn, r.schemas)
 	if err != nil {
 		return CatalogState{}, err
 	}
@@ -325,7 +359,7 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 		planned.PlannedAction = determineObjectAction(object, catalog, updatePolicy, parser.HasExecutableTransition(transitions))
 		if isUnsafeUpdateAction(planned.PlannedAction) && !parser.SupportsExistingObjectUpdate(object) {
 			planned.PlannedAction = contracts.ActionReprocessChangedBlocked
-			plan.BlockReasons = append(plan.BlockReasons, "blocked existing object update: "+object.Path+" must start with CREATE OR ALTER for "+strings.TrimSuffix(strings.ToUpper(object.Kind), "S"))
+			plan.BlockReasons = append(plan.BlockReasons, existingObjectUpdateBlockReason(object))
 		}
 		metadataMatch := inferMetadataMatch(object, catalog)
 		if metadataMatch != nil {
@@ -340,7 +374,7 @@ func planObjects(plan *contracts.MigrationPlan, layout parser.Layout, catalog Ca
 		case contracts.ActionSkipUnchanged:
 			plan.Summary.SkipCount++
 		case contracts.ActionReprocessChangedBlocked:
-			if !containsBlockReason(plan.BlockReasons, "blocked existing object update: "+object.Path+" must start with CREATE OR ALTER for "+strings.TrimSuffix(strings.ToUpper(object.Kind), "S")) {
+			if !containsBlockReason(plan.BlockReasons, existingObjectUpdateBlockReason(object)) {
 				plan.BlockReasons = append(plan.BlockReasons, blockedExistingObjectReason(object, transitions))
 			}
 			plan.Summary.ChangedCount++
@@ -408,16 +442,21 @@ func transitionPaths(items []parser.TransitionScript) []string {
 func blockedExistingObjectReason(object parser.Object, transitions []parser.TransitionScript) string {
 	if object.Kind == "tables" {
 		if len(transitions) == 0 {
-			return "transition required: " + object.Path + " is already tracked, repo checksum changed, and table drift needs a checked-in migration under " + object.SchemaName + "/tables/_migrations/" + object.ObjectName + "/"
+			return "tracked table drift detected for " + object.Path + ". Add a checked-in migration under " + object.SchemaName + "/tables/_migrations/" + object.ObjectName + "/, rerun plan, then run migrate."
 		}
 		for _, transition := range transitions {
 			if transition.Scaffold {
-				return "transition required: " + object.Path + " is already tracked, repo checksum changed, and the auto-created scaffold at " + transition.Path + " must be replaced with real transition SQL before migrate can run"
+				return "tracked table drift detected for " + object.Path + ". Replace the scaffold at " + transition.Path + " with real SQL, rerun plan, then run migrate."
 			}
 		}
-		return "blocked existing object change: " + object.Path + " is already tracked, repo checksum changed, and the current transition set is not executable"
+		return "tracked table drift detected for " + object.Path + ". Make sure the checked-in migration files under " + object.SchemaName + "/tables/_migrations/" + object.ObjectName + "/ are executable, then rerun plan."
 	}
-	return "blocked existing object change: " + object.Path + " is already tracked, repo checksum changed, and the current update policy does not allow automatic DDL for this object kind"
+	return existingObjectUpdateBlockReason(object)
+}
+
+func existingObjectUpdateBlockReason(object parser.Object) string {
+	kindName := strings.TrimSuffix(strings.ToUpper(object.Kind), "S")
+	return "tracked " + strings.TrimSpace(strings.ToLower(kindName)) + " drift detected for " + object.Path + ". Update the repo file to start with CREATE OR ALTER " + kindName + ", then rerun plan and migrate."
 }
 
 func inferMetadataMatch(object parser.Object, catalog CatalogState) *bool {

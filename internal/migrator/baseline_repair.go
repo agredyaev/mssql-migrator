@@ -139,11 +139,11 @@ func (r Runner) warnBaselineAttemptWriteFailure(err error) {
 func baselineDriftFailure(object contracts.PlannedObject) error {
 	if object.Kind == "tables" {
 		if len(object.TransitionPaths) > 0 {
-			return fmt.Errorf("%w: baseline found tracked table drift for %s; use migrate to apply checked-in transitions from %s", contracts.ErrMetadataDrift, object.ObjectPath, strings.Join(object.TransitionPaths, ", "))
+			return fmt.Errorf("%w: tracked table drift detected for %s. Run migrate to apply %s", contracts.ErrMetadataDrift, object.ObjectPath, strings.Join(object.TransitionPaths, ", "))
 		}
-		return fmt.Errorf("%w: baseline found tracked table drift for %s; add a checked-in migration under %s and use migrate", contracts.ErrMetadataDrift, object.ObjectPath, requiredTableTransitionDir(object))
+		return fmt.Errorf("%w: tracked table drift detected for %s. Add a checked-in migration under %s, rerun plan, then run migrate", contracts.ErrMetadataDrift, object.ObjectPath, requiredTableTransitionDir(object))
 	}
-	return fmt.Errorf("%w: baseline found existing metadata drift for %s; use repair-checksum", contracts.ErrMetadataDrift, object.ObjectPath)
+	return fmt.Errorf("%w: checksum drift detected for %s. Run repair-checksum if you want to realign metadata, or rerun the pipeline from the repo change", contracts.ErrMetadataDrift, object.ObjectPath)
 }
 
 func requiredTableTransitionDir(object contracts.PlannedObject) string {
@@ -181,7 +181,11 @@ func (r Runner) resolveRepairTargets(ctx context.Context, state *protectedRunSta
 	if err != nil {
 		return parser.Object{}, contracts.PlannedObject{}, state.fail(ctx, contracts.ErrInvalidInput, err)
 	}
-	plan, err := state.session.BuildPlan(ctx, successfulByKey, layout.resolved, layout.hash)
+	catalogState, catalogErr := state.session.ReadPlanningCatalogForLayout(ctx, layout.resolved)
+	if catalogErr != nil {
+		return parser.Object{}, contracts.PlannedObject{}, state.fail(ctx, contracts.ErrCriticalState, catalogErr)
+	}
+	plan, err := state.session.BuildPlanWithCatalog(ctx, successfulByKey, layout.resolved, layout.hash, catalogState)
 	if err != nil {
 		return parser.Object{}, contracts.PlannedObject{}, state.fail(ctx, contracts.ErrCriticalState, err)
 	}
@@ -196,7 +200,7 @@ func (r Runner) resolveRepairTargets(ctx context.Context, state *protectedRunSta
 }
 
 func (r Runner) loadRepairTargetState(ctx context.Context, state *protectedRunState, target parser.Object, successfulByKey map[string]string) (planner.CatalogState, string, error) {
-	catalog, err := state.session.ReadPlanningCatalog(ctx)
+	catalog, err := state.session.ReadPlanningCatalogForLayout(ctx, parser.Layout{Schemas: []parser.Schema{{Name: target.SchemaName, NormalizedName: target.NormalizedSchemaName}}})
 	if err != nil {
 		return planner.CatalogState{}, "", state.fail(ctx, contracts.ErrCriticalState, err)
 	}

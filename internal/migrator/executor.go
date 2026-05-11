@@ -118,23 +118,6 @@ func (r Runner) recordPassiveObjectAction(ctx context.Context, execer metadata.E
 	return recorder.attempt.ObjectSuccess(ctx, passiveMetadataObject(planned, itemID), true)
 }
 
-func (r Runner) applyObject(parent context.Context, conn txConn, object parser.Object, report *contracts.MigrationReport) error {
-	planned := contracts.PlannedObject{
-		ObjectPath:      object.Path,
-		SchemaName:      object.SchemaName,
-		Kind:            object.Kind,
-		ObjectName:      object.ObjectName,
-		ParentName:      object.ParentName,
-		NormalizedKey:   object.NormalizedKey,
-		Checksum:        object.Checksum,
-		PlannedAction:   contracts.ActionCreateObject,
-		TransactionMode: transactionModeForObject(r.cfg.TransactionMode, object.NoTransaction),
-		RollbackScope:   rollbackScopeForObject(r.cfg.TransactionMode, object.NoTransaction),
-		NoTransaction:   noTransactionForObject(r.cfg.TransactionMode, object.NoTransaction),
-	}
-	return r.applyObjectTracked(parent, conn, object, planned, "", nil, report)
-}
-
 func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object parser.Object, planned contracts.PlannedObject, runID string, itemID *int64, report *contracts.MigrationReport) error {
 	ctx, cancel := context.WithTimeout(parent, r.cfg.ScriptTimeout)
 	defer cancel()

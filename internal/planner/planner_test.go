@@ -131,7 +131,7 @@ func TestBuildRequiresTransitionForChangedTable(t *testing.T) {
 	if !plan.Blocked {
 		t.Fatal("expected missing transition to block")
 	}
-	if len(plan.BlockReasons) == 0 || !strings.Contains(plan.BlockReasons[0], "transition required") {
+	if len(plan.BlockReasons) == 0 || !strings.Contains(plan.BlockReasons[0], "tracked table drift detected") {
 		t.Fatalf("expected transition-required message, got %#v", plan.BlockReasons)
 	}
 }
@@ -152,7 +152,7 @@ func TestBuildBlocksChangedTableWhenOnlyScaffoldTransitionExists(t *testing.T) {
 	if !plan.Blocked {
 		t.Fatal("expected scaffold-only transition to keep plan blocked")
 	}
-	if len(plan.BlockReasons) == 0 || !strings.Contains(plan.BlockReasons[0], "auto-created scaffold") {
+	if len(plan.BlockReasons) == 0 || !strings.Contains(plan.BlockReasons[0], "Replace the scaffold") {
 		t.Fatalf("expected scaffold blocker, got %#v", plan.BlockReasons)
 	}
 	for _, object := range plan.Objects {
@@ -204,7 +204,7 @@ func TestBuildBlocksChangedModuleWithoutCreateOrAlter(t *testing.T) {
 	if !plan.Blocked {
 		t.Fatal("expected unsafe module update to block plan")
 	}
-	if len(plan.BlockReasons) == 0 || !strings.Contains(plan.BlockReasons[0], "must start with CREATE OR ALTER") {
+	if len(plan.BlockReasons) == 0 || !strings.Contains(plan.BlockReasons[0], "tracked view drift detected") {
 		t.Fatalf("expected CREATE OR ALTER block reason, got %#v", plan.BlockReasons)
 	}
 	for _, object := range plan.Objects {
