@@ -3,6 +3,8 @@ package migrator
 import (
 	"context"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -30,7 +32,10 @@ func TestExecutePlanTreatsAdoptExistingAsNoDDLSkip(t *testing.T) {
 		t.Fatalf("unexpected executePlan error: %v", err)
 	}
 	if len(execer.calls) != 1 {
-		t.Fatalf("expected one metadata write for adopt_existing, got %d", len(execer.calls))
+		t.Fatalf("expected one batched metadata write for adopt_existing, got %d", len(execer.calls))
+	}
+	if !containsAll(execer.calls[0].query, "INSERT INTO __migrator.attempts", "VALUES (@p1, @p2, @p3") {
+		t.Fatalf("expected attempt insert query, got %#v", execer.calls)
 	}
 	if len(execer.calls[0].args) < 5 || execer.calls[0].args[2] != "reporting/views/monthly" || execer.calls[0].args[3] != "sum" || execer.calls[0].args[4] != contracts.ActionAdoptExisting {
 		t.Fatalf("unexpected adopt_existing metadata args: %#v", execer.calls[0].args)
@@ -56,6 +61,33 @@ func TestRecordAdoptedObjectWritesSuccessAttempt(t *testing.T) {
 	}
 	if len(execer.calls) != 1 {
 		t.Fatalf("expected one metadata write, got %d", len(execer.calls))
+	}
+	if !containsAll(execer.calls[0].query, "INSERT INTO __migrator.attempts", "VALUES (@p1, @p2, @p3") {
+		t.Fatalf("expected attempt insert query, got %#v", execer.calls)
+	}
+}
+
+func TestExecutePlanBatchesPassiveObjectAttemptsUntilDDLBoundary(t *testing.T) {
+	runner := NewRunner(config.Config{GitCommit: "abc", GitBranch: "main", PipelineRunID: "run-1", PipelineURL: "https://ci.example/run", Actor: "tester", TransactionMode: config.TransactionModeNone}, logger.New(logger.Options{Writer: io.Discard}))
+	report := contracts.MigrationReport{Result: "running"}
+	layout := parser.Layout{Objects: []parser.Object{{Path: "reporting/views/refresh.sql", AbsolutePath: "/tmp/reporting/views/refresh.sql", Content: "CREATE OR ALTER VIEW reporting.refresh AS SELECT 1;", SchemaName: "reporting", Kind: "views", ObjectName: "refresh", NormalizedKey: "reporting/views/refresh", Checksum: "sum-refresh"}}}
+	plan := contracts.MigrationPlan{Objects: []contracts.PlannedObject{{ObjectPath: "reporting/views/monthly.sql", Kind: "views", NormalizedKey: "reporting/views/monthly", Checksum: "sum-monthly", PlannedAction: contracts.ActionAdoptExisting}, {ObjectPath: "reporting/tables/snapshot.sql", Kind: "tables", NormalizedKey: "reporting/tables/snapshot", Checksum: "sum-snapshot", PlannedAction: contracts.ActionSkipUnchanged}, {ObjectPath: "reporting/views/refresh.sql", Kind: "views", NormalizedKey: "reporting/views/refresh", Checksum: "sum-refresh", PlannedAction: contracts.ActionUpdateExistingModule, TransactionMode: config.TransactionModeNone, RollbackScope: contracts.RollbackScopeNone}}}
+
+	execer := &stubExecer{result: stubResult{rows: 1}}
+	if err := runner.executePlan(context.Background(), execer, layout, plan, &report); err != nil {
+		t.Fatalf("unexpected executePlan error: %v", err)
+	}
+	if len(execer.calls) < 3 {
+		t.Fatalf("expected passive batch, ddl, and active metadata writes, got %#v", execer.calls)
+	}
+	if !containsAll(execer.calls[0].query, "INSERT INTO __migrator.attempts", "VALUES (@p1, @p2, @p3") {
+		t.Fatalf("expected first call to flush passive attempts, got %#v", execer.calls)
+	}
+	if len(execer.calls[0].args) != 36 {
+		t.Fatalf("expected two passive attempts in one batch, got %#v", execer.calls[0].args)
+	}
+	if !containsAll(execer.calls[1].query, "CREATE OR ALTER VIEW", "reporting.refresh") {
+		t.Fatalf("expected ddl after passive flush, got %#v", execer.calls)
 	}
 }
 
@@ -143,5 +175,33 @@ func TestExecutePlanAppliesCheckedInTransitionsBeforeTableObject(t *testing.T) {
 	}
 	if len(report.Skipped) != 1 || report.Skipped[0].Script != "reporting/tables/snapshot.sql" || report.Skipped[0].Reason != contracts.ActionReprocessChanged {
 		t.Fatalf("expected table metadata completion without table DDL replay, got applied=%#v skipped=%#v", report.Applied, report.Skipped)
+	}
+}
+
+func TestExecutePlanFailsClosedWhenObjectChangesAfterDiscovery(t *testing.T) {
+	root := t.TempDir()
+	basePath := filepath.Join(root, "dwh")
+	path := filepath.Join(basePath, "reporting", "views", "refresh.sql")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("CREATE OR ALTER VIEW reporting.refresh AS SELECT 1;"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	layout, err := parser.DiscoverLayout(basePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("CREATE OR ALTER VIEW reporting.refresh AS SELECT 2;"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(config.Config{TransactionMode: config.TransactionModeNone}, logger.New(logger.Options{Writer: io.Discard}))
+	report := contracts.MigrationReport{Result: "running"}
+	plan := contracts.MigrationPlan{Objects: []contracts.PlannedObject{{ObjectPath: "reporting/views/refresh.sql", Kind: "views", NormalizedKey: "reporting/views/refresh", Checksum: layout.Objects[0].Checksum, PlannedAction: contracts.ActionUpdateExistingModule, TransactionMode: config.TransactionModeNone, RollbackScope: contracts.RollbackScopeNone}}}
+
+	execer := &stubExecer{result: stubResult{rows: 1}}
+	if err := runner.executePlan(context.Background(), execer, layout, plan, &report); err == nil || !containsAll(err.Error(), "repo layout changed after discovery", "rerun the command") {
+		t.Fatalf("expected post-discovery drift failure, got %v", err)
 	}
 }

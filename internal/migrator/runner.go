@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"reporting-db-migrations/internal/catalog"
 	"reporting-db-migrations/internal/config"
 	"reporting-db-migrations/internal/contracts"
 	"reporting-db-migrations/internal/db"
@@ -94,7 +95,7 @@ func (r Runner) Plan(ctx context.Context) (contracts.MigrationPlan, error) {
 		return contracts.MigrationPlan{}, contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	catalogState, err := timedValue(r.log, "read_catalog_ms", func() (planner.CatalogState, error) {
-		return planner.SQLCatalogReaderForSchemas(connection.conn, parser.ManagedSchemaNames(layout.resolved)).ReadCatalogState(ctx)
+		return planner.SQLCatalogReaderForLayout(connection.conn, layout.resolved).ReadCatalogState(ctx)
 	})
 	if err != nil {
 		return contracts.MigrationPlan{}, contracts.Wrap(contracts.ErrCriticalState, err)
@@ -106,7 +107,11 @@ func (r Runner) Plan(ctx context.Context) (contracts.MigrationPlan, error) {
 		return contracts.MigrationPlan{}, err
 	}
 	created, scaffoldErr := timedValue(r.log, "ensure_table_transitions_ms", func() (bool, error) {
-		return ensureTableTransitionFiles(r.cfg, layout.resolved, plan, catalogState.TableColumns)
+		columns, err := r.loadBlockedTableColumns(ctx, connection.conn, plan)
+		if err != nil {
+			return false, err
+		}
+		return ensureTableTransitionFiles(r.cfg, layout.resolved, plan, columns)
 	})
 	if scaffoldErr != nil {
 		return contracts.MigrationPlan{}, contracts.Wrap(contracts.ErrInvalidInput, scaffoldErr)
@@ -167,6 +172,17 @@ type plannerLayoutContext struct {
 }
 
 func (r Runner) prepareMigrationExecution(ctx context.Context, state *protectedRunState) (executionPlanContext, error) {
+	if strings.TrimSpace(r.cfg.PlanFile) != "" {
+		return r.prepareApprovedMigrationExecution(ctx, state, executionPlanOptions{
+			layoutBase:     contracts.ErrInvalidInput,
+			buildPlanError: classifyMigrationPlanBuildError,
+			startRun: startRunOptions{
+				command:  contracts.CommandMigrate,
+				planFile: r.cfg.PlanFile,
+			},
+			skipTransitionPreflight: true,
+		})
+	}
 	planCtx, err := r.prepareExecutionPlan(ctx, state, executionPlanOptions{
 		layoutBase:     contracts.ErrInvalidInput,
 		buildPlanError: classifyMigrationPlanBuildError,
@@ -240,6 +256,7 @@ type executionPlanOptions struct {
 	layoutBase     error
 	buildPlanError func(error) error
 	startRun       startRunOptions
+	skipTransitionPreflight bool
 }
 
 type startRunOptions struct {
@@ -248,75 +265,30 @@ type startRunOptions struct {
 	planHash string
 }
 
-func (r Runner) prepareExecutionPlan(ctx context.Context, state *protectedRunState, options executionPlanOptions) (executionPlanContext, error) {
-	layout, successfulByKey, err := r.loadProtectedPlanningInputs(ctx, state, options.layoutBase)
-	if err != nil {
-		return executionPlanContext{}, err
-	}
-	catalogState, err := timedValue(r.log, "read_catalog_ms", func() (planner.CatalogState, error) {
-		return state.session.ReadPlanningCatalogForLayout(ctx, layout.resolved)
-	})
-	if err != nil {
-		return executionPlanContext{}, state.fail(ctx, contracts.ErrCriticalState, err)
-	}
-	plan, err := timedValue(r.log, "build_plan_ms", func() (contracts.MigrationPlan, error) {
-		return state.session.BuildPlanWithCatalog(ctx, successfulByKey, layout.resolved, layout.hash, catalogState)
-	})
-	if err != nil {
-		return executionPlanContext{}, state.fail(ctx, options.buildPlanError(err), err)
-	}
-	created, scaffoldErr := timedValue(r.log, "ensure_table_transitions_ms", func() (bool, error) {
-		return ensureTableTransitionFiles(r.cfg, layout.resolved, plan, catalogState.TableColumns)
-	})
-	if scaffoldErr != nil {
-		return executionPlanContext{}, state.fail(ctx, contracts.ErrInvalidInput, scaffoldErr)
-	}
-	if created {
-		layout, err = timedValue(r.log, "resolve_layout_ms", func() (plannerLayoutContext, error) {
-			resolved, hash, err := state.session.ResolvePlanningLayout()
-			if err != nil {
-				return plannerLayoutContext{}, err
-			}
-			return plannerLayoutContext{resolved: resolved, hash: hash}, nil
-		})
-		if err != nil {
-			return executionPlanContext{}, state.fail(ctx, options.layoutBase, err)
-		}
-		state.setLayoutHash(layout.hash)
-		plan, err = timedValue(r.log, "build_plan_ms", func() (contracts.MigrationPlan, error) {
-			return state.session.BuildPlanWithCatalog(ctx, successfulByKey, layout.resolved, layout.hash, catalogState)
-		})
-		if err != nil {
-			return executionPlanContext{}, state.fail(ctx, options.buildPlanError(err), err)
-		}
-	}
-	if plan.Blocked {
-		return executionPlanContext{}, state.fail(ctx, contracts.ErrChecksumMismatch, fmt.Errorf("plan is blocked: %s", strings.Join(plan.BlockReasons, " | ")))
-	}
-	if options.startRun.planFile != "" && options.startRun.planHash == "" {
-		planHash, err := planArtifactHash(options.startRun.planFile)
-		if err != nil {
-			return executionPlanContext{}, state.fail(ctx, contracts.ErrInvalidInput, err)
-		}
-		options.startRun.planHash = planHash
-	}
-	if err := state.startRun(ctx, options.startRun.command, options.startRun.planFile, options.startRun.planHash, plan.Rollback); err != nil {
-		return executionPlanContext{}, state.fail(ctx, contracts.ErrCriticalState, err)
-	}
-	itemIDs, err := timedValue(r.log, "persist_scope_ms", func() (map[string]int64, error) {
-		return state.recorder.scope.Migration(ctx, plan)
-	})
-	if err != nil {
-		return executionPlanContext{}, state.fail(ctx, contracts.ErrCriticalState, err)
-	}
-	return executionPlanContext{layout: layout, plan: plan, itemIDs: itemIDs}, nil
-}
-
 func classifyMigrationPlanBuildError(err error) error {
 	if errors.Is(err, contracts.ErrCriticalState) {
 		return contracts.ErrCriticalState
 	}
 	return contracts.ErrInvalidInput
+}
+
+func (r Runner) loadBlockedTableColumns(ctx context.Context, conn *sql.Conn, plan contracts.MigrationPlan) (map[string][]catalog.TableColumn, error) {
+	refs := tablesNeedingTransition(plan)
+	if len(refs) == 0 {
+		return map[string][]catalog.TableColumn{}, nil
+	}
+	return catalog.ReadColumnsForTables(ctx, conn, refs)
+}
+
+func tablesNeedingTransition(plan contracts.MigrationPlan) []catalog.TableRef {
+	refs := []catalog.TableRef{}
+	for _, object := range plan.Objects {
+		if object.Kind != "tables" || object.PlannedAction != contracts.ActionReprocessChangedBlocked || len(object.TransitionPaths) != 0 {
+			continue
+		}
+		refs = append(refs, catalog.TableRef{SchemaName: object.SchemaName, TableName: object.ObjectName})
+	}
+	return refs
 }
 
 func (r Runner) verifyMigrationPlan(plan contracts.MigrationPlan) error {

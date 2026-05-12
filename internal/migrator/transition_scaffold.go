@@ -48,7 +48,10 @@ func ensureTableTransitionFiles(cfg config.Config, layout parser.Layout, plan co
 }
 
 func ensureAutomaticAddColumnMigration(basePath string, gitCommit string, object parser.Object, liveColumns []catalog.TableColumn) (bool, error) {
-	columnDefs, ok := automaticAddColumnDefinitions(object, liveColumns)
+	columnDefs, ok, err := automaticAddColumnDefinitions(object, liveColumns)
+	if err != nil {
+		return false, err
+	}
 	if !ok || len(columnDefs) == 0 {
 		return false, nil
 	}
@@ -110,10 +113,14 @@ func transitionScaffoldContent(object contracts.PlannedObject, commitToken strin
 	}, "\n")
 }
 
-func automaticAddColumnDefinitions(object parser.Object, liveColumns []catalog.TableColumn) ([]string, bool) {
-	repoColumns, err := parser.ParseCreateTableColumns(object.Content)
+func automaticAddColumnDefinitions(object parser.Object, liveColumns []catalog.TableColumn) ([]string, bool, error) {
+	content, err := object.SQLContent()
+	if err != nil {
+		return nil, false, err
+	}
+	repoColumns, err := parser.ParseCreateTableColumns(content)
 	if err != nil || len(liveColumns) == 0 {
-		return nil, false
+		return nil, false, nil
 	}
 	liveByName := make(map[string]catalog.TableColumn, len(liveColumns))
 	for _, column := range liveColumns {
@@ -123,19 +130,19 @@ func automaticAddColumnDefinitions(object parser.Object, liveColumns []catalog.T
 	for _, column := range repoColumns {
 		if live, exists := liveByName[column.NormalizedName]; exists {
 			if !sameTableColumnSignature(column, live) {
-				return nil, false
+				return nil, false, nil
 			}
 			continue
 		}
 		if !column.AutoAddEligible {
-			return nil, false
+			return nil, false, nil
 		}
 		missing = append(missing, column.DefinitionSQL)
 	}
 	if len(missing) == 0 {
-		return nil, false
+		return nil, false, nil
 	}
-	return missing, true
+	return missing, true, nil
 }
 
 func sameTableColumnSignature(repo parser.TableColumn, live catalog.TableColumn) bool {

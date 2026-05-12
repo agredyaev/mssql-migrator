@@ -127,7 +127,7 @@ func TestEnsureTableTransitionFilesReplanUsesGeneratedAddColumnMigration(t *test
 		t.Fatal(err)
 	}
 	currentChecksum := layout.Objects[0].Checksum
-	plan, err := planner.BuildResolved(context.Background(), config.Config{Env: "pred", Database: "db", SQLRoot: root, SQLBase: base, EffectiveBasePath: basePath, UpdatePolicy: config.UpdatePolicyModulesOnly}, map[string]string{"reporting/tables/snapshot": currentChecksum + "changed"}, layout, hash, scaffoldCatalogReader{objects: map[string]planner.CatalogObject{"reporting/tables/snapshot": {SchemaName: "reporting", Kind: "tables", ObjectName: "snapshot"}}, tableColumns: map[string][]catalog.TableColumn{"reporting/tables/snapshot": {{Name: "id", NormalizedName: "id", TypeName: "int", Nullable: false}}}})
+	plan, err := planner.BuildResolved(context.Background(), config.Config{Env: "pred", Database: "db", SQLRoot: root, SQLBase: base, EffectiveBasePath: basePath, UpdatePolicy: config.UpdatePolicyModulesOnly}, map[string]string{"reporting/tables/snapshot": currentChecksum + "changed"}, layout, hash, scaffoldCatalogReader{objects: map[string]planner.CatalogObject{"reporting/tables/snapshot": {SchemaName: "reporting", Kind: "tables", ObjectName: "snapshot"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestEnsureTableTransitionFilesReplanUsesGeneratedAddColumnMigration(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err = planner.BuildResolved(context.Background(), config.Config{Env: "pred", Database: "db", SQLRoot: root, SQLBase: base, EffectiveBasePath: basePath, UpdatePolicy: config.UpdatePolicyModulesOnly}, map[string]string{"reporting/tables/snapshot": currentChecksum + "changed"}, layout, hash, scaffoldCatalogReader{objects: map[string]planner.CatalogObject{"reporting/tables/snapshot": {SchemaName: "reporting", Kind: "tables", ObjectName: "snapshot"}}, tableColumns: map[string][]catalog.TableColumn{"reporting/tables/snapshot": {{Name: "id", NormalizedName: "id", TypeName: "int", Nullable: false}, {Name: "name", NormalizedName: "name", TypeName: "nvarchar", Length: 100, Nullable: true}}}})
+	plan, err = planner.BuildResolved(context.Background(), config.Config{Env: "pred", Database: "db", SQLRoot: root, SQLBase: base, EffectiveBasePath: basePath, UpdatePolicy: config.UpdatePolicyModulesOnly}, map[string]string{"reporting/tables/snapshot": currentChecksum + "changed"}, layout, hash, scaffoldCatalogReader{objects: map[string]planner.CatalogObject{"reporting/tables/snapshot": {SchemaName: "reporting", Kind: "tables", ObjectName: "snapshot"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestEnsureTableTransitionFilesReplanKeepsScaffoldBlocked(t *testing.T) {
 		t.Fatal(err)
 	}
 	currentChecksum := layout.Objects[0].Checksum
-	plan, err := planner.BuildResolved(context.Background(), config.Config{Env: "pred", Database: "db", SQLRoot: root, SQLBase: base, EffectiveBasePath: basePath, UpdatePolicy: config.UpdatePolicyModulesOnly}, map[string]string{"reporting/tables/snapshot": currentChecksum + "changed"}, layout, hash, scaffoldCatalogReader{objects: map[string]planner.CatalogObject{"reporting/tables/snapshot": {SchemaName: "reporting", Kind: "tables", ObjectName: "snapshot"}}, tableColumns: map[string][]catalog.TableColumn{"reporting/tables/snapshot": {{Name: "id", NormalizedName: "id", TypeName: "int", Nullable: false}}}})
+	plan, err := planner.BuildResolved(context.Background(), config.Config{Env: "pred", Database: "db", SQLRoot: root, SQLBase: base, EffectiveBasePath: basePath, UpdatePolicy: config.UpdatePolicyModulesOnly}, map[string]string{"reporting/tables/snapshot": currentChecksum + "changed"}, layout, hash, scaffoldCatalogReader{objects: map[string]planner.CatalogObject{"reporting/tables/snapshot": {SchemaName: "reporting", Kind: "tables", ObjectName: "snapshot"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestEnsureTableTransitionFilesReplanKeepsScaffoldBlocked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err = planner.BuildResolved(context.Background(), config.Config{Env: "pred", Database: "db", SQLRoot: root, SQLBase: base, EffectiveBasePath: basePath, UpdatePolicy: config.UpdatePolicyModulesOnly}, map[string]string{"reporting/tables/snapshot": currentChecksum + "changed"}, layout, hash, scaffoldCatalogReader{objects: map[string]planner.CatalogObject{"reporting/tables/snapshot": {SchemaName: "reporting", Kind: "tables", ObjectName: "snapshot"}}, tableColumns: map[string][]catalog.TableColumn{"reporting/tables/snapshot": {{Name: "id", NormalizedName: "id", TypeName: "int", Nullable: false}}}})
+	plan, err = planner.BuildResolved(context.Background(), config.Config{Env: "pred", Database: "db", SQLRoot: root, SQLBase: base, EffectiveBasePath: basePath, UpdatePolicy: config.UpdatePolicyModulesOnly}, map[string]string{"reporting/tables/snapshot": currentChecksum + "changed"}, layout, hash, scaffoldCatalogReader{objects: map[string]planner.CatalogObject{"reporting/tables/snapshot": {SchemaName: "reporting", Kind: "tables", ObjectName: "snapshot"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,15 +194,13 @@ func TestEnsureTableTransitionFilesReplanKeepsScaffoldBlocked(t *testing.T) {
 }
 
 type scaffoldCatalogReader struct {
-	objects      map[string]planner.CatalogObject
-	tableColumns map[string][]catalog.TableColumn
+	objects map[string]planner.CatalogObject
 }
 
 func (s scaffoldCatalogReader) ReadCatalogState(_ context.Context) (planner.CatalogState, error) {
 	return planner.CatalogState{
 		Schemas:         map[string]struct{}{},
 		Objects:         s.objects,
-		TableColumns:    s.tableColumns,
 		SuccessfulByKey: map[string]string{},
 	}, nil
 }

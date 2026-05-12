@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"reporting-db-migrations/internal/checksum"
 )
 
 func TestDiscoverLayoutIgnoresHiddenFile(t *testing.T) {
@@ -180,6 +182,114 @@ func TestSupportsExistingObjectUpdateRequiresCreateOrAlter(t *testing.T) {
 	}
 	if !SupportsExistingObjectUpdate(Object{Kind: "procedures", Content: "CREATE OR ALTER PROC reporting.refresh AS SELECT 1;"}) {
 		t.Fatal("expected CREATE OR ALTER PROC to support existing object update")
+	}
+}
+
+func TestDiscoverLayoutLoadsObjectContentOnDemand(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "reporting", "views", "monthly.sql")
+	writeLayoutFile(t, path, "CREATE OR ALTER VIEW reporting.monthly AS SELECT 1;")
+
+	layout, err := DiscoverLayout(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layout.Objects[0].Content != "" {
+		t.Fatalf("expected discovered object content to stay lazy, got %#v", layout.Objects[0])
+	}
+	content, err := layout.Objects[0].SQLContent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(content, "CREATE OR ALTER VIEW") {
+		t.Fatalf("unexpected lazy content: %q", content)
+	}
+}
+
+func TestDiscoverValidationLayoutLoadsCheckContentOnDemand(t *testing.T) {
+	root := t.TempDir()
+	writeLayoutFile(t, filepath.Join(root, "reporting", "views", "monthly.sql"), "SELECT 1;")
+	writeLayoutFile(t, filepath.Join(root, "reporting", "checks", "smoke.sql"), "SELECT 42;")
+
+	layout, err := DiscoverValidationLayout(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layout.Checks[0].Content != "" {
+		t.Fatalf("expected discovered check content to stay lazy, got %#v", layout.Checks[0])
+	}
+	content, err := layout.Checks[0].SQLContent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(content) != "SELECT 42;" {
+		t.Fatalf("unexpected lazy check content: %q", content)
+	}
+}
+
+func TestDiscoverLayoutFailsClosedWhenFileChangesAfterDiscovery(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "reporting", "views", "monthly.sql")
+	writeLayoutFile(t, path, "CREATE OR ALTER VIEW reporting.monthly AS SELECT 1;")
+
+	layout, err := DiscoverLayout(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeLayoutFile(t, path, "CREATE OR ALTER VIEW reporting.monthly AS SELECT 2;")
+
+	if _, err := layout.Objects[0].SQLContent(); err == nil || !strings.Contains(err.Error(), "repo layout changed after discovery") {
+		t.Fatalf("expected post-discovery drift error, got %v", err)
+	}
+}
+
+func TestDiscoverLayoutReusesManifestWithoutLoadingContent(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "reporting", "views", "monthly.sql")
+	content := "CREATE OR ALTER VIEW reporting.monthly AS SELECT 1;"
+	writeLayoutFile(t, path, content)
+
+	first, err := DiscoverLayout(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.Objects[0].SQLContent(); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := DiscoverLayout(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Objects[0].Content != "" {
+		t.Fatalf("expected second discovery to reuse manifest lazily, got %#v", second.Objects[0])
+	}
+	if second.Objects[0].Checksum != checksum.SHA256String(content) {
+		t.Fatalf("unexpected checksum after manifest reuse: %#v", second.Objects[0])
+	}
+	if !SupportsExistingObjectUpdate(second.Objects[0]) {
+		t.Fatalf("expected cached CREATE OR ALTER detection to survive manifest reuse: %#v", second.Objects[0])
+	}
+}
+
+func TestDiscoverLayoutLoadsTransitionContentOnDemand(t *testing.T) {
+	root := t.TempDir()
+	writeLayoutFile(t, filepath.Join(root, "reporting", "tables", "snapshot.sql"), "CREATE TABLE reporting.snapshot(id int);")
+	writeLayoutFile(t, filepath.Join(root, "reporting", "tables", "_migrations", "snapshot", "001_deadbee_add_name.sql"), "ALTER TABLE reporting.snapshot ADD name nvarchar(100) NULL;")
+
+	layout, err := DiscoverLayout(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layout.Transitions[0].Content != "" {
+		t.Fatalf("expected discovered transition content to stay lazy, got %#v", layout.Transitions[0])
+	}
+	content, err := layout.Transitions[0].SQLContent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(content, "ALTER TABLE reporting.snapshot ADD name") {
+		t.Fatalf("unexpected lazy transition content: %q", content)
 	}
 }
 

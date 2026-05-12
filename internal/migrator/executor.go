@@ -24,6 +24,8 @@ func (r Runner) executePlan(ctx context.Context, conn txConn, layout parser.Layo
 
 func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout parser.Layout, plan contracts.MigrationPlan, report *contracts.MigrationReport, runID string, itemIDs map[string]int64) error {
 	recorder := newMetadataRecorder(r.cfg, conn, nil, runID)
+	pendingPassive := pendingPassiveMetadataWrites{writer: recorder.writer}
+	defer pendingPassive.reset()
 	for _, schema := range plan.Schemas {
 		if err := r.executePlannedSchema(ctx, conn, recorder, schema, runID, report); err != nil {
 			return err
@@ -39,9 +41,19 @@ func (r Runner) executePlanTracked(ctx context.Context, conn txConn, layout pars
 		transitionsByPath[transition.Path] = transition
 	}
 	for _, planned := range plannedObjectsInExecutionOrder(plan.Objects) {
-		if err := r.executePlannedObject(ctx, conn, byKey, transitionsByPath, planned, runID, itemIDs, report); err != nil {
+		if !isPassiveObjectAction(planned.PlannedAction) {
+			if err := pendingPassive.flush(ctx); err != nil {
+				setFailedResult(report, planned.ObjectPath, err.Error())
+				return contracts.Wrap(contracts.ErrCriticalState, err)
+			}
+		}
+		if err := r.executePlannedObject(ctx, conn, byKey, transitionsByPath, planned, runID, itemIDs, report, &pendingPassive); err != nil {
 			return err
 		}
+	}
+	if err := pendingPassive.flush(ctx); err != nil {
+		setFailedResult(report, "metadata/passive", err.Error())
+		return contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	return nil
 }
@@ -76,10 +88,15 @@ func (r Runner) executePlannedSchema(ctx context.Context, conn txConn, recorder 
 	return nil
 }
 
-func (r Runner) executePlannedObject(ctx context.Context, conn txConn, byKey map[string]parser.Object, transitionsByPath map[string]parser.TransitionScript, planned contracts.PlannedObject, runID string, itemIDs map[string]int64, report *contracts.MigrationReport) error {
+func (r Runner) executePlannedObject(ctx context.Context, conn txConn, byKey map[string]parser.Object, transitionsByPath map[string]parser.TransitionScript, planned contracts.PlannedObject, runID string, itemIDs map[string]int64, report *contracts.MigrationReport, pendingPassive *pendingPassiveMetadataWrites) error {
 	itemID := lookupItemID(itemIDs, planned.NormalizedKey)
 	if planned.PlannedAction == contracts.ActionSkipUnchanged || planned.PlannedAction == contracts.ActionAdoptExisting {
-		if err := r.recordPassiveObjectAction(ctx, conn, planned, runID, itemID); err != nil {
+		if pendingPassive == nil {
+			if err := r.recordPassiveObjectAction(ctx, conn, planned, runID, itemID); err != nil {
+				setFailedResult(report, planned.ObjectPath, err.Error())
+				return contracts.Wrap(contracts.ErrCriticalState, err)
+			}
+		} else if err := pendingPassive.add(planned, itemID); err != nil {
 			setFailedResult(report, planned.ObjectPath, err.Error())
 			return contracts.Wrap(contracts.ErrCriticalState, err)
 		}
@@ -107,6 +124,43 @@ func (r Runner) executePlannedObject(ctx context.Context, conn txConn, byKey map
 		}
 	}
 	return r.applyObjectTracked(ctx, conn, object, planned, runID, itemID, report)
+}
+
+type pendingPassiveMetadataWrites struct {
+	writer   metadataWriter
+	attempts []metadata.AttemptRecord
+}
+
+func (p *pendingPassiveMetadataWrites) add(planned contracts.PlannedObject, itemID *int64) error {
+	if p == nil {
+		return nil
+	}
+	p.attempts = append(p.attempts, passiveMetadataObject(planned, itemID).successAttempt(p.writer.cfg))
+	return nil
+}
+
+func (p *pendingPassiveMetadataWrites) flush(ctx context.Context) error {
+	if p == nil || len(p.attempts) == 0 {
+		return nil
+	}
+	for _, attempt := range p.attempts {
+		if err := p.writer.insertAttempt(ctx, attempt); err != nil {
+			return fmt.Errorf("critical metadata failure after passive actions: database object state may drift from metadata: %w", err)
+		}
+	}
+	p.attempts = nil
+	return nil
+}
+
+func (p *pendingPassiveMetadataWrites) reset() {
+	if p == nil {
+		return
+	}
+	p.attempts = nil
+}
+
+func isPassiveObjectAction(action string) bool {
+	return action == contracts.ActionSkipUnchanged || action == contracts.ActionAdoptExisting
 }
 
 func (r Runner) recordAdoptedObject(ctx context.Context, execer metadata.Execer, planned contracts.PlannedObject) error {
@@ -147,7 +201,11 @@ func (r Runner) applyObjectTracked(parent context.Context, conn txConn, object p
 }
 
 func (r Runner) executeObject(ctx context.Context, conn txConn, object parser.Object) error {
-	batches, err := parser.SplitGO(object.Content)
+	content, err := object.SQLContent()
+	if err != nil {
+		return err
+	}
+	batches, err := parser.SplitGO(content)
 	if err != nil {
 		return err
 	}
@@ -189,7 +247,12 @@ func (r Runner) applyTransitionScripts(parent context.Context, conn txConn, tran
 			setFailedResult(report, path, err.Error())
 			return fmt.Errorf("%w: %v", contracts.ErrInvalidInput, err)
 		}
-		if err := r.executeSQLContent(parent, conn, path, transition.Content, transition.NoTransaction); err != nil {
+		content, err := transition.SQLContent()
+		if err != nil {
+			setFailedResult(report, path, err.Error())
+			return classifyTransitionExecutionError(path, err)
+		}
+		if err := r.executeSQLContent(parent, conn, path, content, transition.NoTransaction); err != nil {
 			setFailedResult(report, path, err.Error())
 			return classifyTransitionExecutionError(path, err)
 		}

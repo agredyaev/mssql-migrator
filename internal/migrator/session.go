@@ -120,7 +120,7 @@ func (s *runSession) ReadPlanningCatalogForLayout(ctx context.Context, layout pa
 	if err := s.requireConnection(); err != nil {
 		return planner.CatalogState{}, err
 	}
-	return planner.SQLCatalogReaderForSchemas(s.conn, parser.ManagedSchemaNames(layout)).ReadCatalogState(ctx)
+	return planner.SQLCatalogReaderForLayout(s.conn, layout).ReadCatalogState(ctx)
 }
 
 func (s *runSession) RecordRunFailure(ctx context.Context, recorder metadataRecorder, base error, cause error) {
