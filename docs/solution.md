@@ -61,8 +61,8 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - Logs, reports, and stored error text must not expose secrets.
 - Post-SQL metadata writes use `internal/migrator/metadata_context.go` and a short timeout so metadata paths fail quickly instead of waiting for the full command timeout.
 - When `--report-dir` is set, `internal/reports/write.go` stages report artifacts through temporary files, publishes the text companion first, and publishes JSON last as the commit marker for readers that require a consistent pair.
-- Repo-driven `migrate` creates missing schemas, applies create paths and safe existing-module update paths from the current in-memory plan, adopts existing objects without DDL by default, records attempts in `[__migrator]`, and validates the managed object scope by default unless skipped. That post-migrate validation checks managed-scope existence and metadata state, but leaves module refresh work to standalone `validate`.
-- When `--plan-file` is supplied, `migrate` verifies that approved plan artifact against the current in-memory plan before execution and fails closed on drift.
+- Repo-driven `migrate` creates missing schemas, applies create paths and safe existing-module update paths from the current in-memory plan, adopts existing objects without DDL by default, records attempts in `[__migrator]`, and validates the managed object scope by default unless skipped. That post-migrate validation fails closed when any affected managed object is missing, updates `__migrator.items` success state only for the affected object subset from the current migrate plan, and still leaves module refresh work to standalone `validate`.
+- When `--plan-file` is supplied, `migrate` reads and validates the approved plan artifact once, rebuilds the current plan from the live catalog and metadata to verify the approval boundary, and skips transition/scaffold generation preflight on that approval path so the repo tree is not mutated during approved execution.
 - Repo-driven `validate` refreshes module objects, checks existence for the full managed object scope, creates one validation run row, updates tracked object results for successful validation scope, and writes attempt rows only for validation failures and failed checks.
 - Repo-driven `baseline` uses the same discovered schema and object scope as `plan` and `migrate`, creates missing schemas and objects, adopts already existing objects, and blocks when a tracked object already exists with checksum drift. For transition-backed tracked table drift, it stops and directs the operator to `migrate`.
 - Repo-driven `baseline` preflights metadata DDL, schema creation permission, object DDL permission, and parent-object availability before create work.
@@ -76,7 +76,9 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - Successful checksum reads return only the latest successful action per tracked object key from `[__migrator].attempts` instead of replaying the full append-only attempt history.
 - `plan` and repo-driven execution paths reuse one planning catalog read per stage and pass that resolved catalog state into the planner and transition scaffold checks.
 - Scope persistence batches `__migrator.items` inserts in chunks of 100 rows and reloads object item ids in one follow-up query per scope transaction.
-- Repo SQL files are read once per discovery path and reused for both content parsing and normalized checksum calculation.
+- Repo layout discovery persists a best-effort file metadata manifest in the local OS cache, keyed by the resolved base path, so unchanged `.sql` files can reuse checksum and directive metadata across later `plan`, `migrate`, and `validate` runs without changing the checked-in repo tree.
+- Repo SQL text now loads lazily from `internal/parser/layout.go` on the first caller that needs full script content. Before using lazily loaded content, the runtime rechecks file size, modtime, and checksum and fails closed if the repo changed after discovery.
+- `internal/checksum/checksum.go` preserves the existing SQL normalization rules, but file hashing now streams normalized content from disk instead of loading the full file into memory first. `SQLDirHash()` and approved-plan hashing in `internal/migrator/runtime_metadata.go` keep the same digest semantics.
 - `internal/migrator/runner.go` emits per-phase duration logs such as `resolve_layout_ms`, `read_catalog_ms`, `build_plan_ms`, `persist_scope_ms`, `execute_plan_ms`, `validate_scope_ms`, and report-write timings so SQL Server latency and repo I/O can be separated during diagnostics.
 - Current builds are v2-only for metadata. Legacy metadata objects are treated as incompatible state, and no in-place upgrade path is implemented in `rmig`.
 
@@ -99,9 +101,11 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 
 - Invalid root or base selection: config validation fails before command execution.
 - Invalid repository layout: discovery fails before database work.
+- Repo files changed after discovery: execution and validation fail closed when a lazily loaded script no longer matches the discovered checksum.
 - Partial metadata state during `plan`: the command fails on metadata read errors instead of repairing metadata. Locked metadata bootstrap remains in `migrate`, `baseline`, and `repair-checksum`.
 - Blocked `plan`: the command remains informational and read-only even when `Blocked: true`. The hard execution boundary remains in `migrate`.
 - Approved-plan drift: when `--plan-file` is supplied, `migrate` fails closed if `git_commit`, `layout_hash`, target, tool identity, comparison mode, update policy, transaction mode, rollback scope, base selection, or the approved schema/object set differs.
+- Approved-plan execution does not create transition scaffold files or auto-generated transition files during `migrate --plan-file`; approval mode expects those repo changes to have been made before the artifact was approved.
 - Unsafe existing-module update SQL: `plan` blocks the object when the repo file does not start with the required `CREATE OR ALTER` statement.
 - Safe additive tracked table drift: `plan` auto-creates `<schema>/tables/_migrations/<table>/001_<commit>_auto_add_columns.sql`, replans onto that checked-in transition path, and `migrate` executes the transition without replaying `tables/*.sql` as raw create DDL.
 - Non-safe tracked table drift without transitions: `plan` reports `transition required`, auto-creates the scaffold file, and points at it.
@@ -113,8 +117,8 @@ Schema and object scope come from `<RM_SQL_ROOT>/<RM_SQL_BASE>`.
 - Missing schema creation permission, missing object DDL permission, or missing parent object: create paths fail closed with a specific classified error.
 - Scope persistence for repo-managed schemas and objects is written into `[__migrator].items` in one metadata transaction per run scope.
 - Validation failure: the run stops and writes `validation-report.*` only when `--report-dir` is set.
-- Repo-driven migrate execution: the current repo-driven schema/object set is executed. When `--plan-file` is supplied, the current set must still match the approved artifact. Repo-discovered checks are outside the `migrate` approval boundary and run only through standalone `validate`.
-- Local verification still depends on `staticcheck` being installed on the runner host. The current workspace did not provide that binary.
+- Repo-driven migrate execution: the current repo-driven schema/object set is executed. Post-migrate validation checks only the affected object subset from the current migrate plan, but it still fails closed if any affected managed object is missing. When `--plan-file` is supplied, the current set must still match the approved artifact and the approval path skips repo-mutating transition preflight. Repo-discovered checks are outside the `migrate` approval boundary and run only through standalone `validate`.
+- Local verification still depends on `staticcheck` being installed on the runner host.
 
 ## Verification And Validation
 
