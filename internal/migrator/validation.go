@@ -27,7 +27,7 @@ func (r Runner) Validate(ctx context.Context) error {
 	if err := session.BootstrapMetadata(ctx); err != nil {
 		return r.writeValidationFailureReport(fmt.Errorf("validation could not bootstrap metadata; fix the database state or permissions and rerun validate: %w", err), contracts.ErrCriticalState)
 	}
-	vr, err := r.validateScope(ctx, session, layout, true, "", true)
+	vr, err := r.validateScope(ctx, session, layout, fullValidationMode())
 	return runreport.WriteValidationOutcome(r.cfg.ReportDir, vr, err)
 }
 
@@ -37,20 +37,20 @@ func (r Runner) writeValidationFailureReport(cause error, base error) error {
 }
 
 func (r Runner) validateManagedScope(ctx context.Context, session *runSession, layout parser.Layout, runID string) (contracts.ValidationReport, error) {
-	return r.validateScope(ctx, session, layout, false, runID, false)
+	return r.validateScope(ctx, session, layout, managedScopeValidationMode(runID))
 }
 
-func (r Runner) validateScope(ctx context.Context, session *runSession, layout parser.Layout, includeChecks bool, existingRunID string, refreshModules bool) (contracts.ValidationReport, error) {
-	vr := newValidationReport(r.cfg, layout, includeChecks)
+func (r Runner) validateScope(ctx context.Context, session *runSession, layout parser.Layout, mode validationMode) (contracts.ValidationReport, error) {
+	vr := newValidationReport(r.cfg, layout, mode.includeChecks)
 	catalog, successfulByKey, err := r.loadValidationInputs(ctx, session, layout, &vr)
 	if err != nil {
 		return vr, err
 	}
-	runState, err := r.ensureValidationRunState(ctx, session, layout, catalog, successfulByKey, existingRunID, &vr)
+	runState, err := r.ensureValidationRunState(ctx, session, layout, catalog, successfulByKey, mode.existingRunID, &vr)
 	if err != nil {
 		return vr, err
 	}
-	return r.executeValidationScope(ctx, session, layout, includeChecks, refreshModules, vr, runState)
+	return r.executeValidationScope(ctx, session, layout, mode, vr, runState)
 }
 
 type validationRunState struct {
@@ -58,6 +58,7 @@ type validationRunState struct {
 	createdRun bool
 	recorder   metadataRecorder
 	itemIDs    map[string]int64
+	catalog    validate.CatalogState
 }
 
 func newValidationReport(cfg config.Config, layout parser.Layout, includeChecks bool) contracts.ValidationReport {
@@ -109,7 +110,7 @@ func (r Runner) loadValidationInputs(ctx context.Context, session *runSession, l
 }
 
 func (r Runner) ensureValidationRunState(ctx context.Context, session *runSession, layout parser.Layout, catalog validate.CatalogState, successfulByKey map[string]string, existingRunID string, vr *contracts.ValidationReport) (validationRunState, error) {
-	runState := validationRunState{runID: existingRunID, recorder: session.Recorder(existingRunID), itemIDs: map[string]int64{}}
+	runState := validationRunState{runID: existingRunID, recorder: session.Recorder(existingRunID), itemIDs: map[string]int64{}, catalog: catalog}
 	if existingRunID == "" {
 		return r.createValidationRunState(ctx, session, layout, catalog, successfulByKey, vr)
 	}
@@ -130,30 +131,9 @@ func (r Runner) createValidationRunState(ctx context.Context, session *runSessio
 	}
 	itemIDs, err := recorder.scope.Validation(ctx, layout, catalog, successfulByKey)
 	if err != nil {
-		return validationRunState{}, validationRunState{runID: runID, createdRun: true, recorder: recorder}.fail(ctx, session, vr, contracts.ErrCriticalState, err)
+		return validationRunState{}, validationRunState{runID: runID, createdRun: true, recorder: recorder, catalog: catalog}.fail(ctx, session, vr, contracts.ErrCriticalState, err)
 	}
-	return validationRunState{runID: runID, createdRun: true, recorder: recorder, itemIDs: itemIDs}, nil
-}
-
-func (r Runner) executeValidationScope(ctx context.Context, session *runSession, layout parser.Layout, includeChecks bool, refreshModules bool, vr contracts.ValidationReport, runState validationRunState) (contracts.ValidationReport, error) {
-	if refreshModules {
-		modules, err := validate.RefreshManagedObjects(ctx, session.conn, layout, r.log)
-		vr.Validation.ModulesRefreshed = modules.ModulesRefreshed
-		if err != nil {
-			runState.recorder.validation.recordFailure(ctx, layout.Objects, runState.itemIDs, err, includeChecks, r.log)
-			return vr, runState.fail(ctx, session, &vr, validationFailureBase(err), err)
-		}
-	}
-	if err := runState.recorder.validation.markSuccesses(ctx, layout.Objects); err != nil {
-		return vr, runState.fail(ctx, session, &vr, contracts.ErrCriticalState, err)
-	}
-	if err := r.runValidationChecks(ctx, session, layout, includeChecks, &vr, runState); err != nil {
-		return vr, err
-	}
-	if err := runState.finish(ctx, session, &vr); err != nil {
-		return vr, err
-	}
-	return vr, nil
+	return validationRunState{runID: runID, createdRun: true, recorder: recorder, itemIDs: itemIDs, catalog: catalog}, nil
 }
 
 func (r Runner) runValidationChecks(ctx context.Context, session *runSession, layout parser.Layout, includeChecks bool, vr *contracts.ValidationReport, runState validationRunState) error {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -37,6 +38,9 @@ func TestBootstrapExecutesAllStatements(t *testing.T) {
 	}
 	if !containsExec(state.execs, "CREATE TABLE __migrator.attempts") {
 		t.Fatalf("expected bootstrap to create attempts table, got %#v", state.execs)
+	}
+	if !containsExec(state.execs, "CREATE TABLE __migrator.object_state") {
+		t.Fatalf("expected bootstrap to create object_state table, got %#v", state.execs)
 	}
 	if containsExec(state.execs, "CREATE VIEW __migrator.v_migration_state") {
 		t.Fatalf("expected bootstrap not to create legacy view, got %#v", state.execs)
@@ -77,6 +81,7 @@ func TestBootstrapCurrentMetadataDoesNotRewriteObjects(t *testing.T) {
 			keyForArgs("__migrator.runs", "U"):           true,
 			keyForArgs("__migrator.items", "U"):          true,
 			keyForArgs("__migrator.attempts", "U"):       true,
+			keyForArgs("__migrator.object_state", "U"):   true,
 		},
 	})
 	defer conn.Close()
@@ -88,6 +93,30 @@ func TestBootstrapCurrentMetadataDoesNotRewriteObjects(t *testing.T) {
 	state := metadataTestStateForConn(t, conn)
 	if got := len(state.execs); got != 0 {
 		t.Fatalf("Bootstrap() executed %d statements for current metadata, want 0", got)
+	}
+}
+
+func TestBootstrapCurrentMetadataAddsObjectState(t *testing.T) {
+	conn := openMetadataTestConn(t, &metadataTestScenario{
+		objectExists: map[string]bool{
+			keyForArgs("__migrator.schema_version", "U"): true,
+			keyForArgs("__migrator.runs", "U"):           true,
+			keyForArgs("__migrator.items", "U"):          true,
+			keyForArgs("__migrator.attempts", "U"):       true,
+		},
+	})
+	defer conn.Close()
+
+	if err := Bootstrap(context.Background(), conn); err != nil {
+		t.Fatalf("Bootstrap() error = %v", err)
+	}
+
+	state := metadataTestStateForConn(t, conn)
+	if got, want := len(state.execs), len(bootstrapObjectStateStatements()); got != want {
+		t.Fatalf("Bootstrap() executed %d statements for object_state upgrade, want %d", got, want)
+	}
+	if !containsExec(state.execs, "CREATE TABLE __migrator.object_state") {
+		t.Fatalf("expected object_state bootstrap, got %#v", state.execs)
 	}
 }
 
@@ -205,6 +234,28 @@ func TestUpdateItemResultUsesExpectedPlaceholders(t *testing.T) {
 	}
 }
 
+func TestUpdateItemResultsRejectsRowsAffectedMismatch(t *testing.T) {
+	err := UpdateItemResults(context.Background(), stubMetadataExecer{result: stubMetadataResult{rows: 1}}, "run-1", []ItemResult{{NormalizedKey: "reporting/views/monthly", Success: true}, {NormalizedKey: "reporting/tables/snapshot", Success: true}})
+	if err == nil || !strings.Contains(err.Error(), "expected 2 rows affected") {
+		t.Fatalf("expected rows affected mismatch, got %v", err)
+	}
+}
+
+func TestUpdateItemResultsUsesValuesBatch(t *testing.T) {
+	execer := captureMetadataExecer{result: stubMetadataResult{rows: 2}}
+	if err := UpdateItemResults(context.Background(), &execer, "run-1", []ItemResult{{NormalizedKey: "reporting/views/monthly", Success: true}, {NormalizedKey: "reporting/tables/snapshot", Success: false, ErrorMessage: "boom"}}); err != nil {
+		t.Fatalf("UpdateItemResults() error = %v", err)
+	}
+	for _, expected := range []string{"UPDATE i", "VALUES (@p1, @p2, @p3),(@p4, @p5, @p6)", "WHERE i.run_id = @p7"} {
+		if !strings.Contains(execer.query, expected) {
+			t.Fatalf("expected query to contain %q, got %s", expected, execer.query)
+		}
+	}
+	if len(execer.args) != 7 || execer.args[6] != "run-1" {
+		t.Fatalf("unexpected batched args: %#v", execer.args)
+	}
+}
+
 func TestLoadSuccessfulChecksumsIfPresentWithoutMetadataTables(t *testing.T) {
 	conn := openMetadataTestConn(t, &metadataTestScenario{})
 	defer conn.Close()
@@ -227,11 +278,11 @@ func TestLoadSuccessfulChecksumsIfPresentUsesItemKeys(t *testing.T) {
 			keyForArgs("__migrator.attempts", "U"):       true,
 		},
 		queryResponses: map[string]metadataTestRows{
-			successfulChecksumsQuery(): {
-				columns: []string{"normalized_key", "script_name", "checksum"},
+			successfulChecksumsHistoryQuery(): {
+				columns: []string{"normalized_key", "checksum"},
 				rows: [][]driver.Value{
-					{"reporting/views/monthly", "ignored", "abc"},
-					{"", "Reporting/Procedures/RefreshMonthly.sql", "def"},
+					{"reporting/views/monthly", "abc"},
+					{"Reporting/Procedures/RefreshMonthly.sql", "def"},
 				},
 			},
 		},
@@ -248,14 +299,49 @@ func TestLoadSuccessfulChecksumsIfPresentUsesItemKeys(t *testing.T) {
 	if got["reporting/procedures/refreshmonthly"] != "def" {
 		t.Fatalf("fallback normalized key missing, got %#v", got)
 	}
+	state := metadataTestStateForConn(t, conn)
+	if last := state.queries[len(state.queries)-1]; last != successfulChecksumsHistoryQuery() {
+		t.Fatalf("expected history fallback query, got %#v", state.queries)
+	}
+}
+
+func TestLoadSuccessfulChecksumsIfPresentUsesObjectStateWhenPresent(t *testing.T) {
+	conn := openMetadataTestConn(t, &metadataTestScenario{
+		objectExists: map[string]bool{
+			keyForArgs("__migrator.schema_version", "U"): true,
+			keyForArgs("__migrator.runs", "U"):           true,
+			keyForArgs("__migrator.items", "U"):          true,
+			keyForArgs("__migrator.attempts", "U"):       true,
+			keyForArgs("__migrator.object_state", "U"):   true,
+		},
+		queryResponses: map[string]metadataTestRows{
+			successfulChecksumsQuery(): {
+				columns: []string{"normalized_key", "checksum"},
+				rows:    [][]driver.Value{{"reporting/views/monthly", "abc"}},
+			},
+		},
+	})
+	defer conn.Close()
+
+	got, err := LoadSuccessfulChecksumsIfPresent(context.Background(), conn)
+	if err != nil {
+		t.Fatalf("LoadSuccessfulChecksumsIfPresent() error = %v", err)
+	}
+	if got["reporting/views/monthly"] != "abc" {
+		t.Fatalf("object_state checksum missing, got %#v", got)
+	}
+	state := metadataTestStateForConn(t, conn)
+	if last := state.queries[len(state.queries)-1]; last != successfulChecksumsQuery() {
+		t.Fatalf("expected object_state query, got %#v", state.queries)
+	}
 }
 
 func TestLoadSuccessfulChecksumsSkipsShapeInspection(t *testing.T) {
 	conn := openMetadataTestConn(t, &metadataTestScenario{
 		queryResponses: map[string]metadataTestRows{
 			successfulChecksumsQuery(): {
-				columns: []string{"normalized_key", "script_name", "checksum"},
-				rows:    [][]driver.Value{{"reporting/views/monthly", "ignored", "abc"}},
+				columns: []string{"normalized_key", "checksum"},
+				rows:    [][]driver.Value{{"reporting/views/monthly", "abc"}},
 			},
 		},
 	})
@@ -274,12 +360,42 @@ func TestLoadSuccessfulChecksumsSkipsShapeInspection(t *testing.T) {
 	}
 }
 
-func TestSuccessfulChecksumsQueryUsesLatestRowPerObject(t *testing.T) {
+func TestSuccessfulChecksumsQueryReadsObjectState(t *testing.T) {
 	query := successfulChecksumsQuery()
+	for _, expected := range []string{"SELECT normalized_key, checksum", "FROM __migrator.object_state"} {
+		if !strings.Contains(query, expected) {
+			t.Fatalf("expected query to contain %q, got %s", expected, query)
+		}
+	}
+}
+
+func TestSuccessfulChecksumsHistoryQueryUsesLatestRowPerObject(t *testing.T) {
+	query := successfulChecksumsHistoryQuery()
 	for _, expected := range []string{"ROW_NUMBER() OVER", "PARTITION BY", contracts.ActionSkipUnchanged, contracts.ActionRepairChecksum} {
 		if !strings.Contains(query, expected) {
 			t.Fatalf("expected query to contain %q, got %s", expected, query)
 		}
+	}
+}
+
+func TestInsertAttemptQueryUpdatesObjectState(t *testing.T) {
+	query := insertAttemptQuery()
+	for _, expected := range []string{"SCOPE_IDENTITY()", "MERGE __migrator.object_state", "TRY_CONVERT(UNIQUEIDENTIFIER, @p1)", contracts.ActionRepairChecksum} {
+		if !strings.Contains(query, expected) {
+			t.Fatalf("expected insert attempt query to contain %q, got %s", expected, query)
+		}
+	}
+}
+
+func TestInsertAttemptQueryPlaceholderCountMatchesArgs(t *testing.T) {
+	query := insertAttemptQuery()
+	matches := regexp.MustCompile(`@p\d+`).FindAllString(query, -1)
+	unique := map[string]struct{}{}
+	for _, match := range matches {
+		unique[match] = struct{}{}
+	}
+	if got, want := len(unique), 18; got != want {
+		t.Fatalf("insertAttemptQuery() placeholder count=%d, want %d; query=%s", got, want, query)
 	}
 }
 

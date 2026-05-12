@@ -5,6 +5,7 @@ import (
 
 	"reporting-db-migrations/internal/attempts"
 	"reporting-db-migrations/internal/logger"
+	"reporting-db-migrations/internal/metadata"
 	"reporting-db-migrations/internal/parser"
 )
 
@@ -29,10 +30,9 @@ func (r validationRecorder) recordFailure(ctx context.Context, objects []parser.
 }
 
 func (r validationRecorder) markSuccesses(ctx context.Context, objects []parser.Object) error {
+	results := make([]metadata.ItemResult, 0, len(objects))
 	for _, object := range objects {
-		if err := r.writer.updateObject(ctx, object.NormalizedKey, true, ""); err != nil {
-			return err
-		}
+		results = append(results, metadata.ItemResult{NormalizedKey: object.NormalizedKey, Success: true})
 	}
-	return nil
+	return r.writer.updateObjectResults(ctx, results)
 }

@@ -105,11 +105,18 @@ type AttemptRecord struct {
 	AppliedBy       string
 }
 
+type ItemResult struct {
+	NormalizedKey string
+	Success       bool
+	ErrorMessage  string
+}
+
 type metadataShape struct {
 	schemaVersionExists bool
 	runsExists          bool
 	itemsExists         bool
 	attemptsExists      bool
+	objectStateExists   bool
 	legacyObjects       []string
 }
 
@@ -127,6 +134,14 @@ func Bootstrap(ctx context.Context, conn *sql.Conn) error {
 		}
 	}
 	if shape.allCurrent() {
+		if shape.objectStateExists {
+			return nil
+		}
+		for _, statement := range bootstrapObjectStateStatements() {
+			if _, err := conn.ExecContext(ctx, statement); err != nil {
+				return classifyBootstrapError(err)
+			}
+		}
 		return nil
 	}
 	for _, statement := range bootstrapStatements() {
@@ -157,14 +172,25 @@ func LoadSuccessfulChecksumsIfPresent(ctx context.Context, conn *sql.Conn) (map[
 	if err := verifySchemaVersion(ctx, conn); err != nil {
 		return nil, err
 	}
+	if !shape.objectStateExists {
+		return loadSuccessfulChecksumsFromHistory(ctx, conn)
+	}
 	return LoadSuccessfulChecksums(ctx, conn)
 }
 
 func LoadSuccessfulChecksums(ctx context.Context, conn *sql.Conn) (map[string]string, error) {
+	return loadSuccessfulChecksums(ctx, conn, successfulChecksumsQuery())
+}
+
+func loadSuccessfulChecksumsFromHistory(ctx context.Context, conn *sql.Conn) (map[string]string, error) {
+	return loadSuccessfulChecksums(ctx, conn, successfulChecksumsHistoryQuery())
+}
+
+func loadSuccessfulChecksums(ctx context.Context, conn *sql.Conn, query string) (map[string]string, error) {
 	if conn == nil {
 		return nil, fmt.Errorf("load successful checksums: missing connection")
 	}
-	rows, err := conn.QueryContext(ctx, successfulChecksumsQuery())
+	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -172,15 +198,11 @@ func LoadSuccessfulChecksums(ctx context.Context, conn *sql.Conn) (map[string]st
 	result := map[string]string{}
 	for rows.Next() {
 		var normalizedKey string
-		var scriptName string
 		var checksum string
-		if err := rows.Scan(&normalizedKey, &scriptName, &checksum); err != nil {
+		if err := rows.Scan(&normalizedKey, &checksum); err != nil {
 			return nil, err
 		}
-		key := strings.ToLower(strings.TrimSpace(normalizedKey))
-		if key == "" {
-			key = parser.NormalizeTrackedName(scriptName)
-		}
+		key := parser.NormalizeTrackedName(strings.ToLower(strings.TrimSpace(normalizedKey)))
 		if key == "" {
 			continue
 		}
@@ -350,11 +372,166 @@ WHERE run_id = @p1 AND normalized_key = @p2`, runID, normalizedKey, success, nul
 	return requireSingleRow(result, "update item result")
 }
 
+func UpdateItemResults(ctx context.Context, execer Execer, runID string, results []ItemResult) error {
+	if len(results) == 0 {
+		return nil
+	}
+	queryBuilder := strings.Builder{}
+	queryBuilder.WriteString(`
+UPDATE i
+SET success = v.success,
+    error_message = v.error_message
+FROM __migrator.items i
+JOIN (
+    VALUES `)
+	args := make([]any, 0, len(results)*3+1)
+	placeholderIndex := 1
+	for i, result := range results {
+		if i > 0 {
+			queryBuilder.WriteString(",")
+		}
+		queryBuilder.WriteString("(")
+		for j := 0; j < 3; j++ {
+			if j > 0 {
+				queryBuilder.WriteString(", ")
+			}
+			queryBuilder.WriteString(fmt.Sprintf("@p%d", placeholderIndex))
+			placeholderIndex++
+		}
+		queryBuilder.WriteString(")")
+		args = append(args, result.NormalizedKey, result.Success, nullable(result.ErrorMessage))
+	}
+	queryBuilder.WriteString(fmt.Sprintf(`
+) v(normalized_key, success, error_message)
+    ON i.normalized_key = v.normalized_key
+WHERE i.run_id = @p%d`, placeholderIndex))
+	args = append(args, runID)
+	result, err := execer.ExecContext(ctx, queryBuilder.String(), args...)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update item results: read rows affected: %w", err)
+	}
+	if rows != int64(len(results)) {
+		return fmt.Errorf("update item results: expected %d rows affected, got %d", len(results), rows)
+	}
+	return nil
+}
+
 func InsertAttempt(ctx context.Context, execer Execer, record AttemptRecord) error {
-	_, err := execer.ExecContext(ctx, `
+	_, err := execer.ExecContext(ctx, insertAttemptQuery(),
+		attemptRecordArgs(record)...,
+	)
+	return err
+}
+
+func InsertAttempts(ctx context.Context, execer Execer, records []AttemptRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+	if len(records) == 1 {
+		return InsertAttempt(ctx, execer, records[0])
+	}
+	const columnsPerRow = 18
+	queryBuilder := strings.Builder{}
+	queryBuilder.WriteString(`
+DECLARE @inserted TABLE (
+    run_id UNIQUEIDENTIFIER NULL,
+    item_id BIGINT NULL,
+    script_name NVARCHAR(512) NOT NULL,
+    checksum NVARCHAR(64) NOT NULL,
+    action NVARCHAR(64) NOT NULL,
+    attempt_id BIGINT NOT NULL
+);
+
 INSERT INTO __migrator.attempts
 (run_id, item_id, script_name, checksum, action, execution_ms, success, error_message, sql_error_number, sql_error_state, transaction_mode, rollback_scope, no_transaction, git_commit, git_branch, pipeline_run_id, pipeline_url, applied_by)
-VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15, @p16, @p17, @p18, @p19)`,
+OUTPUT INSERTED.run_id, INSERTED.item_id, INSERTED.script_name, INSERTED.checksum, INSERTED.action, INSERTED.id
+INTO @inserted (run_id, item_id, script_name, checksum, action, attempt_id)
+SELECT
+    TRY_CONVERT(UNIQUEIDENTIFIER, v.run_id),
+    v.item_id,
+    v.script_name,
+    v.checksum,
+    v.action,
+    v.execution_ms,
+    v.success,
+    v.error_message,
+    v.sql_error_number,
+    v.sql_error_state,
+    v.transaction_mode,
+    v.rollback_scope,
+    v.no_transaction,
+    v.git_commit,
+    v.git_branch,
+    v.pipeline_run_id,
+    v.pipeline_url,
+    v.applied_by
+FROM (
+    VALUES `)
+	args := make([]any, 0, len(records)*columnsPerRow)
+	placeholderIndex := 1
+	for i, record := range records {
+		if i > 0 {
+			queryBuilder.WriteString(",")
+		}
+		queryBuilder.WriteString("(")
+		for j := 0; j < columnsPerRow; j++ {
+			if j > 0 {
+				queryBuilder.WriteString(", ")
+			}
+			queryBuilder.WriteString(fmt.Sprintf("@p%d", placeholderIndex))
+			placeholderIndex++
+		}
+		queryBuilder.WriteString(")")
+		args = append(args, attemptRecordArgs(record)...)
+	}
+	queryBuilder.WriteString(fmt.Sprintf(`
+) v(run_id, item_id, script_name, checksum, action, execution_ms, success, error_message, sql_error_number, sql_error_state, transaction_mode, rollback_scope, no_transaction, git_commit, git_branch, pipeline_run_id, pipeline_url, applied_by);
+
+IF OBJECT_ID('__migrator.object_state', 'U') IS NOT NULL
+BEGIN
+    WITH source_rows AS (
+        SELECT
+            COALESCE(NULLIF(i.normalized_key, ''), NULLIF(inserted.script_name, '')) AS normalized_key,
+            inserted.checksum,
+            inserted.attempt_id AS last_attempt_id,
+            inserted.run_id AS last_run_id,
+            ROW_NUMBER() OVER (
+                PARTITION BY COALESCE(NULLIF(i.normalized_key, ''), NULLIF(inserted.script_name, ''))
+                ORDER BY inserted.attempt_id DESC
+            ) AS rn
+        FROM @inserted inserted
+        LEFT JOIN __migrator.items i ON i.item_id = inserted.item_id
+        WHERE inserted.run_id IS NOT NULL
+          AND inserted.action IN ('%s')
+    )
+    MERGE __migrator.object_state AS target
+    USING (
+        SELECT normalized_key, checksum, last_attempt_id, last_run_id
+        FROM source_rows
+        WHERE rn = 1
+          AND normalized_key IS NOT NULL
+          AND normalized_key <> ''
+    ) AS source
+    ON target.normalized_key = source.normalized_key
+    WHEN MATCHED THEN
+        UPDATE SET checksum = source.checksum,
+                   last_attempt_id = source.last_attempt_id,
+                   last_run_id = source.last_run_id,
+                   updated_at = SYSUTCDATETIME()
+    WHEN NOT MATCHED THEN
+        INSERT (normalized_key, checksum, last_attempt_id, last_run_id)
+        VALUES (source.normalized_key, source.checksum, source.last_attempt_id, source.last_run_id);
+END`, successfulChecksumActionList()))
+	_, err := execer.ExecContext(ctx, queryBuilder.String(), args...)
+	return err
+}
+
+func attemptRecordArgs(record AttemptRecord) []any {
+	return []any{
 		nullable(record.RunID),
 		nullableInt64(record.ItemID),
 		record.ScriptName,
@@ -373,8 +550,45 @@ VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p1
 		nullable(record.PipelineRunID),
 		nullable(record.PipelineURL),
 		nullable(record.AppliedBy),
-	)
-	return err
+	}
+}
+
+func insertAttemptQuery() string {
+	return fmt.Sprintf(`
+DECLARE @attempt_id BIGINT;
+DECLARE @normalized_key NVARCHAR(2048);
+
+INSERT INTO __migrator.attempts
+(run_id, item_id, script_name, checksum, action, execution_ms, success, error_message, sql_error_number, sql_error_state, transaction_mode, rollback_scope, no_transaction, git_commit, git_branch, pipeline_run_id, pipeline_url, applied_by)
+VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15, @p16, @p17, @p18);
+
+SET @attempt_id = SCOPE_IDENTITY();
+SET @normalized_key = COALESCE((SELECT TOP (1) NULLIF(normalized_key, '') FROM __migrator.items WHERE item_id = @p2), NULLIF(@p3, ''));
+
+IF OBJECT_ID('__migrator.object_state', 'U') IS NOT NULL
+   AND @p1 IS NOT NULL
+   AND @p7 = 1
+   AND @p5 IN ('%s')
+   AND @normalized_key IS NOT NULL
+BEGIN
+    MERGE __migrator.object_state AS target
+    USING (
+        SELECT
+            @normalized_key AS normalized_key,
+            @p4 AS checksum,
+            @attempt_id AS last_attempt_id,
+            TRY_CONVERT(UNIQUEIDENTIFIER, @p1) AS last_run_id
+    ) AS source
+    ON target.normalized_key = source.normalized_key
+    WHEN MATCHED THEN
+        UPDATE SET checksum = source.checksum,
+                   last_attempt_id = source.last_attempt_id,
+                   last_run_id = source.last_run_id,
+                   updated_at = SYSUTCDATETIME()
+    WHEN NOT MATCHED THEN
+        INSERT (normalized_key, checksum, last_attempt_id, last_run_id)
+        VALUES (source.normalized_key, source.checksum, source.last_attempt_id, source.last_run_id);
+END`, successfulChecksumActionList())
 }
 
 func inspectMetadataShape(ctx context.Context, conn *sql.Conn) (metadataShape, error) {
@@ -401,6 +615,7 @@ func inspectMetadataShape(ctx context.Context, conn *sql.Conn) (metadataShape, e
 	shape.runsExists = exists[metadataShapeKey("__migrator", "runs", "U")]
 	shape.itemsExists = exists[metadataShapeKey("__migrator", "items", "U")]
 	shape.attemptsExists = exists[metadataShapeKey("__migrator", "attempts", "U")]
+	shape.objectStateExists = exists[metadataShapeKey("__migrator", "object_state", "U")]
 	for _, item := range legacyMetadataObjects() {
 		schemaName, objectName := splitQualifiedObjectName(item.name)
 		if exists[metadataShapeKey(schemaName, objectName, item.objectType)] {
@@ -412,7 +627,7 @@ func inspectMetadataShape(ctx context.Context, conn *sql.Conn) (metadataShape, e
 }
 
 func (s metadataShape) anyCurrent() bool {
-	return s.schemaVersionExists || s.runsExists || s.itemsExists || s.attemptsExists
+	return s.schemaVersionExists || s.runsExists || s.itemsExists || s.attemptsExists || s.objectStateExists
 }
 
 func (s metadataShape) allCurrent() bool {
@@ -486,32 +701,31 @@ func verifySchemaVersion(ctx context.Context, conn *sql.Conn) error {
 }
 
 func successfulChecksumsQuery() string {
+	return `
+SELECT normalized_key, checksum
+FROM __migrator.object_state`
+}
+
+func successfulChecksumsHistoryQuery() string {
 	return fmt.Sprintf(`
 WITH ranked AS (
     SELECT
-        ISNULL(i.normalized_key, '') AS normalized_key,
-        a.script_name,
+        COALESCE(NULLIF(i.normalized_key, ''), NULLIF(a.script_name, '')) AS normalized_key,
         a.checksum,
         ROW_NUMBER() OVER (
-            PARTITION BY ISNULL(NULLIF(i.normalized_key, ''), a.script_name)
+            PARTITION BY COALESCE(NULLIF(i.normalized_key, ''), NULLIF(a.script_name, ''))
             ORDER BY a.applied_at DESC, a.id DESC
         ) AS rn
     FROM __migrator.attempts a
     LEFT JOIN __migrator.items i ON i.item_id = a.item_id
     WHERE a.success = 1
-      AND a.action IN ('%s', '%s', '%s', '%s', '%s', '%s', '%s')
+      AND a.action IN ('%s')
 )
-SELECT normalized_key, script_name, checksum
+SELECT normalized_key, checksum
 FROM ranked
-WHERE rn = 1`,
-		contracts.ActionSkipUnchanged,
-		contracts.ActionAdoptExisting,
-		contracts.ActionCreateObject,
-		contracts.ActionReprocessChanged,
-		contracts.ActionUpdateExistingModule,
-		contracts.ActionUpdateExistingSupported,
-		contracts.ActionRepairChecksum,
-	)
+WHERE rn = 1
+  AND normalized_key IS NOT NULL
+  AND normalized_key <> ''`, successfulChecksumActionList())
 }
 
 func metadataShapeQuery() string {
@@ -528,6 +742,7 @@ WHERE s.name = '__migrator'
       'runs',
       'items',
       'attempts',
+      'object_state',
       'schema_migrations',
       'migration_runs',
       'tracked_schemas',
@@ -554,6 +769,7 @@ func bootstrapStatements() []string {
 	statements := []string{}
 	statements = append(statements, bootstrapSchemaStatements()...)
 	statements = append(statements, bootstrapTableStatements()...)
+	statements = append(statements, bootstrapObjectStateStatements()...)
 	statements = append(statements, bootstrapForeignKeyStatements()...)
 	statements = append(statements, bootstrapCheckConstraintStatements()...)
 	statements = append(statements, bootstrapIndexStatements()...)
@@ -653,6 +869,60 @@ CREATE TABLE __migrator.attempts (
 )
 END`,
 	}
+}
+
+func bootstrapObjectStateStatements() []string {
+	return []string{
+		`IF OBJECT_ID('__migrator.object_state', 'U') IS NULL
+BEGIN
+CREATE TABLE __migrator.object_state (
+    normalized_key NVARCHAR(2048) NOT NULL PRIMARY KEY,
+    checksum NVARCHAR(64) NOT NULL,
+    last_attempt_id BIGINT NULL,
+    last_run_id UNIQUEIDENTIFIER NULL,
+    updated_at DATETIME2 NOT NULL CONSTRAINT DF_object_state_updated_at DEFAULT SYSUTCDATETIME()
+)
+END`,
+		fmt.Sprintf(`IF OBJECT_ID('__migrator.object_state', 'U') IS NOT NULL
+   AND OBJECT_ID('__migrator.attempts', 'U') IS NOT NULL
+   AND OBJECT_ID('__migrator.items', 'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM __migrator.object_state)
+BEGIN
+WITH ranked AS (
+    SELECT
+        COALESCE(NULLIF(i.normalized_key, ''), NULLIF(a.script_name, '')) AS normalized_key,
+        a.checksum,
+        a.id AS last_attempt_id,
+        a.run_id AS last_run_id,
+        ROW_NUMBER() OVER (
+            PARTITION BY COALESCE(NULLIF(i.normalized_key, ''), NULLIF(a.script_name, ''))
+            ORDER BY a.applied_at DESC, a.id DESC
+        ) AS rn
+    FROM __migrator.attempts a
+    LEFT JOIN __migrator.items i ON i.item_id = a.item_id
+    WHERE a.success = 1
+      AND a.action IN ('%s')
+)
+INSERT INTO __migrator.object_state (normalized_key, checksum, last_attempt_id, last_run_id)
+SELECT normalized_key, checksum, last_attempt_id, last_run_id
+FROM ranked
+WHERE rn = 1
+  AND normalized_key IS NOT NULL
+  AND normalized_key <> ''
+END`, successfulChecksumActionList()),
+	}
+}
+
+func successfulChecksumActionList() string {
+	return strings.Join([]string{
+		contracts.ActionSkipUnchanged,
+		contracts.ActionAdoptExisting,
+		contracts.ActionCreateObject,
+		contracts.ActionReprocessChanged,
+		contracts.ActionUpdateExistingModule,
+		contracts.ActionUpdateExistingSupported,
+		contracts.ActionRepairChecksum,
+	}, `', '`)
 }
 
 func bootstrapForeignKeyStatements() []string {

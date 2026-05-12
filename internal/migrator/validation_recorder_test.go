@@ -19,7 +19,7 @@ func TestValidationObjectActionUsesSkippedForNonModules(t *testing.T) {
 }
 
 func TestValidationMarkSuccessesDoesNotWriteAttempts(t *testing.T) {
-	execer := &stubExecer{result: stubResult{rows: 1}}
+	execer := &stubExecer{result: stubResult{rows: 2}}
 	recorder := validationRecorder{writer: newMetadataWriter(config.Config{}, execer, "run-1")}
 	objects := []parser.Object{
 		{NormalizedKey: "reporting/views/monthly", Kind: "views"},
@@ -29,12 +29,13 @@ func TestValidationMarkSuccessesDoesNotWriteAttempts(t *testing.T) {
 	if err := recorder.markSuccesses(t.Context(), objects); err != nil {
 		t.Fatalf("unexpected validation success error: %v", err)
 	}
-	if len(execer.calls) != len(objects) {
-		t.Fatalf("expected one update per object, got %#v", execer.calls)
+	if len(execer.calls) != 1 {
+		t.Fatalf("expected one batched update, got %#v", execer.calls)
 	}
-	for _, call := range execer.calls {
-		if strings.Contains(call.query, "INSERT INTO __migrator.attempts") {
-			t.Fatalf("expected no attempt inserts, got %#v", execer.calls)
-		}
+	if strings.Contains(execer.calls[0].query, "INSERT INTO __migrator.attempts") {
+		t.Fatalf("expected no attempt inserts, got %#v", execer.calls)
+	}
+	if !strings.Contains(execer.calls[0].query, "UPDATE i") || !strings.Contains(execer.calls[0].query, "VALUES") {
+		t.Fatalf("expected batched item update query, got %#v", execer.calls)
 	}
 }

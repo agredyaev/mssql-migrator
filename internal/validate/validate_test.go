@@ -43,6 +43,23 @@ func TestManagedScopeRefsReportsMissingObjects(t *testing.T) {
 	}
 }
 
+func TestResolveManagedScopeReturnsExistingAndMissingObjects(t *testing.T) {
+	layout := parser.Layout{Objects: []parser.Object{{Path: "reporting/views/monthly.sql", NormalizedKey: "reporting/views/monthly"}, {Path: "reporting/tables/snapshot.sql", NormalizedKey: "reporting/tables/snapshot"}}}
+	catalogState := CatalogState{Objects: map[string]CatalogObject{"reporting/views/monthly": {SchemaName: "reporting", Kind: "views", ObjectName: "monthly"}}}
+
+	scope, err := ResolveManagedScope(layout, catalogState)
+	if err == nil {
+		t.Fatal("expected missing managed object error")
+	}
+	if len(scope.Missing) != 1 || scope.Missing[0].NormalizedKey != "reporting/tables/snapshot" {
+		t.Fatalf("unexpected missing scope objects: %#v", scope.Missing)
+	}
+	existing := scope.ExistingObjects()
+	if len(existing) != 1 || existing[0].NormalizedKey != "reporting/views/monthly" {
+		t.Fatalf("unexpected existing scope objects: %#v", existing)
+	}
+}
+
 func TestMapTypeDescToKind(t *testing.T) {
 	tests := map[string]string{
 		"USER_TABLE":                       "tables",

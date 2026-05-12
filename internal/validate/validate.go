@@ -47,17 +47,16 @@ func RefreshManagedObjects(ctx context.Context, conn *sql.Conn, layout parser.La
 	if err != nil {
 		return contracts.ValidationSummary{}, err
 	}
-	objects, missing := managedScopeRefs(layout.Objects, catalog.Objects)
-
 	summary := contracts.ValidationSummary{}
-	if len(missing) > 0 {
-		return summary, fmt.Errorf("missing managed objects: %s", strings.Join(missing, ", "))
+	scope, err := ResolveManagedScope(layout, catalog)
+	if err != nil {
+		return summary, err
 	}
 	for _, expected := range layout.Objects {
 		if !parser.IsModuleKind(expected.Kind) {
 			continue
 		}
-		object := objects[expected.NormalizedKey]
+		object := scope.Refs[expected.NormalizedKey]
 		qualifiedName := bracket(object.Schema) + "." + bracket(object.Name)
 		if _, err := conn.ExecContext(ctx, "EXEC sys.sp_refreshsqlmodule @p1", qualifiedName); err != nil {
 			return summary, fmt.Errorf("refresh module %s: %w", qualifiedName, err)
@@ -91,7 +90,11 @@ func LoadLayout(cfg config.Config) (parser.Layout, error) {
 }
 
 func runCheck(ctx context.Context, conn *sql.Conn, script parser.CheckScript) error {
-	batches, err := parser.SplitGO(script.Content)
+	content, err := script.SQLContent()
+	if err != nil {
+		return err
+	}
+	batches, err := parser.SplitGO(content)
 	if err != nil {
 		return err
 	}

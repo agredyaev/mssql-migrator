@@ -41,6 +41,15 @@ func (w metadataWriter) updateObject(ctx context.Context, normalizedKey string, 
 	return w.updateItemResult(ctx, normalizedKey, success, errorMessage)
 }
 
+func (w metadataWriter) updateObjectResults(ctx context.Context, results []metadata.ItemResult) error {
+	if w.runID == "" {
+		return nil
+	}
+	metaCtx, cancel := metadataContext(ctx)
+	defer cancel()
+	return metadata.UpdateItemResults(metaCtx, w.execer, w.runID, results)
+}
+
 func (w metadataWriter) insertAttempt(ctx context.Context, attempt metadata.AttemptRecord) error {
 	metaCtx, cancel := metadataContext(ctx)
 	defer cancel()
