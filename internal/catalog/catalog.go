@@ -32,6 +32,18 @@ type TableColumn struct {
 	Nullable       bool
 }
 
+type TableRef struct {
+	SchemaName string
+	TableName  string
+}
+
+type ObjectRef struct {
+	SchemaName string
+	Kind       string
+	ParentName string
+	ObjectName string
+}
+
 const StateQuery = `
 SELECT s.name, o.type_desc, o.name, ISNULL(parent.name, '')
 FROM sys.objects o
@@ -80,10 +92,77 @@ WHERE t.is_ms_shipped = 0%s
 ORDER BY s.name, t.name, c.column_id`
 
 func Read(ctx context.Context, conn *sql.Conn) (State, error) {
-	return ReadForSchemas(ctx, conn, nil)
+	return ReadSchemaObjectsForSchemas(ctx, conn, nil)
 }
 
 func ReadForSchemas(ctx context.Context, conn *sql.Conn, schemas []string) (State, error) {
+	return ReadSchemaObjectsForSchemas(ctx, conn, schemas)
+}
+
+func ReadForLayout(ctx context.Context, conn *sql.Conn, schemas []string, objects []ObjectRef) (State, error) {
+	cleanedObjects := normalizedObjectRefs(objects)
+	if len(cleanedObjects) == 0 {
+		return ReadSchemaObjectsForSchemas(ctx, conn, schemas)
+	}
+	state := State{
+		Schemas:      map[string]struct{}{},
+		Objects:      map[string]Object{},
+		TableColumns: map[string][]TableColumn{},
+	}
+	if conn == nil {
+		return State{}, contracts.Wrap(contracts.ErrCriticalState, fmt.Errorf("catalog read: missing database connection"))
+	}
+	schemaQuery, schemaArgs := schemaQueryForSchemas(schemas)
+	schemaRows, err := conn.QueryContext(ctx, schemaQuery, schemaArgs...)
+	if err != nil {
+		return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
+	}
+	for schemaRows.Next() {
+		var schemaName string
+		if err := schemaRows.Scan(&schemaName); err != nil {
+			schemaRows.Close()
+			return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
+		}
+		state.Schemas[strings.ToLower(schemaName)] = struct{}{}
+	}
+	if err := schemaRows.Err(); err != nil {
+		schemaRows.Close()
+		return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
+	}
+	schemaRows.Close()
+
+	stateQuery, stateArgs := stateQueryForObjects(cleanedObjects)
+	rows, err := conn.QueryContext(ctx, stateQuery, stateArgs...)
+	if err != nil {
+		return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var schemaName string
+		var typeDesc string
+		var objectName string
+		var parentName string
+		if err := rows.Scan(&schemaName, &typeDesc, &objectName, &parentName); err != nil {
+			return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
+		}
+		kind := MapTypeDescToKind(typeDesc)
+		if kind == "" {
+			continue
+		}
+		state.Objects[NormalizedKey(schemaName, kind, parentName, objectName)] = Object{
+			SchemaName: schemaName,
+			Kind:       kind,
+			ObjectName: objectName,
+			ParentName: parentName,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
+	}
+	return state, nil
+}
+
+func ReadSchemaObjectsForSchemas(ctx context.Context, conn *sql.Conn, schemas []string) (State, error) {
 	state := State{
 		Schemas:      map[string]struct{}{},
 		Objects:      map[string]Object{},
@@ -139,10 +218,21 @@ func ReadForSchemas(ctx context.Context, conn *sql.Conn, schemas []string) (Stat
 	if err := rows.Err(); err != nil {
 		return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
 	}
-	columnQuery, columnArgs := tableColumnsQueryForSchemas(schemas)
+	return state, nil
+}
+
+func ReadColumnsForTables(ctx context.Context, conn *sql.Conn, tables []TableRef) (map[string][]TableColumn, error) {
+	if conn == nil {
+		return nil, contracts.Wrap(contracts.ErrCriticalState, fmt.Errorf("catalog read: missing database connection"))
+	}
+	state := map[string][]TableColumn{}
+	columnQuery, columnArgs := tableColumnsQueryForTables(tables)
+	if strings.TrimSpace(columnQuery) == "" {
+		return state, nil
+	}
 	columnRows, err := conn.QueryContext(ctx, columnQuery, columnArgs...)
 	if err != nil {
-		return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
+		return nil, contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	defer columnRows.Close()
 	for columnRows.Next() {
@@ -155,10 +245,10 @@ func ReadForSchemas(ctx context.Context, conn *sql.Conn, schemas []string) (Stat
 		var scale int
 		var nullable bool
 		if err := columnRows.Scan(&schemaName, &tableName, &columnName, &typeName, &maxLength, &precision, &scale, &nullable); err != nil {
-			return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
+			return nil, contracts.Wrap(contracts.ErrCriticalState, err)
 		}
 		key := NormalizedKey(schemaName, "tables", "", tableName)
-		state.TableColumns[key] = append(state.TableColumns[key], TableColumn{
+		state[key] = append(state[key], TableColumn{
 			Name:           columnName,
 			NormalizedName: strings.ToLower(columnName),
 			TypeName:       strings.ToLower(strings.TrimSpace(typeName)),
@@ -169,7 +259,7 @@ func ReadForSchemas(ctx context.Context, conn *sql.Conn, schemas []string) (Stat
 		})
 	}
 	if err := columnRows.Err(); err != nil {
-		return State{}, contracts.Wrap(contracts.ErrCriticalState, err)
+		return nil, contracts.Wrap(contracts.ErrCriticalState, err)
 	}
 	return state, nil
 }
@@ -188,9 +278,33 @@ func stateQueryForSchemas(schemas []string) (string, []any) {
 	return fmt.Sprintf(stateQueryTemplate, clauseObjects, clauseTypes, clauseIndexes), args
 }
 
-func tableColumnsQueryForSchemas(schemas []string) (string, []any) {
-	clause, args, _ := schemaFilterClauseAt("s.name", schemas, 1)
-	return fmt.Sprintf(tableColumnsQueryTemplate, clause), args
+func stateQueryForObjects(objects []ObjectRef) (string, []any) {
+	cleaned := normalizedObjectRefs(objects)
+	if len(cleaned) == 0 {
+		return stateQueryForSchemas(nil)
+	}
+	objectClause, objectArgs, next := objectFilterClauseAt("s.name", "o.type_desc", "parent.name", "o.name", cleaned, 1)
+	typeClause, typeArgs, next := objectFilterClauseAt("s.name", "'USER_TABLE_TYPE'", "''", "tt.name", cleaned, next)
+	indexClause, indexArgs, _ := objectFilterClauseAt("s.name", "'INDEX'", "o.name", "i.name", cleaned, next)
+	args := append(objectArgs, typeArgs...)
+	args = append(args, indexArgs...)
+	return fmt.Sprintf(stateQueryTemplate, objectClause, typeClause, indexClause), args
+}
+
+func tableColumnsQueryForTables(tables []TableRef) (string, []any) {
+	cleaned := normalizedTableRefs(tables)
+	if len(cleaned) == 0 {
+		return "", nil
+	}
+	clauses := make([]string, 0, len(cleaned))
+	args := make([]any, 0, len(cleaned)*2)
+	for i, table := range cleaned {
+		schemaPlaceholder := fmt.Sprintf("@p%d", i*2+1)
+		tablePlaceholder := fmt.Sprintf("@p%d", i*2+2)
+		clauses = append(clauses, fmt.Sprintf("(s.name = %s AND t.name = %s)", schemaPlaceholder, tablePlaceholder))
+		args = append(args, table.SchemaName, table.TableName)
+	}
+	return fmt.Sprintf(tableColumnsQueryTemplate, " AND ("+strings.Join(clauses, " OR ")+")"), args
 }
 
 func schemaFilterClauseAt(column string, schemas []string, start int) (string, []any, int) {
@@ -226,6 +340,97 @@ func normalizedSchemaFilter(schemas []string) []string {
 		result = append(result, trimmed)
 	}
 	return result
+}
+
+func normalizedTableRefs(tables []TableRef) []TableRef {
+	if len(tables) == 0 {
+		return nil
+	}
+	result := make([]TableRef, 0, len(tables))
+	seen := map[string]struct{}{}
+	for _, table := range tables {
+		schema := strings.TrimSpace(table.SchemaName)
+		name := strings.TrimSpace(table.TableName)
+		if schema == "" || name == "" {
+			continue
+		}
+		key := strings.ToLower(schema) + "/" + strings.ToLower(name)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, TableRef{SchemaName: schema, TableName: name})
+	}
+	return result
+}
+
+func objectFilterClauseAt(schemaColumn string, kindColumn string, parentColumn string, nameColumn string, objects []ObjectRef, start int) (string, []any, int) {
+	cleaned := normalizedObjectRefs(objects)
+	if len(cleaned) == 0 {
+		return "", nil, start
+	}
+	clauses := make([]string, 0, len(cleaned))
+	args := make([]any, 0, len(cleaned)*4)
+	next := start
+	for _, object := range cleaned {
+		schemaPlaceholder := fmt.Sprintf("@p%d", next)
+		kindPlaceholder := fmt.Sprintf("@p%d", next+1)
+		parentPlaceholder := fmt.Sprintf("@p%d", next+2)
+		namePlaceholder := fmt.Sprintf("@p%d", next+3)
+		clauses = append(clauses, fmt.Sprintf("(%s = %s AND UPPER(%s) = %s AND ISNULL(%s, '') = %s AND %s = %s)", schemaColumn, schemaPlaceholder, kindColumn, kindPlaceholder, parentColumn, parentPlaceholder, nameColumn, namePlaceholder))
+		args = append(args, object.SchemaName, objectTypeDescFilterValue(object.Kind), object.ParentName, object.ObjectName)
+		next += 4
+	}
+	return " AND (" + strings.Join(clauses, " OR ") + ")", args, next
+}
+
+func normalizedObjectRefs(objects []ObjectRef) []ObjectRef {
+	if len(objects) == 0 {
+		return nil
+	}
+	result := make([]ObjectRef, 0, len(objects))
+	seen := map[string]struct{}{}
+	for _, object := range objects {
+		schema := strings.TrimSpace(object.SchemaName)
+		kind := strings.TrimSpace(object.Kind)
+		name := strings.TrimSpace(object.ObjectName)
+		parent := strings.TrimSpace(object.ParentName)
+		if schema == "" || kind == "" || name == "" {
+			continue
+		}
+		key := strings.ToLower(schema) + "/" + strings.ToLower(kind) + "/" + strings.ToLower(parent) + "/" + strings.ToLower(name)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, ObjectRef{SchemaName: schema, Kind: kind, ParentName: parent, ObjectName: name})
+	}
+	return result
+}
+
+func objectTypeDescFilterValue(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "tables":
+		return "USER_TABLE"
+	case "views":
+		return "VIEW"
+	case "procedures":
+		return "SQL_STORED_PROCEDURE"
+	case "functions":
+		return "SQL_SCALAR_FUNCTION"
+	case "triggers":
+		return "SQL_TRIGGER"
+	case "indexes":
+		return "INDEX"
+	case "types":
+		return "USER_TABLE_TYPE"
+	case "sequences":
+		return "SEQUENCE_OBJECT"
+	case "synonyms":
+		return "SYNONYM"
+	default:
+		return strings.ToUpper(strings.TrimSpace(kind))
+	}
 }
 
 func normalizeCatalogColumnLength(typeName string, maxLength int) int {

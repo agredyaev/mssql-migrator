@@ -290,6 +290,24 @@ func TestVerifyApprovedPlanRejectsDifferentObjects(t *testing.T) {
 	}
 }
 
+func TestReadApprovedPlanRejectsBlockedPlan(t *testing.T) {
+	root := t.TempDir()
+	planFile := filepath.Join(root, "plan.json")
+	approved := contracts.MigrationPlan{SchemaVersion: "v8", Command: contracts.CommandPlan, Blocked: true}
+	content, err := json.Marshal(approved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(planFile, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadApprovedPlan(planFile); err == nil {
+		t.Fatal("expected blocked approved plan error")
+	} else if !strings.Contains(err.Error(), contracts.ErrApprovedPlanMismatch.Error()) {
+		t.Fatalf("expected approved plan mismatch sentinel, got %v", err)
+	}
+}
+
 func TestVerifyApprovedPlanRejectsWrongSchemaVersion(t *testing.T) {
 	root := t.TempDir()
 	planFile := filepath.Join(root, "plan.json")
@@ -359,6 +377,14 @@ func TestVerifyApprovedPlanRejectsApprovalBoundaryDrift(t *testing.T) {
 	}
 }
 
+func TestVerifyApprovedPlanMatchesUsesProvidedApprovedPlan(t *testing.T) {
+	approved := contracts.MigrationPlan{SchemaVersion: "v8", Command: contracts.CommandPlan, GitCommit: "abc", LayoutHash: "hash", SQLRoot: "/sql", Base: "dwh", EffectiveBasePath: "/sql/dwh", Target: contracts.PlanTarget{Environment: "prod", Database: "ReportingDB"}, ToolVersion: "4.0.0", ToolCommit: "deadbeef", ComparisonMode: config.ComparisonModeCaseInsensitive, UpdatePolicy: config.UpdatePolicyNone, TransactionMode: config.TransactionModeScript, Rollback: "script", Objects: []contracts.PlannedObject{{ObjectPath: "reporting/views/monthly.sql", Kind: "views", ObjectName: "monthly", SchemaName: "reporting", NormalizedKey: "reporting/views/monthly", Checksum: "x", PlannedAction: contracts.ActionCreateObject}}}
+	current := approved
+	if err := VerifyApprovedPlanMatches(config.Config{GitCommit: "abc"}, approved, current); err != nil {
+		t.Fatalf("expected approved plan match, got %v", err)
+	}
+}
+
 func TestVerifyApprovedPlanUsesCurrentPlanWhenPlanFileNotSet(t *testing.T) {
 	current := contracts.MigrationPlan{SchemaVersion: "v8", Command: contracts.CommandPlan}
 	if err := VerifyApprovedPlan(config.Config{}, current); err == nil {
@@ -417,13 +443,12 @@ func TestStableObjectsDropsStateDerivedFields(t *testing.T) {
 }
 
 type stubCatalogReader struct {
-	schemas      map[string]struct{}
-	objects      map[string]CatalogObject
-	tableColumns map[string][]catalog.TableColumn
+	schemas map[string]struct{}
+	objects map[string]CatalogObject
 }
 
 func (s stubCatalogReader) ReadCatalogState(_ context.Context) (CatalogState, error) {
-	return CatalogState{Schemas: s.schemas, Objects: s.objects, TableColumns: s.tableColumns, SuccessfulByKey: map[string]string{}}, nil
+	return CatalogState{Schemas: s.schemas, Objects: s.objects, SuccessfulByKey: map[string]string{}}, nil
 }
 
 func createLayout(t *testing.T, root string) string {

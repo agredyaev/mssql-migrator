@@ -2,9 +2,6 @@ package planner
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -13,30 +10,15 @@ import (
 	"reporting-db-migrations/internal/config"
 	"reporting-db-migrations/internal/contracts"
 	"reporting-db-migrations/internal/parser"
-	"reporting-db-migrations/internal/reports"
 )
 
 type CatalogReader interface {
 	ReadCatalogState(context.Context) (CatalogState, error)
 }
 
-type sqlCatalogReader struct {
-	conn    *sql.Conn
-	schemas []string
-}
-
-func SQLCatalogReader(conn *sql.Conn) CatalogReader {
-	return sqlCatalogReader{conn: conn}
-}
-
-func SQLCatalogReaderForSchemas(conn *sql.Conn, schemas []string) CatalogReader {
-	return sqlCatalogReader{conn: conn, schemas: append([]string(nil), schemas...)}
-}
-
 type CatalogState struct {
 	Schemas         map[string]struct{}
 	Objects         map[string]CatalogObject
-	TableColumns    map[string][]catalog.TableColumn
 	SuccessfulByKey map[string]string
 }
 
@@ -59,27 +41,7 @@ func BuildWithCatalog(ctx context.Context, cfg config.Config, successfulByKey ma
 }
 
 func BuildResolvedWithCatalog(cfg config.Config, successfulByKey map[string]string, layout parser.Layout, hash string, catalogState CatalogState) (contracts.MigrationPlan, error) {
-	state := catalogState
-	if state.SuccessfulByKey == nil {
-		state.SuccessfulByKey = cloneChecksums(successfulByKey)
-	} else {
-		merged := cloneChecksums(state.SuccessfulByKey)
-		for key, checksum := range successfulByKey {
-			if _, exists := merged[key]; !exists {
-				merged[key] = checksum
-			}
-		}
-		state.SuccessfulByKey = merged
-	}
-	if state.Schemas == nil {
-		state.Schemas = map[string]struct{}{}
-	}
-	if state.Objects == nil {
-		state.Objects = map[string]CatalogObject{}
-	}
-	if state.TableColumns == nil {
-		state.TableColumns = map[string][]catalog.TableColumn{}
-	}
+	state := normalizedCatalogState(catalogState, successfulByKey)
 	return buildResolvedWithCatalogState(cfg, layout, hash, state), nil
 }
 
@@ -117,144 +79,28 @@ func ResolvePlanningLayoutForRunner(cfg config.Config) (parser.Layout, string, e
 	return resolvePlanningLayout(cfg)
 }
 
-func VerifyApprovedPlan(cfg config.Config, current contracts.MigrationPlan) error {
-	p, err := reports.ReadPlan(cfg.PlanFile)
-	if err != nil {
-		return contracts.Wrap(contracts.ErrApprovedPlanMissing, err)
-	}
-	if p.Blocked {
-		return fmt.Errorf("%w: approved plan is blocked", contracts.ErrApprovedPlanMismatch)
-	}
-	if p.SchemaVersion != "v8" {
-		return fmt.Errorf("%w: schema version %s", contracts.ErrApprovedPlanMismatch, p.SchemaVersion)
-	}
-	if p.Command != "plan" {
-		return fmt.Errorf("%w: command %s", contracts.ErrApprovedPlanMismatch, p.Command)
-	}
-	mm := []string{}
-	if p.GitCommit != cfg.GitCommit {
-		mm = append(mm, "git_commit")
-	}
-	if p.LayoutHash != current.LayoutHash {
-		mm = append(mm, "layout_hash")
-	}
-	if p.Target.Environment != current.Target.Environment {
-		mm = append(mm, "target.environment")
-	}
-	if p.Target.Database != current.Target.Database {
-		mm = append(mm, "target.database")
-	}
-	if p.ToolVersion != current.ToolVersion {
-		mm = append(mm, "tool_version")
-	}
-	if p.ToolCommit != current.ToolCommit {
-		mm = append(mm, "tool_commit")
-	}
-	if p.ComparisonMode != current.ComparisonMode {
-		mm = append(mm, "comparison_mode")
-	}
-	if p.UpdatePolicy != current.UpdatePolicy {
-		mm = append(mm, "update_policy")
-	}
-	if p.TransactionMode != current.TransactionMode {
-		mm = append(mm, "transaction_mode")
-	}
-	if p.Rollback != current.Rollback {
-		mm = append(mm, "rollback")
-	}
-	if p.SQLRoot != current.SQLRoot {
-		mm = append(mm, "sql_root")
-	}
-	if p.Base != current.Base {
-		mm = append(mm, "base")
-	}
-	if p.EffectiveBasePath != current.EffectiveBasePath {
-		mm = append(mm, "effective_base_path")
-	}
-	if len(mm) > 0 {
-		return contracts.Wrap(contracts.ErrApprovedPlanMismatch, fmt.Errorf("%v", mm))
-	}
-	if !reflect.DeepEqual(stableSchemas(p.Schemas), stableSchemas(current.Schemas)) {
-		return fmt.Errorf("%w: schema set does not match current deployment state", contracts.ErrApprovedPlanMismatch)
-	}
-	if !reflect.DeepEqual(stableObjects(p.Objects), stableObjects(current.Objects)) {
-		return fmt.Errorf("%w: object set does not match current deployment state", contracts.ErrApprovedPlanMismatch)
-	}
-	return nil
-}
-
-func stableSchemas(items []contracts.PlannedSchema) []contracts.PlannedSchema {
-	result := make([]contracts.PlannedSchema, len(items))
-	copy(result, items)
-	sort.Slice(result, func(i, j int) bool {
-		left := strings.ToLower(result[i].SchemaName)
-		right := strings.ToLower(result[j].SchemaName)
-		if left != right {
-			return left < right
-		}
-		if result[i].Action != result[j].Action {
-			return result[i].Action < result[j].Action
-		}
-		return !result[i].Exists && result[j].Exists
-	})
-	return result
-}
-
-func stableObjects(items []contracts.PlannedObject) []contracts.PlannedObject {
-	result := make([]contracts.PlannedObject, 0, len(items))
-	for _, item := range items {
-		result = append(result, contracts.PlannedObject{
-			ObjectPath:      item.ObjectPath,
-			SchemaName:      item.SchemaName,
-			Kind:            item.Kind,
-			ObjectName:      item.ObjectName,
-			ParentName:      item.ParentName,
-			NormalizedKey:   item.NormalizedKey,
-			Checksum:        item.Checksum,
-			PlannedAction:   item.PlannedAction,
-			TransactionMode: item.TransactionMode,
-			RollbackScope:   item.RollbackScope,
-			NoTransaction:   item.NoTransaction,
-			SourceFile:      item.SourceFile,
-		})
-	}
-	sort.Slice(result, func(i, j int) bool {
-		if result[i].NormalizedKey != result[j].NormalizedKey {
-			return result[i].NormalizedKey < result[j].NormalizedKey
-		}
-		return result[i].ObjectPath < result[j].ObjectPath
-	})
-	return result
-}
-
-func (r sqlCatalogReader) ReadCatalogState(ctx context.Context) (CatalogState, error) {
-	state := CatalogState{Schemas: map[string]struct{}{}, Objects: map[string]CatalogObject{}, SuccessfulByKey: map[string]string{}}
-	catalogState, err := catalog.ReadForSchemas(ctx, r.conn, r.schemas)
-	if err != nil {
-		return CatalogState{}, err
-	}
-	state.Schemas = catalogState.Schemas
-	state.Objects = catalogState.Objects
-	state.TableColumns = catalogState.TableColumns
-	return state, nil
-}
-
 func loadCatalogState(ctx context.Context, reader CatalogReader, successfulByKey map[string]string) (CatalogState, error) {
 	if reader == nil {
-		return CatalogState{Schemas: map[string]struct{}{}, Objects: map[string]CatalogObject{}, SuccessfulByKey: cloneChecksums(successfulByKey)}, nil
+		return normalizedCatalogState(CatalogState{}, successfulByKey), nil
 	}
 	state, err := reader.ReadCatalogState(ctx)
 	if err != nil {
 		return CatalogState{}, err
 	}
+	return normalizedCatalogState(state, successfulByKey), nil
+}
+
+func normalizedCatalogState(state CatalogState, successfulByKey map[string]string) CatalogState {
 	if state.SuccessfulByKey == nil {
 		state.SuccessfulByKey = cloneChecksums(successfulByKey)
 	} else {
+		merged := cloneChecksums(state.SuccessfulByKey)
 		for key, checksum := range successfulByKey {
-			if _, exists := state.SuccessfulByKey[key]; !exists {
-				state.SuccessfulByKey[key] = checksum
+			if _, exists := merged[key]; !exists {
+				merged[key] = checksum
 			}
 		}
+		state.SuccessfulByKey = merged
 	}
 	if state.Schemas == nil {
 		state.Schemas = map[string]struct{}{}
@@ -262,10 +108,7 @@ func loadCatalogState(ctx context.Context, reader CatalogReader, successfulByKey
 	if state.Objects == nil {
 		state.Objects = map[string]CatalogObject{}
 	}
-	if state.TableColumns == nil {
-		state.TableColumns = map[string][]catalog.TableColumn{}
-	}
-	return state, nil
+	return state
 }
 
 func cloneChecksums(values map[string]string) map[string]string {
