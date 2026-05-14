@@ -1,6 +1,7 @@
 package scaffold
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,7 +20,7 @@ func TestEnsureTransitionFiles_NoBlockedTables(t *testing.T) {
 			Kind:          "views",
 		}},
 	}
-	plan := types.MigrationPlan{
+	plan := &types.MigrationPlan{
 		Objects: []types.PlannedObject{{
 			NormalizedKey: "r/views/v1",
 			PlannedAction: types.ActionCreateObject,
@@ -27,12 +28,12 @@ func TestEnsureTransitionFiles_NoBlockedTables(t *testing.T) {
 	}
 	columns := map[string][]db.TableColumn{}
 
-	paths, err := s.EnsureTransitionFiles("", layout, plan, columns)
+	created, err := s.EnsureTransitionFiles(context.Background(), types.Config{}, layout, plan, columns)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(paths) != 0 {
-		t.Errorf("expected 0 paths, got %d", len(paths))
+	if created {
+		t.Error("expected created=false for non-blocked plan")
 	}
 }
 
@@ -47,7 +48,7 @@ func TestEnsureTransitionFiles_BlockedTableCreatesScaffold(t *testing.T) {
 			SchemaName:    "r",
 		}},
 	}
-	plan := types.MigrationPlan{
+	plan := &types.MigrationPlan{
 		Blocked: true,
 		Objects: []types.PlannedObject{{
 			NormalizedKey: "r/tables/t1",
@@ -63,24 +64,37 @@ func TestEnsureTransitionFiles_BlockedTableCreatesScaffold(t *testing.T) {
 			{Name: "name", TypeName: "nvarchar", Nullable: false},
 		},
 	}
+	cfg := types.Config{SQLBase: baseDir}
 
-	paths, err := s.EnsureTransitionFiles(baseDir, layout, plan, columns)
+	created, err := s.EnsureTransitionFiles(context.Background(), cfg, layout, plan, columns)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(paths) != 1 {
-		t.Fatalf("expected 1 path, got %d", len(paths))
+	if !created {
+		t.Fatal("expected created=true for blocked table")
 	}
 
-	fullPath := filepath.Join(baseDir, paths[0])
+	dir := filepath.Join(baseDir, "r", "tables", "_migrations", "t1")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("readdir: %v", err)
+	}
+	var files []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".sql") {
+			files = append(files, e.Name())
+		}
+	}
+	if len(files) == 0 {
+		t.Fatal("no scaffold file created")
+	}
+
+	fullPath := filepath.Join(dir, files[0])
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
 		t.Fatalf("failed to read generated file: %v", err)
 	}
 	content := string(data)
-	if content == "" {
-		t.Fatal("generated file is empty")
-	}
 	if !strings.Contains(content, "-- rmig: transition-scaffold") {
 		t.Error("scaffold content missing transition-scaffold marker")
 	}
@@ -100,7 +114,7 @@ func TestEnsureTransitionFiles_Idempotent(t *testing.T) {
 			SchemaName:    "r",
 		}},
 	}
-	plan := types.MigrationPlan{
+	plan := &types.MigrationPlan{
 		Blocked: true,
 		Objects: []types.PlannedObject{{
 			NormalizedKey: "r/tables/t1",
@@ -111,20 +125,21 @@ func TestEnsureTransitionFiles_Idempotent(t *testing.T) {
 		}},
 	}
 	columns := map[string][]db.TableColumn{}
+	cfg := types.Config{SQLBase: baseDir}
 
-	paths1, err := s.EnsureTransitionFiles(baseDir, layout, plan, columns)
+	created1, err := s.EnsureTransitionFiles(context.Background(), cfg, layout, plan, columns)
 	if err != nil {
 		t.Fatalf("first call error: %v", err)
 	}
-	paths2, err := s.EnsureTransitionFiles(baseDir, layout, plan, columns)
+	created2, err := s.EnsureTransitionFiles(context.Background(), cfg, layout, plan, columns)
 	if err != nil {
 		t.Fatalf("second call error: %v", err)
 	}
-	if len(paths1) != 1 {
-		t.Fatalf("first call: expected 1 path, got %d", len(paths1))
+	if !created1 {
+		t.Fatal("first call: expected created=true")
 	}
-	if len(paths2) != 0 {
-		t.Errorf("second call: expected 0 paths (idempotent), got %d", len(paths2))
+	if created2 {
+		t.Error("second call: expected created=false (idempotent)")
 	}
 }
 
@@ -146,7 +161,7 @@ func TestEnsureTransitionFiles_ExistingRealTransitionSkips(t *testing.T) {
 			SchemaName:    "r",
 		}},
 	}
-	plan := types.MigrationPlan{
+	plan := &types.MigrationPlan{
 		Blocked: true,
 		Objects: []types.PlannedObject{{
 			NormalizedKey: "r/tables/t1",
@@ -157,12 +172,154 @@ func TestEnsureTransitionFiles_ExistingRealTransitionSkips(t *testing.T) {
 		}},
 	}
 	columns := map[string][]db.TableColumn{}
+	cfg := types.Config{SQLBase: baseDir}
 
-	paths, err := s.EnsureTransitionFiles(baseDir, layout, plan, columns)
+	created, err := s.EnsureTransitionFiles(context.Background(), cfg, layout, plan, columns)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(paths) != 0 {
-		t.Errorf("expected 0 paths (real transition exists), got %d", len(paths))
+	if created {
+		t.Error("expected created=false (real transition exists)")
 	}
+}
+
+func TestEnsureTransitionFiles_AutoAddColumn(t *testing.T) {
+	s := New()
+	baseDir := t.TempDir()
+
+	sqlPath := filepath.Join(baseDir, "r", "tables", "t1.sql")
+	if err := os.MkdirAll(filepath.Dir(sqlPath), 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	createTableSQL := "CREATE TABLE [r].[t1] (\n  [id] INT NOT NULL,\n  [new_col] NVARCHAR(100) NULL\n)"
+	if err := os.WriteFile(sqlPath, []byte(createTableSQL), 0644); err != nil {
+		t.Fatalf("writefile: %v", err)
+	}
+
+	layout := fs.Layout{
+		Objects: []*fs.Object{{
+			AbsolutePath:  sqlPath,
+			Path:          "r/tables/t1.sql",
+			NormalizedKey: "r/tables/t1",
+			Kind:          "tables",
+			ObjectName:    "t1",
+			SchemaName:    "r",
+		}},
+	}
+	plan := &types.MigrationPlan{
+		Blocked: true,
+		Objects: []types.PlannedObject{{
+			NormalizedKey: "r/tables/t1",
+			PlannedAction: types.ActionReprocessChangedBlocked,
+			Kind:          "tables",
+			ObjectName:    "t1",
+			SchemaName:    "r",
+		}},
+	}
+
+	dbColumns := map[string][]db.TableColumn{
+		"r/tables/t1": {
+			{Name: "id", TypeName: "INT", Nullable: false},
+		},
+	}
+
+	cfg := types.Config{SQLBase: baseDir}
+	created, err := s.EnsureTransitionFiles(context.Background(), cfg, layout, plan, dbColumns)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !created {
+		t.Fatal("expected created=true for auto ADD COLUMN")
+	}
+
+	dir := filepath.Join(baseDir, "r", "tables", "_migrations", "t1")
+	entries, _ := os.ReadDir(dir)
+	var files []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".sql") {
+			files = append(files, e.Name())
+		}
+	}
+	if len(files) == 0 {
+		t.Fatal("no migration file created")
+	}
+
+	fullPath := filepath.Join(dir, files[0])
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		t.Fatalf("readfile: %v", err)
+	}
+	content := string(data)
+	if strings.Contains(content, "-- rmig: transition-scaffold") {
+		t.Error("auto migration should NOT be a scaffold")
+	}
+	if !strings.Contains(content, "ALTER TABLE") {
+		t.Error("auto migration should contain ALTER TABLE")
+	}
+	if !strings.Contains(content, "new_col") {
+		t.Error("auto migration should reference new column")
+	}
+}
+
+func TestEnsureTransitionFiles_AutoAddColumn_FallsBackToScaffoldOnDrop(t *testing.T) {
+	s := New()
+	baseDir := t.TempDir()
+
+	sqlPath := filepath.Join(baseDir, "r", "tables", "t1.sql")
+	if err := os.MkdirAll(filepath.Dir(sqlPath), 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	createTableSQL := "CREATE TABLE [r].[t1] (\n  [new_col] INT NOT NULL\n)" // "id" column dropped
+	if err := os.WriteFile(sqlPath, []byte(createTableSQL), 0644); err != nil {
+		t.Fatalf("writefile: %v", err)
+	}
+
+	layout := fs.Layout{
+		Objects: []*fs.Object{{
+			AbsolutePath:  sqlPath,
+			Path:          "r/tables/t1.sql",
+			NormalizedKey: "r/tables/t1",
+			Kind:          "tables",
+			ObjectName:    "t1",
+			SchemaName:    "r",
+		}},
+	}
+	plan := &types.MigrationPlan{
+		Blocked: true,
+		Objects: []types.PlannedObject{{
+			NormalizedKey: "r/tables/t1",
+			PlannedAction: types.ActionReprocessChangedBlocked,
+			Kind:          "tables",
+			ObjectName:    "t1",
+			SchemaName:    "r",
+		}},
+	}
+
+	dbColumns := map[string][]db.TableColumn{
+		"r/tables/t1": {
+			{Name: "id", TypeName: "INT", Nullable: false},
+			{Name: "new_col", TypeName: "INT", Nullable: false},
+		},
+	}
+
+	cfg := types.Config{SQLBase: baseDir}
+	created, err := s.EnsureTransitionFiles(context.Background(), cfg, layout, plan, dbColumns)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !created {
+		t.Fatal("expected created=true, fallback to scaffold")
+	}
+
+	dir := filepath.Join(baseDir, "r", "tables", "_migrations", "t1")
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".sql") {
+			data, _ := os.ReadFile(filepath.Join(dir, e.Name()))
+			if strings.Contains(string(data), "-- rmig: transition-scaffold") {
+				return
+			}
+		}
+	}
+	t.Error("expected scaffold fallback when columns are dropped")
 }

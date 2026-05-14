@@ -1,6 +1,7 @@
 package scaffold
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,8 +19,13 @@ func New() *Scaffolder {
 	return &Scaffolder{}
 }
 
-func (s *Scaffolder) EnsureTransitionFiles(baseDir string, layout fs.Layout, plan types.MigrationPlan, columns map[string][]db.TableColumn) ([]string, error) {
-	var created []string
+func (s *Scaffolder) Ensure(ctx context.Context, cfg types.Config, layout fs.Layout, plan *types.MigrationPlan, columns map[string][]db.TableColumn) (bool, error) {
+	return s.EnsureTransitionFiles(ctx, cfg, layout, plan, columns)
+}
+
+func (s *Scaffolder) EnsureTransitionFiles(ctx context.Context, cfg types.Config, layout fs.Layout, plan *types.MigrationPlan, columns map[string][]db.TableColumn) (bool, error) {
+	baseDir := cfg.SQLBase
+	created := false
 	commit := gitShortHash()
 
 	for _, obj := range plan.Objects {
@@ -32,27 +38,64 @@ func (s *Scaffolder) EnsureTransitionFiles(baseDir string, layout fs.Layout, pla
 			return created, fmt.Errorf("scaffold: mkdir %s: %w", dir, err)
 		}
 
-		name := fmt.Sprintf("001_%s_describe_change.sql", commit)
-		path := filepath.Join(dir, name)
-
-		if _, err := os.Stat(path); err == nil {
-			continue
-		}
-
 		if hasExistingTransitionFile(dir) {
 			continue
 		}
 
-		content := scaffoldContent(obj.SchemaName, obj.ObjectName, columns[obj.NormalizedKey])
+		var fileName, content string
+		content, fileName = tryAutoMigration(obj, layout, columns, commit, dir)
+		if content == "" {
+			fileName = fmt.Sprintf("001_%s_describe_change.sql", commit)
+			content = scaffoldContent(obj.SchemaName, obj.ObjectName, columns[obj.NormalizedKey])
+		}
+
+		path := filepath.Join(dir, fileName)
+		if _, err := os.Stat(path); err == nil {
+			continue
+		}
+
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			return created, fmt.Errorf("scaffold: write %s: %w", path, err)
 		}
 
-		relPath, _ := filepath.Rel(baseDir, path)
-		created = append(created, relPath)
+		created = true
 	}
 
 	return created, nil
+}
+
+func tryAutoMigration(obj types.PlannedObject, layout fs.Layout, columns map[string][]db.TableColumn, commit, dir string) (string, string) {
+	fsObj := lookupObjectByKey(layout, obj.NormalizedKey)
+	if fsObj == nil {
+		return "", ""
+	}
+
+	content, err := fsObj.Content()
+	if err != nil {
+		return "", ""
+	}
+
+	dbColumns := columns[obj.NormalizedKey]
+	migrationSQL, ok := tryAutoAddColumn(obj.SchemaName, obj.ObjectName, dbColumns, content)
+	if !ok {
+		return "", ""
+	}
+
+	fileName := fmt.Sprintf("001_%s_auto_add_columns.sql", commit)
+	if _, err := os.Stat(filepath.Join(dir, fileName)); err == nil {
+		return "", ""
+	}
+
+	return migrationSQL, fileName
+}
+
+func lookupObjectByKey(layout fs.Layout, key string) *fs.Object {
+	for _, obj := range layout.Objects {
+		if obj.NormalizedKey == key {
+			return obj
+		}
+	}
+	return nil
 }
 
 func hasExistingTransitionFile(dir string) bool {
