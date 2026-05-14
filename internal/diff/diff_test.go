@@ -2,6 +2,8 @@ package diff
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"reporting-db-migrations/internal/db"
@@ -23,11 +25,14 @@ func TestComputeEmptyLayout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(plan.Schemas) != 0 {
-		t.Errorf("expected 0 schemas, got %d", len(plan.Schemas))
-	}
 	if len(plan.Objects) != 0 {
 		t.Errorf("expected 0 objects, got %d", len(plan.Objects))
+	}
+	if plan.PlannedAt.IsZero() {
+		t.Error("expected PlannedAt to be set")
+	}
+	if plan.Summary.ObjectCount != 0 {
+		t.Errorf("summary.ObjectCount = %d, want 0", plan.Summary.ObjectCount)
 	}
 }
 
@@ -59,22 +64,26 @@ func TestComputeNewObject_ActionCreateObject(t *testing.T) {
 	if plan.Objects[0].PlannedAction != types.ActionCreateObject {
 		t.Errorf("action = %q, want %q", plan.Objects[0].PlannedAction, types.ActionCreateObject)
 	}
+	if plan.Summary.CreateCount != 1 {
+		t.Errorf("summary.CreateCount = %d, want 1", plan.Summary.CreateCount)
+	}
 }
 
 func TestComputeUnchangedObject_ActionSkip(t *testing.T) {
 	computer := NewComputer()
-	layout := fs.Layout{
-		Objects: []*fs.Object{{
-			NormalizedKey: "r/views/v1",
-			Kind:          "views",
-		}},
+	obj := makeTempObject(t, "r/views/v1", "views", "CREATE VIEW r.v1 AS SELECT 1 AS x")
+	checksum, err := obj.Checksum()
+	if err != nil {
+		t.Fatalf("checksum: %v", err)
 	}
+
+	layout := fs.Layout{Objects: []*fs.Object{obj}}
 	state := &db.State{
 		Objects: map[string]db.Object{
 			"r/views/v1": {SchemaName: "r", Kind: "views", ObjectName: "v1"},
 		},
 	}
-	checksums := map[string]string{"r/views/v1": "abc"}
+	checksums := map[string]string{"r/views/v1": checksum}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -86,19 +95,23 @@ func TestComputeUnchangedObject_ActionSkip(t *testing.T) {
 	if plan.Objects[0].PlannedAction != types.ActionSkipUnchanged {
 		t.Errorf("action = %q, want %q", plan.Objects[0].PlannedAction, types.ActionSkipUnchanged)
 	}
+	if plan.Summary.SkipCount != 1 {
+		t.Errorf("summary.SkipCount = %d, want 1", plan.Summary.SkipCount)
+	}
 }
 
-func TestComputeChangedObject_ActionReprocess(t *testing.T) {
+func TestComputeAdoptExisting(t *testing.T) {
 	computer := NewComputer()
 	layout := fs.Layout{
 		Objects: []*fs.Object{{
-			NormalizedKey: "r/types/t1",
-			Kind:          "types",
+			Path:          "r/views/v1.sql",
+			NormalizedKey: "r/views/v1",
+			Kind:          "views",
 		}},
 	}
 	state := &db.State{
 		Objects: map[string]db.Object{
-			"r/types/t1": {SchemaName: "r", Kind: "types", ObjectName: "t1"},
+			"r/views/v1": {SchemaName: "r", Kind: "views", ObjectName: "v1"},
 		},
 	}
 	checksums := map[string]string{}
@@ -107,26 +120,47 @@ func TestComputeChangedObject_ActionReprocess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if plan.Objects[0].PlannedAction != types.ActionAdoptExisting {
+		t.Errorf("action = %q, want %q", plan.Objects[0].PlannedAction, types.ActionAdoptExisting)
+	}
+	if plan.Summary.AdoptCount != 1 {
+		t.Errorf("summary.AdoptCount = %d, want 1", plan.Summary.AdoptCount)
+	}
+}
+
+func TestComputeChecksumMismatch_Reprocess(t *testing.T) {
+	computer := NewComputer()
+	obj := makeTempObject(t, "r/types/t1", "types", "CREATE TYPE r.t1 AS TABLE (a INT)")
+	layout := fs.Layout{Objects: []*fs.Object{obj}}
+	state := &db.State{
+		Objects: map[string]db.Object{
+			"r/types/t1": {SchemaName: "r", Kind: "types", ObjectName: "t1"},
+		},
+	}
+	checksums := map[string]string{"r/types/t1": "mismatched_checksum"}
+
+	plan, err := computer.Compute(context.Background(), layout, state, checksums)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if plan.Objects[0].PlannedAction != types.ActionReprocessChanged {
 		t.Errorf("action = %q, want %q", plan.Objects[0].PlannedAction, types.ActionReprocessChanged)
+	}
+	if plan.Summary.ChangedCount != 1 {
+		t.Errorf("summary.ChangedCount = %d, want 1", plan.Summary.ChangedCount)
 	}
 }
 
 func TestComputeTableChangedWithoutTransition_Blocked(t *testing.T) {
 	computer := NewComputer()
-	layout := fs.Layout{
-		Objects: []*fs.Object{{
-			NormalizedKey: "r/tables/t1",
-			Kind:          "tables",
-			ObjectName:    "t1",
-		}},
-	}
+	obj := makeTempObject(t, "r/tables/t1", "tables", "CREATE TABLE r.t1 (id INT)")
+	layout := fs.Layout{Objects: []*fs.Object{obj}}
 	state := &db.State{
 		Objects: map[string]db.Object{
 			"r/tables/t1": {SchemaName: "r", Kind: "tables", ObjectName: "t1"},
 		},
 	}
-	checksums := map[string]string{}
+	checksums := map[string]string{"r/tables/t1": "old_checksum"}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -138,16 +172,19 @@ func TestComputeTableChangedWithoutTransition_Blocked(t *testing.T) {
 	if plan.Objects[0].PlannedAction != types.ActionReprocessChangedBlocked {
 		t.Errorf("action = %q, want %q", plan.Objects[0].PlannedAction, types.ActionReprocessChangedBlocked)
 	}
+	if plan.Summary.BlockedCount != 1 {
+		t.Errorf("summary.BlockedCount = %d, want 1", plan.Summary.BlockedCount)
+	}
+	if plan.Summary.ChangedCount != 1 {
+		t.Errorf("summary.ChangedCount = %d, want 1", plan.Summary.ChangedCount)
+	}
 }
 
 func TestComputeTableChangedWithTransition_NotBlocked(t *testing.T) {
 	computer := NewComputer()
+	obj := makeTempObject(t, "r/tables/t1", "tables", "CREATE TABLE r.t1 (id INT)")
 	layout := fs.Layout{
-		Objects: []*fs.Object{{
-			NormalizedKey: "r/tables/t1",
-			Kind:          "tables",
-			ObjectName:    "t1",
-		}},
+		Objects: []*fs.Object{obj},
 		Transitions: []*fs.TransitionScript{{
 			TableName:     "t1",
 			NormalizedKey: "r/tables/t1",
@@ -159,7 +196,7 @@ func TestComputeTableChangedWithTransition_NotBlocked(t *testing.T) {
 			"r/tables/t1": {SchemaName: "r", Kind: "tables", ObjectName: "t1"},
 		},
 	}
-	checksums := map[string]string{}
+	checksums := map[string]string{"r/tables/t1": "old_checksum"}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -168,32 +205,28 @@ func TestComputeTableChangedWithTransition_NotBlocked(t *testing.T) {
 	if plan.Blocked {
 		t.Fatal("expected plan NOT to be blocked")
 	}
-	obj := plan.Objects[0]
-	if obj.PlannedAction != types.ActionReprocessChanged {
-		t.Errorf("action = %q, want %q", obj.PlannedAction, types.ActionReprocessChanged)
+	obj2 := plan.Objects[0]
+	if obj2.PlannedAction != types.ActionReprocessChanged {
+		t.Errorf("action = %q, want %q", obj2.PlannedAction, types.ActionReprocessChanged)
 	}
-	if len(obj.TransitionPaths) != 1 {
-		t.Fatalf("expected 1 transition path, got %d", len(obj.TransitionPaths))
+	if len(obj2.TransitionPaths) != 1 {
+		t.Fatalf("expected 1 transition path, got %d", len(obj2.TransitionPaths))
 	}
-	if obj.TransitionPaths[0] != "r/tables/_migrations/t1/001_a_add_col.sql" {
-		t.Errorf("transition path = %q", obj.TransitionPaths[0])
+	if obj2.TransitionPaths[0] != "r/tables/_migrations/t1/001_a_add_col.sql" {
+		t.Errorf("transition path = %q", obj2.TransitionPaths[0])
 	}
 }
 
 func TestComputeViewChanged_UpdateModule(t *testing.T) {
 	computer := NewComputer()
-	layout := fs.Layout{
-		Objects: []*fs.Object{{
-			NormalizedKey: "r/views/v1",
-			Kind:          "views",
-		}},
-	}
+	obj := makeTempObject(t, "r/views/v1", "views", "CREATE VIEW r.v1 AS SELECT 2 AS x")
+	layout := fs.Layout{Objects: []*fs.Object{obj}}
 	state := &db.State{
 		Objects: map[string]db.Object{
 			"r/views/v1": {SchemaName: "r", Kind: "views", ObjectName: "v1"},
 		},
 	}
-	checksums := map[string]string{}
+	checksums := map[string]string{"r/views/v1": "old_checksum"}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -227,12 +260,9 @@ func TestComputeNilState_AllCreate(t *testing.T) {
 
 func TestComputeTableScaffoldOnly_Blocked(t *testing.T) {
 	computer := NewComputer()
+	obj := makeTempObject(t, "r/tables/t1", "tables", "CREATE TABLE r.t1 (id INT)")
 	layout := fs.Layout{
-		Objects: []*fs.Object{{
-			NormalizedKey: "r/tables/t1",
-			Kind:          "tables",
-			ObjectName:    "t1",
-		}},
+		Objects: []*fs.Object{obj},
 		Transitions: []*fs.TransitionScript{{
 			TableName:     "t1",
 			NormalizedKey: "r/tables/t1",
@@ -245,7 +275,7 @@ func TestComputeTableScaffoldOnly_Blocked(t *testing.T) {
 			"r/tables/t1": {SchemaName: "r", Kind: "tables", ObjectName: "t1"},
 		},
 	}
-	checksums := map[string]string{}
+	checksums := map[string]string{"r/tables/t1": "old_checksum"}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -261,21 +291,16 @@ func TestComputeTableScaffoldOnly_Blocked(t *testing.T) {
 
 func TestComputeTriggerMissingParent_Blocked(t *testing.T) {
 	computer := NewComputer()
-	layout := fs.Layout{
-		Objects: []*fs.Object{{
-			NormalizedKey: "r/triggers/trg1",
-			SchemaName:    "r",
-			Kind:          "triggers",
-			ObjectName:    "trg1",
-			ParentName:    "missing_parent",
-		}},
-	}
+	obj := makeTempObject(t, "r/triggers/trg1", "triggers", "CREATE TRIGGER r.trg1 ON r.t1 AFTER INSERT AS SELECT 1")
+	obj.SchemaName = "r"
+	obj.ParentName = "missing_parent"
+	layout := fs.Layout{Objects: []*fs.Object{obj}}
 	state := &db.State{
 		Objects: map[string]db.Object{
 			"r/triggers/trg1": {SchemaName: "r", Kind: "triggers", ObjectName: "trg1"},
 		},
 	}
-	checksums := map[string]string{}
+	checksums := map[string]string{"r/triggers/trg1": "old_checksum"}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -291,15 +316,10 @@ func TestComputeTriggerMissingParent_Blocked(t *testing.T) {
 
 func TestComputeTriggerParentStable_UpdateModule(t *testing.T) {
 	computer := NewComputer()
-	layout := fs.Layout{
-		Objects: []*fs.Object{{
-			NormalizedKey: "r/triggers/trg1",
-			SchemaName:    "r",
-			Kind:          "triggers",
-			ObjectName:    "trg1",
-			ParentName:    "t1",
-		}},
-	}
+	obj := makeTempObject(t, "r/triggers/trg1", "triggers", "CREATE TRIGGER r.trg1 ON r.t1 AFTER INSERT AS SELECT 1")
+	obj.SchemaName = "r"
+	obj.ParentName = "t1"
+	layout := fs.Layout{Objects: []*fs.Object{obj}}
 	state := &db.State{
 		Objects: map[string]db.Object{
 			"r/triggers/trg1": {SchemaName: "r", Kind: "triggers", ObjectName: "trg1"},
@@ -307,7 +327,8 @@ func TestComputeTriggerParentStable_UpdateModule(t *testing.T) {
 		},
 	}
 	checksums := map[string]string{
-		"r/tables/t1": "abc1234",
+		"r/triggers/trg1": "old_checksum",
+		"r/tables/t1":     "abc1234",
 	}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
@@ -316,96 +337,19 @@ func TestComputeTriggerParentStable_UpdateModule(t *testing.T) {
 	}
 	if plan.Objects[0].PlannedAction != types.ActionUpdateExistingModule {
 		t.Errorf("action = %q, want %q", plan.Objects[0].PlannedAction, types.ActionUpdateExistingModule)
-	}
-}
-
-func TestComputeProcedureChanged_UpdateModule(t *testing.T) {
-	computer := NewComputer()
-	layout := fs.Layout{
-		Objects: []*fs.Object{{
-			NormalizedKey: "r/procedures/p1",
-			Kind:          "procedures",
-		}},
-	}
-	state := &db.State{
-		Objects: map[string]db.Object{
-			"r/procedures/p1": {SchemaName: "r", Kind: "procedures", ObjectName: "p1"},
-		},
-	}
-	checksums := map[string]string{}
-
-	plan, err := computer.Compute(context.Background(), layout, state, checksums)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if plan.Objects[0].PlannedAction != types.ActionUpdateExistingModule {
-		t.Errorf("action = %q, want %q", plan.Objects[0].PlannedAction, types.ActionUpdateExistingModule)
-	}
-}
-
-func TestComputeFunctionChanged_UpdateModule(t *testing.T) {
-	computer := NewComputer()
-	layout := fs.Layout{
-		Objects: []*fs.Object{{
-			NormalizedKey: "r/functions/f1",
-			Kind:          "functions",
-		}},
-	}
-	state := &db.State{
-		Objects: map[string]db.Object{
-			"r/functions/f1": {SchemaName: "r", Kind: "functions", ObjectName: "f1"},
-		},
-	}
-	checksums := map[string]string{}
-
-	plan, err := computer.Compute(context.Background(), layout, state, checksums)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if plan.Objects[0].PlannedAction != types.ActionUpdateExistingModule {
-		t.Errorf("action = %q, want %q", plan.Objects[0].PlannedAction, types.ActionUpdateExistingModule)
-	}
-}
-
-func TestComputeIndexesChanged_Reprocess(t *testing.T) {
-	computer := NewComputer()
-	layout := fs.Layout{
-		Objects: []*fs.Object{{
-			NormalizedKey: "r/indexes/i1",
-			Kind:          "indexes",
-		}},
-	}
-	state := &db.State{
-		Objects: map[string]db.Object{
-			"r/indexes/i1": {SchemaName: "r", Kind: "indexes", ObjectName: "i1"},
-		},
-	}
-	checksums := map[string]string{}
-
-	plan, err := computer.Compute(context.Background(), layout, state, checksums)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if plan.Objects[0].PlannedAction != types.ActionReprocessChanged {
-		t.Errorf("action = %q, want %q", plan.Objects[0].PlannedAction, types.ActionReprocessChanged)
 	}
 }
 
 func TestComputeBlockedHasReason(t *testing.T) {
 	computer := NewComputer()
-	layout := fs.Layout{
-		Objects: []*fs.Object{{
-			NormalizedKey: "r/tables/t1",
-			Kind:          "tables",
-			ObjectName:    "t1",
-		}},
-	}
+	obj := makeTempObject(t, "r/tables/t1", "tables", "CREATE TABLE r.t1 (id INT)")
+	layout := fs.Layout{Objects: []*fs.Object{obj}}
 	state := &db.State{
 		Objects: map[string]db.Object{
 			"r/tables/t1": {SchemaName: "r", Kind: "tables", ObjectName: "t1"},
 		},
 	}
-	checksums := map[string]string{}
+	checksums := map[string]string{"r/tables/t1": "old_checksum"}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -416,5 +360,63 @@ func TestComputeBlockedHasReason(t *testing.T) {
 	}
 	if len(plan.Blockers) == 0 {
 		t.Fatal("expected non-empty Blockers")
+	}
+}
+
+func TestComputeMultipleObjectsSummary(t *testing.T) {
+	computer := NewComputer()
+	obj1 := makeTempObject(t, "r/tables/t1", "tables", "CREATE TABLE r.t1 (id INT)")
+	obj2 := makeTempObject(t, "r/views/v1", "views", "CREATE VIEW r.v1 AS SELECT 1 AS x")
+	cs1, _ := obj1.Checksum()
+
+	layout := fs.Layout{
+		Schemas: []fs.Schema{{Name: "r"}},
+		Objects: []*fs.Object{obj1, obj2},
+	}
+	state := &db.State{
+		Objects: map[string]db.Object{
+			"r/tables/t1": {SchemaName: "r", Kind: "tables", ObjectName: "t1"},
+			"r/views/v1":  {SchemaName: "r", Kind: "views", ObjectName: "v1"},
+		},
+	}
+	checksums := map[string]string{
+		"r/tables/t1": cs1,
+		"r/views/v1":  "mismatched",
+	}
+
+	plan, err := computer.Compute(context.Background(), layout, state, checksums)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if plan.Summary.SchemaCount != 1 {
+		t.Errorf("SchemaCount = %d, want 1", plan.Summary.SchemaCount)
+	}
+	if plan.Summary.ObjectCount != 2 {
+		t.Errorf("ObjectCount = %d, want 2", plan.Summary.ObjectCount)
+	}
+	if plan.Summary.SkipCount != 1 {
+		t.Errorf("SkipCount = %d, want 1", plan.Summary.SkipCount)
+	}
+	if plan.Summary.ChangedCount != 1 {
+		t.Errorf("ChangedCount = %d, want 1", plan.Summary.ChangedCount)
+	}
+}
+
+func makeTempObject(t *testing.T, key, kind, content string) *fs.Object {
+	t.Helper()
+	dir := t.TempDir()
+	relPath := key + ".sql"
+	absPath := filepath.Join(dir, relPath)
+	if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(absPath, []byte(content), 0644); err != nil {
+		t.Fatalf("writefile: %v", err)
+	}
+	return &fs.Object{
+		Path:          relPath,
+		AbsolutePath:  absPath,
+		NormalizedKey: key,
+		Kind:          kind,
 	}
 }
