@@ -1,0 +1,36 @@
+# MSSQL for local integration tests
+# Usage:
+#   docker compose up -d          # start
+#   docker compose down -v        # stop + clean volumes
+#   docker compose logs -f        # follow logs
+#
+# Connection: sqlserver://sa:yourStrong(!)Password@localhost:1433/rmig_test
+#
+# Run tests: RMIG_RUN_SQLSERVER_INTEGRATION=1 \
+#            RM_DB_SERVER=localhost RM_DB_DATABASE=rmig_test \
+#            RM_DB_USER=sa RM_DB_PASSWORD='yourStrong(!)Password' \
+#            RM_DB_ENCRYPT=false RM_DB_TRUST_SERVER_CERTIFICATE=true \
+#            go test ./internal/migrator/ -run TestSQLServer -v
+
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    container_name: rmig-mssql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "yourStrong(!)Password"
+      MSSQL_PID: Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "yourStrong(!)Password" -C -Q "SELECT 1" || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  mssql_data:

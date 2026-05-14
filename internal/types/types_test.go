@@ -1,0 +1,120 @@
+package types
+
+import "testing"
+
+func TestNormalizedKey(t *testing.T) {
+	tests := []struct {
+		name   string
+		schema string
+		kind   string
+		obj    string
+		want   string
+	}{
+		{name: "standard", schema: "reporting", kind: "views", obj: "monthly", want: "reporting/views/monthly"},
+		{name: "uppercase", schema: "REPORTING", kind: "VIEWS", obj: "MONTHLY", want: "reporting/views/monthly"},
+		{name: "mixed case", schema: "Reporting", kind: "Views", obj: "Monthly", want: "reporting/views/monthly"},
+		{name: "empty kind", schema: "r", kind: "", obj: "v", want: "r//v"},
+		{name: "all empty", schema: "", kind: "", obj: "", want: "//"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NormalizedKey(tt.schema, tt.kind, tt.obj)
+			if got != tt.want {
+				t.Errorf("NormalizedKey(%q, %q, %q) = %q, want %q", tt.schema, tt.kind, tt.obj, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizedKeyDeterministic(t *testing.T) {
+	key1 := NormalizedKey("Reporting", "Views", "Monthly")
+	key2 := NormalizedKey("reporting", "views", "monthly")
+	if key1 != key2 {
+		t.Errorf("NormalizedKey not deterministic: %q != %q", key1, key2)
+	}
+}
+
+func TestConfigDefaults(t *testing.T) {
+	var cfg Config
+
+	if got := cfg.DBAuthMode(); got != DBAuthSQL {
+		t.Errorf("DBAuthMode() = %q, want %q", got, DBAuthSQL)
+	}
+	if got := cfg.EffectiveUpdatePolicy(); got != UpdatePolicyAllSupported {
+		t.Errorf("EffectiveUpdatePolicy() = %q, want %q", got, UpdatePolicyAllSupported)
+	}
+	if got := cfg.EffectiveTransactionMode(); got != TransactionModeScript {
+		t.Errorf("EffectiveTransactionMode() = %q, want %q", got, TransactionModeScript)
+	}
+}
+
+func TestConfigExplicitValues(t *testing.T) {
+	cfg := Config{
+		DBAuth:          "integrated",
+		UpdatePolicy:    "none",
+		TransactionMode: "none",
+	}
+
+	if got := cfg.DBAuthMode(); got != "integrated" {
+		t.Errorf("DBAuthMode() = %q, want integrated", got)
+	}
+	if got := cfg.EffectiveUpdatePolicy(); got != "none" {
+		t.Errorf("EffectiveUpdatePolicy() = %q, want none", got)
+	}
+	if got := cfg.EffectiveTransactionMode(); got != "none" {
+		t.Errorf("EffectiveTransactionMode() = %q, want none", got)
+	}
+}
+
+func TestExitCodesAreDistinct(t *testing.T) {
+	codes := map[int]string{
+		ExitOK:               "ExitOK",
+		ExitGeneralError:     "ExitGeneralError",
+		ExitConfigError:      "ExitConfigError",
+		ExitConnError:        "ExitConnError",
+		ExitChecksumMismatch: "ExitChecksumMismatch",
+		ExitSQLExecution:     "ExitSQLExecution",
+		ExitValidation:       "ExitValidation",
+		ExitLockTimeout:      "ExitLockTimeout",
+		ExitInvalidInput:     "ExitInvalidInput",
+		ExitCriticalState:    "ExitCriticalState",
+	}
+	seen := map[int]string{}
+	for code, label := range codes {
+		if _, ok := seen[code]; ok {
+			t.Errorf("duplicate exit code %d: %s and %s", code, seen[code], label)
+		}
+		seen[code] = label
+	}
+	if len(seen) != len(codes) {
+		t.Fatalf("exit code collision detected: %d unique vs %d declared", len(seen), len(codes))
+	}
+}
+
+func TestActionConstantsAreNonEmpty(t *testing.T) {
+	actions := []string{
+		ActionCreateObject, ActionAdoptExisting, ActionSkipUnchanged,
+		ActionReprocessChanged, ActionReprocessChangedBlocked,
+		ActionUpdateExistingModule, ActionUpdateExistingSupported,
+		ActionValidateChecked, ActionValidateSkipped, ActionFail, ActionRepairChecksum,
+	}
+	for _, a := range actions {
+		if a == "" {
+			t.Error("action constant is empty")
+		}
+	}
+}
+
+func TestEventConstantsAreNonEmpty(t *testing.T) {
+	events := []Event{
+		EventRunStarted, EventRunFinished, EventDiffComputed,
+		EventScaffoldGenerated, EventSchemaCreated,
+		EventObjectSkipped, EventObjectApplied, EventObjectFailed,
+		EventValidationStart, EventValidationDone,
+	}
+	for _, e := range events {
+		if e == "" {
+			t.Error("event constant is empty")
+		}
+	}
+}
