@@ -31,6 +31,59 @@ func ClassifyDetails(base error, cause error) Classification {
 	return Classification{Class: class, Path: path, Reason: reason, SQL: sqlFor(base, cause, class)}
 }
 
+func Classify(base error, cause error) string {
+	return classify(base, cause)
+}
+
+type classifyRule struct {
+	sentinels  []error
+	substrings []string
+	result     string
+}
+
+var classifyRules = []classifyRule{
+	{sentinels: []error{ErrApprovedPlanMissing},
+		result: ErrApprovedPlanMissing.Error()},
+	{sentinels: []error{ErrApprovedPlanMismatch},
+		result: ErrApprovedPlanMismatch.Error()},
+	{sentinels: []error{ErrChecksumMismatch, ErrMetadataDrift},
+		substrings: []string{"existing object changed"},
+		result:     "incompatible existing object"},
+	{sentinels: []error{ErrMissingDDLPermission},
+		substrings: []string{"missing_metadata_ddl_permission", "missing metadata ddl permission"},
+		result:     "missing metadata DDL permission"},
+	{sentinels: []error{ErrSchemaIncompatible},
+		substrings: []string{"metadata_schema_incompatible", "metadata schema incompatible"},
+		result:     "metadata schema incompatible"},
+	{sentinels: []error{ErrMissingSchemaPermission},
+		result: ErrMissingSchemaPermission.Error()},
+	{sentinels: []error{ErrMissingObjectPermission},
+		result: ErrMissingObjectPermission.Error()},
+	{sentinels: []error{ErrMissingParentObject},
+		result: ErrMissingParentObject.Error()},
+	{substrings: []string{"missing catalog visibility"},
+		result: "missing catalog visibility"},
+	{substrings: []string{"invalid repository layout"},
+		result: "invalid repository layout"},
+	{substrings: []string{"invalid_or_missing_sql_scripts_root"},
+		result: "invalid or missing SQL scripts root"},
+	{sentinels: []error{ErrConfig},
+		result: ErrConfig.Error()},
+	{sentinels: []error{ErrConnection},
+		result: "connection failed"},
+	{sentinels: []error{ErrLockTimeout},
+		result: "lock timeout"},
+	{sentinels: []error{ErrValidation},
+		result: "validation failure"},
+	{sentinels: []error{ErrSQLExecution},
+		result: "sql execution failure"},
+	{sentinels: []error{ErrCriticalState},
+		result: "critical metadata state"},
+	{sentinels: []error{ErrInvalidInput},
+		substrings: []string{"unknown command", "confirm flag required"},
+		result:     "invalid input"},
+}
+
 func classify(base error, cause error) string {
 	if detail := firstDetail(cause, base); detail != nil {
 		if class := strings.TrimSpace(detail.FailureClass()); class != "" {
@@ -38,64 +91,36 @@ func classify(base error, cause error) string {
 		}
 	}
 	message := strings.ToLower(messageFor(base, cause))
-	switch {
-	case errors.Is(base, ErrApprovedPlanMissing) || errors.Is(cause, ErrApprovedPlanMissing):
-		return ErrApprovedPlanMissing.Error()
-	case errors.Is(base, ErrApprovedPlanMismatch) || errors.Is(cause, ErrApprovedPlanMismatch):
-		return ErrApprovedPlanMismatch.Error()
-	case strings.Contains(message, "existing object changed") || errors.Is(base, ErrMetadataDrift) || errors.Is(cause, ErrMetadataDrift) || errors.Is(base, ErrChecksumMismatch):
-		return "incompatible existing object"
-	case errors.Is(base, ErrMissingDDLPermission) || errors.Is(cause, ErrMissingDDLPermission) || strings.Contains(message, "missing_metadata_ddl_permission") || strings.Contains(message, "missing metadata ddl permission"):
-		return "missing metadata DDL permission"
-	case errors.Is(base, ErrSchemaIncompatible) || errors.Is(cause, ErrSchemaIncompatible) || strings.Contains(message, "metadata_schema_incompatible") || strings.Contains(message, "metadata schema incompatible"):
-		return "metadata schema incompatible"
-	case errors.Is(base, ErrMissingSchemaPermission) || errors.Is(cause, ErrMissingSchemaPermission) || strings.Contains(message, ErrMissingSchemaPermission.Error()):
-		return ErrMissingSchemaPermission.Error()
-	case errors.Is(base, ErrMissingObjectPermission) || errors.Is(cause, ErrMissingObjectPermission) || strings.Contains(message, strings.ToLower(ErrMissingObjectPermission.Error())):
-		return ErrMissingObjectPermission.Error()
-	case errors.Is(base, ErrMissingParentObject) || errors.Is(cause, ErrMissingParentObject) || strings.Contains(message, ErrMissingParentObject.Error()):
-		return ErrMissingParentObject.Error()
-	case strings.Contains(message, "missing catalog visibility"):
-		return "missing catalog visibility"
-	case strings.Contains(message, "invalid repository layout"):
-		return "invalid repository layout"
-	case strings.Contains(message, "invalid_or_missing_sql_scripts_root"):
-		return "invalid or missing SQL scripts root"
-	case errors.Is(base, ErrConfig):
-		return ErrConfig.Error()
-	case errors.Is(cause, ErrConfig):
-		return ErrConfig.Error()
-	case errors.Is(base, ErrConnection):
-		return "connection failed"
-	case errors.Is(cause, ErrConnection):
-		return "connection failed"
-	case errors.Is(base, ErrLockTimeout):
-		return "lock timeout"
-	case errors.Is(cause, ErrLockTimeout):
-		return "lock timeout"
-	case errors.Is(base, ErrValidation):
-		return "validation failure"
-	case errors.Is(cause, ErrValidation):
-		return "validation failure"
-	case errors.Is(base, ErrSQLExecution):
-		return "sql execution failure"
-	case errors.Is(cause, ErrSQLExecution):
-		return "sql execution failure"
-	case errors.Is(base, ErrCriticalState):
-		return "critical metadata state"
-	case errors.Is(cause, ErrCriticalState):
-		return "critical metadata state"
-	case strings.Contains(message, "unknown command") || strings.Contains(message, "confirm flag required") || errors.Is(base, ErrInvalidInput):
-		return "invalid input"
-	case errors.Is(cause, ErrInvalidInput):
-		return "invalid input"
-	case cause != nil:
-		return "runtime failure"
-	case base != nil:
-		return "runtime failure"
-	default:
+	for _, rule := range classifyRules {
+		if matchSentinels(rule.sentinels, base, cause) || matchSubstrings(rule.substrings, message) {
+			return rule.result
+		}
+	}
+	if cause != nil {
 		return "runtime failure"
 	}
+	if base != nil {
+		return "runtime failure"
+	}
+	return "runtime failure"
+}
+
+func matchSentinels(sentinels []error, base, cause error) bool {
+	for _, s := range sentinels {
+		if errors.Is(base, s) || errors.Is(cause, s) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchSubstrings(substrings []string, message string) bool {
+	for _, s := range substrings {
+		if strings.Contains(message, s) {
+			return true
+		}
+	}
+	return false
 }
 
 func reasonFor(base error, cause error) string {
@@ -208,8 +233,4 @@ func firstDetail(values ...error) detailCarrier {
 		}
 	}
 	return nil
-}
-
-func Classify(base error, cause error) string {
-	return classify(base, cause)
 }
