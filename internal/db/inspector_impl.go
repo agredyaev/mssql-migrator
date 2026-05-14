@@ -71,8 +71,8 @@ func (d *inspector) readState(ctx context.Context, conn driver.Conn, scope fs.La
 	objectKeys := scopeObjectKeys(scope)
 	objects := make(map[string]Object)
 	if len(objectKeys) > 0 {
-		for _, chunk := range chunkKeys(schemaNames) {
-			for _, objChunk := range chunkKeys(objectKeys) {
+		for _, chunk := range types.ChunkKeys(schemaNames, types.SQLServerMaxParameters) {
+			for _, objChunk := range types.ChunkKeys(objectKeys, types.SQLServerMaxParameters) {
 				chunkObjs, err := d.queryObjects(ctx, conn, chunk, objChunk)
 				if err != nil {
 					return nil, err
@@ -87,8 +87,8 @@ func (d *inspector) readState(ctx context.Context, conn driver.Conn, scope fs.La
 	tableKeys := scopeTableKeys(scope)
 	columns := make(map[string][]TableColumn)
 	if len(tableKeys) > 0 {
-		for _, chunk := range chunkKeys(schemaNames) {
-			for _, tblChunk := range chunkKeys(tableKeys) {
+		for _, chunk := range types.ChunkKeys(schemaNames, types.SQLServerMaxParameters) {
+			for _, tblChunk := range types.ChunkKeys(tableKeys, types.SQLServerMaxParameters) {
 				chunkCols, err := d.queryColumns(ctx, conn, chunk, tblChunk)
 				if err != nil {
 					return nil, err
@@ -109,39 +109,40 @@ func (d *inspector) readState(ctx context.Context, conn driver.Conn, scope fs.La
 
 func (d *inspector) querySchemas(ctx context.Context, conn driver.Conn, schemaNames []string) (map[string]struct{}, error) {
 	result := make(map[string]struct{})
-	for _, chunk := range chunkKeys(schemaNames) {
-		q, args := buildINQuery(schemaSQL, "{{schema_list}}", chunk)
+	for _, chunk := range types.ChunkKeys(schemaNames, types.SQLServerMaxParameters) {
+		q, args := types.BuildINQuery(schemaSQL, "{{schema_list}}", chunk)
 		rows, err := conn.QueryContext(ctx, q, args...)
 		if err != nil {
 			return nil, err
 		}
-		defer rows.Close()
 
 		for rows.Next() {
 			var name string
 			if err := rows.Scan(&name); err != nil {
+				rows.Close()
 				return nil, err
 			}
 			result[name] = struct{}{}
 		}
+		rows.Close()
 	}
 	return result, nil
 }
 
 func (d *inspector) queryObjects(ctx context.Context, conn driver.Conn, schemaNames, objectNames []string) (map[string]Object, error) {
 	result := make(map[string]Object)
-	for _, sc := range chunkKeys(schemaNames) {
-		for _, oc := range chunkKeys(objectNames) {
+	for _, sc := range types.ChunkKeys(schemaNames, types.SQLServerMaxParameters) {
+		for _, oc := range types.ChunkKeys(objectNames, types.SQLServerMaxParameters) {
 			q, args := buildDualINQuery(objectSQL, "{{schema_list}}", sc, "{{object_list}}", oc)
 			rows, err := conn.QueryContext(ctx, q, args...)
 			if err != nil {
 				return nil, err
 			}
-			defer rows.Close()
 
 			for rows.Next() {
 				var schemaName, kind, objectName, parentName string
 				if err := rows.Scan(&schemaName, &kind, &objectName, &parentName); err != nil {
+					rows.Close()
 					return nil, err
 				}
 				key := types.NormalizedKey(schemaName, kind, objectName)
@@ -152,6 +153,7 @@ func (d *inspector) queryObjects(ctx context.Context, conn driver.Conn, schemaNa
 					ParentName: parentName,
 				}
 			}
+			rows.Close()
 		}
 	}
 	return result, nil
@@ -159,20 +161,20 @@ func (d *inspector) queryObjects(ctx context.Context, conn driver.Conn, schemaNa
 
 func (d *inspector) queryColumns(ctx context.Context, conn driver.Conn, schemaNames, tableNames []string) (map[string][]TableColumn, error) {
 	result := make(map[string][]TableColumn)
-	for _, sc := range chunkKeys(schemaNames) {
-		for _, tc := range chunkKeys(tableNames) {
+	for _, sc := range types.ChunkKeys(schemaNames, types.SQLServerMaxParameters) {
+		for _, tc := range types.ChunkKeys(tableNames, types.SQLServerMaxParameters) {
 			q, args := buildDualINQuery(columnSQL, "{{schema_list}}", sc, "{{table_list}}", tc)
 			rows, err := conn.QueryContext(ctx, q, args...)
 			if err != nil {
 				return nil, err
 			}
-			defer rows.Close()
 
 			for rows.Next() {
 				var schemaName, tableName, colName, typeName string
 				var length, precision, scale int
 				var nullable bool
 				if err := rows.Scan(&schemaName, &tableName, &colName, &typeName, &length, &precision, &scale, &nullable); err != nil {
+					rows.Close()
 					return nil, err
 				}
 				key := types.NormalizedKey(schemaName, "tables", tableName)
@@ -186,6 +188,7 @@ func (d *inspector) queryColumns(ctx context.Context, conn driver.Conn, schemaNa
 					Nullable:       nullable,
 				})
 			}
+			rows.Close()
 		}
 	}
 	return result, nil
@@ -204,9 +207,13 @@ func scopeSchemaNames(scope fs.Layout) []string {
 }
 
 func scopeObjectKeys(scope fs.Layout) []string {
-	names := make([]string, 0, len(scope.Objects))
+	seen := map[string]struct{}{}
 	for _, obj := range scope.Objects {
-		names = append(names, obj.ObjectName)
+		seen[obj.ObjectName] = struct{}{}
+	}
+	names := make([]string, 0, len(seen))
+	for n := range seen {
+		names = append(names, n)
 	}
 	return names
 }
@@ -237,34 +244,8 @@ func scopeKey(scope fs.Layout) string {
 	return strings.Join(parts, "|")
 }
 
-func chunkKeys(keys []string) [][]string {
-	if len(keys) == 0 {
-		return nil
-	}
-	var chunks [][]string
-	for i := 0; i < len(keys); i += types.SQLServerMaxParameters {
-		end := i + types.SQLServerMaxParameters
-		if end > len(keys) {
-			end = len(keys)
-		}
-		chunks = append(chunks, keys[i:end])
-	}
-	return chunks
-}
-
-func buildINQuery(template, placeholder string, keys []string) (string, []any) {
-	parts := make([]string, len(keys))
-	args := make([]any, len(keys))
-	for i, k := range keys {
-		parts[i] = fmt.Sprintf("@p%d", i+1)
-		args[i] = k
-	}
-	query := strings.Replace(template, placeholder, strings.Join(parts, ", "), 1)
-	return query, args
-}
-
 func buildDualINQuery(template, placeholder1 string, keys1 []string, placeholder2 string, keys2 []string) (string, []any) {
-	q, args1 := buildINQuery(template, placeholder1, keys1)
+	q, args1 := types.BuildINQuery(template, placeholder1, keys1)
 	offset := len(args1)
 	parts := make([]string, len(keys2))
 	args := make([]any, len(keys2))

@@ -8,6 +8,7 @@ import (
 
 	"reporting-db-migrations/internal/driver"
 	"reporting-db-migrations/internal/fs"
+	"reporting-db-migrations/internal/types"
 )
 
 type mockRows struct {
@@ -169,11 +170,11 @@ func TestInspectDifferentScopeNotCached(t *testing.T) {
 }
 
 func TestChunkKeys_Empty(t *testing.T) {
-	chunks := chunkKeys(nil)
+	chunks := types.ChunkKeys(nil, types.SQLServerMaxParameters)
 	if len(chunks) != 0 {
 		t.Error("expected empty chunks for nil")
 	}
-	chunks = chunkKeys([]string{})
+	chunks = types.ChunkKeys([]string{}, types.SQLServerMaxParameters)
 	if len(chunks) != 0 {
 		t.Error("expected empty chunks for empty slice")
 	}
@@ -184,7 +185,7 @@ func TestChunkKeys_LargeBatch(t *testing.T) {
 	for i := range keys {
 		keys[i] = "k"
 	}
-	chunks := chunkKeys(keys)
+	chunks := types.ChunkKeys(keys, types.SQLServerMaxParameters)
 	if len(chunks) < 2 {
 		t.Fatalf("expected at least 2 chunks for 4200 keys, got %d", len(chunks))
 	}
@@ -197,7 +198,7 @@ func TestChunkKeys_LargeBatch(t *testing.T) {
 }
 
 func TestBuildINQuery(t *testing.T) {
-	q, args := buildINQuery("SELECT * FROM t WHERE c IN ({{list}})", "{{list}}", []string{"a", "b", "c"})
+	q, args := types.BuildINQuery("SELECT * FROM t WHERE c IN ({{list}})", "{{list}}", []string{"a", "b", "c"})
 	if len(args) != 3 {
 		t.Errorf("expected 3 args, got %d", len(args))
 	}
