@@ -27,6 +27,13 @@ type Logger struct {
 	mu     sync.Mutex
 }
 
+var levelRanks = map[Level]int{
+	LevelDebug: 0,
+	LevelInfo:  1,
+	LevelWarn:  2,
+	LevelError: 3,
+}
+
 func New(jsonOutput bool, level string, w io.Writer) *Logger {
 	if w == nil {
 		w = os.Stderr
@@ -81,13 +88,7 @@ func (l *Logger) write(level Level, event, message string) {
 }
 
 func (l *Logger) shouldLog(level Level) bool {
-	ranks := map[Level]int{
-		LevelDebug: 0,
-		LevelInfo:  1,
-		LevelWarn:  2,
-		LevelError: 3,
-	}
-	return ranks[level] >= ranks[l.level]
+	return levelRanks[level] >= levelRanks[l.level]
 }
 
 func normalizeLevel(level string) Level {
