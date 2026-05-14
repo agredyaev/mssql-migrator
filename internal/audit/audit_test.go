@@ -140,15 +140,20 @@ func TestLoadChecksumsChunking(t *testing.T) {
 	}
 }
 
-func TestSubscriberBootstrapOnRunStarted(t *testing.T) {
+func TestSubscriberBootstrapOnObjectApplied(t *testing.T) {
 	conn := &mockConn{}
 	b := bus.New()
 	NewSubscriber(b, conn)
 
-	b.Publish(types.EventRunStarted, &types.RunStarted{Command: "plan"})
+	b.Publish(types.EventObjectApplied, &types.ObjectEvent{
+		NormalizedKey: "r/tables/t1",
+		Kind:          "tables",
+		ObjectName:    "t1",
+		RecordKind:    "object",
+	})
 
 	if conn.execCount.Load() == 0 {
-		t.Error("expected bootstrap DDL on run.started")
+		t.Error("expected bootstrap + INSERT on object.applied")
 	}
 }
 
@@ -161,6 +166,7 @@ func TestSubscriberInsertAttemptOnObjectApplied(t *testing.T) {
 		NormalizedKey: "r/tables/t1",
 		Kind:          "tables",
 		ObjectName:    "t1",
+		RecordKind:    "object",
 	})
 
 	if conn.execCount.Load() == 0 {
@@ -168,36 +174,22 @@ func TestSubscriberInsertAttemptOnObjectApplied(t *testing.T) {
 	}
 }
 
-func TestSubscriberUpdateRunOnRunFinished(t *testing.T) {
+func TestSubscriberInsertAttemptOnObjectFailed(t *testing.T) {
 	conn := &mockConn{}
 	b := bus.New()
 	NewSubscriber(b, conn)
 
-	b.Publish(types.EventRunFinished, &types.RunFinished{
-		Command:  "plan",
-		Result:   "success",
-		ExitCode: 0,
-	})
-
-	if conn.execCount.Load() < 1 {
-		t.Error("expected UPDATE runs on run.finished")
-	}
-}
-
-func TestSubscriberInsertItemsOnDiffComputed(t *testing.T) {
-	conn := &mockConn{}
-	b := bus.New()
-	NewSubscriber(b, conn)
-
-	b.Publish(types.EventDiffComputed, &types.DiffResult{
-		Plan: &types.MigrationPlan{
-			Objects: []types.PlannedObject{
-				{NormalizedKey: "r/views/v1"},
-			},
+	b.Publish(types.EventObjectFailed, &types.FailureEvent{
+		ObjectEvent: types.ObjectEvent{
+			NormalizedKey: "r/views/v1",
+			Kind:          "views",
+			ObjectName:    "v1",
+			RecordKind:    "object",
 		},
+		Error: "syntax error",
 	})
 
 	if conn.execCount.Load() == 0 {
-		t.Error("expected INSERT items on diff.computed")
+		t.Error("expected INSERT attempt on object.failed")
 	}
 }

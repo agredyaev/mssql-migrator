@@ -11,6 +11,17 @@ import (
 //go:embed sql/load_checksums.sql
 var loadChecksumsSQL string
 
+//go:embed sql/bootstrap.sql
+var bootstrapSQL string
+
+//go:embed sql/load_migrations.sql
+var loadMigrationsSQL string
+
+func EnsureTables(ctx context.Context, conn driver.Conn) error {
+	_, err := conn.ExecContext(ctx, bootstrapSQL)
+	return err
+}
+
 func LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[string]string, error) {
 	if len(keys) == 0 {
 		return map[string]string{}, nil
@@ -32,6 +43,23 @@ func LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[st
 			result[key] = checksum
 		}
 		rows.Close()
+	}
+	return result, nil
+}
+
+func LoadAppliedMigrations(ctx context.Context, conn driver.Conn, tableKey string) (map[string]bool, error) {
+	result := make(map[string]bool)
+	rows, err := conn.QueryContext(ctx, loadMigrationsSQL, tableKey+"/%")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		result[key] = true
 	}
 	return result, nil
 }
