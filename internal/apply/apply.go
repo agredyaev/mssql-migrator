@@ -28,6 +28,9 @@ type Executor struct {
 type batchedStmt struct {
 	content       string
 	normalizedKey string
+	kind          string
+	schemaName    string
+	objectName    string
 	sourceFile    string
 }
 
@@ -51,25 +54,55 @@ func (e *Executor) Execute(ctx context.Context, conn driver.Conn, plan types.Mig
 				return result, nil
 			}
 			result.Applied++
+			b.Publish(types.EventSchemaCreated, &types.SchemaEvent{
+				SchemaName: schema.SchemaName,
+				Action:     types.SchemaActionCreateSchema,
+			})
 		case types.SchemaActionExists:
 			result.Skipped++
 		}
 	}
 
-	batches := e.collectBatches(plan, layout, result)
-	for _, batch := range batches {
-		e.executeBatch(ctx, conn, batch, result)
+	objIndex := buildObjectIndex(layout.Objects)
+	transIndex := buildTransitionIndex(layout.Transitions)
+
+	txBatches, nonTxStmts := e.collectStatements(plan, objIndex, result)
+	for _, batch := range txBatches {
+		e.executeTxBatch(ctx, conn, batch, result, b)
 	}
+	for _, stmt := range nonTxStmts {
+		e.executeNonTx(ctx, conn, stmt, result, b)
+	}
+
+	e.executeTransitions(ctx, conn, plan, transIndex, result, b)
 
 	return result, nil
 }
 
-func (e *Executor) collectBatches(plan types.MigrationPlan, layout fs.Layout, result *ApplyResult) [][]batchedStmt {
-	var current []batchedStmt
-	var batches [][]batchedStmt
-	size := e.BatchSize
-	if size <= 0 {
-		size = defaultBatchSize
+func buildObjectIndex(objects []*fs.Object) map[string]*fs.Object {
+	m := make(map[string]*fs.Object, len(objects))
+	for _, obj := range objects {
+		m[obj.Path] = obj
+	}
+	return m
+}
+
+func buildTransitionIndex(transitions []*fs.TransitionScript) map[string]*fs.TransitionScript {
+	m := make(map[string]*fs.TransitionScript, len(transitions))
+	for _, ts := range transitions {
+		m[ts.Path] = ts
+	}
+	return m
+}
+
+func (e *Executor) collectStatements(plan types.MigrationPlan, objIndex map[string]*fs.Object, result *ApplyResult) ([][]batchedStmt, []batchedStmt) {
+	var txCurrent []batchedStmt
+	var txBatches [][]batchedStmt
+	var nonTxStmts []batchedStmt
+
+	batchSize := e.BatchSize
+	if batchSize <= 0 {
+		batchSize = defaultBatchSize
 	}
 
 	for _, obj := range plan.Objects {
@@ -77,9 +110,13 @@ func (e *Executor) collectBatches(plan types.MigrationPlan, layout fs.Layout, re
 		case types.ActionSkipUnchanged, types.ActionAdoptExisting:
 			result.Skipped++
 			continue
+		case types.ActionReprocessChanged:
+			if len(obj.TransitionPaths) > 0 {
+				continue
+			}
 		}
 
-		fsObj := lookupObject(layout, obj.SourceFile)
+		fsObj := objIndex[obj.SourceFile]
 		if fsObj == nil {
 			continue
 		}
@@ -92,57 +129,180 @@ func (e *Executor) collectBatches(plan types.MigrationPlan, layout fs.Layout, re
 		stmt := batchedStmt{
 			content:       content,
 			normalizedKey: obj.NormalizedKey,
+			kind:          obj.Kind,
+			schemaName:    obj.SchemaName,
+			objectName:    obj.ObjectName,
 			sourceFile:    obj.SourceFile,
 		}
-		current = append(current, stmt)
 
-		if len(current) >= size {
-			batches = append(batches, current)
-			current = nil
+		if isTransactionalKind(obj.Kind) {
+			txCurrent = append(txCurrent, stmt)
+			if len(txCurrent) >= batchSize {
+				txBatches = append(txBatches, txCurrent)
+				txCurrent = nil
+			}
+		} else {
+			nonTxStmts = append(nonTxStmts, stmt)
 		}
 	}
 
-	if len(current) > 0 {
-		batches = append(batches, current)
+	if len(txCurrent) > 0 {
+		txBatches = append(txBatches, txCurrent)
 	}
 
-	return batches
+	return txBatches, nonTxStmts
 }
 
-func (e *Executor) executeBatch(ctx context.Context, conn driver.Conn, stmts []batchedStmt, result *ApplyResult) {
-	batchSQL := buildBatchSQL(stmts)
+func isTransactionalKind(kind string) bool {
+	switch kind {
+	case "tables", "indexes", "types", "sequences", "synonyms":
+		return true
+	default:
+		return false
+	}
+}
+
+func (e *Executor) executeTxBatch(ctx context.Context, conn driver.Conn, stmts []batchedStmt, result *ApplyResult, b bus.EventBus) {
+	batchSQL := buildTxBatchSQL(stmts)
 	_, err := conn.ExecContext(ctx, batchSQL)
 	if err != nil {
+		rollbackIfOpen(ctx, conn)
 		for _, stmt := range stmts {
-			if _, stmtErr := conn.ExecContext(ctx, stmt.content); stmtErr != nil {
+			singleSQL := "BEGIN TRANSACTION\n" + stmt.content + "\nCOMMIT TRANSACTION"
+			if _, stmtErr := conn.ExecContext(ctx, singleSQL); stmtErr != nil {
+				rollbackIfOpen(ctx, conn)
 				result.Failed++
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", stmt.normalizedKey, stmtErr.Error()))
+				b.Publish(types.EventObjectFailed, &types.FailureEvent{
+					ObjectEvent: types.ObjectEvent{
+						ObjectPath:    stmt.sourceFile,
+						SchemaName:    stmt.schemaName,
+						Kind:          stmt.kind,
+						ObjectName:    stmt.objectName,
+						NormalizedKey: stmt.normalizedKey,
+					},
+					Error: stmtErr.Error(),
+				})
 			} else {
 				result.Applied++
+				b.Publish(types.EventObjectApplied, &types.ObjectEvent{
+					ObjectPath:    stmt.sourceFile,
+					SchemaName:    stmt.schemaName,
+					Kind:          stmt.kind,
+					ObjectName:    stmt.objectName,
+					NormalizedKey: stmt.normalizedKey,
+				})
 			}
 		}
 		return
 	}
 
 	result.Applied += len(stmts)
+	for _, stmt := range stmts {
+		b.Publish(types.EventObjectApplied, &types.ObjectEvent{
+			ObjectPath:    stmt.sourceFile,
+			SchemaName:    stmt.schemaName,
+			Kind:          stmt.kind,
+			ObjectName:    stmt.objectName,
+			NormalizedKey: stmt.normalizedKey,
+		})
+	}
 }
 
-func buildBatchSQL(stmts []batchedStmt) string {
+func (e *Executor) executeNonTx(ctx context.Context, conn driver.Conn, stmt batchedStmt, result *ApplyResult, b bus.EventBus) {
+	if _, err := conn.ExecContext(ctx, stmt.content); err != nil {
+		result.Failed++
+		result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", stmt.normalizedKey, err.Error()))
+		b.Publish(types.EventObjectFailed, &types.FailureEvent{
+			ObjectEvent: types.ObjectEvent{
+				ObjectPath:    stmt.sourceFile,
+				SchemaName:    stmt.schemaName,
+				Kind:          stmt.kind,
+				ObjectName:    stmt.objectName,
+				NormalizedKey: stmt.normalizedKey,
+			},
+			Error: err.Error(),
+		})
+		return
+	}
+	result.Applied++
+	b.Publish(types.EventObjectApplied, &types.ObjectEvent{
+		ObjectPath:    stmt.sourceFile,
+		SchemaName:    stmt.schemaName,
+		Kind:          stmt.kind,
+		ObjectName:    stmt.objectName,
+		NormalizedKey: stmt.normalizedKey,
+	})
+}
+
+func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, plan types.MigrationPlan, transIndex map[string]*fs.TransitionScript, result *ApplyResult, b bus.EventBus) {
+	for _, obj := range plan.Objects {
+		if obj.PlannedAction != types.ActionReprocessChanged || len(obj.TransitionPaths) == 0 {
+			continue
+		}
+		for _, tp := range obj.TransitionPaths {
+			ts := transIndex[tp]
+			if ts == nil {
+				continue
+			}
+			content, err := ts.Content()
+			if err != nil {
+				result.Failed++
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", tp, err.Error()))
+				b.Publish(types.EventObjectFailed, &types.FailureEvent{
+					ObjectEvent: types.ObjectEvent{
+						ObjectPath:    tp,
+						SchemaName:    obj.SchemaName,
+						Kind:          obj.Kind,
+						ObjectName:    obj.ObjectName,
+						NormalizedKey: obj.NormalizedKey,
+					},
+					Error: err.Error(),
+				})
+				continue
+			}
+			sql := "BEGIN TRANSACTION\n" + content + "\nCOMMIT TRANSACTION"
+			if _, err := conn.ExecContext(ctx, sql); err != nil {
+				rollbackIfOpen(ctx, conn)
+				result.Failed++
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", tp, err.Error()))
+				b.Publish(types.EventObjectFailed, &types.FailureEvent{
+					ObjectEvent: types.ObjectEvent{
+						ObjectPath:    tp,
+						SchemaName:    obj.SchemaName,
+						Kind:          obj.Kind,
+						ObjectName:    obj.ObjectName,
+						NormalizedKey: obj.NormalizedKey,
+					},
+					Error: err.Error(),
+				})
+				continue
+			}
+			result.Applied++
+			b.Publish(types.EventObjectApplied, &types.ObjectEvent{
+				ObjectPath:    tp,
+				SchemaName:    obj.SchemaName,
+				Kind:          obj.Kind,
+				ObjectName:    obj.ObjectName,
+				NormalizedKey: obj.NormalizedKey,
+			})
+		}
+	}
+}
+
+func buildTxBatchSQL(stmts []batchedStmt) string {
 	var b strings.Builder
+	b.WriteString("BEGIN TRANSACTION\n")
 	for i, stmt := range stmts {
 		if i > 0 {
 			b.WriteString("\n")
 		}
 		b.WriteString(stmt.content)
 	}
+	b.WriteString("\nCOMMIT TRANSACTION")
 	return b.String()
 }
 
-func lookupObject(layout fs.Layout, path string) *fs.Object {
-	for _, obj := range layout.Objects {
-		if obj.Path == path {
-			return obj
-		}
-	}
-	return nil
+func rollbackIfOpen(ctx context.Context, conn driver.Conn) {
+	conn.ExecContext(ctx, "IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION")
 }
