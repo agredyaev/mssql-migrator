@@ -49,7 +49,7 @@ test-int:
 	RM_DB_PASSWORD='yourStrong(!)Password' \
 	RM_DB_ENCRYPT=false \
 	RM_DB_TRUST_SERVER_CERTIFICATE=true \
-	go test ./internal/migrator/ -run TestSQLServer -v $(ARGS)
+	go test -tags=integration ./internal/app/ -run TestIntegration -v -count=1 $(ARGS)
 
 test-int-v: ARGS="-count=1"
 test-int-v: test-int

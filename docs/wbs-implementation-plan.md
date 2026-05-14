@@ -6,22 +6,27 @@
 
 ## Progress
 
-| Epic | Status | Completed |
-|---|---|---|
-| 1.0 types/ | ✅ done | 7/7 | 2026-05-14 |
-| 2.0 errors/ | ✅ done | 14/~10 | 2026-05-14 |
-| 3.0 driver/ | ✅ done | 3/~5 | 2026-05-14 |
-| 4.0 bus/ | ✅ done | 5/~4 | 2026-05-14 |
-| 5.0 log/ | ✅ done | 14/~5 | 2026-05-14 |
-| 6.0 lock/ | ✅ done | 7/~5 | 2026-05-14 |
-| 7.0 fs/ | ✅ done | 14/8-10 | 2026-05-14 |
-| 8.0 db/ | ✅ done | 8/6-8 | 2026-05-14 |
-| 9.0 audit/ | ✅ done | 8/6-8 | 2026-05-14 |
-| 10.0 diff/ | ✅ done | 15 | 2026-05-14 |
-| 11.0 scaffold/ | ✅ done | 4 | 2026-05-14 |
-| 12.0 apply/ | ✅ done | 9 | 2026-05-14 |
-| 13.0 report/ | ✅ done | 2 | 2026-05-14 |
-| 11.0–19.0 | ⬜ pending | — | — |
+| Epic | Status | Tests | Date |
+|---|---|---|---|
+| 1.0 types/ | ✅ done | 7 + ChunkKeys/BuildINQuery + audit types | 2026-05-14 |
+| 2.0 errors/ | ✅ done | 14 (classify table-driven) | 2026-05-14 |
+| 3.0 driver/ + mssql/ | ✅ done | 3 | 2026-05-14 |
+| 4.0 bus/ | ✅ done | 5 | 2026-05-14 |
+| 5.0 log/ | ✅ done | 14 (levelRanks pkg-level) | 2026-05-14 |
+| 6.0 lock/ | ✅ done | 7 | 2026-05-14 |
+| 7.0 fs/ | ✅ done | 17 (sorted transitions, HasExecutableTransition, LayoutHash) | 2026-05-14 |
+| 8.0 db/ | ✅ done | 8 (rows.Close fix, dedup scope, shared chunking) | 2026-05-14 |
+| 9.0 audit/ | ✅ done | 8 (SQL injection fix, payload data, error handler, shared chunking) | 2026-05-14 |
+| 10.0 diff/ | ✅ done | 14 (real checksum comparison, Summary/PlannedAt, AdoptExisting) | 2026-05-14 |
+| 11.0 scaffold/ | ✅ done | 6 (signature align, auto ADD COLUMN, scaffold fallback) | 2026-05-14 |
+| 12.0 apply/ | ✅ done | 11 (batched SQL, bus events, transitions, O(1) lookup) | 2026-05-14 |
+| 13.0 report/ | ✅ done | 2 (signature align, pointer assertions, error handler) | 2026-05-14 |
+| 14.0 engine/ | ⬜ pending | ~15 | — |
+| 15.0 app/ | ⬜ pending | ~9 | — |
+| 16.0 SQL templates | ✅ done | inlined with 6.0/8.0/9.0 | 2026-05-14 |
+| 17.0 Legacy deletion | ⬜ pending | — | — |
+| 18.0 Integration tests | ⬜ pending | ~5 | — |
+| 19.0 Documentation | ⬜ pending | — | — |
 
 ---
 
