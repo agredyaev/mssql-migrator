@@ -48,6 +48,10 @@ type ObjectEvent struct {
 	Checksum      string
 	Action        string
 	Path          string
+	GitHash       string
+	GitAuthor     string
+	GitDate       string
+	RecordKind    string // "object" | "migration"
 }
 
 type FailureEvent struct {

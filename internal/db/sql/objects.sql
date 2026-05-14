@@ -1,6 +1,18 @@
 SELECT
     LOWER(s.name) AS schema_name,
-    LOWER(o.type_desc) AS kind,
+    CASE LOWER(o.type_desc)
+        WHEN 'user_table' THEN 'tables'
+        WHEN 'view' THEN 'views'
+        WHEN 'sql_stored_procedure' THEN 'procedures'
+        WHEN 'sql_scalar_function' THEN 'functions'
+        WHEN 'sql_table_valued_function' THEN 'functions'
+        WHEN 'sql_inline_table_valued_function' THEN 'functions'
+        WHEN 'sql_trigger' THEN 'triggers'
+        WHEN 'service_queue' THEN 'queues'
+        WHEN 'synonym' THEN 'synonyms'
+        WHEN 'sequence_object' THEN 'sequences'
+        ELSE LOWER(o.type_desc)
+    END AS kind,
     LOWER(o.name) AS object_name,
     LOWER(ISNULL(parent.name, '')) AS parent_name
 FROM sys.objects o
@@ -14,7 +26,7 @@ UNION ALL
 
 SELECT
     LOWER(s.name) AS schema_name,
-    'user_table_type' AS kind,
+    'types' AS kind,
     LOWER(tt.name) AS object_name,
     '' AS parent_name
 FROM sys.table_types tt
@@ -26,7 +38,7 @@ UNION ALL
 
 SELECT
     LOWER(s.name) AS schema_name,
-    'index' AS kind,
+    'indexes' AS kind,
     LOWER(i.name) AS object_name,
     LOWER(o.name) AS parent_name
 FROM sys.indexes i

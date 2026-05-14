@@ -28,6 +28,7 @@ type PlannedSchema struct {
 type PlannedObject struct {
 	NormalizedKey   string
 	ObjectPath      string
+	DatabaseName    string
 	SchemaName      string
 	Kind            string
 	ObjectName      string
@@ -41,6 +42,9 @@ type PlannedObject struct {
 	MetadataMatch   *bool
 	Exists          bool
 	NoTransaction   bool
+	GitHash         string
+	GitAuthor       string
+	GitDate         string
 }
 
 type MigrationPlan struct {

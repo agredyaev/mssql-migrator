@@ -27,6 +27,6 @@ func BuildINQuery(template, placeholder string, keys []string) (string, []any) {
 		parts[i] = fmt.Sprintf("@p%d", i+1)
 		args[i] = k
 	}
-	query := strings.Replace(template, placeholder, strings.Join(parts, ", "), 1)
+	query := strings.Replace(template, placeholder, strings.Join(parts, ", "), -1)
 	return query, args
 }

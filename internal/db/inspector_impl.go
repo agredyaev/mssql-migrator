@@ -253,6 +253,6 @@ func buildDualINQuery(template, placeholder1 string, keys1 []string, placeholder
 		parts[i] = fmt.Sprintf("@p%d", offset+i+1)
 		args[i] = k
 	}
-	query := strings.Replace(q, placeholder2, strings.Join(parts, ", "), 1)
+	query := strings.Replace(q, placeholder2, strings.Join(parts, ", "), -1)
 	return query, append(args1, args...)
 }
