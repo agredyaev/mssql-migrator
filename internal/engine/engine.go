@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"reporting-db-migrations/internal/audit"
 	"reporting-db-migrations/internal/bus"
 	"reporting-db-migrations/internal/db"
 	"reporting-db-migrations/internal/driver"
@@ -35,6 +36,7 @@ type Inspector interface {
 
 type Loader interface {
 	LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[string]string, error)
+	LoadAppliedMigrations(ctx context.Context, conn driver.Conn, tableKey string) (map[string]bool, error)
 }
 
 type Computer interface {
@@ -109,6 +111,9 @@ func (e *Engine) Migrate(ctx context.Context) error {
 		return errors.ErrPlanBlocked
 	}
 
+	// Filter out already-applied migrations
+	e.filterAppliedMigrations(ctx, plan)
+
 	_, err = e.applier.Execute(ctx, e.conn, *plan, layout, e.bus)
 	if err != nil {
 		e.publishRunFailed("migrate", err)
@@ -117,6 +122,26 @@ func (e *Engine) Migrate(ctx context.Context) error {
 
 	e.bus.Publish(types.EventRunFinished, &types.RunFinished{Command: "migrate", Result: "success", ExitCode: 0})
 	return nil
+}
+
+func (e *Engine) filterAppliedMigrations(ctx context.Context, plan *types.MigrationPlan) {
+	for i := range plan.Objects {
+		obj := &plan.Objects[i]
+		if obj.PlannedAction != types.ActionReprocessChanged || len(obj.TransitionPaths) == 0 {
+			continue
+		}
+		applied, err := e.load.LoadAppliedMigrations(ctx, e.conn, obj.NormalizedKey)
+		if err != nil {
+			continue
+		}
+		filtered := make([]string, 0, len(obj.TransitionPaths))
+		for _, tp := range obj.TransitionPaths {
+			if !applied[tp] {
+				filtered = append(filtered, tp)
+			}
+		}
+		obj.TransitionPaths = filtered
+	}
 }
 
 func (e *Engine) Validate(ctx context.Context) error {
@@ -185,6 +210,10 @@ func (e *Engine) RepairChecksum(ctx context.Context) error {
 }
 
 func (e *Engine) runPlan(ctx context.Context) (*types.MigrationPlan, fs.Layout, *db.State, error) {
+	if err := audit.EnsureTables(ctx, e.conn); err != nil {
+		return nil, fs.Layout{}, nil, err
+	}
+
 	layout, err := e.fs.Scan(ctx, e.cfg.SQLRoot)
 	if err != nil {
 		return nil, fs.Layout{}, nil, err

@@ -86,6 +86,10 @@ func (s stubLoader) LoadChecksums(ctx context.Context, conn driver.Conn, keys []
 	return s.checksums, s.err
 }
 
+func (s stubLoader) LoadAppliedMigrations(ctx context.Context, conn driver.Conn, tableKey string) (map[string]bool, error) {
+	return nil, nil
+}
+
 type stubComputer struct {
 	plan *types.MigrationPlan
 	err  error

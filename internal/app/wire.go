@@ -26,6 +26,10 @@ func (loaderAdapter) LoadChecksums(ctx context.Context, conn driver.Conn, keys [
 	return audit.LoadChecksums(ctx, conn, keys)
 }
 
+func (loaderAdapter) LoadAppliedMigrations(ctx context.Context, conn driver.Conn, tableKey string) (map[string]bool, error) {
+	return audit.LoadAppliedMigrations(ctx, conn, tableKey)
+}
+
 type applierAdapter struct {
 	exec *apply.Executor
 }
