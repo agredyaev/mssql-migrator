@@ -3,6 +3,7 @@ package apply
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"reporting-db-migrations/internal/bus"
@@ -32,6 +33,11 @@ type batchedStmt struct {
 	schemaName    string
 	objectName    string
 	sourceFile    string
+	checksum      string
+	gitHash       string
+	gitAuthor     string
+	gitDate       string
+	recordKind    string
 }
 
 func New() *Executor {
@@ -95,6 +101,18 @@ func buildTransitionIndex(transitions []*fs.TransitionScript) map[string]*fs.Tra
 	return m
 }
 
+var kindOrder = map[string]int{
+	"types":      0,
+	"sequences":  1,
+	"tables":     2,
+	"synonyms":   3,
+	"indexes":    4,
+	"views":      5,
+	"functions":  6,
+	"procedures": 7,
+	"triggers":   8,
+}
+
 func (e *Executor) collectStatements(plan types.MigrationPlan, objIndex map[string]*fs.Object, result *ApplyResult) ([][]batchedStmt, []batchedStmt) {
 	var txCurrent []batchedStmt
 	var txBatches [][]batchedStmt
@@ -133,6 +151,11 @@ func (e *Executor) collectStatements(plan types.MigrationPlan, objIndex map[stri
 			schemaName:    obj.SchemaName,
 			objectName:    obj.ObjectName,
 			sourceFile:    obj.SourceFile,
+			checksum:      obj.Checksum,
+			gitHash:       obj.GitHash,
+			gitAuthor:     obj.GitAuthor,
+			gitDate:       obj.GitDate,
+			recordKind:    "object",
 		}
 
 		if isTransactionalKind(obj.Kind) {
@@ -150,7 +173,27 @@ func (e *Executor) collectStatements(plan types.MigrationPlan, objIndex map[stri
 		txBatches = append(txBatches, txCurrent)
 	}
 
+	for i := range txBatches {
+		sort.Stable(kindSorter(txBatches[i]))
+	}
+
 	return txBatches, nonTxStmts
+}
+
+type kindSorter []batchedStmt
+
+func (k kindSorter) Len() int      { return len(k) }
+func (k kindSorter) Swap(i, j int) { k[i], k[j] = k[j], k[i] }
+func (k kindSorter) Less(i, j int) bool {
+	oi, oki := kindOrder[k[i].kind]
+	oj, okj := kindOrder[k[j].kind]
+	if !oki {
+		oi = 99
+	}
+	if !okj {
+		oj = 99
+	}
+	return oi < oj
 }
 
 func isTransactionalKind(kind string) bool {
@@ -159,6 +202,28 @@ func isTransactionalKind(kind string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func newObjectEvent(stmt batchedStmt) *types.ObjectEvent {
+	return &types.ObjectEvent{
+		ObjectPath:    stmt.sourceFile,
+		SchemaName:    stmt.schemaName,
+		Kind:          stmt.kind,
+		ObjectName:    stmt.objectName,
+		NormalizedKey: stmt.normalizedKey,
+		Checksum:      stmt.checksum,
+		GitHash:       stmt.gitHash,
+		GitAuthor:     stmt.gitAuthor,
+		GitDate:       stmt.gitDate,
+		RecordKind:    stmt.recordKind,
+	}
+}
+
+func newFailureEvent(stmt batchedStmt, execErr string) *types.FailureEvent {
+	return &types.FailureEvent{
+		ObjectEvent: *newObjectEvent(stmt),
+		Error:       execErr,
 	}
 }
 
@@ -173,25 +238,10 @@ func (e *Executor) executeTxBatch(ctx context.Context, conn driver.Conn, stmts [
 				rollbackIfOpen(ctx, conn)
 				result.Failed++
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", stmt.normalizedKey, stmtErr.Error()))
-				b.Publish(types.EventObjectFailed, &types.FailureEvent{
-					ObjectEvent: types.ObjectEvent{
-						ObjectPath:    stmt.sourceFile,
-						SchemaName:    stmt.schemaName,
-						Kind:          stmt.kind,
-						ObjectName:    stmt.objectName,
-						NormalizedKey: stmt.normalizedKey,
-					},
-					Error: stmtErr.Error(),
-				})
+				b.Publish(types.EventObjectFailed, newFailureEvent(stmt, stmtErr.Error()))
 			} else {
 				result.Applied++
-				b.Publish(types.EventObjectApplied, &types.ObjectEvent{
-					ObjectPath:    stmt.sourceFile,
-					SchemaName:    stmt.schemaName,
-					Kind:          stmt.kind,
-					ObjectName:    stmt.objectName,
-					NormalizedKey: stmt.normalizedKey,
-				})
+				b.Publish(types.EventObjectApplied, newObjectEvent(stmt))
 			}
 		}
 		return
@@ -199,13 +249,7 @@ func (e *Executor) executeTxBatch(ctx context.Context, conn driver.Conn, stmts [
 
 	result.Applied += len(stmts)
 	for _, stmt := range stmts {
-		b.Publish(types.EventObjectApplied, &types.ObjectEvent{
-			ObjectPath:    stmt.sourceFile,
-			SchemaName:    stmt.schemaName,
-			Kind:          stmt.kind,
-			ObjectName:    stmt.objectName,
-			NormalizedKey: stmt.normalizedKey,
-		})
+		b.Publish(types.EventObjectApplied, newObjectEvent(stmt))
 	}
 }
 
@@ -213,26 +257,11 @@ func (e *Executor) executeNonTx(ctx context.Context, conn driver.Conn, stmt batc
 	if _, err := conn.ExecContext(ctx, stmt.content); err != nil {
 		result.Failed++
 		result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", stmt.normalizedKey, err.Error()))
-		b.Publish(types.EventObjectFailed, &types.FailureEvent{
-			ObjectEvent: types.ObjectEvent{
-				ObjectPath:    stmt.sourceFile,
-				SchemaName:    stmt.schemaName,
-				Kind:          stmt.kind,
-				ObjectName:    stmt.objectName,
-				NormalizedKey: stmt.normalizedKey,
-			},
-			Error: err.Error(),
-		})
+		b.Publish(types.EventObjectFailed, newFailureEvent(stmt, err.Error()))
 		return
 	}
 	result.Applied++
-	b.Publish(types.EventObjectApplied, &types.ObjectEvent{
-		ObjectPath:    stmt.sourceFile,
-		SchemaName:    stmt.schemaName,
-		Kind:          stmt.kind,
-		ObjectName:    stmt.objectName,
-		NormalizedKey: stmt.normalizedKey,
-	})
+	b.Publish(types.EventObjectApplied, newObjectEvent(stmt))
 }
 
 func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, plan types.MigrationPlan, transIndex map[string]*fs.TransitionScript, result *ApplyResult, b bus.EventBus) {
@@ -249,43 +278,57 @@ func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, pla
 			if err != nil {
 				result.Failed++
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", tp, err.Error()))
-				b.Publish(types.EventObjectFailed, &types.FailureEvent{
-					ObjectEvent: types.ObjectEvent{
-						ObjectPath:    tp,
-						SchemaName:    obj.SchemaName,
-						Kind:          obj.Kind,
-						ObjectName:    obj.ObjectName,
-						NormalizedKey: obj.NormalizedKey,
-					},
-					Error: err.Error(),
-				})
+				b.Publish(types.EventObjectFailed, newFailureEvent(batchedStmt{
+					normalizedKey: obj.NormalizedKey,
+					kind:          obj.Kind,
+					schemaName:    obj.SchemaName,
+					objectName:    obj.ObjectName,
+					sourceFile:    tp,
+					checksum:      obj.Checksum,
+					gitHash:       obj.GitHash,
+					gitAuthor:     obj.GitAuthor,
+					gitDate:       obj.GitDate,
+					recordKind:    "migration",
+				}, err.Error()))
 				continue
 			}
+
+			gitHash, _ := ts.GitHash()
+			gitAuthor, _ := ts.GitAuthor()
+			gitDate, _ := ts.GitDate()
+
 			sql := "BEGIN TRANSACTION\n" + content + "\nCOMMIT TRANSACTION"
 			if _, err := conn.ExecContext(ctx, sql); err != nil {
 				rollbackIfOpen(ctx, conn)
 				result.Failed++
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", tp, err.Error()))
-				b.Publish(types.EventObjectFailed, &types.FailureEvent{
-					ObjectEvent: types.ObjectEvent{
-						ObjectPath:    tp,
-						SchemaName:    obj.SchemaName,
-						Kind:          obj.Kind,
-						ObjectName:    obj.ObjectName,
-						NormalizedKey: obj.NormalizedKey,
-					},
-					Error: err.Error(),
-				})
+				b.Publish(types.EventObjectFailed, newFailureEvent(batchedStmt{
+					normalizedKey: obj.NormalizedKey,
+					kind:          obj.Kind,
+					schemaName:    obj.SchemaName,
+					objectName:    obj.ObjectName,
+					sourceFile:    tp,
+					checksum:      obj.Checksum,
+					gitHash:       gitHash,
+					gitAuthor:     gitAuthor,
+					gitDate:       gitDate,
+					recordKind:    "migration",
+				}, err.Error()))
 				continue
 			}
 			result.Applied++
-			b.Publish(types.EventObjectApplied, &types.ObjectEvent{
-				ObjectPath:    tp,
-				SchemaName:    obj.SchemaName,
-				Kind:          obj.Kind,
-				ObjectName:    obj.ObjectName,
-				NormalizedKey: obj.NormalizedKey,
-			})
+			b.Publish(types.EventObjectApplied, newObjectEvent(batchedStmt{
+				normalizedKey: obj.NormalizedKey,
+				kind:          obj.Kind,
+				schemaName:    obj.SchemaName,
+				objectName:    obj.ObjectName,
+				sourceFile:    tp,
+				checksum:      obj.Checksum,
+				gitHash:       gitHash,
+				gitAuthor:     gitAuthor,
+				gitDate:       gitDate,
+				recordKind:    "migration",
+			}))
 		}
 	}
 }

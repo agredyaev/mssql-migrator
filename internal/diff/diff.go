@@ -38,23 +38,32 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 
 	for _, obj := range layout.Objects {
 		dbObj, exists := state.Objects[obj.NormalizedKey]
+		gitHash, _ := obj.GitHash()
+		gitAuthor, _ := obj.GitAuthor()
+		gitDate, _ := obj.GitDate()
 		plannedObj := types.PlannedObject{
 			ObjectPath:    obj.Path,
+			DatabaseName:  obj.DatabaseName,
 			SchemaName:    obj.SchemaName,
 			Kind:          obj.Kind,
 			ObjectName:    obj.ObjectName,
 			NormalizedKey: obj.NormalizedKey,
 			Exists:        exists,
 			SourceFile:    obj.Path,
+			GitHash:       gitHash,
+			GitAuthor:     gitAuthor,
+			GitDate:       gitDate,
 		}
 
 		switch {
 		case !exists:
 			plannedObj.PlannedAction = types.ActionCreateObject
+			plannedObj.Checksum = getLayoutChecksum(layout, obj.NormalizedKey)
 			createCount++
 
 		case exists && checksums[obj.NormalizedKey] == "":
 			plannedObj.PlannedAction = types.ActionAdoptExisting
+			plannedObj.Checksum = getLayoutChecksum(layout, obj.NormalizedKey)
 			adoptCount++
 
 		case exists && checksumsMatch(layout, obj.NormalizedKey, checksums[obj.NormalizedKey]):
