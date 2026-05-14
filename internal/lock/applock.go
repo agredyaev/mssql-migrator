@@ -2,33 +2,50 @@ package lock
 
 import (
 	"context"
-	"database/sql"
-	"errors"
-	"fmt"
+	_ "embed"
 	"time"
 
-	"reporting-db-migrations/internal/contracts"
+	"reporting-db-migrations/internal/driver"
+	"reporting-db-migrations/internal/errors"
 )
 
-var (
-	ErrTimeout = errors.New("app lock timeout")
-	ErrFailed  = errors.New("app lock failed")
-)
+//go:embed sql/acquire.sql
+var acquireSQL string
 
-func Acquire(ctx context.Context, conn *sql.Conn, timeout time.Duration) error {
+//go:embed sql/release.sql
+var releaseSQL string
+
+type AppLock struct{}
+
+func New() *AppLock {
+	return &AppLock{}
+}
+
+func (l *AppLock) Acquire(ctx context.Context, conn driver.Conn, timeout time.Duration) error {
 	var result int
-	err := conn.QueryRowContext(ctx, `DECLARE @result INT; EXEC @result = sp_getapplock @Resource='reporting_layer_migration', @LockMode='Exclusive', @LockOwner='Session', @LockTimeout=@p1; SELECT @result;`, int(timeout.Milliseconds())).Scan(&result)
+	rows, err := conn.QueryContext(ctx, acquireSQL, timeout.Milliseconds())
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			return contracts.Wrap(ErrTimeout, err)
-		}
-		return contracts.Wrap(ErrFailed, err)
+		return errors.Wrap(errors.ErrLockTimeout, err)
 	}
-	if result == -1 || result == -2 {
-		return fmt.Errorf("%w: result=%d", ErrTimeout, result)
+	defer rows.Close()
+
+	if !rows.Next() {
+		return errors.ErrLockTimeout
+	}
+	if err := rows.Scan(&result); err != nil {
+		return errors.Wrap(errors.ErrLockFailed, err)
 	}
 	if result < 0 {
-		return fmt.Errorf("%w: result=%d", ErrFailed, result)
+		return errors.ErrLockTimeout
 	}
+	return nil
+}
+
+func (l *AppLock) Release(ctx context.Context, conn driver.Conn) error {
+	rows, err := conn.QueryContext(ctx, releaseSQL)
+	if err != nil {
+		return errors.Wrap(errors.ErrLockFailed, err)
+	}
+	defer rows.Close()
 	return nil
 }
