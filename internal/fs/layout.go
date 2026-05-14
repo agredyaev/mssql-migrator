@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"sort"
 	"sync"
 )
 
@@ -158,4 +159,39 @@ func (l *Layout) NormalizedKeys() []string {
 		keys[i] = obj.NormalizedKey
 	}
 	return keys
+}
+
+func (l *Layout) HasExecutableTransition() bool {
+	for _, ts := range l.Transitions {
+		if !ts.Scaffold {
+			return true
+		}
+	}
+	return false
+}
+
+func (l *Layout) LayoutHash() (string, error) {
+	h := sha256.New()
+	checksums := make([]string, 0, len(l.Objects)+len(l.Transitions))
+
+	for _, obj := range l.Objects {
+		cs, err := obj.Checksum()
+		if err != nil {
+			return "", err
+		}
+		checksums = append(checksums, cs)
+	}
+	for _, ts := range l.Transitions {
+		cs, err := ts.Checksum()
+		if err != nil {
+			return "", err
+		}
+		checksums = append(checksums, cs)
+	}
+
+	sort.Strings(checksums)
+	for _, cs := range checksums {
+		h.Write([]byte(cs))
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

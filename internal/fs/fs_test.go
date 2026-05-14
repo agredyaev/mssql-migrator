@@ -210,3 +210,86 @@ func TestNormalizedKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestTransitionSorting(t *testing.T) {
+	dir := t.TempDir()
+	migrationsDir := filepath.Join(dir, "reporting", "tables", "_migrations", "t1")
+	if err := os.MkdirAll(migrationsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	createSQLFile(t, dir, "reporting/tables/_migrations/t1/003_cafebabe_third.sql", "-- rmig: transition")
+	createSQLFile(t, dir, "reporting/tables/_migrations/t1/001_deadbeef_first.sql", "-- rmig: transition")
+	createSQLFile(t, dir, "reporting/tables/_migrations/t1/002_beef1234_second.sql", "-- rmig: transition")
+
+	scanner := NewScanner()
+	layout, err := scanner.Scan(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(layout.Transitions) != 3 {
+		t.Fatalf("expected 3 transitions, got %d", len(layout.Transitions))
+	}
+	for i, want := range []string{"001", "002", "003"} {
+		if layout.Transitions[i].Ordinal != want {
+			t.Errorf("transition[%d] ordinal = %q, want %q", i, layout.Transitions[i].Ordinal, want)
+		}
+	}
+}
+
+func TestHasExecutableTransition(t *testing.T) {
+	layout := Layout{
+		Transitions: []*TransitionScript{
+			{Scaffold: true},
+			{Scaffold: true},
+		},
+	}
+	if layout.HasExecutableTransition() {
+		t.Error("expected false when all are scaffolds")
+	}
+
+	layout.Transitions = append(layout.Transitions, &TransitionScript{Scaffold: false})
+	if !layout.HasExecutableTransition() {
+		t.Error("expected true when at least one is non-scaffold")
+	}
+
+	empty := Layout{}
+	if empty.HasExecutableTransition() {
+		t.Error("expected false when no transitions")
+	}
+}
+
+func TestLayoutHash_Deterministic(t *testing.T) {
+	dir := t.TempDir()
+	createSQLFile(t, dir, "reporting/views/v1.sql", "CREATE VIEW reporting.v1 AS SELECT 1 AS x")
+	createSQLFile(t, dir, "reporting/views/v2.sql", "CREATE VIEW reporting.v2 AS SELECT 2 AS x")
+
+	scanner := NewScanner()
+	layout1, _ := scanner.Scan(context.Background(), dir)
+	layout2, _ := scanner.Scan(context.Background(), dir)
+
+	h1, err := layout1.LayoutHash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h2, err := layout2.LayoutHash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h1 != h2 {
+		t.Errorf("LayoutHash not deterministic: %q != %q", h1, h2)
+	}
+	if h1 == "" {
+		t.Error("LayoutHash should not be empty")
+	}
+}
+
+func createSQLFile(t *testing.T, base, relPath, content string) {
+	t.Helper()
+	abs := filepath.Join(base, relPath)
+	if err := os.MkdirAll(filepath.Dir(abs), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abs, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+}

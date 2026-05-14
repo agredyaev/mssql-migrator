@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"reporting-db-migrations/internal/types"
@@ -70,6 +71,10 @@ func (s *Scanner) Scan(ctx context.Context, root string) (Layout, error) {
 			}
 		}
 	}
+
+	sort.Slice(layout.Transitions, func(i, j int) bool {
+		return layout.Transitions[i].Ordinal < layout.Transitions[j].Ordinal
+	})
 
 	return layout, nil
 }
