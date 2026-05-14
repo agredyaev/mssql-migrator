@@ -33,7 +33,12 @@ func (s *Scaffolder) EnsureTransitionFiles(ctx context.Context, cfg types.Config
 			continue
 		}
 
-		dir := filepath.Join(baseDir, obj.SchemaName, "tables", "_migrations", obj.ObjectName)
+		db := obj.DatabaseName
+		if db == "" {
+			db = cfg.Database
+		}
+
+		dir := filepath.Join(baseDir, db, obj.SchemaName, "tables", "_migrations", obj.ObjectName)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return created, fmt.Errorf("scaffold: mkdir %s: %w", dir, err)
 		}

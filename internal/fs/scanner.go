@@ -32,42 +32,56 @@ func (s *Scanner) Scan(ctx context.Context, root string) (Layout, error) {
 	}
 
 	layout := Layout{RootPath: root}
-	schemaDirs, err := os.ReadDir(root)
+	dbDirs, err := os.ReadDir(root)
 	if err != nil {
 		return Layout{}, err
 	}
 
-	for _, schemaEntry := range schemaDirs {
-		if !schemaEntry.IsDir() {
+	for _, dbEntry := range dbDirs {
+		if !dbEntry.IsDir() {
 			continue
 		}
-		schemaName := schemaEntry.Name()
-		schemaPath := filepath.Join(root, schemaName)
+		dbName := dbEntry.Name()
+		dbPath := filepath.Join(root, dbName)
 
-		layout.Schemas = append(layout.Schemas, Schema{
-			Name:           schemaName,
-			NormalizedName: strings.ToLower(schemaName),
-		})
-
-		kindDirs, err := os.ReadDir(schemaPath)
+		schemaDirs, err := os.ReadDir(dbPath)
 		if err != nil {
-			return Layout{}, err
+			continue
 		}
 
-		for _, kindEntry := range kindDirs {
-			if !kindEntry.IsDir() {
+		for _, schemaEntry := range schemaDirs {
+			if !schemaEntry.IsDir() {
 				continue
 			}
-			kind := kindEntry.Name()
-			kindPath := filepath.Join(schemaPath, kind)
+			schemaName := schemaEntry.Name()
+			schemaPath := filepath.Join(dbPath, schemaName)
 
-			switch {
-			case kind == "tables":
-				s.scanTableDir(&layout, schemaName, kindPath, root)
-			case kind == "checks":
-				s.scanCheckDir(&layout, schemaName, kindPath)
-			case isObjectKind(kind):
-				s.scanObjectDir(&layout, schemaName, kind, kindPath)
+			layout.Schemas = append(layout.Schemas, Schema{
+				DatabaseName:   dbName,
+				Name:           schemaName,
+				NormalizedName: strings.ToLower(schemaName),
+			})
+
+			kindDirs, err := os.ReadDir(schemaPath)
+			if err != nil {
+				continue
+			}
+
+			for _, kindEntry := range kindDirs {
+				if !kindEntry.IsDir() {
+					continue
+				}
+				kind := kindEntry.Name()
+				kindPath := filepath.Join(schemaPath, kind)
+
+				switch {
+				case kind == "tables":
+					s.scanTableDir(&layout, dbName, schemaName, kindPath)
+				case kind == "checks":
+					s.scanCheckDir(&layout, dbName, schemaName, kindPath)
+				case isObjectKind(kind):
+					s.scanObjectDir(&layout, dbName, schemaName, kind, kindPath)
+				}
 			}
 		}
 	}
@@ -79,7 +93,7 @@ func (s *Scanner) Scan(ctx context.Context, root string) (Layout, error) {
 	return layout, nil
 }
 
-func (s *Scanner) scanObjectDir(layout *Layout, schemaName, kind, dirPath string) {
+func (s *Scanner) scanObjectDir(layout *Layout, dbName, schemaName, kind, dirPath string) {
 	files, err := os.ReadDir(dirPath)
 	if err != nil {
 		return
@@ -88,12 +102,12 @@ func (s *Scanner) scanObjectDir(layout *Layout, schemaName, kind, dirPath string
 		if f.IsDir() || filepath.Ext(f.Name()) != ".sql" {
 			continue
 		}
-		obj := s.buildObject(schemaName, kind, "", f.Name(), dirPath)
+		obj := s.buildObject(dbName, schemaName, kind, "", f.Name(), dirPath)
 		layout.Objects = append(layout.Objects, &obj)
 	}
 }
 
-func (s *Scanner) scanTableDir(layout *Layout, schemaName, tableDir, root string) {
+func (s *Scanner) scanTableDir(layout *Layout, dbName, schemaName, tableDir string) {
 	files, err := os.ReadDir(tableDir)
 	if err != nil {
 		return
@@ -103,7 +117,7 @@ func (s *Scanner) scanTableDir(layout *Layout, schemaName, tableDir, root string
 		if f.IsDir() || filepath.Ext(name) != ".sql" {
 			continue
 		}
-		obj := s.buildObject(schemaName, "tables", "", name, tableDir)
+		obj := s.buildObject(dbName, schemaName, "tables", "", name, tableDir)
 		layout.Objects = append(layout.Objects, &obj)
 	}
 
@@ -127,7 +141,7 @@ func (s *Scanner) scanTableDir(layout *Layout, schemaName, tableDir, root string
 			if mf.IsDir() || filepath.Ext(mf.Name()) != ".sql" {
 				continue
 			}
-			ts, ok := s.parseTransitionFile(schemaName, tableName, mf.Name(), tableMigrationsDir)
+			ts, ok := s.parseTransitionFile(dbName, schemaName, tableName, mf.Name(), tableMigrationsDir)
 			if ok {
 				layout.Transitions = append(layout.Transitions, ts)
 			}
@@ -135,7 +149,7 @@ func (s *Scanner) scanTableDir(layout *Layout, schemaName, tableDir, root string
 	}
 }
 
-func (s *Scanner) scanCheckDir(layout *Layout, schemaName, dirPath string) {
+func (s *Scanner) scanCheckDir(layout *Layout, dbName, schemaName, dirPath string) {
 	files, err := os.ReadDir(dirPath)
 	if err != nil {
 		return
@@ -144,17 +158,18 @@ func (s *Scanner) scanCheckDir(layout *Layout, schemaName, dirPath string) {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".sql" {
 			continue
 		}
-		cs := s.buildCheck(schemaName, f.Name(), dirPath)
+		cs := s.buildCheck(dbName, schemaName, f.Name(), dirPath)
 		layout.Checks = append(layout.Checks, &cs)
 	}
 }
 
-func (s *Scanner) buildObject(schemaName, kind, parentName, fileName, dirPath string) Object {
+func (s *Scanner) buildObject(dbName, schemaName, kind, parentName, fileName, dirPath string) Object {
 	fullPath := filepath.Join(dirPath, fileName)
 	name := strings.TrimSuffix(fileName, ".sql")
 	return Object{
-		Path:                 filepath.ToSlash(filepath.Join(schemaName, kind, fileName)),
+		Path:                 filepath.ToSlash(filepath.Join(dbName, schemaName, kind, fileName)),
 		AbsolutePath:         fullPath,
+		DatabaseName:         dbName,
 		SchemaName:           schemaName,
 		NormalizedSchemaName: strings.ToLower(schemaName),
 		Kind:                 kind,
@@ -165,12 +180,13 @@ func (s *Scanner) buildObject(schemaName, kind, parentName, fileName, dirPath st
 	}
 }
 
-func (s *Scanner) buildCheck(schemaName, fileName, dirPath string) CheckScript {
+func (s *Scanner) buildCheck(dbName, schemaName, fileName, dirPath string) CheckScript {
 	fullPath := filepath.Join(dirPath, fileName)
 	name := strings.TrimSuffix(fileName, ".sql")
 	return CheckScript{
-		Path:          filepath.ToSlash(filepath.Join(schemaName, "checks", fileName)),
+		Path:          filepath.ToSlash(filepath.Join(dbName, schemaName, "checks", fileName)),
 		AbsolutePath:  fullPath,
+		DatabaseName:  dbName,
 		SchemaName:    schemaName,
 		Name:          name,
 		NoTransaction: true,
@@ -179,7 +195,7 @@ func (s *Scanner) buildCheck(schemaName, fileName, dirPath string) CheckScript {
 
 var transitionPattern = regexp.MustCompile(`^(\d{3})_([0-9a-f]{7,})_(.+)\.sql$`)
 
-func (s *Scanner) parseTransitionFile(schemaName, tableName, fileName, dirPath string) (*TransitionScript, bool) {
+func (s *Scanner) parseTransitionFile(dbName, schemaName, tableName, fileName, dirPath string) (*TransitionScript, bool) {
 	matches := transitionPattern.FindStringSubmatch(fileName)
 	if matches == nil {
 		return nil, false
@@ -189,8 +205,9 @@ func (s *Scanner) parseTransitionFile(schemaName, tableName, fileName, dirPath s
 	normalizedKey := types.NormalizedKey(schemaName, "tables", tableName)
 
 	ts := &TransitionScript{
-		Path:          filepath.ToSlash(filepath.Join(schemaName, "tables", "_migrations", tableName, fileName)),
+		Path:          filepath.ToSlash(filepath.Join(dbName, schemaName, "tables", "_migrations", tableName, fileName)),
 		AbsolutePath:  fullPath,
+		DatabaseName:  dbName,
 		SchemaName:    schemaName,
 		TableName:     tableName,
 		NormalizedKey: normalizedKey,

@@ -3,8 +3,12 @@ package fs
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -17,6 +21,7 @@ type Layout struct {
 }
 
 type Schema struct {
+	DatabaseName   string
 	Name           string
 	NormalizedName string
 }
@@ -24,6 +29,7 @@ type Schema struct {
 type Object struct {
 	Path                 string
 	AbsolutePath         string
+	DatabaseName         string
 	SchemaName           string
 	NormalizedSchemaName string
 	Kind                 string
@@ -38,6 +44,11 @@ type Object struct {
 	checksumOnce sync.Once
 	checksum     string
 	checksumErr  error
+	gitOnce      sync.Once
+	gitHash      string
+	gitAuthor    string
+	gitDate      string
+	gitErr       error
 }
 
 func (o *Object) Content() (string, error) {
@@ -64,9 +75,29 @@ func (o *Object) Checksum() (string, error) {
 	return o.checksum, o.checksumErr
 }
 
+func (o *Object) GitHash() (string, error) {
+	o.gitOnce.Do(o.loadGitInfo)
+	return o.gitHash, o.gitErr
+}
+
+func (o *Object) GitAuthor() (string, error) {
+	o.gitOnce.Do(o.loadGitInfo)
+	return o.gitAuthor, o.gitErr
+}
+
+func (o *Object) GitDate() (string, error) {
+	o.gitOnce.Do(o.loadGitInfo)
+	return o.gitDate, o.gitErr
+}
+
+func (o *Object) loadGitInfo() {
+	o.gitHash, o.gitAuthor, o.gitDate, o.gitErr = gitInfo(o.AbsolutePath)
+}
+
 type TransitionScript struct {
 	Path          string
 	AbsolutePath  string
+	DatabaseName  string
 	SchemaName    string
 	TableName     string
 	NormalizedKey string
@@ -82,6 +113,11 @@ type TransitionScript struct {
 	checksumOnce sync.Once
 	checksum     string
 	checksumErr  error
+	gitOnce      sync.Once
+	gitHash      string
+	gitAuthor    string
+	gitDate      string
+	gitErr       error
 }
 
 func (ts *TransitionScript) Content() (string, error) {
@@ -108,9 +144,29 @@ func (ts *TransitionScript) Checksum() (string, error) {
 	return ts.checksum, ts.checksumErr
 }
 
+func (ts *TransitionScript) GitHash() (string, error) {
+	ts.gitOnce.Do(ts.loadGitInfo)
+	return ts.gitHash, ts.gitErr
+}
+
+func (ts *TransitionScript) GitAuthor() (string, error) {
+	ts.gitOnce.Do(ts.loadGitInfo)
+	return ts.gitAuthor, ts.gitErr
+}
+
+func (ts *TransitionScript) GitDate() (string, error) {
+	ts.gitOnce.Do(ts.loadGitInfo)
+	return ts.gitDate, ts.gitErr
+}
+
+func (ts *TransitionScript) loadGitInfo() {
+	ts.gitHash, ts.gitAuthor, ts.gitDate, ts.gitErr = gitInfo(ts.AbsolutePath)
+}
+
 type CheckScript struct {
 	Path          string
 	AbsolutePath  string
+	DatabaseName  string
 	SchemaName    string
 	Name          string
 	NoTransaction bool
@@ -194,4 +250,19 @@ func (l *Layout) LayoutHash() (string, error) {
 		h.Write([]byte(cs))
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func gitInfo(absPath string) (hash, author, date string, err error) {
+	fileDir := filepath.Dir(absPath)
+	fileName := filepath.Base(absPath)
+	cmd := exec.Command("git", "-C", fileDir, "log", "-1", "--format=%H%n%an%n%aI", "--", fileName)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", "", "", fmt.Errorf("git log %s: %w", fileName, err)
+	}
+	lines := strings.SplitN(strings.TrimSpace(string(out)), "\n", 3)
+	if len(lines) < 3 {
+		return "", "", "", fmt.Errorf("git log %s: unexpected output: %s", fileName, string(out))
+	}
+	return lines[0], lines[1], lines[2], nil
 }

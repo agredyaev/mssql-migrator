@@ -22,18 +22,18 @@ func createTestLayout(t *testing.T) string {
 		os.WriteFile(path, []byte(content), 0644)
 	}
 
-	mustMkdir(dir, "reporting", "views")
-	mustMkdir(dir, "reporting", "procedures")
-	mustMkdir(dir, "reporting", "functions")
-	mustMkdir(dir, "reporting", "tables")
-	mustMkdir(dir, "reporting", "tables", "_migrations", "snapshot")
-	mustMkdir(dir, "reporting", "checks")
+	mustMkdir(dir, "dactests", "reporting", "views")
+	mustMkdir(dir, "dactests", "reporting", "procedures")
+	mustMkdir(dir, "dactests", "reporting", "functions")
+	mustMkdir(dir, "dactests", "reporting", "tables")
+	mustMkdir(dir, "dactests", "reporting", "tables", "_migrations", "snapshot")
+	mustMkdir(dir, "dactests", "reporting", "checks")
 
-	writeFile(filepath.Join(dir, "reporting", "views", "monthly.sql"), "CREATE OR ALTER VIEW monthly AS SELECT 1 AS n")
-	writeFile(filepath.Join(dir, "reporting", "procedures", "refresh.sql"), "CREATE OR ALTER PROC refresh AS SELECT 1")
-	writeFile(filepath.Join(dir, "reporting", "tables", "snapshot.sql"), "CREATE TABLE snapshot (id INT)")
-	writeFile(filepath.Join(dir, "reporting", "tables", "_migrations", "snapshot", "001_deadbee_add_name.sql"), "ALTER TABLE snapshot ADD name VARCHAR(100)")
-	writeFile(filepath.Join(dir, "reporting", "checks", "daily.sql"), "EXEC tSQLt.RunAll")
+	writeFile(filepath.Join(dir, "dactests", "reporting", "views", "monthly.sql"), "CREATE OR ALTER VIEW monthly AS SELECT 1 AS n")
+	writeFile(filepath.Join(dir, "dactests", "reporting", "procedures", "refresh.sql"), "CREATE OR ALTER PROC refresh AS SELECT 1")
+	writeFile(filepath.Join(dir, "dactests", "reporting", "tables", "snapshot.sql"), "CREATE TABLE snapshot (id INT)")
+	writeFile(filepath.Join(dir, "dactests", "reporting", "tables", "_migrations", "snapshot", "001_deadbee_add_name.sql"), "ALTER TABLE snapshot ADD name VARCHAR(100)")
+	writeFile(filepath.Join(dir, "dactests", "reporting", "checks", "daily.sql"), "EXEC tSQLt.RunAll")
 
 	return dir
 }
@@ -121,8 +121,8 @@ func TestScanInvalidRoot(t *testing.T) {
 
 func TestScanRejectsMalformedTransitionFileName(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "reporting", "tables", "_migrations", "snapshot"), 0755)
-	os.WriteFile(filepath.Join(dir, "reporting", "tables", "_migrations", "snapshot", "bad.sql"), []byte("ALTER TABLE"), 0644)
+	os.MkdirAll(filepath.Join(dir, "dactests", "reporting", "tables", "_migrations", "snapshot"), 0755)
+	os.WriteFile(filepath.Join(dir, "dactests", "reporting", "tables", "_migrations", "snapshot", "bad.sql"), []byte("ALTER TABLE"), 0644)
 
 	layout, err := NewScanner().Scan(context.Background(), dir)
 	if err != nil {
@@ -167,7 +167,7 @@ func TestLazyChecksum(t *testing.T) {
 
 func TestTransitionScaffoldDetection(t *testing.T) {
 	dir := t.TempDir()
-	migrationsDir := filepath.Join(dir, "reporting", "tables", "_migrations", "snapshot")
+	migrationsDir := filepath.Join(dir, "dactests", "reporting", "tables", "_migrations", "snapshot")
 	os.MkdirAll(migrationsDir, 0755)
 
 	os.WriteFile(filepath.Join(migrationsDir, "001_deadbee_add_name.sql"),
@@ -184,7 +184,7 @@ func TestTransitionScaffoldDetection(t *testing.T) {
 
 func TestTransitionNonScaffold(t *testing.T) {
 	dir := t.TempDir()
-	migrationsDir := filepath.Join(dir, "reporting", "tables", "_migrations", "snapshot")
+	migrationsDir := filepath.Join(dir, "dactests", "reporting", "tables", "_migrations", "snapshot")
 	os.MkdirAll(migrationsDir, 0755)
 
 	os.WriteFile(filepath.Join(migrationsDir, "001_deadbee_add_name.sql"),
@@ -213,13 +213,13 @@ func TestNormalizedKeys(t *testing.T) {
 
 func TestTransitionSorting(t *testing.T) {
 	dir := t.TempDir()
-	migrationsDir := filepath.Join(dir, "reporting", "tables", "_migrations", "t1")
+	migrationsDir := filepath.Join(dir, "dactests", "reporting", "tables", "_migrations", "t1")
 	if err := os.MkdirAll(migrationsDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	createSQLFile(t, dir, "reporting/tables/_migrations/t1/003_cafebabe_third.sql", "-- rmig: transition")
-	createSQLFile(t, dir, "reporting/tables/_migrations/t1/001_deadbeef_first.sql", "-- rmig: transition")
-	createSQLFile(t, dir, "reporting/tables/_migrations/t1/002_beef1234_second.sql", "-- rmig: transition")
+	createSQLFile(t, dir, "dactests/reporting/tables/_migrations/t1/003_cafebabe_third.sql", "-- rmig: transition")
+	createSQLFile(t, dir, "dactests/reporting/tables/_migrations/t1/001_deadbeef_first.sql", "-- rmig: transition")
+	createSQLFile(t, dir, "dactests/reporting/tables/_migrations/t1/002_beef1234_second.sql", "-- rmig: transition")
 
 	scanner := NewScanner()
 	layout, err := scanner.Scan(context.Background(), dir)
@@ -260,8 +260,8 @@ func TestHasExecutableTransition(t *testing.T) {
 
 func TestLayoutHash_Deterministic(t *testing.T) {
 	dir := t.TempDir()
-	createSQLFile(t, dir, "reporting/views/v1.sql", "CREATE VIEW reporting.v1 AS SELECT 1 AS x")
-	createSQLFile(t, dir, "reporting/views/v2.sql", "CREATE VIEW reporting.v2 AS SELECT 2 AS x")
+	createSQLFile(t, dir, "dactests/reporting/views/v1.sql", "CREATE VIEW reporting.v1 AS SELECT 1 AS x")
+	createSQLFile(t, dir, "dactests/reporting/views/v2.sql", "CREATE VIEW reporting.v2 AS SELECT 2 AS x")
 
 	scanner := NewScanner()
 	layout1, _ := scanner.Scan(context.Background(), dir)
