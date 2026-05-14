@@ -1,0 +1,70 @@
+package app
+
+import (
+	"context"
+	"fmt"
+
+	"reporting-db-migrations/internal/apply"
+	"reporting-db-migrations/internal/audit"
+	"reporting-db-migrations/internal/bus"
+	"reporting-db-migrations/internal/db"
+	"reporting-db-migrations/internal/diff"
+	"reporting-db-migrations/internal/driver"
+	"reporting-db-migrations/internal/driver/mssql"
+	"reporting-db-migrations/internal/engine"
+	"reporting-db-migrations/internal/fs"
+	"reporting-db-migrations/internal/lock"
+	"reporting-db-migrations/internal/log"
+	"reporting-db-migrations/internal/report"
+	"reporting-db-migrations/internal/scaffold"
+	"reporting-db-migrations/internal/types"
+)
+
+type loaderAdapter struct{}
+
+func (loaderAdapter) LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[string]string, error) {
+	return audit.LoadChecksums(ctx, conn, keys)
+}
+
+type applierAdapter struct {
+	exec *apply.Executor
+}
+
+func (a *applierAdapter) Execute(ctx context.Context, conn driver.Conn, plan types.MigrationPlan, layout fs.Layout, eb bus.EventBus) (*engine.ApplyResult, error) {
+	result, err := a.exec.Execute(ctx, conn, plan, layout, eb)
+	if err != nil {
+		return nil, err
+	}
+	return &engine.ApplyResult{Applied: result.Applied}, nil
+}
+
+func openConn(ctx context.Context, cfg types.Config) (driver.Conn, error) {
+	conn, err := mssql.Open(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("cannot connect to %s: %w", cfg.Server, err)
+	}
+	return conn, nil
+}
+
+func attachSubscribers(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.Logger) {
+	auditSub := audit.NewSubscriber(b, conn)
+	auditSub.SetErrorHandler(func(msg string) { logger.Warn("audit", msg) })
+
+	reportSub := report.NewSubscriber(b, cfg)
+	reportSub.SetErrorHandler(func(msg string) { logger.Warn("report", msg) })
+}
+
+func wireEngine(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.Logger) (*engine.Engine, error) {
+	return engine.New(
+		cfg,
+		b,
+		conn,
+		fs.NewScanner(),
+		db.NewInspector(),
+		loaderAdapter{},
+		diff.NewComputer(),
+		scaffold.New(),
+		&applierAdapter{exec: apply.New()},
+		lock.New(),
+	), nil
+}
