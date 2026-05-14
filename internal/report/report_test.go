@@ -15,7 +15,7 @@ func TestDiffComputed_WritesPlanJSON(t *testing.T) {
 	b := bus.New()
 	baseDir := t.TempDir()
 
-	s := NewSubscriber(b, baseDir, false)
+	NewSubscriber(b, types.Config{ReportDir: baseDir})
 
 	plan := &types.MigrationPlan{
 		Command:   "plan",
@@ -23,7 +23,7 @@ func TestDiffComputed_WritesPlanJSON(t *testing.T) {
 		Summary:   types.PlanSummary{ObjectCount: 3, CreateCount: 1, SkipCount: 2},
 	}
 
-	b.Publish(types.EventDiffComputed, types.DiffResult{Plan: plan})
+	b.Publish(types.EventDiffComputed, &types.DiffResult{Plan: plan})
 
 	planPath := filepath.Join(baseDir, ".plan.json")
 	data, err := os.ReadFile(planPath)
@@ -41,17 +41,15 @@ func TestDiffComputed_WritesPlanJSON(t *testing.T) {
 	if decoded.Summary.ObjectCount != 3 {
 		t.Errorf("object count = %d, want 3", decoded.Summary.ObjectCount)
 	}
-
-	_ = s // prevent unused
 }
 
 func TestRunFinished_WritesReportJSON(t *testing.T) {
 	b := bus.New()
 	baseDir := t.TempDir()
 
-	s := NewSubscriber(b, baseDir, false)
+	NewSubscriber(b, types.Config{ReportDir: baseDir})
 
-	b.Publish(types.EventRunFinished, types.RunFinished{
+	b.Publish(types.EventRunFinished, &types.RunFinished{
 		Command:  "migrate",
 		Result:   "completed",
 		ExitCode: 0,
@@ -70,6 +68,4 @@ func TestRunFinished_WritesReportJSON(t *testing.T) {
 	if decoded.Command != "migrate" {
 		t.Errorf("command = %q, want %q", decoded.Command, "migrate")
 	}
-
-	_ = s
 }
