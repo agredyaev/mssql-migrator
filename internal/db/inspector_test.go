@@ -8,56 +8,14 @@ import (
 
 	"reporting-db-migrations/internal/driver"
 	"reporting-db-migrations/internal/fs"
-	"reporting-db-migrations/internal/types"
+	"reporting-db-migrations/internal/testutil"
 )
-
-type mockRows struct {
-	columns []string
-	values  [][]any
-	pos     int
-	closed  bool
-}
-
-func newMockRows(cols []string, vals [][]any) *mockRows {
-	return &mockRows{columns: cols, values: vals, pos: -1}
-}
-
-func (m *mockRows) Scan(dest ...any) error {
-	if m.pos < 0 || m.pos >= len(m.values) {
-		return errors.New("no rows")
-	}
-	for i, v := range m.values[m.pos] {
-		switch d := dest[i].(type) {
-		case *string:
-			*d = v.(string)
-		case *int:
-			*d = v.(int)
-		case *bool:
-			*d = v.(bool)
-		}
-	}
-	return nil
-}
-
-func (m *mockRows) Next() bool {
-	m.pos++
-	return m.pos < len(m.values)
-}
-
-func (m *mockRows) Err() error { return nil }
-func (m *mockRows) Close() error {
-	if m.closed {
-		return errors.New("already closed")
-	}
-	m.closed = true
-	return nil
-}
 
 type mockConn struct {
 	queries    []mockQuery
 	queryCount atomic.Int32
 	queryErr   error
-	rows       map[string]*mockRows
+	rows       map[string]*testutil.MockRows
 }
 
 type mockQuery struct {
@@ -73,10 +31,10 @@ func (m *mockConn) QueryContext(ctx context.Context, query string, args ...any) 
 	}
 	key := query[:min(len(query), 30)]
 	if r, ok := m.rows[key]; ok {
-		r.pos = -1
+		r.Reset()
 		return r, nil
 	}
-	return newMockRows(nil, nil), nil
+	return testutil.NewMockRows(nil), nil
 }
 
 func (m *mockConn) ExecContext(ctx context.Context, query string, args ...any) (driver.Result, error) {
@@ -167,47 +125,6 @@ func TestInspectDifferentScopeNotCached(t *testing.T) {
 	qc := conn.queryCount.Load()
 	if qc < 2 {
 		t.Errorf("expected at least 2 queries, got %d", qc)
-	}
-}
-
-func TestChunkKeys_Empty(t *testing.T) {
-	chunks := types.ChunkKeys(nil, driver.DefaultMaxParameters)
-	if len(chunks) != 0 {
-		t.Error("expected empty chunks for nil")
-	}
-	chunks = types.ChunkKeys([]string{}, driver.DefaultMaxParameters)
-	if len(chunks) != 0 {
-		t.Error("expected empty chunks for empty slice")
-	}
-}
-
-func TestChunkKeys_LargeBatch(t *testing.T) {
-	keys := make([]string, 4200)
-	for i := range keys {
-		keys[i] = "k"
-	}
-	chunks := types.ChunkKeys(keys, driver.DefaultMaxParameters)
-	if len(chunks) < 2 {
-		t.Fatalf("expected at least 2 chunks for 4200 keys, got %d", len(chunks))
-	}
-	if len(chunks[0]) != 2100 {
-		t.Errorf("first chunk = %d, want 2100", len(chunks[0]))
-	}
-	if len(chunks[1]) != 2100 {
-		t.Errorf("second chunk = %d, want 2100", len(chunks[1]))
-	}
-}
-
-func TestBuildINQuery(t *testing.T) {
-	q, args := types.BuildINQuery("SELECT * FROM t WHERE c IN ({{list}})", "{{list}}", []string{"a", "b", "c"})
-	if len(args) != 3 {
-		t.Errorf("expected 3 args, got %d", len(args))
-	}
-	if args[0] != "a" || args[1] != "b" || args[2] != "c" {
-		t.Errorf("unexpected args: %v", args)
-	}
-	if len(q) == 0 {
-		t.Error("query is empty")
 	}
 }
 

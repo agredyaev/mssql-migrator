@@ -90,3 +90,42 @@ func TestExitCodesAreDistinct(t *testing.T) {
 		t.Fatalf("exit code collision detected: %d unique vs %d declared", len(seen), len(codes))
 	}
 }
+
+func TestChunkKeys_Empty(t *testing.T) {
+	if got := ChunkKeys(nil, 2100); got != nil {
+		t.Errorf("ChunkKeys(nil) = %v, want nil", got)
+	}
+	if got := ChunkKeys([]string{}, 2100); got != nil {
+		t.Errorf("ChunkKeys([]) = %v, want nil", got)
+	}
+}
+
+func TestChunkKeys_LargeBatch(t *testing.T) {
+	keys := make([]string, 4200)
+	for i := range keys {
+		keys[i] = "k"
+	}
+	chunks := ChunkKeys(keys, 2100)
+	if len(chunks) != 2 {
+		t.Fatalf("expected 2 chunks for 4200 keys, got %d", len(chunks))
+	}
+	if len(chunks[0]) != 2100 {
+		t.Errorf("first chunk = %d, want 2100", len(chunks[0]))
+	}
+	if len(chunks[1]) != 2100 {
+		t.Errorf("second chunk = %d, want 2100", len(chunks[1]))
+	}
+}
+
+func TestBuildINQuery(t *testing.T) {
+	q, args := BuildINQuery("SELECT * FROM t WHERE c IN ({{list}})", "{{list}}", []string{"a", "b", "c"})
+	if len(args) != 3 {
+		t.Errorf("expected 3 args, got %d", len(args))
+	}
+	if args[0] != "a" || args[1] != "b" || args[2] != "c" {
+		t.Errorf("unexpected args: %v", args)
+	}
+	if len(q) == 0 {
+		t.Error("query is empty")
+	}
+}

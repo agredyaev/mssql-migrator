@@ -138,7 +138,7 @@ func TestScanInvalidRoot(t *testing.T) {
 	}
 }
 
-func TestScanRejectsMalformedTransitionFileName(t *testing.T) {
+func TestScanIgnoresMalformedTransitionFileName(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "dactests", "reporting", "tables", "_migrations", "snapshot"), 0755)
 	os.WriteFile(filepath.Join(dir, "dactests", "reporting", "tables", "_migrations", "snapshot", "bad.sql"), []byte("ALTER TABLE"), 0644)
@@ -152,7 +152,7 @@ func TestScanRejectsMalformedTransitionFileName(t *testing.T) {
 	}
 }
 
-func TestLazyContentNotLoadedOnScan(t *testing.T) {
+func TestContentLoadedAfterScan(t *testing.T) {
 	dir := createTestLayout(t)
 	layout, _ := NewScanner().Scan(context.Background(), dir)
 
@@ -166,7 +166,7 @@ func TestLazyContentNotLoadedOnScan(t *testing.T) {
 	}
 }
 
-func TestLazyChecksum(t *testing.T) {
+func TestChecksumDeterministic(t *testing.T) {
 	dir := createTestLayout(t)
 	layout, _ := NewScanner().Scan(context.Background(), dir)
 

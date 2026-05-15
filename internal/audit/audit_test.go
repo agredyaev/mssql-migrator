@@ -8,46 +8,9 @@ import (
 
 	"reporting-db-migrations/internal/bus"
 	"reporting-db-migrations/internal/driver"
+	"reporting-db-migrations/internal/testutil"
 	"reporting-db-migrations/internal/types"
 )
-
-type mockRows struct {
-	values [][]any
-	pos    int
-	closed bool
-}
-
-func newMockRows(vals [][]any) *mockRows {
-	return &mockRows{values: vals, pos: -1}
-}
-
-func (m *mockRows) Scan(dest ...any) error {
-	if m.pos < 0 || m.pos >= len(m.values) {
-		return errors.New("no rows")
-	}
-	for i, v := range m.values[m.pos] {
-		switch d := dest[i].(type) {
-		case *string:
-			*d = v.(string)
-		case *int:
-			*d = v.(int)
-		case *bool:
-			*d = v.(bool)
-		}
-	}
-	return nil
-}
-
-func (m *mockRows) Next() bool {
-	m.pos++
-	return m.pos < len(m.values)
-}
-
-func (m *mockRows) Err() error { return nil }
-func (m *mockRows) Close() error {
-	m.closed = true
-	return nil
-}
 
 type mockConn struct {
 	queries      []mockQuery
@@ -55,7 +18,7 @@ type mockConn struct {
 	queryErr     error
 	execCount    atomic.Int32
 	execErr      error
-	rowsByPrefix map[string]*mockRows
+	rowsByPrefix map[string]*testutil.MockRows
 }
 
 type mockQuery struct {
@@ -71,11 +34,11 @@ func (m *mockConn) QueryContext(ctx context.Context, query string, args ...any) 
 	}
 	for prefix, r := range m.rowsByPrefix {
 		if len(query) >= len(prefix) && query[:len(prefix)] == prefix {
-			r.pos = -1
+			r.Reset()
 			return r, nil
 		}
 	}
-	return newMockRows(nil), nil
+	return testutil.NewMockRows(nil), nil
 }
 
 func (m *mockConn) ExecContext(ctx context.Context, query string, args ...any) (driver.Result, error) {
@@ -114,8 +77,8 @@ func TestLoadChecksumsConnectionError(t *testing.T) {
 
 func TestLoadChecksumsReturnsResults(t *testing.T) {
 	conn := &mockConn{
-		rowsByPrefix: map[string]*mockRows{
-			"SELECT": newMockRows([][]any{{"k1", "abc123"}}),
+		rowsByPrefix: map[string]*testutil.MockRows{
+			"SELECT": testutil.NewMockRows([][]any{{"k1", "abc123"}}),
 		},
 	}
 	result, err := LoadChecksums(context.Background(), conn, []string{"k1"})
@@ -210,8 +173,8 @@ func TestSubscriberOnObjectFailed_ExecutesSQL(t *testing.T) {
 
 func TestLoadAppliedMigrations_ReturnsMigrationKeys(t *testing.T) {
 	conn := &mockConn{
-		rowsByPrefix: map[string]*mockRows{
-			"SELECT": newMockRows([][]any{{"r/tables/t1/001_deadbeef_add_col.sql"}}),
+		rowsByPrefix: map[string]*testutil.MockRows{
+			"SELECT": testutil.NewMockRows([][]any{{"r/tables/t1/001_deadbeef_add_col.sql"}}),
 		},
 	}
 	result, err := LoadAppliedMigrations(context.Background(), conn, "r/tables/t1")
