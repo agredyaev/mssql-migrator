@@ -38,14 +38,11 @@ func TestComputeEmptyLayout(t *testing.T) {
 
 func TestComputeNewObject_ActionCreateObject(t *testing.T) {
 	computer := NewComputer()
+	obj := makeTempObject(t, "r/views/v1", "views", "CREATE VIEW r.v1 AS SELECT 1 AS x")
+	obj.SchemaName = "r"
+	obj.ObjectName = "v1"
 	layout := fs.Layout{
-		Objects: []*fs.Object{{
-			Path:          "r/views/v1.sql",
-			SchemaName:    "r",
-			Kind:          "views",
-			ObjectName:    "v1",
-			NormalizedKey: "r/views/v1",
-		}},
+		Objects: []*fs.Object{obj},
 	}
 	state := &db.State{
 		Schemas:      map[string]struct{}{},
@@ -102,12 +99,9 @@ func TestComputeUnchangedObject_ActionSkip(t *testing.T) {
 
 func TestComputeAdoptExisting(t *testing.T) {
 	computer := NewComputer()
+	obj := makeTempObject(t, "r/views/v1", "views", "CREATE VIEW r.v1 AS SELECT 1 AS x")
 	layout := fs.Layout{
-		Objects: []*fs.Object{{
-			Path:          "r/views/v1.sql",
-			NormalizedKey: "r/views/v1",
-			Kind:          "views",
-		}},
+		Objects: []*fs.Object{obj},
 	}
 	state := &db.State{
 		Objects: map[string]db.Object{
@@ -239,11 +233,9 @@ func TestComputeViewChanged_UpdateModule(t *testing.T) {
 
 func TestComputeNilState_AllCreate(t *testing.T) {
 	computer := NewComputer()
+	obj := makeTempObject(t, "r/views/v1", "views", "CREATE VIEW r.v1 AS SELECT 1 AS x")
 	layout := fs.Layout{
-		Objects: []*fs.Object{{
-			NormalizedKey: "r/views/v1",
-			Kind:          "views",
-		}},
+		Objects: []*fs.Object{obj},
 	}
 
 	plan, err := computer.Compute(context.Background(), layout, nil, nil)

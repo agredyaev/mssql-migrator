@@ -2,6 +2,7 @@ package diff
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"reporting-db-migrations/internal/db"
@@ -31,7 +32,7 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 	for _, obj := range layout.Objects {
 		cs, err := obj.Checksum()
 		if err != nil {
-			cs = ""
+			return nil, fmt.Errorf("checksum %s: %w", obj.NormalizedKey, err)
 		}
 		layoutChecksumMap[obj.NormalizedKey] = cs
 	}
@@ -53,9 +54,18 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 
 	for _, obj := range layout.Objects {
 		dbObj, exists := state.Objects[obj.NormalizedKey]
-		gitHash, _ := obj.GitHash()
-		gitAuthor, _ := obj.GitAuthor()
-		gitDate, _ := obj.GitDate()
+		gitHash, gitErr := obj.GitHash()
+		if gitErr != nil {
+			gitHash = ""
+		}
+		gitAuthor, gitErr := obj.GitAuthor()
+		if gitErr != nil {
+			gitAuthor = ""
+		}
+		gitDate, gitErr := obj.GitDate()
+		if gitErr != nil {
+			gitDate = ""
+		}
 		plannedObj := types.PlannedObject{
 			ObjectPath:    obj.Path,
 			DatabaseName:  obj.DatabaseName,
@@ -89,7 +99,12 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 		default:
 			changedCount++
 			plannedObj.Checksum = layoutChecksumMap[obj.NormalizedKey]
-			c.handleChanged(obj, dbObj, &plannedObj, plan, state, transitionsByKey, checksums, &blockedCount)
+			c.handleChanged(changeCtx{
+				obj: obj, dbObj: dbObj, plannedObj: &plannedObj,
+				plan: plan, state: state,
+				transitionsByKey: transitionsByKey, checksums: checksums,
+				blockedCount: &blockedCount,
+			})
 		}
 
 		plan.Objects = append(plan.Objects, plannedObj)
@@ -114,51 +129,54 @@ func checksumsMatch(layoutChecksumMap map[string]string, key, prior string) bool
 	return current != "" && current == prior
 }
 
-func (c *Computer) handleChanged(
-	obj *fs.Object, dbObj db.Object,
-	plannedObj *types.PlannedObject,
-	plan *types.MigrationPlan,
-	state *db.State,
-	transitionsByKey map[string][]*fs.TransitionScript,
-	checksums map[string]string,
-	blockedCount *int,
-) {
+type changeCtx struct {
+	obj              *fs.Object
+	dbObj            db.Object
+	plannedObj       *types.PlannedObject
+	plan             *types.MigrationPlan
+	state            *db.State
+	transitionsByKey map[string][]*fs.TransitionScript
+	checksums        map[string]string
+	blockedCount     *int
+}
+
+func (c *Computer) handleChanged(ctx changeCtx) {
 	switch {
-	case obj.Kind == "tables":
-		transitions := transitionsByKey[obj.NormalizedKey]
+	case ctx.obj.Kind == "tables":
+		transitions := ctx.transitionsByKey[ctx.obj.NormalizedKey]
 		if len(transitions) == 0 {
-			plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
-			plan.Blocked = true
-			plan.Blockers = append(plan.Blockers, "table "+obj.NormalizedKey+" changed but has no non-scaffold transition scripts")
-			*blockedCount++
+			ctx.plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
+			ctx.plan.Blocked = true
+			ctx.plan.Blockers = append(ctx.plan.Blockers, "table "+ctx.obj.NormalizedKey+" changed but has no non-scaffold transition scripts")
+			*ctx.blockedCount++
 		} else {
-			plannedObj.PlannedAction = types.ActionReprocessChanged
+			ctx.plannedObj.PlannedAction = types.ActionReprocessChanged
 			for _, ts := range transitions {
-				plannedObj.TransitionPaths = append(plannedObj.TransitionPaths, ts.Path)
+				ctx.plannedObj.TransitionPaths = append(ctx.plannedObj.TransitionPaths, ts.Path)
 			}
 		}
 
-	case obj.Kind == "triggers" && obj.ParentName != "":
-		parentKey := types.NormalizedKey(obj.SchemaName, "tables", obj.ParentName)
-		if _, ok := state.Objects[parentKey]; !ok {
-			plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
-			plan.Blocked = true
-			plan.Blockers = append(plan.Blockers, "trigger "+obj.NormalizedKey+" parent table "+parentKey+" not found")
-			*blockedCount++
-		} else if checksums[parentKey] == "" {
-			plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
-			plan.Blocked = true
-			plan.Blockers = append(plan.Blockers, "trigger "+obj.NormalizedKey+" parent table "+parentKey+" is changing")
-			*blockedCount++
+	case ctx.obj.Kind == "triggers" && ctx.obj.ParentName != "":
+		parentKey := types.NormalizedKey(ctx.obj.SchemaName, "tables", ctx.obj.ParentName)
+		if _, ok := ctx.state.Objects[parentKey]; !ok {
+			ctx.plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
+			ctx.plan.Blocked = true
+			ctx.plan.Blockers = append(ctx.plan.Blockers, "trigger "+ctx.obj.NormalizedKey+" parent table "+parentKey+" not found")
+			*ctx.blockedCount++
+		} else if ctx.checksums[parentKey] == "" {
+			ctx.plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
+			ctx.plan.Blocked = true
+			ctx.plan.Blockers = append(ctx.plan.Blockers, "trigger "+ctx.obj.NormalizedKey+" parent table "+parentKey+" is changing")
+			*ctx.blockedCount++
 		} else {
-			plannedObj.PlannedAction = types.ActionUpdateExistingModule
+			ctx.plannedObj.PlannedAction = types.ActionUpdateExistingModule
 		}
 
 	default:
-		if types.IsModuleKind(obj.Kind) {
-			plannedObj.PlannedAction = types.ActionUpdateExistingModule
+		if types.IsModuleKind(ctx.obj.Kind) {
+			ctx.plannedObj.PlannedAction = types.ActionUpdateExistingModule
 		} else {
-			plannedObj.PlannedAction = types.ActionReprocessChanged
+			ctx.plannedObj.PlannedAction = types.ActionReprocessChanged
 		}
 	}
 }
