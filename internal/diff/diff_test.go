@@ -407,8 +407,36 @@ func makeTempObject(t *testing.T, key, kind, content string) *fs.Object {
 	}
 	return &fs.Object{
 		Path:          relPath,
-		AbsolutePath:  absPath,
+		CachedFile:    fs.CachedFile{AbsPath: absPath},
 		NormalizedKey: key,
 		Kind:          kind,
+	}
+}
+
+func TestCompute_OrphanedDBObject_NotInLayout(t *testing.T) {
+	computer := NewComputer()
+	layout := fs.Layout{
+		Schemas: []fs.Schema{{Name: "r", NormalizedName: "r"}},
+		Objects: []*fs.Object{},
+	}
+	state := &db.State{
+		Schemas: map[string]struct{}{"r": {}},
+		Objects: map[string]db.Object{
+			"r/views/orphan": {SchemaName: "r", Kind: "views", ObjectName: "orphan"},
+		},
+	}
+	checksums := map[string]string{}
+
+	plan, err := computer.Compute(context.Background(), layout, state, checksums)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if plan.Blocked {
+		t.Error("orphaned DB object should not block the plan")
+	}
+	for _, obj := range plan.Objects {
+		if obj.NormalizedKey == "r/views/orphan" {
+			t.Error("orphaned DB object should not appear in plan objects")
+		}
 	}
 }

@@ -385,14 +385,14 @@ func TestValidateConfig_MissingRequired(t *testing.T) {
 }
 
 func TestRunWithLookup_InvalidFlags(t *testing.T) {
-	code := runWithLookup([]string{"rmig", "--unknown"}, nil)
+	code := runWithLookup([]string{"rmig", "--unknown"}, nil, nil)
 	if code != types.ExitInvalidInput {
 		t.Errorf("exit code = %d, want %d (ExitInvalidInput)", code, types.ExitInvalidInput)
 	}
 }
 
 func TestRunWithLookup_UnknownCommand(t *testing.T) {
-	code := runWithLookup([]string{"rmig", "unknown"}, nil)
+	code := runWithLookup([]string{"rmig", "unknown"}, nil, nil)
 	if code != types.ExitInvalidInput {
 		t.Errorf("exit code = %d, want %d (ExitInvalidInput)", code, types.ExitInvalidInput)
 	}
@@ -401,7 +401,7 @@ func TestRunWithLookup_UnknownCommand(t *testing.T) {
 func TestRunWithLookup_MissingRequiredConfig(t *testing.T) {
 	code := runWithLookup([]string{"rmig", "plan"}, func(k string) (string, bool) {
 		return "", false
-	})
+	}, nil)
 	if code != types.ExitConfigError {
 		t.Errorf("exit code = %d, want %d (ExitConfigError)", code, types.ExitConfigError)
 	}
@@ -410,7 +410,7 @@ func TestRunWithLookup_MissingRequiredConfig(t *testing.T) {
 func TestRunWithLookup_MissingEnvFile(t *testing.T) {
 	code := runWithLookup([]string{"rmig", "--env", "/nonexistent/.env", "plan"}, func(k string) (string, bool) {
 		return "", false
-	})
+	}, nil)
 	if code != types.ExitConfigError {
 		t.Errorf("exit code = %d, want %d (ExitConfigError)", code, types.ExitConfigError)
 	}

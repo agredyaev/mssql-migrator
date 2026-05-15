@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"sync"
 
 	"reporting-db-migrations/internal/apply"
 	"reporting-db-migrations/internal/bus"
@@ -24,6 +25,9 @@ type Engine struct {
 	scaffold Scaffolder
 	applier  Applier
 	locker   lock.Locker
+
+	bootstrapOnce sync.Once
+	bootstrapErr  error
 }
 
 type Scanner interface {
@@ -91,12 +95,6 @@ func (e *Engine) Migrate(ctx context.Context) error {
 		return err
 	}
 
-	if err := e.locker.Acquire(ctx, e.conn, e.cfg.LockTimeout); err != nil {
-		e.publishRunFailed(ctx, "migrate", err)
-		return err
-	}
-	defer e.locker.Release(ctx, e.conn)
-
 	e.bus.Publish(ctx, types.EventDiffComputed, &types.DiffResult{Plan: plan})
 
 	if plan.Blocked {
@@ -107,6 +105,12 @@ func (e *Engine) Migrate(ctx context.Context) error {
 		e.publishRunFailed(ctx, "migrate", errors.ErrPlanBlocked)
 		return errors.ErrPlanBlocked
 	}
+
+	if err := e.locker.Acquire(ctx, e.conn, e.cfg.LockTimeout); err != nil {
+		e.publishRunFailed(ctx, "migrate", err)
+		return err
+	}
+	defer e.locker.Release(ctx, e.conn)
 
 	if err := e.filterAppliedMigrations(ctx, plan); err != nil {
 		e.publishRunFailed(ctx, "migrate", err)
@@ -206,8 +210,11 @@ func (e *Engine) executeLocked(ctx context.Context, command string) error {
 }
 
 func (e *Engine) runPlan(ctx context.Context) (*types.MigrationPlan, fs.Layout, *db.State, error) {
-	if err := e.load.EnsureTables(ctx, e.conn); err != nil {
-		return nil, fs.Layout{}, nil, err
+	e.bootstrapOnce.Do(func() {
+		e.bootstrapErr = e.load.EnsureTables(ctx, e.conn)
+	})
+	if e.bootstrapErr != nil {
+		return nil, fs.Layout{}, nil, e.bootstrapErr
 	}
 
 	layout, err := e.fs.Scan(ctx, e.cfg.SQLRoot)

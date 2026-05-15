@@ -246,11 +246,8 @@ func TestMigrate_BlockedPlan_CallsScaffoldNotApply(t *testing.T) {
 	if !scaff.ensured {
 		t.Error("expected scaffold.Ensure to be called")
 	}
-	if !lock.acquired {
-		t.Error("expected lock to be acquired")
-	}
-	if !lock.released {
-		t.Error("expected lock to be released")
+	if lock.acquired {
+		t.Error("lock should NOT be acquired for blocked plan")
 	}
 	if appl.executed {
 		t.Error("apply should NOT be called for blocked plan")

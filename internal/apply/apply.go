@@ -132,6 +132,8 @@ func (e *Executor) collectStatements(plan types.MigrationPlan, objIndex map[stri
 			if len(obj.TransitionPaths) > 0 {
 				continue
 			}
+			result.Skipped++
+			continue
 		}
 
 		fsObj := objIndex[obj.SourceFile]
@@ -200,16 +202,20 @@ func (k kindSorter) Less(i, j int) bool {
 
 func newObjectEvent(stmt batchedStmt) *types.ObjectEvent {
 	return &types.ObjectEvent{
-		ObjectPath:    stmt.sourceFile,
-		SchemaName:    stmt.schemaName,
-		Kind:          stmt.kind,
-		ObjectName:    stmt.objectName,
-		NormalizedKey: stmt.normalizedKey,
-		Checksum:      stmt.checksum,
-		GitHash:       stmt.gitHash,
-		GitAuthor:     stmt.gitAuthor,
-		GitDate:       stmt.gitDate,
-		RecordKind:    stmt.recordKind,
+		ObjectRef: types.ObjectRef{
+			ObjectPath:    stmt.sourceFile,
+			SchemaName:    stmt.schemaName,
+			Kind:          stmt.kind,
+			ObjectName:    stmt.objectName,
+			NormalizedKey: stmt.normalizedKey,
+		},
+		Checksum: stmt.checksum,
+		GitInfo: types.GitInfo{
+			GitHash:   stmt.gitHash,
+			GitAuthor: stmt.gitAuthor,
+			GitDate:   stmt.gitDate,
+		},
+		RecordKind: stmt.recordKind,
 	}
 }
 
@@ -275,13 +281,14 @@ func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, pla
 			if err != nil {
 				result.Failed++
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", tp, err.Error()))
-				b.Publish(ctx, types.EventObjectFailed, newFailureEvent(newMigrationStmt(obj, tp, "", "", ""), err.Error()))
+				b.Publish(ctx, types.EventObjectFailed, newFailureEvent(newMigrationStmt(obj, tp, "", "", "", ""), err.Error()))
 				continue
 			}
 
 			gitHash, _ := ts.GitHash()
 			gitAuthor, _ := ts.GitAuthor()
 			gitDate, _ := ts.GitDate()
+			cs, _ := ts.Checksum()
 
 			sql := beginTransactionSQL + "\n" + content + "\n" + commitTransactionSQL
 			if _, err := conn.ExecContext(ctx, sql); err != nil {
@@ -290,23 +297,23 @@ func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, pla
 				}
 				result.Failed++
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", tp, err.Error()))
-				b.Publish(ctx, types.EventObjectFailed, newFailureEvent(newMigrationStmt(obj, tp, gitHash, gitAuthor, gitDate), err.Error()))
+				b.Publish(ctx, types.EventObjectFailed, newFailureEvent(newMigrationStmt(obj, tp, cs, gitHash, gitAuthor, gitDate), err.Error()))
 				continue
 			}
 			result.Applied++
-			b.Publish(ctx, types.EventObjectApplied, newObjectEvent(newMigrationStmt(obj, tp, gitHash, gitAuthor, gitDate)))
+			b.Publish(ctx, types.EventObjectApplied, newObjectEvent(newMigrationStmt(obj, tp, cs, gitHash, gitAuthor, gitDate)))
 		}
 	}
 }
 
-func newMigrationStmt(obj types.PlannedObject, tp, gitHash, gitAuthor, gitDate string) batchedStmt {
+func newMigrationStmt(obj types.PlannedObject, tp, checksum, gitHash, gitAuthor, gitDate string) batchedStmt {
 	return batchedStmt{
-		normalizedKey: obj.NormalizedKey,
+		normalizedKey: tp,
 		kind:          obj.Kind,
 		schemaName:    obj.SchemaName,
 		objectName:    obj.ObjectName,
 		sourceFile:    tp,
-		checksum:      obj.Checksum,
+		checksum:      checksum,
 		gitHash:       gitHash,
 		gitAuthor:     gitAuthor,
 		gitDate:       gitDate,

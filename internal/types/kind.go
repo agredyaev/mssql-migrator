@@ -29,10 +29,6 @@ func IsModuleKind(kind string) bool {
 	return ok && !tx
 }
 
-func IsNoTransactionKind(kind string) bool {
-	return IsModuleKind(kind)
-}
-
 func IsTransactionalKind(kind string) bool {
 	tx, ok := kindIsTransactional[kind]
 	return ok && tx

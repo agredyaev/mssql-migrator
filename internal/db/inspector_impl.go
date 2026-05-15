@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -123,7 +124,7 @@ func (d *inspector) readState(ctx context.Context, conn driver.Conn, scope fs.La
 func (d *inspector) querySchemas(ctx context.Context, conn driver.Conn, schemaNames []string) (map[string]struct{}, error) {
 	result := make(map[string]struct{})
 	for _, chunk := range types.ChunkKeys(schemaNames, driver.DefaultMaxParameters) {
-		q, args := types.BuildINQuery(schemaSQL, "{{schema_list}}", chunk)
+		q, args := types.BuildINQuery(schemaSQL, "{{schema_list}}", chunk, 1)
 		rows, err := conn.QueryContext(ctx, q, args...)
 		if err != nil {
 			return nil, err
@@ -243,23 +244,29 @@ func scopeObjectNamesBySchema(scope fs.Layout, kind string) map[string][]string 
 }
 
 func scopeKey(scope fs.Layout) string {
-	parts := make([]string, 0, len(scope.Schemas)+len(scope.Objects))
+	parts := make([]string, 0, len(scope.Schemas)+len(scope.Objects)+len(scope.Transitions)+len(scope.Checks))
 	for _, s := range scope.Schemas {
 		parts = append(parts, "s:"+s.NormalizedName)
 	}
 	for _, obj := range scope.Objects {
 		parts = append(parts, "o:"+obj.NormalizedKey)
 	}
+	for _, ts := range scope.Transitions {
+		parts = append(parts, "t:"+ts.NormalizedKey)
+	}
+	for _, cs := range scope.Checks {
+		parts = append(parts, "c:"+cs.Path)
+	}
 	sort.Strings(parts)
 	return strings.Join(parts, "|")
 }
 
 func buildDualINQuery(template, placeholder1 string, keys1 []string, placeholder2 string, keys2 []string) (string, []any) {
-	q, args1 := types.BuildINQuery(template, placeholder1, keys1)
+	q, args1 := types.BuildINQuery(template, placeholder1, keys1, 1)
 	parts := make([]string, len(keys2))
 	args := make([]any, len(keys2))
 	for i, k := range keys2 {
-		parts[i] = "?"
+		parts[i] = fmt.Sprintf("@p%d", len(keys1)+1+i)
 		args[i] = k
 	}
 	query := strings.Replace(q, placeholder2, strings.Join(parts, ", "), -1)

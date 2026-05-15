@@ -218,6 +218,23 @@ func TestTransitionNonScaffold(t *testing.T) {
 	}
 }
 
+func TestTransitionScaffoldCRLF(t *testing.T) {
+	dir := t.TempDir()
+	migrationsDir := filepath.Join(dir, "dactests", "reporting", "tables", "_migrations", "snapshot")
+	os.MkdirAll(migrationsDir, 0755)
+
+	os.WriteFile(filepath.Join(migrationsDir, "001_deadbee_add_name.sql"),
+		[]byte("-- rmig: transition-scaffold\r\n-- Replace this scaffold\r\n"), 0644)
+
+	layout, _ := NewScanner().Scan(context.Background(), dir)
+	if len(layout.Transitions) != 1 {
+		t.Fatalf("expected 1 transition")
+	}
+	if !layout.Transitions[0].Scaffold {
+		t.Error("expected scaffold flag to be true for CRLF file")
+	}
+}
+
 func TestNormalizedKeys(t *testing.T) {
 	dir := createTestLayout(t)
 	layout, _ := NewScanner().Scan(context.Background(), dir)

@@ -9,7 +9,6 @@ import (
 	"reporting-db-migrations/internal/db"
 	"reporting-db-migrations/internal/diff"
 	"reporting-db-migrations/internal/driver"
-	"reporting-db-migrations/internal/driver/mssql"
 	"reporting-db-migrations/internal/engine"
 	"reporting-db-migrations/internal/fs"
 	"reporting-db-migrations/internal/lock"
@@ -31,10 +30,6 @@ func (loaderAdapter) LoadChecksums(ctx context.Context, conn driver.Conn, keys [
 
 func (loaderAdapter) LoadAllAppliedMigrations(ctx context.Context, conn driver.Conn) (map[string]bool, error) {
 	return audit.LoadAllAppliedMigrations(ctx, conn)
-}
-
-func openDatabase(ctx context.Context, cfg types.Config) (driver.Conn, error) {
-	return mssql.Open(ctx, cfg)
 }
 
 func attachSubscribers(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.Logger) {

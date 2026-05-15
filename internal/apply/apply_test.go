@@ -5,54 +5,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"reporting-db-migrations/internal/bus"
-	"reporting-db-migrations/internal/driver"
 	"reporting-db-migrations/internal/fs"
+	"reporting-db-migrations/internal/testutil"
 	"reporting-db-migrations/internal/types"
 )
 
-type mockConn struct {
-	execErr     error
-	failN       int
-	execCount   int
-	execQueries []string
-	queryCalls  []string
-}
-
-func (m *mockConn) QueryContext(ctx context.Context, query string, args ...any) (driver.Rows, error) {
-	m.queryCalls = append(m.queryCalls, query)
-	return &mockRows{}, nil
-}
-func (m *mockConn) ExecContext(ctx context.Context, query string, args ...any) (driver.Result, error) {
-	m.execCount++
-	if m.failN > 0 && m.execCount <= m.failN {
-		return nil, fmt.Errorf("injected error after %d calls", m.execCount)
-	}
-	if m.execErr != nil {
-		return nil, m.execErr
-	}
-	m.execQueries = append(m.execQueries, query)
-	return &mockResult{}, nil
-}
-func (m *mockConn) Ping(ctx context.Context) error { return nil }
-func (m *mockConn) Close() error                   { return nil }
-
-type mockRows struct{}
-
-func (m *mockRows) Scan(dest ...any) error { return nil }
-func (m *mockRows) Next() bool             { return false }
-func (m *mockRows) Err() error             { return nil }
-func (m *mockRows) Close() error           { return nil }
-
-type mockResult struct{}
-
-func (m *mockResult) RowsAffected() (int64, error) { return 0, nil }
-
 func TestExecute_EmptyPlan(t *testing.T) {
 	e := New()
-	mock := &mockConn{}
+	mock := &testutil.MockConn{}
 	plan := types.MigrationPlan{}
 	layout := fs.Layout{}
 	b := bus.New()
@@ -68,7 +32,7 @@ func TestExecute_EmptyPlan(t *testing.T) {
 
 func TestExecute_BlockedPlan(t *testing.T) {
 	e := New()
-	mock := &mockConn{}
+	mock := &testutil.MockConn{}
 	plan := types.MigrationPlan{Blocked: true}
 	layout := fs.Layout{}
 	b := bus.New()
@@ -81,7 +45,7 @@ func TestExecute_BlockedPlan(t *testing.T) {
 
 func TestExecute_CreateSchema(t *testing.T) {
 	e := New()
-	mock := &mockConn{}
+	mock := &testutil.MockConn{}
 	plan := types.MigrationPlan{
 		Schemas: []types.PlannedSchema{{
 			SchemaName: "r",
@@ -98,14 +62,14 @@ func TestExecute_CreateSchema(t *testing.T) {
 	if result.Applied != 1 {
 		t.Errorf("applied = %d, want 1", result.Applied)
 	}
-	if len(mock.execQueries) != 1 {
-		t.Fatalf("expected 1 exec call, got %d", len(mock.execQueries))
+	if len(mock.ExecQueries) != 1 {
+		t.Fatalf("expected 1 exec call, got %d", len(mock.ExecQueries))
 	}
 }
 
 func TestExecute_SchemaExistsSkip(t *testing.T) {
 	e := New()
-	mock := &mockConn{}
+	mock := &testutil.MockConn{}
 	plan := types.MigrationPlan{
 		Schemas: []types.PlannedSchema{{
 			SchemaName: "r",
@@ -122,14 +86,14 @@ func TestExecute_SchemaExistsSkip(t *testing.T) {
 	if result.Skipped != 1 {
 		t.Errorf("skipped = %d, want 1", result.Skipped)
 	}
-	if len(mock.execQueries) != 0 {
-		t.Errorf("expected 0 exec calls, got %d", len(mock.execQueries))
+	if len(mock.ExecQueries) != 0 {
+		t.Errorf("expected 0 exec calls, got %d", len(mock.ExecQueries))
 	}
 }
 
 func TestExecute_CreateObject(t *testing.T) {
 	e := New()
-	mock := &mockConn{}
+	mock := &testutil.MockConn{}
 	baseDir := t.TempDir()
 
 	sqlPath := filepath.Join(baseDir, "r", "views", "v1.sql")
@@ -142,7 +106,7 @@ func TestExecute_CreateObject(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{{
-			AbsolutePath:  sqlPath,
+			CachedFile: fs.CachedFile{AbsPath: sqlPath},
 			Path:          "r/views/v1.sql",
 			NormalizedKey: "r/views/v1",
 			Kind:          "views",
@@ -152,10 +116,9 @@ func TestExecute_CreateObject(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			NormalizedKey: "r/views/v1",
+			ObjectRef:    types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views"},
 			PlannedAction: types.ActionCreateObject,
 			SourceFile:    "r/views/v1.sql",
-			Kind:          "views",
 		}},
 	}
 	b := bus.New()
@@ -167,14 +130,14 @@ func TestExecute_CreateObject(t *testing.T) {
 	if result.Applied != 1 {
 		t.Errorf("applied = %d, want 1", result.Applied)
 	}
-	if len(mock.execQueries) == 0 {
+	if len(mock.ExecQueries) == 0 {
 		t.Fatal("expected at least 1 exec call")
 	}
 }
 
 func TestExecute_SkipUnchanged(t *testing.T) {
 	e := New()
-	mock := &mockConn{}
+	mock := &testutil.MockConn{}
 	layout := fs.Layout{
 		Objects: []*fs.Object{{
 			Path:          "r/views/v1.sql",
@@ -183,7 +146,7 @@ func TestExecute_SkipUnchanged(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			NormalizedKey: "r/views/v1",
+			ObjectRef:    types.ObjectRef{NormalizedKey: "r/views/v1"},
 			PlannedAction: types.ActionSkipUnchanged,
 			SourceFile:    "r/views/v1.sql",
 		}},
@@ -197,14 +160,14 @@ func TestExecute_SkipUnchanged(t *testing.T) {
 	if result.Skipped != 1 {
 		t.Errorf("skipped = %d, want 1", result.Skipped)
 	}
-	if len(mock.execQueries) != 0 {
-		t.Errorf("expected 0 exec calls, got %d", len(mock.execQueries))
+	if len(mock.ExecQueries) != 0 {
+		t.Errorf("expected 0 exec calls, got %d", len(mock.ExecQueries))
 	}
 }
 
 func TestExecute_UpdateModule(t *testing.T) {
 	e := New()
-	mock := &mockConn{}
+	mock := &testutil.MockConn{}
 	baseDir := t.TempDir()
 
 	sqlPath := filepath.Join(baseDir, "r", "views", "v1.sql")
@@ -217,7 +180,7 @@ func TestExecute_UpdateModule(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{{
-			AbsolutePath:  sqlPath,
+			CachedFile: fs.CachedFile{AbsPath: sqlPath},
 			Path:          "r/views/v1.sql",
 			NormalizedKey: "r/views/v1",
 			Kind:          "views",
@@ -225,10 +188,9 @@ func TestExecute_UpdateModule(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			NormalizedKey: "r/views/v1",
+			ObjectRef:    types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views"},
 			PlannedAction: types.ActionUpdateExistingModule,
 			SourceFile:    "r/views/v1.sql",
-			Kind:          "views",
 		}},
 	}
 	b := bus.New()
@@ -244,11 +206,11 @@ func TestExecute_UpdateModule(t *testing.T) {
 
 func TestExecute_AdoptExisting(t *testing.T) {
 	e := New()
-	mock := &mockConn{}
+	mock := &testutil.MockConn{}
 	layout := fs.Layout{}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			NormalizedKey: "r/tables/t1",
+			ObjectRef:    types.ObjectRef{NormalizedKey: "r/tables/t1"},
 			PlannedAction: types.ActionAdoptExisting,
 		}},
 	}
@@ -261,8 +223,8 @@ func TestExecute_AdoptExisting(t *testing.T) {
 	if result.Skipped != 1 {
 		t.Errorf("skipped = %d, want 1", result.Skipped)
 	}
-	if len(mock.execQueries) != 0 {
-		t.Errorf("expected 0 exec calls, got %d", len(mock.execQueries))
+	if len(mock.ExecQueries) != 0 {
+		t.Errorf("expected 0 exec calls, got %d", len(mock.ExecQueries))
 	}
 }
 
@@ -277,7 +239,7 @@ func TestExecute_ExecError(t *testing.T) {
 	}
 	b := bus.New()
 
-	result, err := e.Execute(context.Background(), &mockConn{execErr: fmt.Errorf("boom")}, plan, layout, b)
+	result, err := e.Execute(context.Background(), &testutil.MockConn{ExecErr: fmt.Errorf("boom")}, plan, layout, b)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -291,7 +253,7 @@ func TestExecute_ExecError(t *testing.T) {
 
 func TestExecute_NonTxObjectsExecutedIndividually(t *testing.T) {
 	e := New()
-	mock := &mockConn{}
+	mock := &testutil.MockConn{}
 	baseDir := t.TempDir()
 
 	createFile := func(rel string, content string) {
@@ -309,16 +271,16 @@ func TestExecute_NonTxObjectsExecutedIndividually(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{
-			{AbsolutePath: filepath.Join(baseDir, "r/views/v1.sql"), Path: "r/views/v1.sql", NormalizedKey: "r/views/v1", Kind: "views"},
-			{AbsolutePath: filepath.Join(baseDir, "r/views/v2.sql"), Path: "r/views/v2.sql", NormalizedKey: "r/views/v2", Kind: "views"},
-			{AbsolutePath: filepath.Join(baseDir, "r/procedures/p1.sql"), Path: "r/procedures/p1.sql", NormalizedKey: "r/procedures/p1", Kind: "procedures"},
+			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v1.sql")}, Path: "r/views/v1.sql", NormalizedKey: "r/views/v1", Kind: "views"},
+			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v2.sql")}, Path: "r/views/v2.sql", NormalizedKey: "r/views/v2", Kind: "views"},
+			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/procedures/p1.sql")}, Path: "r/procedures/p1.sql", NormalizedKey: "r/procedures/p1", Kind: "procedures"},
 		},
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{
-			{NormalizedKey: "r/views/v1", PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v1.sql", Kind: "views"},
-			{NormalizedKey: "r/views/v2", PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v2.sql", Kind: "views"},
-			{NormalizedKey: "r/procedures/p1", PlannedAction: types.ActionUpdateExistingModule, SourceFile: "r/procedures/p1.sql", Kind: "procedures"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v1.sql"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v2", Kind: "views"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v2.sql"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/procedures/p1", Kind: "procedures"}, PlannedAction: types.ActionUpdateExistingModule, SourceFile: "r/procedures/p1.sql"},
 		},
 	}
 	b := bus.New()
@@ -330,8 +292,8 @@ func TestExecute_NonTxObjectsExecutedIndividually(t *testing.T) {
 	if result.Applied != 3 {
 		t.Errorf("applied = %d, want 3", result.Applied)
 	}
-	if len(mock.execQueries) != 3 {
-		t.Errorf("expected 3 individual exec calls for non-tx objects, got %d: %v", len(mock.execQueries), mock.execQueries)
+	if len(mock.ExecQueries) != 3 {
+		t.Errorf("expected 3 individual exec calls for non-tx objects, got %d: %v", len(mock.ExecQueries), mock.ExecQueries)
 	}
 }
 
@@ -353,19 +315,19 @@ func TestExecute_NonTxFailDoesNotAffectOthers(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{
-			{AbsolutePath: filepath.Join(baseDir, "r/views/v1.sql"), Path: "r/views/v1.sql", NormalizedKey: "r/views/v1", Kind: "views"},
-			{AbsolutePath: filepath.Join(baseDir, "r/views/v2.sql"), Path: "r/views/v2.sql", NormalizedKey: "r/views/v2", Kind: "views"},
+			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v1.sql")}, Path: "r/views/v1.sql", NormalizedKey: "r/views/v1", Kind: "views"},
+			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v2.sql")}, Path: "r/views/v2.sql", NormalizedKey: "r/views/v2", Kind: "views"},
 		},
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{
-			{NormalizedKey: "r/views/v1", PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v1.sql", Kind: "views"},
-			{NormalizedKey: "r/views/v2", PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v2.sql", Kind: "views"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v1.sql"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v2", Kind: "views"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v2.sql"},
 		},
 	}
 	b := bus.New()
 
-	mock := &mockConn{failN: 1}
+	mock := &testutil.MockConn{FailN: 1}
 	result, err := e.Execute(context.Background(), mock, plan, layout, b)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -380,7 +342,7 @@ func TestExecute_NonTxFailDoesNotAffectOthers(t *testing.T) {
 
 func TestExecute_TxBatchWrappedInTransaction(t *testing.T) {
 	e := New()
-	mock := &mockConn{}
+	mock := &testutil.MockConn{}
 	baseDir := t.TempDir()
 
 	createFile := func(rel string, content string) {
@@ -397,14 +359,14 @@ func TestExecute_TxBatchWrappedInTransaction(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{
-			{AbsolutePath: filepath.Join(baseDir, "r/tables/t1.sql"), Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
-			{AbsolutePath: filepath.Join(baseDir, "r/tables/t2.sql"), Path: "r/tables/t2.sql", NormalizedKey: "r/tables/t2", Kind: "tables"},
+			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t1.sql")}, Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
+			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t2.sql")}, Path: "r/tables/t2.sql", NormalizedKey: "r/tables/t2", Kind: "tables"},
 		},
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{
-			{NormalizedKey: "r/tables/t1", PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t1.sql", Kind: "tables"},
-			{NormalizedKey: "r/tables/t2", PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t2.sql", Kind: "tables"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t1.sql"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t2", Kind: "tables"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t2.sql"},
 		},
 	}
 	b := bus.New()
@@ -416,14 +378,14 @@ func TestExecute_TxBatchWrappedInTransaction(t *testing.T) {
 	if result.Applied != 2 {
 		t.Errorf("applied = %d, want 2", result.Applied)
 	}
-	if len(mock.execQueries) != 1 {
-		t.Fatalf("expected 1 batch exec call, got %d", len(mock.execQueries))
+	if len(mock.ExecQueries) != 1 {
+		t.Fatalf("expected 1 batch exec call, got %d", len(mock.ExecQueries))
 	}
-	got := mock.execQueries[0]
-	if !containsStr(got, "BEGIN TRANSACTION") {
+	got := mock.ExecQueries[0]
+	if !strings.Contains(got, "BEGIN TRANSACTION") {
 		t.Errorf("batch missing BEGIN TRANSACTION: %s", got)
 	}
-	if !containsStr(got, "COMMIT TRANSACTION") {
+	if !strings.Contains(got, "COMMIT TRANSACTION") {
 		t.Errorf("batch missing COMMIT TRANSACTION: %s", got)
 	}
 }
@@ -446,19 +408,19 @@ func TestExecute_TxBatchFailsRetriesIndividuallyWrapped(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{
-			{AbsolutePath: filepath.Join(baseDir, "r/tables/t1.sql"), Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
-			{AbsolutePath: filepath.Join(baseDir, "r/tables/t2.sql"), Path: "r/tables/t2.sql", NormalizedKey: "r/tables/t2", Kind: "tables"},
+			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t1.sql")}, Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
+			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t2.sql")}, Path: "r/tables/t2.sql", NormalizedKey: "r/tables/t2", Kind: "tables"},
 		},
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{
-			{NormalizedKey: "r/tables/t1", PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t1.sql", Kind: "tables"},
-			{NormalizedKey: "r/tables/t2", PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t2.sql", Kind: "tables"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t1.sql"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t2", Kind: "tables"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t2.sql"},
 		},
 	}
 	b := bus.New()
 
-	mock := &mockConn{failN: 1}
+	mock := &testutil.MockConn{FailN: 1}
 	result, err := e.Execute(context.Background(), mock, plan, layout, b)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -469,12 +431,12 @@ func TestExecute_TxBatchFailsRetriesIndividuallyWrapped(t *testing.T) {
 	if result.Failed != 0 {
 		t.Errorf("failed = %d, want 0", result.Failed)
 	}
-	if len(mock.execQueries) < 3 {
-		t.Fatalf("expected >= 3 exec calls (1 batch fail + rollback + 2 retries), got %d: %v", len(mock.execQueries), mock.execQueries)
+	if len(mock.ExecQueries) < 3 {
+		t.Fatalf("expected >= 3 exec calls (1 batch fail + rollback + 2 retries), got %d: %v", len(mock.ExecQueries), mock.ExecQueries)
 	}
 	indivCount := 0
-	for _, q := range mock.execQueries {
-		if containsStr(q, "BEGIN TRANSACTION") && containsStr(q, "CREATE TABLE r.t") {
+	for _, q := range mock.ExecQueries {
+		if strings.Contains(q, "BEGIN TRANSACTION") && strings.Contains(q, "CREATE TABLE r.t") {
 			indivCount++
 		}
 	}
@@ -500,35 +462,35 @@ func TestExecute_TxBatchFailsRollsback(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{
-			{AbsolutePath: filepath.Join(baseDir, "r/tables/t1.sql"), Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
+			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t1.sql")}, Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
 		},
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{
-			{NormalizedKey: "r/tables/t1", PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t1.sql", Kind: "tables"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t1.sql"},
 		},
 	}
 	b := bus.New()
 
-	mock := &mockConn{failN: 1}
+	mock := &testutil.MockConn{FailN: 1}
 	_, err := e.Execute(context.Background(), mock, plan, layout, b)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	hasRollback := false
-	for _, q := range mock.execQueries {
-		if containsStr(q, "ROLLBACK TRANSACTION") {
+	for _, q := range mock.ExecQueries {
+		if strings.Contains(q, "ROLLBACK TRANSACTION") {
 			hasRollback = true
 		}
 	}
 	if !hasRollback {
-		t.Errorf("expected ROLLBACK after batch failure, got queries: %v", mock.execQueries)
+		t.Errorf("expected ROLLBACK after batch failure, got queries: %v", mock.ExecQueries)
 	}
 }
 
 func TestExecute_TransitionWrappedInTransaction(t *testing.T) {
 	e := New()
-	mock := &mockConn{}
+	mock := &testutil.MockConn{}
 	baseDir := t.TempDir()
 
 	transPath := filepath.Join(baseDir, "r", "tables", "_migrations", "t1", "001_abc1234_add_col.sql")
@@ -541,7 +503,7 @@ func TestExecute_TransitionWrappedInTransaction(t *testing.T) {
 
 	layout := fs.Layout{
 		Transitions: []*fs.TransitionScript{{
-			AbsolutePath:  transPath,
+			CachedFile: fs.CachedFile{AbsPath: transPath},
 			Path:          "r/tables/_migrations/t1/001_abc1234_add_col.sql",
 			SchemaName:    "r",
 			TableName:     "t1",
@@ -553,11 +515,8 @@ func TestExecute_TransitionWrappedInTransaction(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			NormalizedKey:   "r/tables/t1",
+			ObjectRef:      types.ObjectRef{NormalizedKey: "r/tables/t1", SchemaName: "r", Kind: "tables", ObjectName: "t1"},
 			PlannedAction:   types.ActionReprocessChanged,
-			SchemaName:      "r",
-			Kind:            "tables",
-			ObjectName:      "t1",
 			TransitionPaths: []string{"r/tables/_migrations/t1/001_abc1234_add_col.sql"},
 		}},
 	}
@@ -570,14 +529,14 @@ func TestExecute_TransitionWrappedInTransaction(t *testing.T) {
 	if result.Applied != 1 {
 		t.Errorf("applied = %d, want 1", result.Applied)
 	}
-	if len(mock.execQueries) != 1 {
-		t.Fatalf("expected 1 exec call, got %d", len(mock.execQueries))
+	if len(mock.ExecQueries) != 1 {
+		t.Fatalf("expected 1 exec call, got %d", len(mock.ExecQueries))
 	}
-	got := mock.execQueries[0]
-	if !containsStr(got, "BEGIN TRANSACTION") {
+	got := mock.ExecQueries[0]
+	if !strings.Contains(got, "BEGIN TRANSACTION") {
 		t.Errorf("transition missing BEGIN TRANSACTION: %s", got)
 	}
-	if !containsStr(got, "COMMIT TRANSACTION") {
+	if !strings.Contains(got, "COMMIT TRANSACTION") {
 		t.Errorf("transition missing COMMIT TRANSACTION: %s", got)
 	}
 }
@@ -596,7 +555,7 @@ func TestExecute_TransitionFailRollsback(t *testing.T) {
 
 	layout := fs.Layout{
 		Transitions: []*fs.TransitionScript{{
-			AbsolutePath:  transPath,
+			CachedFile: fs.CachedFile{AbsPath: transPath},
 			Path:          "r/tables/_migrations/t1/001_abc1234_add_col.sql",
 			SchemaName:    "r",
 			TableName:     "t1",
@@ -608,17 +567,14 @@ func TestExecute_TransitionFailRollsback(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			NormalizedKey:   "r/tables/t1",
+			ObjectRef:      types.ObjectRef{NormalizedKey: "r/tables/t1", SchemaName: "r", Kind: "tables", ObjectName: "t1"},
 			PlannedAction:   types.ActionReprocessChanged,
-			SchemaName:      "r",
-			Kind:            "tables",
-			ObjectName:      "t1",
 			TransitionPaths: []string{"r/tables/_migrations/t1/001_abc1234_add_col.sql"},
 		}},
 	}
 	b := bus.New()
 
-	mock := &mockConn{failN: 1}
+	mock := &testutil.MockConn{FailN: 1}
 	result, err := e.Execute(context.Background(), mock, plan, layout, b)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -627,19 +583,67 @@ func TestExecute_TransitionFailRollsback(t *testing.T) {
 		t.Errorf("failed = %d, want 1", result.Failed)
 	}
 	hasRollback := false
-	for _, q := range mock.execQueries {
-		if containsStr(q, "ROLLBACK TRANSACTION") {
+	for _, q := range mock.ExecQueries {
+		if strings.Contains(q, "ROLLBACK TRANSACTION") {
 			hasRollback = true
 		}
 	}
 	if !hasRollback {
-		t.Errorf("expected ROLLBACK after transition failure, got queries: %v", mock.execQueries)
+		t.Errorf("expected ROLLBACK after transition failure, got queries: %v", mock.ExecQueries)
+	}
+}
+
+func TestExecute_ReprocessChangedEmptyTransitions_Skipped(t *testing.T) {
+	e := New()
+	mock := &testutil.MockConn{}
+	baseDir := t.TempDir()
+
+	sqlPath := filepath.Join(baseDir, "r", "tables", "t1.sql")
+	if err := os.MkdirAll(filepath.Dir(sqlPath), 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(sqlPath, []byte("CREATE TABLE r.t1 (id INT)"), 0644); err != nil {
+		t.Fatalf("writefile: %v", err)
+	}
+
+	layout := fs.Layout{
+		Objects: []*fs.Object{{
+			CachedFile: fs.CachedFile{AbsPath: sqlPath},
+			Path:          "r/tables/t1.sql",
+			NormalizedKey: "r/tables/t1",
+			Kind:          "tables",
+			SchemaName:    "r",
+			ObjectName:    "t1",
+		}},
+	}
+	plan := types.MigrationPlan{
+		Objects: []types.PlannedObject{{
+			ObjectRef:      types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables"},
+			PlannedAction:   types.ActionReprocessChanged,
+			TransitionPaths: []string{},
+			SourceFile:      "r/tables/t1.sql",
+		}},
+	}
+	b := bus.New()
+
+	result, err := e.Execute(context.Background(), mock, plan, layout, b)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Skipped != 1 {
+		t.Errorf("skipped = %d, want 1 (empty transitions should skip)", result.Skipped)
+	}
+	if result.Applied != 0 {
+		t.Errorf("applied = %d, want 0", result.Applied)
+	}
+	if len(mock.ExecQueries) != 0 {
+		t.Errorf("expected 0 exec calls, got %d", len(mock.ExecQueries))
 	}
 }
 
 func TestExecute_MixedTxAndNonTx(t *testing.T) {
 	e := New()
-	mock := &mockConn{}
+	mock := &testutil.MockConn{}
 	baseDir := t.TempDir()
 
 	createFile := func(rel string, content string) {
@@ -656,14 +660,14 @@ func TestExecute_MixedTxAndNonTx(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{
-			{AbsolutePath: filepath.Join(baseDir, "r/tables/t1.sql"), Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
-			{AbsolutePath: filepath.Join(baseDir, "r/views/v1.sql"), Path: "r/views/v1.sql", NormalizedKey: "r/views/v1", Kind: "views"},
+			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t1.sql")}, Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
+			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v1.sql")}, Path: "r/views/v1.sql", NormalizedKey: "r/views/v1", Kind: "views"},
 		},
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{
-			{NormalizedKey: "r/tables/t1", PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t1.sql", Kind: "tables"},
-			{NormalizedKey: "r/views/v1", PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v1.sql", Kind: "views"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t1.sql"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v1.sql"},
 		},
 	}
 	b := bus.New()
@@ -675,16 +679,16 @@ func TestExecute_MixedTxAndNonTx(t *testing.T) {
 	if result.Applied != 2 {
 		t.Errorf("applied = %d, want 2", result.Applied)
 	}
-	if len(mock.execQueries) != 2 {
-		t.Errorf("expected 2 exec calls (1 tx batch + 1 non-tx), got %d: %v", len(mock.execQueries), mock.execQueries)
+	if len(mock.ExecQueries) != 2 {
+		t.Errorf("expected 2 exec calls (1 tx batch + 1 non-tx), got %d: %v", len(mock.ExecQueries), mock.ExecQueries)
 	}
 	txWrapped := false
 	nonTxDirect := false
-	for _, q := range mock.execQueries {
-		if containsStr(q, "BEGIN TRANSACTION") && containsStr(q, "CREATE TABLE") {
+	for _, q := range mock.ExecQueries {
+		if strings.Contains(q, "BEGIN TRANSACTION") && strings.Contains(q, "CREATE TABLE") {
 			txWrapped = true
 		}
-		if !containsStr(q, "BEGIN TRANSACTION") && containsStr(q, "CREATE VIEW") {
+		if !strings.Contains(q, "BEGIN TRANSACTION") && strings.Contains(q, "CREATE VIEW") {
 			nonTxDirect = true
 		}
 	}
@@ -694,13 +698,4 @@ func TestExecute_MixedTxAndNonTx(t *testing.T) {
 	if !nonTxDirect {
 		t.Errorf("expected non-tx statement without wrapping")
 	}
-}
-
-func containsStr(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

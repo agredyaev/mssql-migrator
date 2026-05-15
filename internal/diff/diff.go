@@ -46,14 +46,16 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 	for _, obj := range layout.Objects {
 		dbObj, exists := state.Objects[obj.NormalizedKey]
 		plannedObj := types.PlannedObject{
-			ObjectPath:    obj.Path,
-			DatabaseName:  obj.DatabaseName,
-			SchemaName:    obj.SchemaName,
-			Kind:          obj.Kind,
-			ObjectName:    obj.ObjectName,
-			NormalizedKey: obj.NormalizedKey,
-			Exists:        exists,
-			SourceFile:    obj.Path,
+			ObjectRef: types.ObjectRef{
+				ObjectPath:    obj.Path,
+				SchemaName:    obj.SchemaName,
+				Kind:          obj.Kind,
+				ObjectName:    obj.ObjectName,
+				NormalizedKey: obj.NormalizedKey,
+			},
+			DatabaseName: obj.DatabaseName,
+			Exists:       exists,
+			SourceFile:   obj.Path,
 		}
 
 		switch {
@@ -77,7 +79,7 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 			setGitInfo(obj, &plannedObj)
 			adoptCount++
 
-		case exists && checksumsMatch(obj, checksums[obj.NormalizedKey]):
+		case exists && isMatch(obj, checksums[obj.NormalizedKey]):
 			plannedObj.PlannedAction = types.ActionSkipUnchanged
 			plannedObj.Checksum = checksums[obj.NormalizedKey]
 			skipCount++
@@ -114,9 +116,12 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 	return plan, nil
 }
 
-func checksumsMatch(obj *fs.Object, prior string) bool {
+func isMatch(obj *fs.Object, prior string) bool {
 	cs, err := obj.Checksum()
-	return err == nil && cs != "" && cs == prior
+	if err != nil || cs == "" {
+		return false
+	}
+	return cs == prior
 }
 
 func setGitInfo(obj *fs.Object, planned *types.PlannedObject) {

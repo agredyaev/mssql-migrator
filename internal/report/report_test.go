@@ -25,8 +25,8 @@ func TestDiffComputed_WritesPlanJSON(t *testing.T) {
 		Blocked:   true,
 		Blockers:  []string{"table r/tables/t1 changed but has no non-scaffold transition scripts"},
 		Objects: []types.PlannedObject{
-			{NormalizedKey: "r/views/v1", PlannedAction: types.ActionSkipUnchanged},
-			{NormalizedKey: "r/tables/t1", PlannedAction: types.ActionReprocessChangedBlocked},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v1"}, PlannedAction: types.ActionSkipUnchanged},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t1"}, PlannedAction: types.ActionReprocessChangedBlocked},
 		},
 		Failures: []string{"warning: metadata mismatch"},
 	}

@@ -118,7 +118,7 @@ func TestChunkKeys_LargeBatch(t *testing.T) {
 }
 
 func TestBuildINQuery(t *testing.T) {
-	q, args := BuildINQuery("SELECT * FROM t WHERE c IN ({{list}})", "{{list}}", []string{"a", "b", "c"})
+	q, args := BuildINQuery("SELECT * FROM t WHERE c IN ({{list}})", "{{list}}", []string{"a", "b", "c"}, 1)
 	if len(args) != 3 {
 		t.Errorf("expected 3 args, got %d", len(args))
 	}

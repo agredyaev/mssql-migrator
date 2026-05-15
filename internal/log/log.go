@@ -127,7 +127,12 @@ var jsonSecretPatterns = []*regexp.Regexp{
 
 var sqlServerURLSecretPattern = regexp.MustCompile(`sqlserver://([^:]+):([^@]+)@`)
 
+var hasSecret = regexp.MustCompile(`(?i)(password|pwd|token|secret|client_secret|sig|signature|sqlserver://)`)
+
 func Redact(value string) string {
+	if !hasSecret.MatchString(value) {
+		return value
+	}
 	result := value
 	for _, pattern := range secretPatterns {
 		result = pattern.ReplaceAllString(result, `${1}***`)

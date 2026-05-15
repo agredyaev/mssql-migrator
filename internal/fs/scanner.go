@@ -15,10 +15,12 @@ import (
 
 const TransitionScaffoldDirective = "-- rmig: transition-scaffold"
 
-type Scanner struct{}
+type Scanner struct {
+	GitInfo func(AbsPath string) (hash, author, date string, err error)
+}
 
 func NewScanner() *Scanner {
-	return &Scanner{}
+	return &Scanner{GitInfo: gitInfo}
 }
 
 func (s *Scanner) Scan(ctx context.Context, root string) (Layout, error) {
@@ -183,7 +185,6 @@ func (s *Scanner) buildObject(dbName, schemaName, kind, parentName, fileName, di
 	name := strings.TrimSuffix(fileName, ".sql")
 	return Object{
 		Path:                 filepath.ToSlash(filepath.Join(dbName, schemaName, kind, fileName)),
-		AbsolutePath:         fullPath,
 		DatabaseName:         dbName,
 		SchemaName:           schemaName,
 		NormalizedSchemaName: strings.ToLower(schemaName),
@@ -191,7 +192,8 @@ func (s *Scanner) buildObject(dbName, schemaName, kind, parentName, fileName, di
 		ObjectName:           name,
 		ParentName:           parentName,
 		NormalizedKey:        types.NormalizedKey(schemaName, kind, name),
-		NoTransaction:        types.IsNoTransactionKind(kind),
+		NoTransaction:        types.IsModuleKind(kind),
+		CachedFile:           CachedFile{AbsPath: fullPath, gitInfoFn: s.GitInfo},
 	}
 }
 
@@ -200,11 +202,11 @@ func (s *Scanner) buildCheck(dbName, schemaName, fileName, dirPath string) Check
 	name := strings.TrimSuffix(fileName, ".sql")
 	return CheckScript{
 		Path:          filepath.ToSlash(filepath.Join(dbName, schemaName, "checks", fileName)),
-		AbsolutePath:  fullPath,
 		DatabaseName:  dbName,
 		SchemaName:    schemaName,
 		Name:          name,
 		NoTransaction: true,
+		CachedFile:    CachedFile{AbsPath: fullPath, gitInfoFn: s.GitInfo},
 	}
 }
 
@@ -221,7 +223,6 @@ func (s *Scanner) parseTransitionFile(dbName, schemaName, tableName, fileName, d
 
 	ts := &TransitionScript{
 		Path:          filepath.ToSlash(filepath.Join(dbName, schemaName, "tables", "_migrations", tableName, fileName)),
-		AbsolutePath:  fullPath,
 		DatabaseName:  dbName,
 		SchemaName:    schemaName,
 		TableName:     tableName,
@@ -229,13 +230,14 @@ func (s *Scanner) parseTransitionFile(dbName, schemaName, tableName, fileName, d
 		Ordinal:       matches[1],
 		Commit:        matches[2],
 		Slug:          matches[3],
+		CachedFile:    CachedFile{AbsPath: fullPath, gitInfoFn: s.GitInfo},
 	}
 
 	f, err := os.Open(fullPath)
 	if err == nil {
 		firstLine, _ := bufio.NewReader(f).ReadString('\n')
 		f.Close()
-		if strings.HasPrefix(firstLine, TransitionScaffoldDirective) {
+		if strings.HasPrefix(strings.TrimRight(firstLine, "\r\n"), TransitionScaffoldDirective) {
 			ts.Scaffold = true
 		}
 	}

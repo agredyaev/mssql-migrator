@@ -3,58 +3,15 @@ package audit
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 	"testing"
 
 	"reporting-db-migrations/internal/bus"
-	"reporting-db-migrations/internal/driver"
 	"reporting-db-migrations/internal/testutil"
 	"reporting-db-migrations/internal/types"
 )
 
-type mockConn struct {
-	queries      []mockQuery
-	queryCount   atomic.Int32
-	queryErr     error
-	execCount    atomic.Int32
-	execErr      error
-	rowsByPrefix map[string]*testutil.MockRows
-}
-
-type mockQuery struct {
-	query string
-	args  []any
-}
-
-func (m *mockConn) QueryContext(ctx context.Context, query string, args ...any) (driver.Rows, error) {
-	m.queryCount.Add(1)
-	m.queries = append(m.queries, mockQuery{query: query, args: args})
-	if m.queryErr != nil {
-		return nil, m.queryErr
-	}
-	for prefix, r := range m.rowsByPrefix {
-		if len(query) >= len(prefix) && query[:len(prefix)] == prefix {
-			r.Reset()
-			return r, nil
-		}
-	}
-	return testutil.NewMockRows(nil), nil
-}
-
-func (m *mockConn) ExecContext(ctx context.Context, query string, args ...any) (driver.Result, error) {
-	m.execCount.Add(1)
-	m.queries = append(m.queries, mockQuery{query: query, args: args})
-	if m.execErr != nil {
-		return nil, m.execErr
-	}
-	return nil, nil
-}
-
-func (m *mockConn) Ping(ctx context.Context) error { return nil }
-func (m *mockConn) Close() error                   { return nil }
-
 func TestLoadChecksumsEmptyKeys(t *testing.T) {
-	conn := &mockConn{}
+	conn := &testutil.MockConn{}
 	result, err := LoadChecksums(context.Background(), conn, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -62,13 +19,13 @@ func TestLoadChecksumsEmptyKeys(t *testing.T) {
 	if len(result) != 0 {
 		t.Errorf("expected empty map, got %d entries", len(result))
 	}
-	if conn.queryCount.Load() != 0 {
+	if conn.QueryCount.Load() != 0 {
 		t.Errorf("expected 0 queries for empty keys")
 	}
 }
 
 func TestLoadChecksumsConnectionError(t *testing.T) {
-	conn := &mockConn{queryErr: errors.New("dead")}
+	conn := &testutil.MockConn{QueryErr: errors.New("dead")}
 	_, err := LoadChecksums(context.Background(), conn, []string{"k1"})
 	if err == nil {
 		t.Fatal("expected error")
@@ -76,8 +33,8 @@ func TestLoadChecksumsConnectionError(t *testing.T) {
 }
 
 func TestLoadChecksumsReturnsResults(t *testing.T) {
-	conn := &mockConn{
-		rowsByPrefix: map[string]*testutil.MockRows{
+	conn := &testutil.MockConn{
+		RowsByPrefix: map[string]*testutil.MockRows{
 			"SELECT": testutil.NewMockRows([][]any{{"k1", "abc123"}}),
 		},
 	}
@@ -98,82 +55,76 @@ func TestLoadChecksumsChunking(t *testing.T) {
 	for i := range keys {
 		keys[i] = "k"
 	}
-	conn := &mockConn{}
+	conn := &testutil.MockConn{}
 	LoadChecksums(context.Background(), conn, keys)
-	if conn.queryCount.Load() < 2 {
-		t.Errorf("expected at least 2 queries for 2500 keys, got %d", conn.queryCount.Load())
+	if conn.QueryCount.Load() < 2 {
+		t.Errorf("expected at least 2 queries for 2500 keys, got %d", conn.QueryCount.Load())
 	}
 }
 
 func TestSubscriberOnObjectApplied_ExecutesSQL(t *testing.T) {
-	conn := &mockConn{}
+	conn := &testutil.MockConn{}
 	b := bus.New()
 	NewSubscriber(b, conn)
 
 	b.Publish(context.Background(), types.EventObjectApplied, &types.ObjectEvent{
-		NormalizedKey: "r/tables/t1",
-		Kind:          "tables",
-		ObjectName:    "t1",
-		Checksum:      "abc123",
-		GitHash:       "deadbeef",
-		GitAuthor:     "dev",
-		GitDate:       "2024-01-01T00:00:00Z",
-		RecordKind:    "object",
+		ObjectRef:  types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectName: "t1"},
+		Checksum:   "abc123",
+		GitInfo:    types.GitInfo{GitHash: "deadbeef", GitAuthor: "dev", GitDate: "2024-01-01T00:00:00Z"},
+		RecordKind: "object",
 	})
 
-	if conn.execCount.Load() != 2 {
-		t.Errorf("expected 2 execs (bootstrap + insert), got %d", conn.execCount.Load())
+	if conn.ExecCount.Load() != 2 {
+		t.Errorf("expected 2 execs (bootstrap + insert), got %d", conn.ExecCount.Load())
 		return
 	}
-	last := conn.queries[len(conn.queries)-1]
-	if last.args[0] != "r/tables/t1" {
-		t.Errorf("normalized_key = %v, want r/tables/t1", last.args[0])
+	last := conn.Queries[len(conn.Queries)-1]
+	if last.Args[0] != "r/tables/t1" {
+		t.Errorf("normalized_key = %v, want r/tables/t1", last.Args[0])
 	}
-	if last.args[2] != "abc123" {
-		t.Errorf("checksum = %v, want abc123", last.args[2])
+	if last.Args[2] != "abc123" {
+		t.Errorf("checksum = %v, want abc123", last.Args[2])
 	}
-	if last.args[3] != "deadbeef" {
-		t.Errorf("git_hash = %v, want deadbeef", last.args[3])
+	if last.Args[3] != "deadbeef" {
+		t.Errorf("git_hash = %v, want deadbeef", last.Args[3])
 	}
-	if last.args[4] != "dev" {
-		t.Errorf("git_author = %v, want dev", last.args[4])
+	if last.Args[4] != "dev" {
+		t.Errorf("git_author = %v, want dev", last.Args[4])
 	}
-	if last.args[6] != "applied" {
-		t.Errorf("event = %v, want applied", last.args[6])
+	if last.Args[6] != "applied" {
+		t.Errorf("event = %v, want applied", last.Args[6])
 	}
 }
 
 func TestSubscriberOnObjectFailed_ExecutesSQL(t *testing.T) {
-	conn := &mockConn{}
+	conn := &testutil.MockConn{}
 	b := bus.New()
 	NewSubscriber(b, conn)
 
 	b.Publish(context.Background(), types.EventObjectFailed, &types.FailureEvent{
 		ObjectEvent: types.ObjectEvent{
-			NormalizedKey: "r/views/v1",
-			Kind:          "views",
-			ObjectName:    "v1",
-			RecordKind:    "object",
+			ObjectRef:  types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views", ObjectName: "v1"},
+			RecordKind: "object",
 		},
 		Error: "syntax error",
 	})
 
-	if conn.execCount.Load() != 2 {
-		t.Errorf("expected 2 execs (bootstrap + insert), got %d", conn.execCount.Load())
+	if conn.ExecCount.Load() != 2 {
+		t.Errorf("expected 2 execs (bootstrap + insert), got %d", conn.ExecCount.Load())
 		return
 	}
-	last := conn.queries[len(conn.queries)-1]
-	if last.args[6] != "failed" {
-		t.Errorf("event = %v, want failed", last.args[6])
+	last := conn.Queries[len(conn.Queries)-1]
+	if last.Args[6] != "failed" {
+		t.Errorf("event = %v, want failed", last.Args[6])
 	}
-	if last.args[7] != "syntax error" {
-		t.Errorf("error_text = %v, want syntax error", last.args[7])
+	if last.Args[7] != "syntax error" {
+		t.Errorf("error_text = %v, want syntax error", last.Args[7])
 	}
 }
 
 func TestLoadAppliedMigrations_ReturnsMigrationKeys(t *testing.T) {
-	conn := &mockConn{
-		rowsByPrefix: map[string]*testutil.MockRows{
+	conn := &testutil.MockConn{
+		RowsByPrefix: map[string]*testutil.MockRows{
 			"SELECT": testutil.NewMockRows([][]any{{"r/tables/t1/001_deadbeef_add_col.sql"}}),
 		},
 	}
@@ -190,7 +141,7 @@ func TestLoadAppliedMigrations_ReturnsMigrationKeys(t *testing.T) {
 }
 
 func TestLoadAppliedMigrations_QueryError(t *testing.T) {
-	conn := &mockConn{queryErr: errors.New("dead")}
+	conn := &testutil.MockConn{QueryErr: errors.New("dead")}
 	_, err := LoadAppliedMigrations(context.Background(), conn, "r/tables/t1")
 	if err == nil {
 		t.Fatal("expected error")
@@ -198,23 +149,69 @@ func TestLoadAppliedMigrations_QueryError(t *testing.T) {
 }
 
 func TestSubscriberBootstrapCalledOnce(t *testing.T) {
-	conn := &mockConn{}
+	conn := &testutil.MockConn{}
 	b := bus.New()
 	NewSubscriber(b, conn)
 
 	b.Publish(context.Background(), types.EventObjectApplied, &types.ObjectEvent{
-		NormalizedKey: "r/tables/t1",
-		Kind:          "tables",
-		RecordKind:    "object",
+		ObjectRef:  types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables"},
+		RecordKind: "object",
 	})
 
 	bootstrapCount := 0
-	for _, q := range conn.queries {
-		if len(q.args) == 0 {
+	for _, q := range conn.Queries {
+		if len(q.Args) == 0 {
 			bootstrapCount++
 		}
 	}
 	if bootstrapCount != 1 {
-		t.Errorf("expected 1 bootstrap query, got %d (queries: %d)", bootstrapCount, len(conn.queries))
+		t.Errorf("expected 1 bootstrap query, got %d (queries: %d)", bootstrapCount, len(conn.Queries))
+	}
+}
+
+func TestLoadAllAppliedMigrations_ReturnsKeys(t *testing.T) {
+	conn := &testutil.MockConn{
+		RowsByPrefix: map[string]*testutil.MockRows{
+			"SELECT": testutil.NewMockRows([][]any{
+				{"r/tables/t1/001_abc_add.sql"},
+				{"r/tables/t1/002_def_drop.sql"},
+			}),
+		},
+	}
+	result, err := LoadAllAppliedMigrations(context.Background(), conn)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(result))
+	}
+	if !result["r/tables/t1/001_abc_add.sql"] {
+		t.Error("expected first migration key to be true")
+	}
+	if !result["r/tables/t1/002_def_drop.sql"] {
+		t.Error("expected second migration key to be true")
+	}
+}
+
+func TestLoadAllAppliedMigrations_QueryError(t *testing.T) {
+	conn := &testutil.MockConn{QueryErr: errors.New("dead")}
+	_, err := LoadAllAppliedMigrations(context.Background(), conn)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestLoadAllAppliedMigrations_EmptyResult(t *testing.T) {
+	conn := &testutil.MockConn{
+		RowsByPrefix: map[string]*testutil.MockRows{
+			"SELECT": testutil.NewMockRows(nil),
+		},
+	}
+	result, err := LoadAllAppliedMigrations(context.Background(), conn)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected 0 results, got %d", len(result))
 	}
 }

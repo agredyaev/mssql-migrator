@@ -6,16 +6,19 @@ import (
 	"os"
 
 	"reporting-db-migrations/internal/bus"
+	"reporting-db-migrations/internal/driver"
 	"reporting-db-migrations/internal/errors"
 	"reporting-db-migrations/internal/log"
 	"reporting-db-migrations/internal/types"
 )
 
-func Run(args []string) int {
-	return runWithLookup(args, osEnvLookup)
+type Connector func(ctx context.Context, cfg types.Config) (driver.Conn, error)
+
+func Run(args []string, connect Connector) int {
+	return runWithLookup(args, osEnvLookup, connect)
 }
 
-func runWithLookup(args []string, lookup envLookupFn) int {
+func runWithLookup(args []string, lookup envLookupFn, connect Connector) int {
 	ctx := context.Background()
 
 	flags, err := parseFlags(args[1:])
@@ -44,7 +47,7 @@ func runWithLookup(args []string, lookup envLookupFn) int {
 
 	logger := log.New(cfg.JSONLogs, cfg.LogLevel, os.Stderr)
 
-	conn, err := openDatabase(ctx, cfg)
+	conn, err := connect(ctx, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "rmig: cannot connect to %s: %v\n", cfg.Server, err)
 		return errors.ExitCode(err)

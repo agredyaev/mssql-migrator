@@ -3,50 +3,15 @@ package db
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 	"testing"
 
-	"reporting-db-migrations/internal/driver"
 	"reporting-db-migrations/internal/fs"
 	"reporting-db-migrations/internal/testutil"
 )
 
-type mockConn struct {
-	queries    []mockQuery
-	queryCount atomic.Int32
-	queryErr   error
-	rows       map[string]*testutil.MockRows
-}
-
-type mockQuery struct {
-	query string
-	args  []any
-}
-
-func (m *mockConn) QueryContext(ctx context.Context, query string, args ...any) (driver.Rows, error) {
-	m.queryCount.Add(1)
-	m.queries = append(m.queries, mockQuery{query: query, args: args})
-	if m.queryErr != nil {
-		return nil, m.queryErr
-	}
-	key := query[:min(len(query), 30)]
-	if r, ok := m.rows[key]; ok {
-		r.Reset()
-		return r, nil
-	}
-	return testutil.NewMockRows(nil), nil
-}
-
-func (m *mockConn) ExecContext(ctx context.Context, query string, args ...any) (driver.Result, error) {
-	return nil, nil
-}
-
-func (m *mockConn) Ping(ctx context.Context) error { return nil }
-func (m *mockConn) Close() error                   { return nil }
-
 func TestInspectEmptyScope(t *testing.T) {
 	insp := NewInspector()
-	conn := &mockConn{}
+	conn := &testutil.MockConn{}
 	layout := fs.Layout{}
 	state, err := insp.Inspect(context.Background(), conn, layout)
 	if err != nil {
@@ -58,14 +23,14 @@ func TestInspectEmptyScope(t *testing.T) {
 	if len(state.Objects) != 0 {
 		t.Errorf("expected 0 objects, got %d", len(state.Objects))
 	}
-	if conn.queryCount.Load() != 0 {
-		t.Errorf("expected 0 queries, got %d", conn.queryCount.Load())
+	if conn.QueryCount.Load() != 0 {
+		t.Errorf("expected 0 queries, got %d", conn.QueryCount.Load())
 	}
 }
 
 func TestInspectCachesResult(t *testing.T) {
 	insp := NewInspector()
-	conn := &mockConn{}
+	conn := &testutil.MockConn{}
 	layout := fs.Layout{
 		Schemas: []fs.Schema{{Name: "r", NormalizedName: "r"}},
 	}
@@ -80,7 +45,7 @@ func TestInspectCachesResult(t *testing.T) {
 	if state1 != state2 {
 		t.Error("cached state should be same pointer")
 	}
-	qc := conn.queryCount.Load()
+	qc := conn.QueryCount.Load()
 	if qc == 0 {
 		t.Fatal("expected at least 1 query for first Inspect")
 	}
@@ -91,14 +56,14 @@ func TestInspectCachesResult(t *testing.T) {
 	if state3 != state1 {
 		t.Error("cached state should be same pointer")
 	}
-	if conn.queryCount.Load() != qc {
-		t.Errorf("expected query count to stay at %d, got %d", qc, conn.queryCount.Load())
+	if conn.QueryCount.Load() != qc {
+		t.Errorf("expected query count to stay at %d, got %d", qc, conn.QueryCount.Load())
 	}
 }
 
 func TestInspectConnectionError(t *testing.T) {
 	insp := NewInspector()
-	conn := &mockConn{queryErr: errors.New("connection refused")}
+	conn := &testutil.MockConn{QueryErr: errors.New("connection refused")}
 	layout := fs.Layout{
 		Schemas: []fs.Schema{{Name: "r", NormalizedName: "r"}},
 	}
@@ -110,7 +75,7 @@ func TestInspectConnectionError(t *testing.T) {
 
 func TestInspectDifferentScopeNotCached(t *testing.T) {
 	insp := NewInspector()
-	conn := &mockConn{}
+	conn := &testutil.MockConn{}
 	layout1 := fs.Layout{
 		Schemas: []fs.Schema{{Name: "r", NormalizedName: "r"}},
 	}
@@ -122,7 +87,7 @@ func TestInspectDifferentScopeNotCached(t *testing.T) {
 	if state1 == state2 {
 		t.Error("different scopes should not share cached state")
 	}
-	qc := conn.queryCount.Load()
+	qc := conn.QueryCount.Load()
 	if qc < 2 {
 		t.Errorf("expected at least 2 queries, got %d", qc)
 	}

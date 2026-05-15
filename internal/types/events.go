@@ -40,18 +40,14 @@ type SchemaEvent struct {
 }
 
 type ObjectEvent struct {
-	ObjectPath    string
-	SchemaName    string
-	Kind          string
-	ObjectName    string
-	NormalizedKey string
-	Checksum      string
-	Action        string
-	Path          string
-	GitHash       string
-	GitAuthor     string
-	GitDate       string
-	RecordKind    string // "object" | "migration"
+	ObjectRef
+
+	Checksum   string
+	Action     string
+	Path       string
+	RecordKind string
+
+	GitInfo
 }
 
 type FailureEvent struct {

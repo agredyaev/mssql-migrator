@@ -67,7 +67,11 @@ func (s *Subscriber) boot(ctx context.Context) error {
 }
 
 func (s *Subscriber) insertHistory(ctx context.Context, ev *types.ObjectEvent, event, errText string) {
-	gitDate := parseGitDate(ev.GitDate)
+	gitDate, err := parseGitDate(ev.GitDate)
+	if err != nil {
+		s.notifier.Notify("audit insert_history: bad git date: " + err.Error())
+		gitDate = sqlDefaultDate
+	}
 	if _, err := s.conn.ExecContext(ctx, insertHistorySQL,
 		ev.NormalizedKey,
 		ev.RecordKind,
@@ -84,13 +88,13 @@ func (s *Subscriber) insertHistory(ctx context.Context, ev *types.ObjectEvent, e
 
 var sqlDefaultDate = time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
 
-func parseGitDate(s string) time.Time {
+func parseGitDate(s string) (time.Time, error) {
 	if s == "" {
-		return sqlDefaultDate
+		return sqlDefaultDate, nil
 	}
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
-		return sqlDefaultDate
+		return time.Time{}, err
 	}
-	return t
+	return t, nil
 }

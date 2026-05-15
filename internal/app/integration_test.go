@@ -437,24 +437,24 @@ func countByAction(plan *types.MigrationPlan, action string) int {
 
 type testLoaderAdapter struct{}
 
+func (testLoaderAdapter) EnsureTables(ctx context.Context, conn driver.Conn) error {
+	return audit.EnsureTables(ctx, conn)
+}
+
 func (testLoaderAdapter) LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[string]string, error) {
 	return audit.LoadChecksums(ctx, conn, keys)
 }
 
-func (testLoaderAdapter) LoadAppliedMigrations(ctx context.Context, conn driver.Conn, tableKey string) (map[string]bool, error) {
-	return audit.LoadAppliedMigrations(ctx, conn, tableKey)
+func (testLoaderAdapter) LoadAllAppliedMigrations(ctx context.Context, conn driver.Conn) (map[string]bool, error) {
+	return audit.LoadAllAppliedMigrations(ctx, conn)
 }
 
 type testApplierAdapter struct {
 	exec *apply.Executor
 }
 
-func (a *testApplierAdapter) Execute(ctx context.Context, conn driver.Conn, plan types.MigrationPlan, layout fs.Layout, eb bus.EventBus) (*engine.ApplyResult, error) {
-	result, err := a.exec.Execute(ctx, conn, plan, layout, eb)
-	if err != nil {
-		return nil, err
-	}
-	return &engine.ApplyResult{Applied: result.Applied}, nil
+func (a *testApplierAdapter) Execute(ctx context.Context, conn driver.Conn, plan types.MigrationPlan, layout fs.Layout, eb bus.EventBus) (*apply.ApplyResult, error) {
+	return a.exec.Execute(ctx, conn, plan, layout, eb)
 }
 
 func newTestEngine(b bus.EventBus, conn driver.Conn, cfg types.Config) *engine.Engine {
