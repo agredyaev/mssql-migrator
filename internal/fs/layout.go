@@ -26,18 +26,7 @@ type Schema struct {
 	NormalizedName string
 }
 
-type Object struct {
-	Path                 string
-	AbsolutePath         string
-	DatabaseName         string
-	SchemaName           string
-	NormalizedSchemaName string
-	Kind                 string
-	ObjectName           string
-	ParentName           string
-	NormalizedKey        string
-	NoTransaction        bool
-
+type cachedFile struct {
 	contentOnce  sync.Once
 	content      string
 	contentErr   error
@@ -51,47 +40,64 @@ type Object struct {
 	gitErr       error
 }
 
-func (o *Object) Content() (string, error) {
-	o.contentOnce.Do(func() {
-		data, err := os.ReadFile(o.AbsolutePath)
+func (c *cachedFile) loadContent(absPath string) (string, error) {
+	c.contentOnce.Do(func() {
+		data, err := os.ReadFile(absPath)
 		if err != nil {
-			o.contentErr = err
+			c.contentErr = err
 			return
 		}
-		o.content = string(data)
+		c.content = string(data)
 	})
-	return o.content, o.contentErr
+	return c.content, c.contentErr
 }
 
-func (o *Object) Checksum() (string, error) {
-	o.checksumOnce.Do(func() {
-		content, err := o.Content()
+func (c *cachedFile) loadChecksum(absPath string) (string, error) {
+	c.checksumOnce.Do(func() {
+		content, err := c.loadContent(absPath)
 		if err != nil {
-			o.checksumErr = err
+			c.checksumErr = err
 			return
 		}
-		o.checksum = NormalizeAndHash(content)
+		c.checksum = NormalizeAndHash(content)
 	})
-	return o.checksum, o.checksumErr
+	return c.checksum, c.checksumErr
 }
 
+func (c *cachedFile) loadGitInfo(absPath string) {
+	c.gitOnce.Do(func() {
+		c.gitHash, c.gitAuthor, c.gitDate, c.gitErr = gitInfo(absPath)
+	})
+}
+
+type Object struct {
+	Path                 string
+	AbsolutePath         string
+	DatabaseName         string
+	SchemaName           string
+	NormalizedSchemaName string
+	Kind                 string
+	ObjectName           string
+	ParentName           string
+	NormalizedKey        string
+	NoTransaction        bool
+
+	file cachedFile
+}
+
+func (o *Object) Content() (string, error)  { return o.file.loadContent(o.AbsolutePath) }
+func (o *Object) Checksum() (string, error) { return o.file.loadChecksum(o.AbsolutePath) }
 func (o *Object) GitHash() (string, error) {
-	o.gitOnce.Do(o.loadGitInfo)
-	return o.gitHash, o.gitErr
+	o.file.loadGitInfo(o.AbsolutePath)
+	return o.file.gitHash, o.file.gitErr
 }
-
 func (o *Object) GitAuthor() (string, error) {
-	o.gitOnce.Do(o.loadGitInfo)
-	return o.gitAuthor, o.gitErr
+	o.file.loadGitInfo(o.AbsolutePath)
+	return o.file.gitAuthor, o.file.gitErr
 }
-
 func (o *Object) GitDate() (string, error) {
-	o.gitOnce.Do(o.loadGitInfo)
-	return o.gitDate, o.gitErr
-}
-
-func (o *Object) loadGitInfo() {
-	o.gitHash, o.gitAuthor, o.gitDate, o.gitErr = gitInfo(o.AbsolutePath)
+	o.file.loadGitInfo(o.AbsolutePath)
+	return o.file.gitDate, o.file.gitErr
 }
 
 type TransitionScript struct {
@@ -107,60 +113,22 @@ type TransitionScript struct {
 	NoTransaction bool
 	Scaffold      bool
 
-	contentOnce  sync.Once
-	content      string
-	contentErr   error
-	checksumOnce sync.Once
-	checksum     string
-	checksumErr  error
-	gitOnce      sync.Once
-	gitHash      string
-	gitAuthor    string
-	gitDate      string
-	gitErr       error
+	file cachedFile
 }
 
-func (ts *TransitionScript) Content() (string, error) {
-	ts.contentOnce.Do(func() {
-		data, err := os.ReadFile(ts.AbsolutePath)
-		if err != nil {
-			ts.contentErr = err
-			return
-		}
-		ts.content = string(data)
-	})
-	return ts.content, ts.contentErr
-}
-
-func (ts *TransitionScript) Checksum() (string, error) {
-	ts.checksumOnce.Do(func() {
-		content, err := ts.Content()
-		if err != nil {
-			ts.checksumErr = err
-			return
-		}
-		ts.checksum = NormalizeAndHash(content)
-	})
-	return ts.checksum, ts.checksumErr
-}
-
+func (ts *TransitionScript) Content() (string, error)  { return ts.file.loadContent(ts.AbsolutePath) }
+func (ts *TransitionScript) Checksum() (string, error) { return ts.file.loadChecksum(ts.AbsolutePath) }
 func (ts *TransitionScript) GitHash() (string, error) {
-	ts.gitOnce.Do(ts.loadGitInfo)
-	return ts.gitHash, ts.gitErr
+	ts.file.loadGitInfo(ts.AbsolutePath)
+	return ts.file.gitHash, ts.file.gitErr
 }
-
 func (ts *TransitionScript) GitAuthor() (string, error) {
-	ts.gitOnce.Do(ts.loadGitInfo)
-	return ts.gitAuthor, ts.gitErr
+	ts.file.loadGitInfo(ts.AbsolutePath)
+	return ts.file.gitAuthor, ts.file.gitErr
 }
-
 func (ts *TransitionScript) GitDate() (string, error) {
-	ts.gitOnce.Do(ts.loadGitInfo)
-	return ts.gitDate, ts.gitErr
-}
-
-func (ts *TransitionScript) loadGitInfo() {
-	ts.gitHash, ts.gitAuthor, ts.gitDate, ts.gitErr = gitInfo(ts.AbsolutePath)
+	ts.file.loadGitInfo(ts.AbsolutePath)
+	return ts.file.gitDate, ts.file.gitErr
 }
 
 type CheckScript struct {
@@ -171,37 +139,11 @@ type CheckScript struct {
 	Name          string
 	NoTransaction bool
 
-	contentOnce  sync.Once
-	content      string
-	contentErr   error
-	checksumOnce sync.Once
-	checksum     string
-	checksumErr  error
+	file cachedFile
 }
 
-func (cs *CheckScript) Content() (string, error) {
-	cs.contentOnce.Do(func() {
-		data, err := os.ReadFile(cs.AbsolutePath)
-		if err != nil {
-			cs.contentErr = err
-			return
-		}
-		cs.content = string(data)
-	})
-	return cs.content, cs.contentErr
-}
-
-func (cs *CheckScript) Checksum() (string, error) {
-	cs.checksumOnce.Do(func() {
-		content, err := cs.Content()
-		if err != nil {
-			cs.checksumErr = err
-			return
-		}
-		cs.checksum = NormalizeAndHash(content)
-	})
-	return cs.checksum, cs.checksumErr
-}
+func (cs *CheckScript) Content() (string, error)  { return cs.file.loadContent(cs.AbsolutePath) }
+func (cs *CheckScript) Checksum() (string, error) { return cs.file.loadChecksum(cs.AbsolutePath) }
 
 func NormalizeAndHash(input string) string {
 	normalized := normalizeSQL(input)
@@ -215,6 +157,22 @@ func (l *Layout) NormalizedKeys() []string {
 		keys[i] = obj.NormalizedKey
 	}
 	return keys
+}
+
+func (l *Layout) ObjectsByPath() map[string]*Object {
+	m := make(map[string]*Object, len(l.Objects))
+	for _, obj := range l.Objects {
+		m[obj.Path] = obj
+	}
+	return m
+}
+
+func (l *Layout) TransitionsByPath() map[string]*TransitionScript {
+	m := make(map[string]*TransitionScript, len(l.Transitions))
+	for _, ts := range l.Transitions {
+		m[ts.Path] = ts
+	}
+	return m
 }
 
 func (l *Layout) HasExecutableTransition() bool {

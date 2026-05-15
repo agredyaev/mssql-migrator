@@ -76,11 +76,17 @@ func (s *Scanner) Scan(ctx context.Context, root string) (Layout, error) {
 
 				switch {
 				case kind == "tables":
-					s.scanTableDir(&layout, dbName, schemaName, kindPath)
+					if err := s.scanTableDir(&layout, dbName, schemaName, kindPath); err != nil {
+						return Layout{}, err
+					}
 				case kind == "checks":
-					s.scanCheckDir(&layout, dbName, schemaName, kindPath)
+					if err := s.scanCheckDir(&layout, dbName, schemaName, kindPath); err != nil {
+						return Layout{}, err
+					}
 				case isObjectKind(kind):
-					s.scanObjectDir(&layout, dbName, schemaName, kind, kindPath)
+					if err := s.scanObjectDir(&layout, dbName, schemaName, kind, kindPath); err != nil {
+						return Layout{}, err
+					}
 				}
 			}
 		}
@@ -93,10 +99,10 @@ func (s *Scanner) Scan(ctx context.Context, root string) (Layout, error) {
 	return layout, nil
 }
 
-func (s *Scanner) scanObjectDir(layout *Layout, dbName, schemaName, kind, dirPath string) {
+func (s *Scanner) scanObjectDir(layout *Layout, dbName, schemaName, kind, dirPath string) error {
 	files, err := os.ReadDir(dirPath)
 	if err != nil {
-		return
+		return fmt.Errorf("scan: read object dir %s: %w", dirPath, err)
 	}
 	for _, f := range files {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".sql" {
@@ -105,12 +111,13 @@ func (s *Scanner) scanObjectDir(layout *Layout, dbName, schemaName, kind, dirPat
 		obj := s.buildObject(dbName, schemaName, kind, "", f.Name(), dirPath)
 		layout.Objects = append(layout.Objects, &obj)
 	}
+	return nil
 }
 
-func (s *Scanner) scanTableDir(layout *Layout, dbName, schemaName, tableDir string) {
+func (s *Scanner) scanTableDir(layout *Layout, dbName, schemaName, tableDir string) error {
 	files, err := os.ReadDir(tableDir)
 	if err != nil {
-		return
+		return fmt.Errorf("scan: read table dir %s: %w", tableDir, err)
 	}
 	for _, f := range files {
 		name := f.Name()
@@ -124,7 +131,10 @@ func (s *Scanner) scanTableDir(layout *Layout, dbName, schemaName, tableDir stri
 	migrationsDir := filepath.Join(tableDir, "_migrations")
 	entries, err := os.ReadDir(migrationsDir)
 	if err != nil {
-		return
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("scan: read migrations dir %s: %w", migrationsDir, err)
 	}
 	for _, tableEntry := range entries {
 		if !tableEntry.IsDir() {
@@ -135,7 +145,10 @@ func (s *Scanner) scanTableDir(layout *Layout, dbName, schemaName, tableDir stri
 
 		migrationFiles, err := os.ReadDir(tableMigrationsDir)
 		if err != nil {
-			continue
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("scan: read migration dir %s: %w", tableMigrationsDir, err)
 		}
 		for _, mf := range migrationFiles {
 			if mf.IsDir() || filepath.Ext(mf.Name()) != ".sql" {
@@ -147,12 +160,13 @@ func (s *Scanner) scanTableDir(layout *Layout, dbName, schemaName, tableDir stri
 			}
 		}
 	}
+	return nil
 }
 
-func (s *Scanner) scanCheckDir(layout *Layout, dbName, schemaName, dirPath string) {
+func (s *Scanner) scanCheckDir(layout *Layout, dbName, schemaName, dirPath string) error {
 	files, err := os.ReadDir(dirPath)
 	if err != nil {
-		return
+		return fmt.Errorf("scan: read check dir %s: %w", dirPath, err)
 	}
 	for _, f := range files {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".sql" {
@@ -161,6 +175,7 @@ func (s *Scanner) scanCheckDir(layout *Layout, dbName, schemaName, dirPath strin
 		cs := s.buildCheck(dbName, schemaName, f.Name(), dirPath)
 		layout.Checks = append(layout.Checks, &cs)
 	}
+	return nil
 }
 
 func (s *Scanner) buildObject(dbName, schemaName, kind, parentName, fileName, dirPath string) Object {

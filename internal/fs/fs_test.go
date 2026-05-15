@@ -58,8 +58,27 @@ func TestScanDiscoveresObjects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(layout.Objects) < 3 {
-		t.Fatalf("expected >=3 objects, got %d", len(layout.Objects))
+	if len(layout.Objects) != 3 {
+		t.Fatalf("expected 3 objects, got %d", len(layout.Objects))
+	}
+	byKind := map[string]int{}
+	for _, obj := range layout.Objects {
+		byKind[obj.Kind]++
+		if obj.NormalizedKey == "" {
+			t.Errorf("object %s has empty NormalizedKey", obj.Path)
+		}
+		if !strings.HasPrefix(obj.Path, "dactests/reporting/") {
+			t.Errorf("object %s has unexpected path prefix", obj.Path)
+		}
+	}
+	if byKind["views"] != 1 {
+		t.Errorf("expected 1 view, got %d", byKind["views"])
+	}
+	if byKind["procedures"] != 1 {
+		t.Errorf("expected 1 procedure, got %d", byKind["procedures"])
+	}
+	if byKind["tables"] != 1 {
+		t.Errorf("expected 1 table, got %d", byKind["tables"])
 	}
 }
 
@@ -204,9 +223,23 @@ func TestNormalizedKeys(t *testing.T) {
 	layout, _ := NewScanner().Scan(context.Background(), dir)
 
 	keys := layout.NormalizedKeys()
+	if len(keys) != 3 {
+		t.Fatalf("expected 3 keys, got %d: %v", len(keys), keys)
+	}
+	seen := map[string]bool{}
 	for _, k := range keys {
+		seen[k] = true
 		if !strings.Contains(k, "/") {
 			t.Errorf("key %q does not contain /", k)
+		}
+	}
+	for _, want := range []string{
+		"reporting/views/monthly",
+		"reporting/procedures/refresh",
+		"reporting/tables/snapshot",
+	} {
+		if !seen[want] {
+			t.Errorf("missing expected key %q in %v", want, keys)
 		}
 	}
 }
