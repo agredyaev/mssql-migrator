@@ -17,8 +17,8 @@ const (
 )
 
 type Config struct {
-	Env, SQLRoot, SQLBase, ReportDir, LogLevel string
-	JSONLogs, SkipValidate, Confirm, PlanJSON  bool
+	SQLRoot, SQLBase, ReportDir, LogLevel      string
+	JSONLogs                                   bool
 	CommandTimeout, ScriptTimeout, LockTimeout time.Duration
 	PlanFile, RepairTarget                     string
 

@@ -71,8 +71,12 @@ var classifyRules = []classifyRule{
 		result: ErrConfig.Error()},
 	{sentinels: []error{ErrConnection},
 		result: "connection failed"},
+	{sentinels: []error{ErrLockFailed},
+		result: "lock failed"},
 	{sentinels: []error{ErrLockTimeout},
 		result: "lock timeout"},
+	{sentinels: []error{ErrPlanBlocked},
+		result: "plan is blocked"},
 	{sentinels: []error{ErrValidation},
 		result: "validation failure"},
 	{sentinels: []error{ErrSQLExecution},
@@ -96,10 +100,7 @@ func classify(base error, cause error) string {
 			return rule.result
 		}
 	}
-	if cause != nil {
-		return "runtime failure"
-	}
-	if base != nil {
+	if cause != nil || base != nil {
 		return "runtime failure"
 	}
 	return "runtime failure"

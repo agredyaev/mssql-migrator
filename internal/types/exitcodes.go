@@ -13,4 +13,5 @@ const (
 	ExitLockTimeout      = 7
 	ExitInvalidInput     = 8
 	ExitCriticalState    = 9
+	ExitPlanBlocked      = 10
 )

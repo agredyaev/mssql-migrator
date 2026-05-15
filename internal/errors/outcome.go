@@ -27,13 +27,15 @@ func EvaluateWithCause(cfg types.Config, phase string, base error, cause error) 
 }
 
 func EvaluatePlanBlocked(cfg types.Config, plan types.MigrationPlan) Outcome {
-	return Outcome{Failure: BuildPlanBlocked(cfg, plan), ExitCode: types.ExitChecksumMismatch}
+	return Outcome{Failure: BuildPlanBlocked(cfg, plan), ExitCode: types.ExitPlanBlocked}
 }
 
 func ExitCode(err error) int {
 	switch {
 	case err == nil:
 		return types.ExitOK
+	case errors.Is(err, ErrPlanBlocked):
+		return types.ExitPlanBlocked
 	case errors.Is(err, ErrConfig):
 		return types.ExitConfigError
 	case errors.Is(err, ErrConnection):
@@ -50,12 +52,18 @@ func ExitCode(err error) int {
 		return types.ExitSQLExecution
 	case errors.Is(err, ErrValidation):
 		return types.ExitValidation
-	case errors.Is(err, ErrLockTimeout):
+	case errors.Is(err, ErrLockTimeout), errors.Is(err, ErrLockFailed):
 		return types.ExitLockTimeout
 	case errors.Is(err, ErrInvalidInput):
 		return types.ExitInvalidInput
 	case errors.Is(err, ErrCriticalState):
 		return types.ExitCriticalState
+	case errors.Is(err, ErrMissingSchemaPermission),
+		errors.Is(err, ErrMissingObjectPermission),
+		errors.Is(err, ErrMissingParentObject),
+		errors.Is(err, ErrMissingDDLPermission),
+		errors.Is(err, ErrSchemaIncompatible):
+		return types.ExitInvalidInput
 	default:
 		return types.ExitGeneralError
 	}

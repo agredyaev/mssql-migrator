@@ -174,7 +174,7 @@ func TestEvaluatePlanBlocked(t *testing.T) {
 		BlockReasons: []string{"table foo changed but no transition file"},
 	}
 	outcome := EvaluatePlanBlocked(cfg, plan)
-	if outcome.ExitCode != types.ExitChecksumMismatch {
+	if outcome.ExitCode != types.ExitPlanBlocked {
 		t.Errorf("ExitCode = %d", outcome.ExitCode)
 	}
 }

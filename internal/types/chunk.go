@@ -1,7 +1,6 @@
 package types
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -24,7 +23,7 @@ func BuildINQuery(template, placeholder string, keys []string) (string, []any) {
 	parts := make([]string, len(keys))
 	args := make([]any, len(keys))
 	for i, k := range keys {
-		parts[i] = fmt.Sprintf("@p%d", i+1)
+		parts[i] = "?"
 		args[i] = k
 	}
 	query := strings.Replace(template, placeholder, strings.Join(parts, ", "), -1)
