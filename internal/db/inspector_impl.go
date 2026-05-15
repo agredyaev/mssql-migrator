@@ -71,42 +71,44 @@ func (d *inspector) readState(ctx context.Context, conn driver.Conn, scope fs.La
 		return nil, err
 	}
 
-	objectsBySchema := scopeObjectsBySchema(scope)
+	objectsBySchema := scopeObjectNamesBySchema(scope, "")
 	objects := make(map[string]Object)
 	for _, schemaChunk := range types.ChunkKeys(schemaNames, driver.DefaultMaxParameters) {
+		var allObjNames []string
 		for _, schema := range schemaChunk {
-			objNames := objectsBySchema[schema]
-			if len(objNames) == 0 {
-				continue
+			allObjNames = append(allObjNames, objectsBySchema[schema]...)
+		}
+		if len(allObjNames) == 0 {
+			continue
+		}
+		for _, objChunk := range types.ChunkKeys(allObjNames, driver.DefaultMaxParameters) {
+			chunkObjs, err := d.queryObjects(ctx, conn, schemaChunk, objChunk)
+			if err != nil {
+				return nil, err
 			}
-			for _, objChunk := range types.ChunkKeys(objNames, driver.DefaultMaxParameters) {
-				chunkObjs, err := d.queryObjects(ctx, conn, []string{schema}, objChunk)
-				if err != nil {
-					return nil, err
-				}
-				for k, v := range chunkObjs {
-					objects[k] = v
-				}
+			for k, v := range chunkObjs {
+				objects[k] = v
 			}
 		}
 	}
 
-	tablesBySchema := scopeTablesBySchema(scope)
+	tablesBySchema := scopeObjectNamesBySchema(scope, "tables")
 	columns := make(map[string][]TableColumn)
 	for _, schemaChunk := range types.ChunkKeys(schemaNames, driver.DefaultMaxParameters) {
+		var allTblNames []string
 		for _, schema := range schemaChunk {
-			tblNames := tablesBySchema[schema]
-			if len(tblNames) == 0 {
-				continue
+			allTblNames = append(allTblNames, tablesBySchema[schema]...)
+		}
+		if len(allTblNames) == 0 {
+			continue
+		}
+		for _, tblChunk := range types.ChunkKeys(allTblNames, driver.DefaultMaxParameters) {
+			chunkCols, err := d.queryColumns(ctx, conn, schemaChunk, tblChunk)
+			if err != nil {
+				return nil, err
 			}
-			for _, tblChunk := range types.ChunkKeys(tblNames, driver.DefaultMaxParameters) {
-				chunkCols, err := d.queryColumns(ctx, conn, []string{schema}, tblChunk)
-				if err != nil {
-					return nil, err
-				}
-				for k, v := range chunkCols {
-					columns[k] = v
-				}
+			for k, v := range chunkCols {
+				columns[k] = v
 			}
 		}
 	}
@@ -217,30 +219,10 @@ func scopeSchemaNames(scope fs.Layout) []string {
 	return names
 }
 
-func scopeObjectsBySchema(scope fs.Layout) map[string][]string {
+func scopeObjectNamesBySchema(scope fs.Layout, kind string) map[string][]string {
 	result := make(map[string]map[string]struct{})
 	for _, obj := range scope.Objects {
-		schema := obj.NormalizedSchemaName
-		if result[schema] == nil {
-			result[schema] = make(map[string]struct{})
-		}
-		result[schema][obj.ObjectName] = struct{}{}
-	}
-	out := make(map[string][]string, len(result))
-	for s, names := range result {
-		list := make([]string, 0, len(names))
-		for n := range names {
-			list = append(list, n)
-		}
-		out[s] = list
-	}
-	return out
-}
-
-func scopeTablesBySchema(scope fs.Layout) map[string][]string {
-	result := make(map[string]map[string]struct{})
-	for _, obj := range scope.Objects {
-		if obj.Kind != "tables" {
+		if kind != "" && obj.Kind != kind {
 			continue
 		}
 		schema := obj.NormalizedSchemaName

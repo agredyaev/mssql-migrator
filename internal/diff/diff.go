@@ -28,15 +28,6 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 		checksums = map[string]string{}
 	}
 
-	layoutChecksumMap := make(map[string]string, len(layout.Objects))
-	for _, obj := range layout.Objects {
-		cs, err := obj.Checksum()
-		if err != nil {
-			return nil, fmt.Errorf("checksum %s: %w", obj.NormalizedKey, err)
-		}
-		layoutChecksumMap[obj.NormalizedKey] = cs
-	}
-
 	transitionsByKey := make(map[string][]*fs.TransitionScript)
 	for _, ts := range layout.Transitions {
 		if !ts.Scaffold {
@@ -54,18 +45,6 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 
 	for _, obj := range layout.Objects {
 		dbObj, exists := state.Objects[obj.NormalizedKey]
-		gitHash, gitErr := obj.GitHash()
-		if gitErr != nil {
-			gitHash = ""
-		}
-		gitAuthor, gitErr := obj.GitAuthor()
-		if gitErr != nil {
-			gitAuthor = ""
-		}
-		gitDate, gitErr := obj.GitDate()
-		if gitErr != nil {
-			gitDate = ""
-		}
 		plannedObj := types.PlannedObject{
 			ObjectPath:    obj.Path,
 			DatabaseName:  obj.DatabaseName,
@@ -75,35 +54,46 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 			NormalizedKey: obj.NormalizedKey,
 			Exists:        exists,
 			SourceFile:    obj.Path,
-			GitHash:       gitHash,
-			GitAuthor:     gitAuthor,
-			GitDate:       gitDate,
 		}
 
 		switch {
 		case !exists:
 			plannedObj.PlannedAction = types.ActionCreateObject
-			plannedObj.Checksum = layoutChecksumMap[obj.NormalizedKey]
+			cs, err := obj.Checksum()
+			if err != nil {
+				return nil, fmt.Errorf("checksum %s: %w", obj.NormalizedKey, err)
+			}
+			plannedObj.Checksum = cs
+			setGitInfo(obj, &plannedObj)
 			createCount++
 
 		case exists && checksums[obj.NormalizedKey] == "":
 			plannedObj.PlannedAction = types.ActionAdoptExisting
-			plannedObj.Checksum = layoutChecksumMap[obj.NormalizedKey]
+			cs, err := obj.Checksum()
+			if err != nil {
+				return nil, fmt.Errorf("checksum %s: %w", obj.NormalizedKey, err)
+			}
+			plannedObj.Checksum = cs
+			setGitInfo(obj, &plannedObj)
 			adoptCount++
 
-		case exists && checksumsMatch(layoutChecksumMap, obj.NormalizedKey, checksums[obj.NormalizedKey]):
+		case exists && checksumsMatch(obj, checksums[obj.NormalizedKey]):
 			plannedObj.PlannedAction = types.ActionSkipUnchanged
 			plannedObj.Checksum = checksums[obj.NormalizedKey]
 			skipCount++
 
 		default:
 			changedCount++
-			plannedObj.Checksum = layoutChecksumMap[obj.NormalizedKey]
-			c.handleChanged(changeCtx{
+			cs, err := obj.Checksum()
+			if err != nil {
+				return nil, fmt.Errorf("checksum %s: %w", obj.NormalizedKey, err)
+			}
+			plannedObj.Checksum = cs
+			setGitInfo(obj, &plannedObj)
+			blockedCount += c.handleChanged(changeCtx{
 				obj: obj, dbObj: dbObj, plannedObj: &plannedObj,
 				plan: plan, state: state,
 				transitionsByKey: transitionsByKey, checksums: checksums,
-				blockedCount: &blockedCount,
 			})
 		}
 
@@ -124,9 +114,24 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 	return plan, nil
 }
 
-func checksumsMatch(layoutChecksumMap map[string]string, key, prior string) bool {
-	current := layoutChecksumMap[key]
-	return current != "" && current == prior
+func checksumsMatch(obj *fs.Object, prior string) bool {
+	cs, err := obj.Checksum()
+	return err == nil && cs != "" && cs == prior
+}
+
+func setGitInfo(obj *fs.Object, planned *types.PlannedObject) {
+	h, err := obj.GitHash()
+	if err == nil {
+		planned.GitHash = h
+	}
+	a, err := obj.GitAuthor()
+	if err == nil {
+		planned.GitAuthor = a
+	}
+	d, err := obj.GitDate()
+	if err == nil {
+		planned.GitDate = d
+	}
 }
 
 type changeCtx struct {
@@ -137,10 +142,9 @@ type changeCtx struct {
 	state            *db.State
 	transitionsByKey map[string][]*fs.TransitionScript
 	checksums        map[string]string
-	blockedCount     *int
 }
 
-func (c *Computer) handleChanged(ctx changeCtx) {
+func (c *Computer) handleChanged(ctx changeCtx) int {
 	switch {
 	case ctx.obj.Kind == "tables":
 		transitions := ctx.transitionsByKey[ctx.obj.NormalizedKey]
@@ -148,13 +152,13 @@ func (c *Computer) handleChanged(ctx changeCtx) {
 			ctx.plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
 			ctx.plan.Blocked = true
 			ctx.plan.Blockers = append(ctx.plan.Blockers, "table "+ctx.obj.NormalizedKey+" changed but has no non-scaffold transition scripts")
-			*ctx.blockedCount++
-		} else {
-			ctx.plannedObj.PlannedAction = types.ActionReprocessChanged
-			for _, ts := range transitions {
-				ctx.plannedObj.TransitionPaths = append(ctx.plannedObj.TransitionPaths, ts.Path)
-			}
+			return 1
 		}
+		ctx.plannedObj.PlannedAction = types.ActionReprocessChanged
+		for _, ts := range transitions {
+			ctx.plannedObj.TransitionPaths = append(ctx.plannedObj.TransitionPaths, ts.Path)
+		}
+		return 0
 
 	case ctx.obj.Kind == "triggers" && ctx.obj.ParentName != "":
 		parentKey := types.NormalizedKey(ctx.obj.SchemaName, "tables", ctx.obj.ParentName)
@@ -162,15 +166,16 @@ func (c *Computer) handleChanged(ctx changeCtx) {
 			ctx.plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
 			ctx.plan.Blocked = true
 			ctx.plan.Blockers = append(ctx.plan.Blockers, "trigger "+ctx.obj.NormalizedKey+" parent table "+parentKey+" not found")
-			*ctx.blockedCount++
-		} else if ctx.checksums[parentKey] == "" {
+			return 1
+		}
+		if ctx.checksums[parentKey] == "" {
 			ctx.plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
 			ctx.plan.Blocked = true
 			ctx.plan.Blockers = append(ctx.plan.Blockers, "trigger "+ctx.obj.NormalizedKey+" parent table "+parentKey+" is changing")
-			*ctx.blockedCount++
-		} else {
-			ctx.plannedObj.PlannedAction = types.ActionUpdateExistingModule
+			return 1
 		}
+		ctx.plannedObj.PlannedAction = types.ActionUpdateExistingModule
+		return 0
 
 	default:
 		if types.IsModuleKind(ctx.obj.Kind) {
@@ -178,5 +183,6 @@ func (c *Computer) handleChanged(ctx changeCtx) {
 		} else {
 			ctx.plannedObj.PlannedAction = types.ActionReprocessChanged
 		}
+		return 0
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"reporting-db-migrations/internal/bus"
-	"reporting-db-migrations/internal/driver/mssql"
 	"reporting-db-migrations/internal/errors"
 	"reporting-db-migrations/internal/log"
 	"reporting-db-migrations/internal/types"
@@ -45,7 +44,7 @@ func runWithLookup(args []string, lookup envLookupFn) int {
 
 	logger := log.New(cfg.JSONLogs, cfg.LogLevel, os.Stderr)
 
-	conn, err := mssql.Open(ctx, cfg)
+	conn, err := openDatabase(ctx, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "rmig: cannot connect to %s: %v\n", cfg.Server, err)
 		return errors.ExitCode(err)

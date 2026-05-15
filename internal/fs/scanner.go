@@ -243,12 +243,6 @@ func (s *Scanner) parseTransitionFile(dbName, schemaName, tableName, fileName, d
 	return ts, true
 }
 
-var allowedKinds = map[string]struct{}{
-	"tables": {}, "views": {}, "procedures": {}, "functions": {},
-	"triggers": {}, "indexes": {}, "types": {}, "sequences": {}, "synonyms": {},
-}
-
 func isObjectKind(kind string) bool {
-	_, ok := allowedKinds[kind]
-	return ok && kind != "tables" && kind != "checks"
+	return types.IsKnownKind(kind) && kind != "tables" && kind != "checks"
 }

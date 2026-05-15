@@ -37,3 +37,8 @@ func IsTransactionalKind(kind string) bool {
 	tx, ok := kindIsTransactional[kind]
 	return ok && tx
 }
+
+func IsKnownKind(kind string) bool {
+	_, ok := kindIsTransactional[kind]
+	return ok
+}

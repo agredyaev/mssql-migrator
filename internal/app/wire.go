@@ -9,6 +9,7 @@ import (
 	"reporting-db-migrations/internal/db"
 	"reporting-db-migrations/internal/diff"
 	"reporting-db-migrations/internal/driver"
+	"reporting-db-migrations/internal/driver/mssql"
 	"reporting-db-migrations/internal/engine"
 	"reporting-db-migrations/internal/fs"
 	"reporting-db-migrations/internal/lock"
@@ -28,20 +29,12 @@ func (loaderAdapter) LoadChecksums(ctx context.Context, conn driver.Conn, keys [
 	return audit.LoadChecksums(ctx, conn, keys)
 }
 
-func (loaderAdapter) LoadAppliedMigrations(ctx context.Context, conn driver.Conn, tableKey string) (map[string]bool, error) {
-	return audit.LoadAppliedMigrations(ctx, conn, tableKey)
+func (loaderAdapter) LoadAllAppliedMigrations(ctx context.Context, conn driver.Conn) (map[string]bool, error) {
+	return audit.LoadAllAppliedMigrations(ctx, conn)
 }
 
-type applierAdapter struct {
-	exec *apply.Executor
-}
-
-func (a *applierAdapter) Execute(ctx context.Context, conn driver.Conn, plan types.MigrationPlan, layout fs.Layout, eb bus.EventBus) (*engine.ApplyResult, error) {
-	result, err := a.exec.Execute(ctx, conn, plan, layout, eb)
-	if err != nil {
-		return nil, err
-	}
-	return &engine.ApplyResult{Applied: result.Applied}, nil
+func openDatabase(ctx context.Context, cfg types.Config) (driver.Conn, error) {
+	return mssql.Open(ctx, cfg)
 }
 
 func attachSubscribers(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.Logger) {
@@ -62,7 +55,7 @@ func wireEngine(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.
 		loaderAdapter{},
 		diff.NewComputer(),
 		scaffold.New(),
-		&applierAdapter{exec: apply.New()},
+		apply.New(),
 		lock.New(),
 	)
 }

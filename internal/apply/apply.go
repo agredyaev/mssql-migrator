@@ -2,6 +2,7 @@ package apply
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"sort"
 	"strings"
@@ -12,6 +13,18 @@ import (
 	"reporting-db-migrations/internal/fs"
 	"reporting-db-migrations/internal/types"
 )
+
+//go:embed sql/create_schema.sql
+var createSchemaSQL string
+
+//go:embed sql/begin_transaction.sql
+var beginTransactionSQL string
+
+//go:embed sql/commit_transaction.sql
+var commitTransactionSQL string
+
+//go:embed sql/rollback.sql
+var rollbackSQL string
 
 const defaultBatchSize = 100
 
@@ -56,7 +69,7 @@ func (e *Executor) Execute(ctx context.Context, conn driver.Conn, plan types.Mig
 			if strings.Contains(schema.SchemaName, "]") {
 				return result, fmt.Errorf("invalid schema name: %q", schema.SchemaName)
 			}
-			q := fmt.Sprintf("CREATE SCHEMA [%s]", schema.SchemaName)
+			q := strings.Replace(createSchemaSQL, "{{schema_name}}", schema.SchemaName, 1)
 			if _, err := conn.ExecContext(ctx, q); err != nil {
 				result.Failed++
 				result.Errors = append(result.Errors, err.Error())
@@ -215,7 +228,7 @@ func (e *Executor) executeTxBatch(ctx context.Context, conn driver.Conn, stmts [
 			result.Errors = append(result.Errors, fmt.Sprintf("rollback: %s", rbErr.Error()))
 		}
 		for _, stmt := range stmts {
-			singleSQL := "BEGIN TRANSACTION\n" + stmt.content + "\nCOMMIT TRANSACTION"
+			singleSQL := beginTransactionSQL + "\n" + stmt.content + "\n" + commitTransactionSQL
 			if _, stmtErr := conn.ExecContext(ctx, singleSQL); stmtErr != nil {
 				if rbErr := rollbackIfOpen(ctx, conn); rbErr != nil {
 					result.Errors = append(result.Errors, fmt.Sprintf("rollback: %s", rbErr.Error()))
@@ -270,7 +283,7 @@ func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, pla
 			gitAuthor, _ := ts.GitAuthor()
 			gitDate, _ := ts.GitDate()
 
-			sql := "BEGIN TRANSACTION\n" + content + "\nCOMMIT TRANSACTION"
+			sql := beginTransactionSQL + "\n" + content + "\n" + commitTransactionSQL
 			if _, err := conn.ExecContext(ctx, sql); err != nil {
 				if rbErr := rollbackIfOpen(ctx, conn); rbErr != nil {
 					result.Errors = append(result.Errors, fmt.Sprintf("rollback: %s", rbErr.Error()))
@@ -303,18 +316,20 @@ func newMigrationStmt(obj types.PlannedObject, tp, gitHash, gitAuthor, gitDate s
 
 func buildTxBatchSQL(stmts []batchedStmt) string {
 	var b strings.Builder
-	b.WriteString("BEGIN TRANSACTION\n")
+	b.WriteString(beginTransactionSQL)
+	b.WriteString("\n")
 	for i, stmt := range stmts {
 		if i > 0 {
 			b.WriteString("\n")
 		}
 		b.WriteString(stmt.content)
 	}
-	b.WriteString("\nCOMMIT TRANSACTION")
+	b.WriteString("\n")
+	b.WriteString(commitTransactionSQL)
 	return b.String()
 }
 
 func rollbackIfOpen(ctx context.Context, conn driver.Conn) error {
-	_, err := conn.ExecContext(ctx, "IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION")
+	_, err := conn.ExecContext(ctx, rollbackSQL)
 	return err
 }
