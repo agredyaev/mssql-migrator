@@ -18,6 +18,7 @@ type Subscriber struct {
 	conn          driver.Conn
 	notifier      types.ErrorNotifier
 	bootstrapOnce sync.Once
+	bootstrapErr  error
 }
 
 func NewSubscriber(b bus.EventBus, conn driver.Conn) *Subscriber {
@@ -37,7 +38,9 @@ func (s *Subscriber) onObjectApplied(ctx context.Context, payload any) {
 		s.notifier.Notify("audit: unexpected payload type for EventObjectApplied")
 		return
 	}
-	s.bootOnce(ctx)
+	if err := s.boot(ctx); err != nil {
+		return
+	}
 	s.insertHistory(ctx, ev, "applied", "")
 }
 
@@ -47,16 +50,20 @@ func (s *Subscriber) onObjectFailed(ctx context.Context, payload any) {
 		s.notifier.Notify("audit: unexpected payload type for EventObjectFailed")
 		return
 	}
-	s.bootOnce(ctx)
+	if err := s.boot(ctx); err != nil {
+		return
+	}
 	s.insertHistory(ctx, &ev.ObjectEvent, "failed", ev.Error)
 }
 
-func (s *Subscriber) bootOnce(ctx context.Context) {
+func (s *Subscriber) boot(ctx context.Context) error {
 	s.bootstrapOnce.Do(func() {
-		if err := EnsureTables(ctx, s.conn); err != nil {
-			s.notifier.Notify("audit bootstrap: " + err.Error())
-		}
+		s.bootstrapErr = EnsureTables(ctx, s.conn)
 	})
+	if s.bootstrapErr != nil {
+		s.notifier.Notify("audit bootstrap: " + s.bootstrapErr.Error())
+	}
+	return s.bootstrapErr
 }
 
 func (s *Subscriber) insertHistory(ctx context.Context, ev *types.ObjectEvent, event, errText string) {
@@ -75,13 +82,15 @@ func (s *Subscriber) insertHistory(ctx context.Context, ev *types.ObjectEvent, e
 	}
 }
 
+var sqlDefaultDate = time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
+
 func parseGitDate(s string) time.Time {
 	if s == "" {
-		return time.Time{}
+		return sqlDefaultDate
 	}
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
-		return time.Time{}
+		return sqlDefaultDate
 	}
 	return t
 }

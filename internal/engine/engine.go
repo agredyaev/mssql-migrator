@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 
+	"reporting-db-migrations/internal/apply"
 	"reporting-db-migrations/internal/bus"
 	"reporting-db-migrations/internal/db"
 	"reporting-db-migrations/internal/driver"
@@ -36,7 +37,7 @@ type Inspector interface {
 type Loader interface {
 	EnsureTables(ctx context.Context, conn driver.Conn) error
 	LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[string]string, error)
-	LoadAppliedMigrations(ctx context.Context, conn driver.Conn, tableKey string) (map[string]bool, error)
+	LoadAllAppliedMigrations(ctx context.Context, conn driver.Conn) (map[string]bool, error)
 }
 
 type Computer interface {
@@ -48,10 +49,8 @@ type Scaffolder interface {
 }
 
 type Applier interface {
-	Execute(ctx context.Context, conn driver.Conn, plan types.MigrationPlan, layout fs.Layout, eb bus.EventBus) (*ApplyResult, error)
+	Execute(ctx context.Context, conn driver.Conn, plan types.MigrationPlan, layout fs.Layout, eb bus.EventBus) (*apply.ApplyResult, error)
 }
-
-type ApplyResult = struct{ Applied int }
 
 func New(cfg types.Config, bus bus.EventBus, conn driver.Conn, fs Scanner, db Inspector, load Loader, diff Computer, scaffolder Scaffolder, applier Applier, locker lock.Locker) *Engine {
 	return &Engine{
@@ -92,13 +91,13 @@ func (e *Engine) Migrate(ctx context.Context) error {
 		return err
 	}
 
-	e.bus.Publish(ctx, types.EventDiffComputed, &types.DiffResult{Plan: plan})
-
 	if err := e.locker.Acquire(ctx, e.conn, e.cfg.LockTimeout); err != nil {
 		e.publishRunFailed(ctx, "migrate", err)
 		return err
 	}
 	defer e.locker.Release(ctx, e.conn)
+
+	e.bus.Publish(ctx, types.EventDiffComputed, &types.DiffResult{Plan: plan})
 
 	if plan.Blocked {
 		if _, err := e.scaffold.Ensure(ctx, e.cfg, layout, plan, state.TableColumns); err != nil {
@@ -125,14 +124,27 @@ func (e *Engine) Migrate(ctx context.Context) error {
 }
 
 func (e *Engine) filterAppliedMigrations(ctx context.Context, plan *types.MigrationPlan) error {
+	needLookup := false
+	for i := range plan.Objects {
+		obj := &plan.Objects[i]
+		if obj.PlannedAction == types.ActionReprocessChanged && len(obj.TransitionPaths) > 0 {
+			needLookup = true
+			break
+		}
+	}
+	if !needLookup {
+		return nil
+	}
+
+	applied, err := e.load.LoadAllAppliedMigrations(ctx, e.conn)
+	if err != nil {
+		return err
+	}
+
 	for i := range plan.Objects {
 		obj := &plan.Objects[i]
 		if obj.PlannedAction != types.ActionReprocessChanged || len(obj.TransitionPaths) == 0 {
 			continue
-		}
-		applied, err := e.load.LoadAppliedMigrations(ctx, e.conn, obj.NormalizedKey)
-		if err != nil {
-			return err
 		}
 		filtered := make([]string, 0, len(obj.TransitionPaths))
 		for _, tp := range obj.TransitionPaths {
