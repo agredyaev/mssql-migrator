@@ -12,22 +12,28 @@ const (
 	KindSynonyms   = "synonyms"
 )
 
-var moduleKinds = map[string]bool{
-	KindViews: true, KindProcedures: true, KindFunctions: true, KindTriggers: true,
+var kindIsTransactional = map[string]bool{
+	KindTables:     true,
+	KindIndexes:    true,
+	KindTypes:      true,
+	KindSequences:  true,
+	KindSynonyms:   true,
+	KindViews:      false,
+	KindProcedures: false,
+	KindFunctions:  false,
+	KindTriggers:   false,
 }
 
 func IsModuleKind(kind string) bool {
-	return moduleKinds[kind]
-}
-
-var transactionalKinds = map[string]bool{
-	KindTables: true, KindIndexes: true, KindTypes: true, KindSequences: true, KindSynonyms: true,
-}
-
-func IsTransactionalKind(kind string) bool {
-	return transactionalKinds[kind]
+	tx, ok := kindIsTransactional[kind]
+	return ok && !tx
 }
 
 func IsNoTransactionKind(kind string) bool {
-	return moduleKinds[kind]
+	return IsModuleKind(kind)
+}
+
+func IsTransactionalKind(kind string) bool {
+	tx, ok := kindIsTransactional[kind]
+	return ok && tx
 }
