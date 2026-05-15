@@ -3,7 +3,7 @@ package db
 import (
 	"context"
 	_ "embed"
-	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -21,36 +21,39 @@ var objectSQL string
 //go:embed sql/columns.sql
 var columnSQL string
 
+type cachedScope struct {
+	once  sync.Once
+	state *State
+	err   error
+}
+
 type inspector struct {
 	mu    sync.Mutex
-	cache map[string]*State
+	cache map[string]*cachedScope
 }
 
 func NewInspector() Inspector {
 	return &inspector{
-		cache: make(map[string]*State),
+		cache: make(map[string]*cachedScope),
 	}
 }
 
 func (d *inspector) Inspect(ctx context.Context, conn driver.Conn, scope fs.Layout) (*State, error) {
 	scopeKey := scopeKey(scope)
+
 	d.mu.Lock()
-	if cached, ok := d.cache[scopeKey]; ok {
-		d.mu.Unlock()
-		return cached, nil
+	cs, ok := d.cache[scopeKey]
+	if !ok {
+		cs = &cachedScope{}
+		d.cache[scopeKey] = cs
 	}
 	d.mu.Unlock()
 
-	state, err := d.readState(ctx, conn, scope)
-	if err != nil {
-		return nil, err
-	}
+	cs.once.Do(func() {
+		cs.state, cs.err = d.readState(ctx, conn, scope)
+	})
 
-	d.mu.Lock()
-	d.cache[scopeKey] = state
-	d.mu.Unlock()
-
-	return state, nil
+	return cs.state, cs.err
 }
 
 func (d *inspector) readState(ctx context.Context, conn driver.Conn, scope fs.Layout) (*State, error) {
@@ -234,23 +237,23 @@ func scopeTableKeys(scope fs.Layout) []string {
 }
 
 func scopeKey(scope fs.Layout) string {
-	var parts []string
+	parts := make([]string, 0, len(scope.Schemas)+len(scope.Objects))
 	for _, s := range scope.Schemas {
 		parts = append(parts, "s:"+s.NormalizedName)
 	}
 	for _, obj := range scope.Objects {
 		parts = append(parts, "o:"+obj.NormalizedKey)
 	}
+	sort.Strings(parts)
 	return strings.Join(parts, "|")
 }
 
 func buildDualINQuery(template, placeholder1 string, keys1 []string, placeholder2 string, keys2 []string) (string, []any) {
 	q, args1 := types.BuildINQuery(template, placeholder1, keys1)
-	offset := len(args1)
 	parts := make([]string, len(keys2))
 	args := make([]any, len(keys2))
 	for i, k := range keys2 {
-		parts[i] = fmt.Sprintf("@p%d", offset+i+1)
+		parts[i] = "?"
 		args[i] = k
 	}
 	query := strings.Replace(q, placeholder2, strings.Join(parts, ", "), -1)

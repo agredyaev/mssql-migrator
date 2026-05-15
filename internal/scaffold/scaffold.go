@@ -28,6 +28,11 @@ func (s *Scaffolder) EnsureTransitionFiles(ctx context.Context, cfg types.Config
 	created := false
 	commit := gitShortHash()
 
+	objByKey := make(map[string]*fs.Object, len(layout.Objects))
+	for _, o := range layout.Objects {
+		objByKey[o.NormalizedKey] = o
+	}
+
 	for _, obj := range plan.Objects {
 		if obj.PlannedAction != types.ActionReprocessChangedBlocked {
 			continue
@@ -48,7 +53,7 @@ func (s *Scaffolder) EnsureTransitionFiles(ctx context.Context, cfg types.Config
 		}
 
 		var fileName, content string
-		content, fileName = tryAutoMigration(obj, layout, columns, commit, dir)
+		content, fileName = tryAutoMigration(obj, objByKey, columns, commit, dir)
 		if content == "" {
 			fileName = fmt.Sprintf("001_%s_describe_change.sql", commit)
 			content = scaffoldContent(obj.SchemaName, obj.ObjectName, columns[obj.NormalizedKey])
@@ -69,8 +74,8 @@ func (s *Scaffolder) EnsureTransitionFiles(ctx context.Context, cfg types.Config
 	return created, nil
 }
 
-func tryAutoMigration(obj types.PlannedObject, layout fs.Layout, columns map[string][]db.TableColumn, commit, dir string) (string, string) {
-	fsObj := lookupObjectByKey(layout, obj.NormalizedKey)
+func tryAutoMigration(obj types.PlannedObject, objByKey map[string]*fs.Object, columns map[string][]db.TableColumn, commit, dir string) (string, string) {
+	fsObj := objByKey[obj.NormalizedKey]
 	if fsObj == nil {
 		return "", ""
 	}
@@ -92,15 +97,6 @@ func tryAutoMigration(obj types.PlannedObject, layout fs.Layout, columns map[str
 	}
 
 	return migrationSQL, fileName
-}
-
-func lookupObjectByKey(layout fs.Layout, key string) *fs.Object {
-	for _, obj := range layout.Objects {
-		if obj.NormalizedKey == key {
-			return obj
-		}
-	}
-	return nil
 }
 
 func hasExistingTransitionFile(dir string) bool {

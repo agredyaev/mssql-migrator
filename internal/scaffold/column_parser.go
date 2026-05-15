@@ -31,7 +31,8 @@ func parseTableColumns(sql string) []parsedColumn {
 }
 
 func extractColumnBody(sql string) string {
-	s := strings.ToUpper(strings.ReplaceAll(sql, "\n", " "))
+	s := stripLineComments(sql)
+	s = strings.ToUpper(strings.ReplaceAll(s, "\n", " "))
 	idx := strings.Index(s, "(")
 	if idx < 0 {
 		return ""
@@ -42,6 +43,16 @@ func extractColumnBody(sql string) string {
 		return ""
 	}
 	return strings.TrimSpace(body[:last])
+}
+
+func stripLineComments(sql string) string {
+	lines := strings.Split(sql, "\n")
+	for i, line := range lines {
+		if idx := strings.Index(line, "--"); idx >= 0 {
+			lines[i] = line[:idx]
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func splitColumns(body string) []string {
