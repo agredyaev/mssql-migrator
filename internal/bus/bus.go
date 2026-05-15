@@ -28,7 +28,10 @@ func (b *Bus) Publish(event types.Event, payload any) {
 	b.mu.Unlock()
 
 	for _, h := range handlers {
-		h(payload)
+		func() {
+			defer func() { recover() }()
+			h(payload)
+		}()
 	}
 }
 

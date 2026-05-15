@@ -34,15 +34,17 @@ func LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[st
 		if err != nil {
 			return nil, err
 		}
+		defer rows.Close()
 		for rows.Next() {
 			var key, checksum string
 			if err := rows.Scan(&key, &checksum); err != nil {
-				rows.Close()
 				return nil, err
 			}
 			result[key] = checksum
 		}
-		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 	}
 	return result, nil
 }
@@ -60,6 +62,9 @@ func LoadAppliedMigrations(ctx context.Context, conn driver.Conn, tableKey strin
 			return nil, err
 		}
 		result[key] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return result, nil
 }

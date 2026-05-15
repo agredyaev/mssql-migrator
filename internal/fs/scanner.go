@@ -46,7 +46,7 @@ func (s *Scanner) Scan(ctx context.Context, root string) (Layout, error) {
 
 		schemaDirs, err := os.ReadDir(dbPath)
 		if err != nil {
-			continue
+			return Layout{}, fmt.Errorf("scan: read schema dir %s: %w", dbPath, err)
 		}
 
 		for _, schemaEntry := range schemaDirs {
@@ -64,7 +64,7 @@ func (s *Scanner) Scan(ctx context.Context, root string) (Layout, error) {
 
 			kindDirs, err := os.ReadDir(schemaPath)
 			if err != nil {
-				continue
+				return Layout{}, fmt.Errorf("scan: read kind dir %s: %w", schemaPath, err)
 			}
 
 			for _, kindEntry := range kindDirs {
@@ -176,7 +176,7 @@ func (s *Scanner) buildObject(dbName, schemaName, kind, parentName, fileName, di
 		ObjectName:           name,
 		ParentName:           parentName,
 		NormalizedKey:        types.NormalizedKey(schemaName, kind, name),
-		NoTransaction:        isNoTransactionKind(kind),
+		NoTransaction:        types.IsNoTransactionKind(kind),
 	}
 }
 
@@ -236,13 +236,4 @@ var allowedKinds = map[string]struct{}{
 func isObjectKind(kind string) bool {
 	_, ok := allowedKinds[kind]
 	return ok && kind != "tables" && kind != "checks"
-}
-
-func isNoTransactionKind(kind string) bool {
-	switch kind {
-	case "views", "procedures", "functions", "triggers":
-		return true
-	default:
-		return false
-	}
 }

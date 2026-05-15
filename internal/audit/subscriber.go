@@ -34,14 +34,22 @@ func (s *Subscriber) SetErrorHandler(fn func(msg string)) {
 
 func (s *Subscriber) onObjectApplied(payload any) {
 	ctx := context.Background()
-	ev := payload.(*types.ObjectEvent)
+	ev, ok := payload.(*types.ObjectEvent)
+	if !ok {
+		s.errf("audit: unexpected payload type for EventObjectApplied")
+		return
+	}
 	s.bootOnce(ctx)
 	s.insertHistory(ctx, ev, "applied", "")
 }
 
 func (s *Subscriber) onObjectFailed(payload any) {
 	ctx := context.Background()
-	ev := payload.(*types.FailureEvent)
+	ev, ok := payload.(*types.FailureEvent)
+	if !ok {
+		s.errf("audit: unexpected payload type for EventObjectFailed")
+		return
+	}
 	s.bootOnce(ctx)
 	s.insertHistory(ctx, &ev.ObjectEvent, "failed", ev.Error)
 }
@@ -72,14 +80,11 @@ func (s *Subscriber) insertHistory(ctx context.Context, ev *types.ObjectEvent, e
 
 func parseGitDate(s string) time.Time {
 	if s == "" {
-		return time.Now().UTC()
+		return time.Time{}
 	}
-	t, err := time.Parse("2006-01-02T15:04:05-07:00", s)
+	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
-		t, err = time.Parse("2006-01-02T15:04:05Z", s)
-		if err != nil {
-			return time.Now().UTC()
-		}
+		return time.Time{}
 	}
 	return t
 }

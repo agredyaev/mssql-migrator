@@ -51,12 +51,7 @@ func (l *Logger) Warn(event, message string)  { l.write(LevelWarn, event, messag
 func (l *Logger) Error(event, message string) { l.write(LevelError, event, message) }
 
 func (l *Logger) ErrorEnvelope(event, envelope string) {
-	if l.json {
-		l.write(LevelError, event, envelope)
-		return
-	}
-	msg := Redact(envelope)
-	l.write(LevelError, event, msg)
+	l.write(LevelError, event, envelope)
 }
 
 func (l *Logger) write(level Level, event, message string) {
@@ -74,7 +69,11 @@ func (l *Logger) write(level Level, event, message string) {
 			"event":   event,
 			"message": message,
 		}
-		data, _ := json.Marshal(entry)
+		data, err := json.Marshal(entry)
+		if err != nil {
+			fmt.Fprintf(l.writer, `{"error":"marshal failed: %s"}`+"\n", err.Error())
+			return
+		}
 		fmt.Fprintln(l.writer, string(data))
 		return
 	}
@@ -102,8 +101,12 @@ func normalizeLevel(level string) Level {
 
 func eventPath(event string) string {
 	event = Redact(event)
-	if len(event) > 48 {
-		return event[:48]
+	if len(event) <= 48 {
+		return event
+	}
+	runes := []rune(event)
+	if len(runes) > 48 {
+		return string(runes[:48])
 	}
 	return event
 }

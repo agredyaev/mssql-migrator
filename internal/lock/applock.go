@@ -30,6 +30,9 @@ func (l *AppLock) Acquire(ctx context.Context, conn driver.Conn, timeout time.Du
 	defer rows.Close()
 
 	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return errors.Wrap(errors.ErrLockFailed, err)
+		}
 		return errors.ErrLockTimeout
 	}
 	if err := rows.Scan(&result); err != nil {

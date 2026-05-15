@@ -14,12 +14,13 @@ func BuildDSN(cfg types.Config) string {
 	query.Set("encrypt", fmt.Sprintf("%t", cfg.Encrypt))
 	query.Set("TrustServerCertificate", fmt.Sprintf("%t", cfg.TrustServerCertificate))
 	query.Set("app name", "rmig")
-	if cfg.DBAuthMode() == types.DBAuthIntegrated {
+	authMode := cfg.DBAuthMode()
+	if authMode == types.DBAuthIntegrated {
 		query.Set("authenticator", "winsspi")
 	}
 
 	var user *url.Userinfo
-	if cfg.DBAuthMode() == types.DBAuthSQL && cfg.User != "" {
+	if authMode == types.DBAuthSQL && cfg.User != "" {
 		user = url.UserPassword(cfg.User, cfg.Password)
 	} else if strings.TrimSpace(cfg.User) != "" {
 		user = url.User(cfg.User)
