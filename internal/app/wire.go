@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 
 	"reporting-db-migrations/internal/apply"
 	"reporting-db-migrations/internal/audit"
@@ -10,7 +9,6 @@ import (
 	"reporting-db-migrations/internal/db"
 	"reporting-db-migrations/internal/diff"
 	"reporting-db-migrations/internal/driver"
-	"reporting-db-migrations/internal/driver/mssql"
 	"reporting-db-migrations/internal/engine"
 	"reporting-db-migrations/internal/fs"
 	"reporting-db-migrations/internal/lock"
@@ -21,6 +19,10 @@ import (
 )
 
 type loaderAdapter struct{}
+
+func (loaderAdapter) EnsureTables(ctx context.Context, conn driver.Conn) error {
+	return audit.EnsureTables(ctx, conn)
+}
 
 func (loaderAdapter) LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[string]string, error) {
 	return audit.LoadChecksums(ctx, conn, keys)
@@ -40,14 +42,6 @@ func (a *applierAdapter) Execute(ctx context.Context, conn driver.Conn, plan typ
 		return nil, err
 	}
 	return &engine.ApplyResult{Applied: result.Applied}, nil
-}
-
-func openConn(ctx context.Context, cfg types.Config) (driver.Conn, error) {
-	conn, err := mssql.Open(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("cannot connect to %s: %w", cfg.Server, err)
-	}
-	return conn, nil
 }
 
 func attachSubscribers(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.Logger) {

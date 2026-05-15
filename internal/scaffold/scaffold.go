@@ -3,7 +3,6 @@ package scaffold
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -13,10 +12,12 @@ import (
 	"reporting-db-migrations/internal/types"
 )
 
-type Scaffolder struct{}
+type Scaffolder struct {
+	GitShortHash func() string
+}
 
 func New() *Scaffolder {
-	return &Scaffolder{}
+	return &Scaffolder{GitShortHash: defaultGitShortHash}
 }
 
 func (s *Scaffolder) Ensure(ctx context.Context, cfg types.Config, layout fs.Layout, plan *types.MigrationPlan, columns map[string][]db.TableColumn) (bool, error) {
@@ -26,7 +27,7 @@ func (s *Scaffolder) Ensure(ctx context.Context, cfg types.Config, layout fs.Lay
 func (s *Scaffolder) EnsureTransitionFiles(ctx context.Context, cfg types.Config, layout fs.Layout, plan *types.MigrationPlan, columns map[string][]db.TableColumn) (bool, error) {
 	baseDir := cfg.SQLBase
 	created := false
-	commit := gitShortHash()
+	commit := s.GitShortHash()
 
 	objByKey := make(map[string]*fs.Object, len(layout.Objects))
 	for _, o := range layout.Objects {
@@ -44,27 +45,27 @@ func (s *Scaffolder) EnsureTransitionFiles(ctx context.Context, cfg types.Config
 		}
 
 		dir := filepath.Join(baseDir, db, obj.SchemaName, "tables", "_migrations", obj.ObjectName)
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := fs.EnsureDir(dir); err != nil {
 			return created, fmt.Errorf("scaffold: mkdir %s: %w", dir, err)
 		}
 
-		if hasExistingTransitionFile(dir) {
+		if fs.HasNonScaffoldSQL(dir) {
 			continue
 		}
 
 		var fileName, content string
-		content, fileName = tryAutoMigration(obj, objByKey, columns, commit, dir)
+		content, fileName = tryAutoMigration(obj, objByKey[obj.NormalizedKey], columns, commit, dir)
 		if content == "" {
 			fileName = fmt.Sprintf("001_%s_describe_change.sql", commit)
 			content = scaffoldContent(obj.SchemaName, obj.ObjectName, columns[obj.NormalizedKey])
 		}
 
 		path := filepath.Join(dir, fileName)
-		if _, err := os.Stat(path); err == nil {
+		if fs.Exists(path) {
 			continue
 		}
 
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		if err := fs.WriteFile(path, []byte(content)); err != nil {
 			return created, fmt.Errorf("scaffold: write %s: %w", path, err)
 		}
 
@@ -74,8 +75,7 @@ func (s *Scaffolder) EnsureTransitionFiles(ctx context.Context, cfg types.Config
 	return created, nil
 }
 
-func tryAutoMigration(obj types.PlannedObject, objByKey map[string]*fs.Object, columns map[string][]db.TableColumn, commit, dir string) (string, string) {
-	fsObj := objByKey[obj.NormalizedKey]
+func tryAutoMigration(obj types.PlannedObject, fsObj *fs.Object, columns map[string][]db.TableColumn, commit, dir string) (string, string) {
 	if fsObj == nil {
 		return "", ""
 	}
@@ -92,33 +92,14 @@ func tryAutoMigration(obj types.PlannedObject, objByKey map[string]*fs.Object, c
 	}
 
 	fileName := fmt.Sprintf("001_%s_auto_add_columns.sql", commit)
-	if _, err := os.Stat(filepath.Join(dir, fileName)); err == nil {
+	if fs.Exists(filepath.Join(dir, fileName)) {
 		return "", ""
 	}
 
 	return migrationSQL, fileName
 }
 
-func hasExistingTransitionFile(dir string) bool {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
-			data, err := os.ReadFile(filepath.Join(dir, e.Name()))
-			if err != nil {
-				continue
-			}
-			if !strings.Contains(string(data), "-- rmig: transition-scaffold") {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func gitShortHash() string {
+func defaultGitShortHash() string {
 	out, err := exec.Command("git", "rev-parse", "--short", "HEAD").Output()
 	if err != nil {
 		return "0000000"
