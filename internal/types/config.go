@@ -2,8 +2,6 @@ package types
 
 import "time"
 
-const SQLServerMaxParameters = 2100
-
 const (
 	DBAuthSQL        = "sql"
 	DBAuthIntegrated = "integrated"

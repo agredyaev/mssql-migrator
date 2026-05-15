@@ -171,11 +171,11 @@ func TestInspectDifferentScopeNotCached(t *testing.T) {
 }
 
 func TestChunkKeys_Empty(t *testing.T) {
-	chunks := types.ChunkKeys(nil, types.SQLServerMaxParameters)
+	chunks := types.ChunkKeys(nil, driver.DefaultMaxParameters)
 	if len(chunks) != 0 {
 		t.Error("expected empty chunks for nil")
 	}
-	chunks = types.ChunkKeys([]string{}, types.SQLServerMaxParameters)
+	chunks = types.ChunkKeys([]string{}, driver.DefaultMaxParameters)
 	if len(chunks) != 0 {
 		t.Error("expected empty chunks for empty slice")
 	}
@@ -186,7 +186,7 @@ func TestChunkKeys_LargeBatch(t *testing.T) {
 	for i := range keys {
 		keys[i] = "k"
 	}
-	chunks := types.ChunkKeys(keys, types.SQLServerMaxParameters)
+	chunks := types.ChunkKeys(keys, driver.DefaultMaxParameters)
 	if len(chunks) < 2 {
 		t.Fatalf("expected at least 2 chunks for 4200 keys, got %d", len(chunks))
 	}

@@ -71,12 +71,16 @@ func (d *inspector) readState(ctx context.Context, conn driver.Conn, scope fs.La
 		return nil, err
 	}
 
-	objectKeys := scopeObjectKeys(scope)
+	objectsBySchema := scopeObjectsBySchema(scope)
 	objects := make(map[string]Object)
-	if len(objectKeys) > 0 {
-		for _, chunk := range types.ChunkKeys(schemaNames, types.SQLServerMaxParameters) {
-			for _, objChunk := range types.ChunkKeys(objectKeys, types.SQLServerMaxParameters) {
-				chunkObjs, err := d.queryObjects(ctx, conn, chunk, objChunk)
+	for _, schemaChunk := range types.ChunkKeys(schemaNames, driver.DefaultMaxParameters) {
+		for _, schema := range schemaChunk {
+			objNames := objectsBySchema[schema]
+			if len(objNames) == 0 {
+				continue
+			}
+			for _, objChunk := range types.ChunkKeys(objNames, driver.DefaultMaxParameters) {
+				chunkObjs, err := d.queryObjects(ctx, conn, []string{schema}, objChunk)
 				if err != nil {
 					return nil, err
 				}
@@ -87,12 +91,16 @@ func (d *inspector) readState(ctx context.Context, conn driver.Conn, scope fs.La
 		}
 	}
 
-	tableKeys := scopeTableKeys(scope)
+	tablesBySchema := scopeTablesBySchema(scope)
 	columns := make(map[string][]TableColumn)
-	if len(tableKeys) > 0 {
-		for _, chunk := range types.ChunkKeys(schemaNames, types.SQLServerMaxParameters) {
-			for _, tblChunk := range types.ChunkKeys(tableKeys, types.SQLServerMaxParameters) {
-				chunkCols, err := d.queryColumns(ctx, conn, chunk, tblChunk)
+	for _, schemaChunk := range types.ChunkKeys(schemaNames, driver.DefaultMaxParameters) {
+		for _, schema := range schemaChunk {
+			tblNames := tablesBySchema[schema]
+			if len(tblNames) == 0 {
+				continue
+			}
+			for _, tblChunk := range types.ChunkKeys(tblNames, driver.DefaultMaxParameters) {
+				chunkCols, err := d.queryColumns(ctx, conn, []string{schema}, tblChunk)
 				if err != nil {
 					return nil, err
 				}
@@ -112,7 +120,7 @@ func (d *inspector) readState(ctx context.Context, conn driver.Conn, scope fs.La
 
 func (d *inspector) querySchemas(ctx context.Context, conn driver.Conn, schemaNames []string) (map[string]struct{}, error) {
 	result := make(map[string]struct{})
-	for _, chunk := range types.ChunkKeys(schemaNames, types.SQLServerMaxParameters) {
+	for _, chunk := range types.ChunkKeys(schemaNames, driver.DefaultMaxParameters) {
 		q, args := types.BuildINQuery(schemaSQL, "{{schema_list}}", chunk)
 		rows, err := conn.QueryContext(ctx, q, args...)
 		if err != nil {
@@ -134,8 +142,8 @@ func (d *inspector) querySchemas(ctx context.Context, conn driver.Conn, schemaNa
 
 func (d *inspector) queryObjects(ctx context.Context, conn driver.Conn, schemaNames, objectNames []string) (map[string]Object, error) {
 	result := make(map[string]Object)
-	for _, sc := range types.ChunkKeys(schemaNames, types.SQLServerMaxParameters) {
-		for _, oc := range types.ChunkKeys(objectNames, types.SQLServerMaxParameters) {
+	for _, sc := range types.ChunkKeys(schemaNames, driver.DefaultMaxParameters) {
+		for _, oc := range types.ChunkKeys(objectNames, driver.DefaultMaxParameters) {
 			q, args := buildDualINQuery(objectSQL, "{{schema_list}}", sc, "{{object_list}}", oc)
 			rows, err := conn.QueryContext(ctx, q, args...)
 			if err != nil {
@@ -164,8 +172,8 @@ func (d *inspector) queryObjects(ctx context.Context, conn driver.Conn, schemaNa
 
 func (d *inspector) queryColumns(ctx context.Context, conn driver.Conn, schemaNames, tableNames []string) (map[string][]TableColumn, error) {
 	result := make(map[string][]TableColumn)
-	for _, sc := range types.ChunkKeys(schemaNames, types.SQLServerMaxParameters) {
-		for _, tc := range types.ChunkKeys(tableNames, types.SQLServerMaxParameters) {
+	for _, sc := range types.ChunkKeys(schemaNames, driver.DefaultMaxParameters) {
+		for _, tc := range types.ChunkKeys(tableNames, driver.DefaultMaxParameters) {
 			q, args := buildDualINQuery(columnSQL, "{{schema_list}}", sc, "{{table_list}}", tc)
 			rows, err := conn.QueryContext(ctx, q, args...)
 			if err != nil {
@@ -209,31 +217,47 @@ func scopeSchemaNames(scope fs.Layout) []string {
 	return names
 }
 
-func scopeObjectKeys(scope fs.Layout) []string {
-	seen := map[string]struct{}{}
+func scopeObjectsBySchema(scope fs.Layout) map[string][]string {
+	result := make(map[string]map[string]struct{})
 	for _, obj := range scope.Objects {
-		seen[obj.ObjectName] = struct{}{}
+		schema := obj.NormalizedSchemaName
+		if result[schema] == nil {
+			result[schema] = make(map[string]struct{})
+		}
+		result[schema][obj.ObjectName] = struct{}{}
 	}
-	names := make([]string, 0, len(seen))
-	for n := range seen {
-		names = append(names, n)
+	out := make(map[string][]string, len(result))
+	for s, names := range result {
+		list := make([]string, 0, len(names))
+		for n := range names {
+			list = append(list, n)
+		}
+		out[s] = list
 	}
-	return names
+	return out
 }
 
-func scopeTableKeys(scope fs.Layout) []string {
-	seen := map[string]struct{}{}
+func scopeTablesBySchema(scope fs.Layout) map[string][]string {
+	result := make(map[string]map[string]struct{})
 	for _, obj := range scope.Objects {
 		if obj.Kind != "tables" {
 			continue
 		}
-		seen[obj.ObjectName] = struct{}{}
+		schema := obj.NormalizedSchemaName
+		if result[schema] == nil {
+			result[schema] = make(map[string]struct{})
+		}
+		result[schema][obj.ObjectName] = struct{}{}
 	}
-	names := make([]string, 0, len(seen))
-	for n := range seen {
-		names = append(names, n)
+	out := make(map[string][]string, len(result))
+	for s, names := range result {
+		list := make([]string, 0, len(names))
+		for n := range names {
+			list = append(list, n)
+		}
+		out[s] = list
 	}
-	return names
+	return out
 }
 
 func scopeKey(scope fs.Layout) string {

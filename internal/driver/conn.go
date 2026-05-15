@@ -2,6 +2,8 @@ package driver
 
 import "context"
 
+const DefaultMaxParameters = 2100
+
 type Rows interface {
 	Scan(dest ...any) error
 	Next() bool

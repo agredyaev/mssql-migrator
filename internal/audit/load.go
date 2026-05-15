@@ -27,7 +27,7 @@ func LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[st
 		return map[string]string{}, nil
 	}
 	result := make(map[string]string, len(keys))
-	chunks := types.ChunkKeys(keys, types.SQLServerMaxParameters)
+	chunks := types.ChunkKeys(keys, driver.DefaultMaxParameters)
 	for _, chunk := range chunks {
 		query, args := types.BuildINQuery(loadChecksumsSQL, "{{keys}}", chunk)
 		rows, err := conn.QueryContext(ctx, query, args...)
