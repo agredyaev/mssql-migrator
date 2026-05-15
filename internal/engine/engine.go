@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"time"
 
 	"reporting-db-migrations/internal/audit"
 	"reporting-db-migrations/internal/bus"
@@ -10,6 +9,7 @@ import (
 	"reporting-db-migrations/internal/driver"
 	"reporting-db-migrations/internal/errors"
 	"reporting-db-migrations/internal/fs"
+	"reporting-db-migrations/internal/lock"
 	"reporting-db-migrations/internal/types"
 )
 
@@ -23,7 +23,7 @@ type Engine struct {
 	diff     Computer
 	scaffold Scaffolder
 	applier  Applier
-	locker   Locker
+	locker   lock.Locker
 }
 
 type Scanner interface {
@@ -51,14 +51,9 @@ type Applier interface {
 	Execute(ctx context.Context, conn driver.Conn, plan types.MigrationPlan, layout fs.Layout, eb bus.EventBus) (*ApplyResult, error)
 }
 
-type Locker interface {
-	Acquire(ctx context.Context, conn driver.Conn, timeout time.Duration) error
-	Release(ctx context.Context, conn driver.Conn) error
-}
-
 type ApplyResult = struct{ Applied int }
 
-func New(cfg types.Config, bus bus.EventBus, conn driver.Conn, fs Scanner, db Inspector, load Loader, diff Computer, scaffolder Scaffolder, applier Applier, locker Locker) *Engine {
+func New(cfg types.Config, bus bus.EventBus, conn driver.Conn, fs Scanner, db Inspector, load Loader, diff Computer, scaffolder Scaffolder, applier Applier, locker lock.Locker) *Engine {
 	return &Engine{
 		cfg:      cfg,
 		bus:      bus,
@@ -106,12 +101,14 @@ func (e *Engine) Migrate(ctx context.Context) error {
 	defer e.locker.Release(ctx, e.conn)
 
 	if plan.Blocked {
-		e.scaffold.Ensure(ctx, e.cfg, layout, plan, state.TableColumns)
+		if _, err := e.scaffold.Ensure(ctx, e.cfg, layout, plan, state.TableColumns); err != nil {
+			e.publishRunFailed("migrate", err)
+			return err
+		}
 		e.publishRunFailed("migrate", errors.ErrPlanBlocked)
 		return errors.ErrPlanBlocked
 	}
 
-	// Filter out already-applied migrations
 	e.filterAppliedMigrations(ctx, plan)
 
 	_, err = e.applier.Execute(ctx, e.conn, *plan, layout, e.bus)
@@ -132,6 +129,7 @@ func (e *Engine) filterAppliedMigrations(ctx context.Context, plan *types.Migrat
 		}
 		applied, err := e.load.LoadAppliedMigrations(ctx, e.conn, obj.NormalizedKey)
 		if err != nil {
+			obj.TransitionPaths = nil
 			continue
 		}
 		filtered := make([]string, 0, len(obj.TransitionPaths))
@@ -161,51 +159,34 @@ func (e *Engine) Validate(ctx context.Context) error {
 
 func (e *Engine) Baseline(ctx context.Context) error {
 	e.bus.Publish(types.EventRunStarted, &types.RunStarted{Command: "baseline"})
-
-	plan, layout, _, err := e.runPlan(ctx)
-	if err != nil {
-		e.publishRunFailed("baseline", err)
-		return err
-	}
-
-	if err := e.locker.Acquire(ctx, e.conn, e.cfg.LockTimeout); err != nil {
-		e.publishRunFailed("baseline", err)
-		return err
-	}
-	defer e.locker.Release(ctx, e.conn)
-
-	_, err = e.applier.Execute(ctx, e.conn, *plan, layout, e.bus)
-	if err != nil {
-		e.publishRunFailed("baseline", err)
-		return err
-	}
-
-	e.bus.Publish(types.EventRunFinished, &types.RunFinished{Command: "baseline", Result: "success", ExitCode: 0})
-	return nil
+	return e.executeLocked(ctx, "baseline")
 }
 
 func (e *Engine) RepairChecksum(ctx context.Context) error {
 	e.bus.Publish(types.EventRunStarted, &types.RunStarted{Command: "repair"})
+	return e.executeLocked(ctx, "repair")
+}
 
+func (e *Engine) executeLocked(ctx context.Context, command string) error {
 	plan, layout, _, err := e.runPlan(ctx)
 	if err != nil {
-		e.publishRunFailed("repair", err)
+		e.publishRunFailed(command, err)
 		return err
 	}
 
 	if err := e.locker.Acquire(ctx, e.conn, e.cfg.LockTimeout); err != nil {
-		e.publishRunFailed("repair", err)
+		e.publishRunFailed(command, err)
 		return err
 	}
 	defer e.locker.Release(ctx, e.conn)
 
 	_, err = e.applier.Execute(ctx, e.conn, *plan, layout, e.bus)
 	if err != nil {
-		e.publishRunFailed("repair", err)
+		e.publishRunFailed(command, err)
 		return err
 	}
 
-	e.bus.Publish(types.EventRunFinished, &types.RunFinished{Command: "repair", Result: "success", ExitCode: 0})
+	e.bus.Publish(types.EventRunFinished, &types.RunFinished{Command: command, Result: "success", ExitCode: 0})
 	return nil
 }
 

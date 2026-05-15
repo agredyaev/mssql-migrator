@@ -5,6 +5,23 @@ import (
 	"strings"
 )
 
+var validCommands = map[string]struct{}{
+	"plan": {}, "migrate": {}, "validate": {}, "baseline": {}, "repair-checksum": {},
+}
+
+func commandsList() string {
+	var cmds []string
+	for c := range validCommands {
+		cmds = append(cmds, c)
+	}
+	return strings.Join(cmds, ", ")
+}
+
+func isValidCommand(cmd string) bool {
+	_, ok := validCommands[cmd]
+	return ok
+}
+
 type cliFlags struct {
 	Command string
 	EnvFile string
@@ -13,7 +30,7 @@ type cliFlags struct {
 
 func parseFlags(args []string) (cliFlags, error) {
 	if len(args) == 0 {
-		return cliFlags{}, fmt.Errorf("missing command; expected one of: plan, migrate, validate, baseline, repair-checksum")
+		return cliFlags{}, fmt.Errorf("missing command; expected one of: %s", commandsList())
 	}
 
 	var flags cliFlags
@@ -43,12 +60,10 @@ func parseFlags(args []string) (cliFlags, error) {
 	}
 
 	if flags.Command == "" {
-		return cliFlags{}, fmt.Errorf("missing command; expected one of: plan, migrate, validate, baseline, repair-checksum\n%s", usageText)
+		return cliFlags{}, fmt.Errorf("missing command; expected one of: %s\n%s", commandsList(), usageText)
 	}
 
-	switch flags.Command {
-	case "plan", "migrate", "validate", "baseline", "repair-checksum":
-	default:
+	if !isValidCommand(flags.Command) {
 		return cliFlags{}, fmt.Errorf("unknown command: %s\n%s", flags.Command, usageText)
 	}
 

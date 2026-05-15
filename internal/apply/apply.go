@@ -53,6 +53,9 @@ func (e *Executor) Execute(ctx context.Context, conn driver.Conn, plan types.Mig
 	for _, schema := range plan.Schemas {
 		switch schema.Action {
 		case types.SchemaActionCreateSchema:
+			if strings.Contains(schema.SchemaName, "]") {
+				return result, fmt.Errorf("invalid schema name: %q", schema.SchemaName)
+			}
 			q := fmt.Sprintf("CREATE SCHEMA [%s]", schema.SchemaName)
 			if _, err := conn.ExecContext(ctx, q); err != nil {
 				result.Failed++
@@ -141,6 +144,8 @@ func (e *Executor) collectStatements(plan types.MigrationPlan, objIndex map[stri
 
 		content, err := fsObj.Content()
 		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", obj.NormalizedKey, err.Error()))
 			continue
 		}
 
@@ -158,7 +163,7 @@ func (e *Executor) collectStatements(plan types.MigrationPlan, objIndex map[stri
 			recordKind:    "object",
 		}
 
-		if isTransactionalKind(obj.Kind) {
+		if types.IsTransactionalKind(obj.Kind) {
 			txCurrent = append(txCurrent, stmt)
 			if len(txCurrent) >= batchSize {
 				txBatches = append(txBatches, txCurrent)
@@ -196,15 +201,6 @@ func (k kindSorter) Less(i, j int) bool {
 	return oi < oj
 }
 
-func isTransactionalKind(kind string) bool {
-	switch kind {
-	case "tables", "indexes", "types", "sequences", "synonyms":
-		return true
-	default:
-		return false
-	}
-}
-
 func newObjectEvent(stmt batchedStmt) *types.ObjectEvent {
 	return &types.ObjectEvent{
 		ObjectPath:    stmt.sourceFile,
@@ -231,11 +227,15 @@ func (e *Executor) executeTxBatch(ctx context.Context, conn driver.Conn, stmts [
 	batchSQL := buildTxBatchSQL(stmts)
 	_, err := conn.ExecContext(ctx, batchSQL)
 	if err != nil {
-		rollbackIfOpen(ctx, conn)
+		if rbErr := rollbackIfOpen(ctx, conn); rbErr != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("rollback: %s", rbErr.Error()))
+		}
 		for _, stmt := range stmts {
 			singleSQL := "BEGIN TRANSACTION\n" + stmt.content + "\nCOMMIT TRANSACTION"
 			if _, stmtErr := conn.ExecContext(ctx, singleSQL); stmtErr != nil {
-				rollbackIfOpen(ctx, conn)
+				if rbErr := rollbackIfOpen(ctx, conn); rbErr != nil {
+					result.Errors = append(result.Errors, fmt.Sprintf("rollback: %s", rbErr.Error()))
+				}
 				result.Failed++
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", stmt.normalizedKey, stmtErr.Error()))
 				b.Publish(types.EventObjectFailed, newFailureEvent(stmt, stmtErr.Error()))
@@ -278,18 +278,7 @@ func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, pla
 			if err != nil {
 				result.Failed++
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", tp, err.Error()))
-				b.Publish(types.EventObjectFailed, newFailureEvent(batchedStmt{
-					normalizedKey: obj.NormalizedKey,
-					kind:          obj.Kind,
-					schemaName:    obj.SchemaName,
-					objectName:    obj.ObjectName,
-					sourceFile:    tp,
-					checksum:      obj.Checksum,
-					gitHash:       obj.GitHash,
-					gitAuthor:     obj.GitAuthor,
-					gitDate:       obj.GitDate,
-					recordKind:    "migration",
-				}, err.Error()))
+				b.Publish(types.EventObjectFailed, newFailureEvent(newMigrationStmt(obj, tp, "", "", ""), err.Error()))
 				continue
 			}
 
@@ -299,37 +288,32 @@ func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, pla
 
 			sql := "BEGIN TRANSACTION\n" + content + "\nCOMMIT TRANSACTION"
 			if _, err := conn.ExecContext(ctx, sql); err != nil {
-				rollbackIfOpen(ctx, conn)
+				if rbErr := rollbackIfOpen(ctx, conn); rbErr != nil {
+					result.Errors = append(result.Errors, fmt.Sprintf("rollback: %s", rbErr.Error()))
+				}
 				result.Failed++
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", tp, err.Error()))
-				b.Publish(types.EventObjectFailed, newFailureEvent(batchedStmt{
-					normalizedKey: obj.NormalizedKey,
-					kind:          obj.Kind,
-					schemaName:    obj.SchemaName,
-					objectName:    obj.ObjectName,
-					sourceFile:    tp,
-					checksum:      obj.Checksum,
-					gitHash:       gitHash,
-					gitAuthor:     gitAuthor,
-					gitDate:       gitDate,
-					recordKind:    "migration",
-				}, err.Error()))
+				b.Publish(types.EventObjectFailed, newFailureEvent(newMigrationStmt(obj, tp, gitHash, gitAuthor, gitDate), err.Error()))
 				continue
 			}
 			result.Applied++
-			b.Publish(types.EventObjectApplied, newObjectEvent(batchedStmt{
-				normalizedKey: obj.NormalizedKey,
-				kind:          obj.Kind,
-				schemaName:    obj.SchemaName,
-				objectName:    obj.ObjectName,
-				sourceFile:    tp,
-				checksum:      obj.Checksum,
-				gitHash:       gitHash,
-				gitAuthor:     gitAuthor,
-				gitDate:       gitDate,
-				recordKind:    "migration",
-			}))
+			b.Publish(types.EventObjectApplied, newObjectEvent(newMigrationStmt(obj, tp, gitHash, gitAuthor, gitDate)))
 		}
+	}
+}
+
+func newMigrationStmt(obj types.PlannedObject, tp, gitHash, gitAuthor, gitDate string) batchedStmt {
+	return batchedStmt{
+		normalizedKey: obj.NormalizedKey,
+		kind:          obj.Kind,
+		schemaName:    obj.SchemaName,
+		objectName:    obj.ObjectName,
+		sourceFile:    tp,
+		checksum:      obj.Checksum,
+		gitHash:       gitHash,
+		gitAuthor:     gitAuthor,
+		gitDate:       gitDate,
+		recordKind:    "migration",
 	}
 }
 
@@ -346,6 +330,7 @@ func buildTxBatchSQL(stmts []batchedStmt) string {
 	return b.String()
 }
 
-func rollbackIfOpen(ctx context.Context, conn driver.Conn) {
-	conn.ExecContext(ctx, "IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION")
+func rollbackIfOpen(ctx context.Context, conn driver.Conn) error {
+	_, err := conn.ExecContext(ctx, "IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION")
+	return err
 }

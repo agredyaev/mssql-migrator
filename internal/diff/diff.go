@@ -2,7 +2,6 @@ package diff
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"reporting-db-migrations/internal/db"
@@ -26,6 +25,22 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 	}
 	if checksums == nil {
 		checksums = map[string]string{}
+	}
+
+	layoutChecksumMap := make(map[string]string, len(layout.Objects))
+	for _, obj := range layout.Objects {
+		cs, err := obj.Checksum()
+		if err != nil {
+			cs = ""
+		}
+		layoutChecksumMap[obj.NormalizedKey] = cs
+	}
+
+	transitionsByKey := make(map[string][]*fs.TransitionScript)
+	for _, ts := range layout.Transitions {
+		if !ts.Scaffold {
+			transitionsByKey[ts.NormalizedKey] = append(transitionsByKey[ts.NormalizedKey], ts)
+		}
 	}
 
 	var (
@@ -58,24 +73,23 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 		switch {
 		case !exists:
 			plannedObj.PlannedAction = types.ActionCreateObject
-			plannedObj.Checksum = getLayoutChecksum(layout, obj.NormalizedKey)
+			plannedObj.Checksum = layoutChecksumMap[obj.NormalizedKey]
 			createCount++
 
 		case exists && checksums[obj.NormalizedKey] == "":
 			plannedObj.PlannedAction = types.ActionAdoptExisting
-			plannedObj.Checksum = getLayoutChecksum(layout, obj.NormalizedKey)
+			plannedObj.Checksum = layoutChecksumMap[obj.NormalizedKey]
 			adoptCount++
 
-		case exists && checksumsMatch(layout, obj.NormalizedKey, checksums[obj.NormalizedKey]):
+		case exists && checksumsMatch(layoutChecksumMap, obj.NormalizedKey, checksums[obj.NormalizedKey]):
 			plannedObj.PlannedAction = types.ActionSkipUnchanged
 			plannedObj.Checksum = checksums[obj.NormalizedKey]
 			skipCount++
 
 		default:
 			changedCount++
-			currentChecksum := getLayoutChecksum(layout, obj.NormalizedKey)
-			plannedObj.Checksum = currentChecksum
-			c.handleChanged(obj, dbObj, &plannedObj, plan, state, layout, checksums, &blockedCount)
+			plannedObj.Checksum = layoutChecksumMap[obj.NormalizedKey]
+			c.handleChanged(obj, dbObj, &plannedObj, plan, state, transitionsByKey, checksums, &blockedCount)
 		}
 
 		plan.Objects = append(plan.Objects, plannedObj)
@@ -95,21 +109,8 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 	return plan, nil
 }
 
-func getLayoutChecksum(layout fs.Layout, key string) string {
-	for _, obj := range layout.Objects {
-		if obj.NormalizedKey == key {
-			cs, err := obj.Checksum()
-			if err == nil {
-				return cs
-			}
-			return ""
-		}
-	}
-	return ""
-}
-
-func checksumsMatch(layout fs.Layout, key, prior string) bool {
-	current := getLayoutChecksum(layout, key)
+func checksumsMatch(layoutChecksumMap map[string]string, key, prior string) bool {
+	current := layoutChecksumMap[key]
 	return current != "" && current == prior
 }
 
@@ -118,13 +119,13 @@ func (c *Computer) handleChanged(
 	plannedObj *types.PlannedObject,
 	plan *types.MigrationPlan,
 	state *db.State,
-	layout fs.Layout,
+	transitionsByKey map[string][]*fs.TransitionScript,
 	checksums map[string]string,
 	blockedCount *int,
 ) {
 	switch {
 	case obj.Kind == "tables":
-		transitions := layoutTransitions(layout, obj.NormalizedKey)
+		transitions := transitionsByKey[obj.NormalizedKey]
 		if len(transitions) == 0 {
 			plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
 			plan.Blocked = true
@@ -138,7 +139,7 @@ func (c *Computer) handleChanged(
 		}
 
 	case obj.Kind == "triggers" && obj.ParentName != "":
-		parentKey := strings.Join([]string{obj.SchemaName, "tables", obj.ParentName}, "/")
+		parentKey := types.NormalizedKey(obj.SchemaName, "tables", obj.ParentName)
 		if _, ok := state.Objects[parentKey]; !ok {
 			plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
 			plan.Blocked = true
@@ -154,29 +155,10 @@ func (c *Computer) handleChanged(
 		}
 
 	default:
-		if isModuleKind(obj.Kind) {
+		if types.IsModuleKind(obj.Kind) {
 			plannedObj.PlannedAction = types.ActionUpdateExistingModule
 		} else {
 			plannedObj.PlannedAction = types.ActionReprocessChanged
 		}
-	}
-}
-
-func layoutTransitions(layout fs.Layout, normalizedKey string) []*fs.TransitionScript {
-	var result []*fs.TransitionScript
-	for _, ts := range layout.Transitions {
-		if ts.NormalizedKey == normalizedKey && !ts.Scaffold {
-			result = append(result, ts)
-		}
-	}
-	return result
-}
-
-func isModuleKind(kind string) bool {
-	switch kind {
-	case "views", "procedures", "functions", "triggers":
-		return true
-	default:
-		return false
 	}
 }

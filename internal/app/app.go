@@ -54,11 +54,7 @@ func runWithLookup(args []string, lookup envLookupFn) int {
 	b := bus.New()
 	attachSubscribers(b, conn, cfg, logger)
 
-	eng, err := wireEngine(b, conn, cfg, logger)
-	if err != nil {
-		logger.Error("init", err.Error())
-		return errors.ExitCode(err)
-	}
+	eng := wireEngine(b, conn, cfg, logger)
 
 	var execErr error
 	switch flags.Command {

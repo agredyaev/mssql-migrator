@@ -47,9 +47,6 @@ func osEnvLookup(key string) (string, bool) { return os.LookupEnv(key) }
 func buildConfig(flags cliFlags, env map[string]string, lookup envLookupFn) types.Config {
 	cfg := types.Config{}
 	lookupStr := func(key string) string {
-		if v, ok := flagsToEnv(key); ok {
-			return v
-		}
 		if v, ok := env[key]; ok {
 			return v
 		}
@@ -106,15 +103,6 @@ func buildConfig(flags cliFlags, env map[string]string, lookup envLookupFn) type
 	cfg.JSONLogs = flags.JSON
 
 	return cfg
-}
-
-func flagsToEnv(flag string) (string, bool) {
-	m := map[string]string{
-		"--env":  "",
-		"--json": "",
-	}
-	_, ok := m[flag]
-	return "", ok
 }
 
 func validateConfig(cfg types.Config) error {

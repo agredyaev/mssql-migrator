@@ -58,7 +58,7 @@ func attachSubscribers(b bus.EventBus, conn driver.Conn, cfg types.Config, logge
 	reportSub.SetErrorHandler(func(msg string) { logger.Warn("report", msg) })
 }
 
-func wireEngine(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.Logger) (*engine.Engine, error) {
+func wireEngine(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.Logger) *engine.Engine {
 	return engine.New(
 		cfg,
 		b,
@@ -70,5 +70,5 @@ func wireEngine(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.
 		scaffold.New(),
 		&applierAdapter{exec: apply.New()},
 		lock.New(),
-	), nil
+	)
 }
