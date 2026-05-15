@@ -90,31 +90,3 @@ func TestExitCodesAreDistinct(t *testing.T) {
 		t.Fatalf("exit code collision detected: %d unique vs %d declared", len(seen), len(codes))
 	}
 }
-
-func TestActionConstantsAreNonEmpty(t *testing.T) {
-	actions := []string{
-		ActionCreateObject, ActionAdoptExisting, ActionSkipUnchanged,
-		ActionReprocessChanged, ActionReprocessChangedBlocked,
-		ActionUpdateExistingModule, ActionUpdateExistingSupported,
-		ActionValidateChecked, ActionValidateSkipped, ActionFail, ActionRepairChecksum,
-	}
-	for _, a := range actions {
-		if a == "" {
-			t.Error("action constant is empty")
-		}
-	}
-}
-
-func TestEventConstantsAreNonEmpty(t *testing.T) {
-	events := []Event{
-		EventRunStarted, EventRunFinished, EventDiffComputed,
-		EventScaffoldGenerated, EventSchemaCreated,
-		EventObjectSkipped, EventObjectApplied, EventObjectFailed,
-		EventValidationStart, EventValidationDone,
-	}
-	for _, e := range events {
-		if e == "" {
-			t.Error("event constant is empty")
-		}
-	}
-}

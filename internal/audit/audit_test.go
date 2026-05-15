@@ -43,6 +43,7 @@ func (m *mockRows) Next() bool {
 	return m.pos < len(m.values)
 }
 
+func (m *mockRows) Err() error { return nil }
 func (m *mockRows) Close() error {
 	m.closed = true
 	return nil

@@ -57,6 +57,7 @@ type rowsAdapter struct {
 
 func (r *rowsAdapter) Scan(dest ...any) error { return r.rows.Scan(dest...) }
 func (r *rowsAdapter) Next() bool             { return r.rows.Next() }
+func (r *rowsAdapter) Err() error             { return r.rows.Err() }
 func (r *rowsAdapter) Close() error           { return r.rows.Close() }
 
 type resultAdapter struct {

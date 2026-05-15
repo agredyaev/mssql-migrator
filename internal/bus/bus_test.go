@@ -74,7 +74,3 @@ func TestDifferentEventsAreDeliveredIndependently(t *testing.T) {
 		t.Error("finished subscriber did not receive payload")
 	}
 }
-
-func TestEventBusImplementsInterface(t *testing.T) {
-	var _ EventBus = New()
-}

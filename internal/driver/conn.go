@@ -5,6 +5,7 @@ import "context"
 type Rows interface {
 	Scan(dest ...any) error
 	Next() bool
+	Err() error
 	Close() error
 }
 

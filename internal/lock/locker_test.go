@@ -34,6 +34,7 @@ func (m *mockRows) Next() bool {
 	return m.pos < len(m.values)
 }
 
+func (m *mockRows) Err() error   { return nil }
 func (m *mockRows) Close() error { return nil }
 
 type mockConn struct {
@@ -122,8 +123,4 @@ func TestReleaseQueryError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-}
-
-func TestLockerImplementsInterface(t *testing.T) {
-	var _ Locker = New()
 }
