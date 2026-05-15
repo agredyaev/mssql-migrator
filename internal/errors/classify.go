@@ -3,6 +3,8 @@ package errors
 import (
 	"errors"
 	"strings"
+
+	"reporting-db-migrations/internal/types"
 )
 
 type Classification struct {
@@ -39,28 +41,29 @@ type classifyRule struct {
 	sentinels  []error
 	substrings []string
 	result     string
+	exitCode   int
 }
 
 var classifyRules = []classifyRule{
 	{sentinels: []error{ErrApprovedPlanMissing},
-		result: ErrApprovedPlanMissing.Error()},
+		result: ErrApprovedPlanMissing.Error(), exitCode: types.ExitInvalidInput},
 	{sentinels: []error{ErrApprovedPlanMismatch},
-		result: ErrApprovedPlanMismatch.Error()},
+		result: ErrApprovedPlanMismatch.Error(), exitCode: types.ExitInvalidInput},
 	{sentinels: []error{ErrChecksumMismatch, ErrMetadataDrift},
 		substrings: []string{"existing object changed"},
-		result:     "incompatible existing object"},
+		result:     "incompatible existing object", exitCode: types.ExitChecksumMismatch},
 	{sentinels: []error{ErrMissingDDLPermission},
 		substrings: []string{"missing_metadata_ddl_permission", "missing metadata ddl permission"},
-		result:     "missing metadata DDL permission"},
+		result:     "missing metadata DDL permission", exitCode: types.ExitInvalidInput},
 	{sentinels: []error{ErrSchemaIncompatible},
 		substrings: []string{"metadata_schema_incompatible", "metadata schema incompatible"},
-		result:     "metadata schema incompatible"},
+		result:     "metadata schema incompatible", exitCode: types.ExitInvalidInput},
 	{sentinels: []error{ErrMissingSchemaPermission},
-		result: ErrMissingSchemaPermission.Error()},
+		result: ErrMissingSchemaPermission.Error(), exitCode: types.ExitInvalidInput},
 	{sentinels: []error{ErrMissingObjectPermission},
-		result: ErrMissingObjectPermission.Error()},
+		result: ErrMissingObjectPermission.Error(), exitCode: types.ExitInvalidInput},
 	{sentinels: []error{ErrMissingParentObject},
-		result: ErrMissingParentObject.Error()},
+		result: ErrMissingParentObject.Error(), exitCode: types.ExitInvalidInput},
 	{substrings: []string{"missing catalog visibility"},
 		result: "missing catalog visibility"},
 	{substrings: []string{"invalid repository layout"},
@@ -68,24 +71,24 @@ var classifyRules = []classifyRule{
 	{substrings: []string{"invalid_or_missing_sql_scripts_root"},
 		result: "invalid or missing SQL scripts root"},
 	{sentinels: []error{ErrConfig},
-		result: ErrConfig.Error()},
+		result: ErrConfig.Error(), exitCode: types.ExitConfigError},
 	{sentinels: []error{ErrConnection},
-		result: "connection failed"},
+		result: "connection failed", exitCode: types.ExitConnError},
 	{sentinels: []error{ErrLockFailed},
-		result: "lock failed"},
+		result: "lock failed", exitCode: types.ExitLockTimeout},
 	{sentinels: []error{ErrLockTimeout},
-		result: "lock timeout"},
+		result: "lock timeout", exitCode: types.ExitLockTimeout},
 	{sentinels: []error{ErrPlanBlocked},
-		result: "plan is blocked"},
+		result: "plan is blocked", exitCode: types.ExitPlanBlocked},
 	{sentinels: []error{ErrValidation},
-		result: "validation failure"},
+		result: "validation failure", exitCode: types.ExitValidation},
 	{sentinels: []error{ErrSQLExecution},
-		result: "sql execution failure"},
+		result: "sql execution failure", exitCode: types.ExitSQLExecution},
 	{sentinels: []error{ErrCriticalState},
-		result: "critical metadata state"},
+		result: "critical metadata state", exitCode: types.ExitCriticalState},
 	{sentinels: []error{ErrInvalidInput},
 		substrings: []string{"unknown command", "confirm flag required"},
-		result:     "invalid input"},
+		result:     "invalid input", exitCode: types.ExitInvalidInput},
 }
 
 func classify(base error, cause error) string {

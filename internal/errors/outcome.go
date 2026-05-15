@@ -1,8 +1,6 @@
 package errors
 
 import (
-	"errors"
-
 	"reporting-db-migrations/internal/types"
 )
 
@@ -31,40 +29,16 @@ func EvaluatePlanBlocked(cfg types.Config, plan types.MigrationPlan) Outcome {
 }
 
 func ExitCode(err error) int {
-	switch {
-	case err == nil:
+	if err == nil {
 		return types.ExitOK
-	case errors.Is(err, ErrPlanBlocked):
-		return types.ExitPlanBlocked
-	case errors.Is(err, ErrConfig):
-		return types.ExitConfigError
-	case errors.Is(err, ErrConnection):
-		return types.ExitConnError
-	case errors.Is(err, ErrApprovedPlanMissing):
-		return types.ExitInvalidInput
-	case errors.Is(err, ErrApprovedPlanMismatch):
-		return types.ExitInvalidInput
-	case errors.Is(err, ErrMetadataDrift):
-		return types.ExitChecksumMismatch
-	case errors.Is(err, ErrChecksumMismatch):
-		return types.ExitChecksumMismatch
-	case errors.Is(err, ErrSQLExecution):
-		return types.ExitSQLExecution
-	case errors.Is(err, ErrValidation):
-		return types.ExitValidation
-	case errors.Is(err, ErrLockTimeout), errors.Is(err, ErrLockFailed):
-		return types.ExitLockTimeout
-	case errors.Is(err, ErrInvalidInput):
-		return types.ExitInvalidInput
-	case errors.Is(err, ErrCriticalState):
-		return types.ExitCriticalState
-	case errors.Is(err, ErrMissingSchemaPermission),
-		errors.Is(err, ErrMissingObjectPermission),
-		errors.Is(err, ErrMissingParentObject),
-		errors.Is(err, ErrMissingDDLPermission),
-		errors.Is(err, ErrSchemaIncompatible):
-		return types.ExitInvalidInput
-	default:
-		return types.ExitGeneralError
 	}
+	for _, rule := range classifyRules {
+		if rule.exitCode == 0 {
+			continue
+		}
+		if matchSentinels(rule.sentinels, err, nil) {
+			return rule.exitCode
+		}
+	}
+	return types.ExitGeneralError
 }
