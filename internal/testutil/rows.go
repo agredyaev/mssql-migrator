@@ -19,11 +19,25 @@ func (m *MockRows) Scan(dest ...any) error {
 	for i, v := range m.Values[m.pos] {
 		switch d := dest[i].(type) {
 		case *string:
-			*d = v.(string)
+			s, ok := v.(string)
+			if !ok {
+				return errors.New("mock scan: expected string value")
+			}
+			*d = s
 		case *int:
-			*d = v.(int)
+			n, ok := v.(int)
+			if !ok {
+				return errors.New("mock scan: expected int value")
+			}
+			*d = n
 		case *bool:
-			*d = v.(bool)
+			b, ok := v.(bool)
+			if !ok {
+				return errors.New("mock scan: expected bool value")
+			}
+			*d = b
+		default:
+			return errors.New("mock scan: unsupported destination type")
 		}
 	}
 	return nil
