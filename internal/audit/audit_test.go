@@ -80,6 +80,7 @@ func (m *mockConn) QueryContext(ctx context.Context, query string, args ...any) 
 
 func (m *mockConn) ExecContext(ctx context.Context, query string, args ...any) (driver.Result, error) {
 	m.execCount.Add(1)
+	m.queries = append(m.queries, mockQuery{query: query, args: args})
 	if m.execErr != nil {
 		return nil, m.execErr
 	}
@@ -141,46 +142,50 @@ func TestLoadChecksumsChunking(t *testing.T) {
 	}
 }
 
-func TestSubscriberBootstrapOnObjectApplied(t *testing.T) {
+func TestSubscriberOnObjectApplied_ExecutesSQL(t *testing.T) {
 	conn := &mockConn{}
 	b := bus.New()
 	NewSubscriber(b, conn)
 
-	b.Publish(types.EventObjectApplied, &types.ObjectEvent{
+	b.Publish(context.Background(), types.EventObjectApplied, &types.ObjectEvent{
 		NormalizedKey: "r/tables/t1",
 		Kind:          "tables",
 		ObjectName:    "t1",
+		Checksum:      "abc123",
+		GitHash:       "deadbeef",
+		GitAuthor:     "dev",
+		GitDate:       "2024-01-01T00:00:00Z",
 		RecordKind:    "object",
 	})
 
-	if conn.execCount.Load() == 0 {
-		t.Error("expected bootstrap + INSERT on object.applied")
+	if conn.execCount.Load() != 2 {
+		t.Errorf("expected 2 execs (bootstrap + insert), got %d", conn.execCount.Load())
+		return
+	}
+	last := conn.queries[len(conn.queries)-1]
+	if last.args[0] != "r/tables/t1" {
+		t.Errorf("normalized_key = %v, want r/tables/t1", last.args[0])
+	}
+	if last.args[2] != "abc123" {
+		t.Errorf("checksum = %v, want abc123", last.args[2])
+	}
+	if last.args[3] != "deadbeef" {
+		t.Errorf("git_hash = %v, want deadbeef", last.args[3])
+	}
+	if last.args[4] != "dev" {
+		t.Errorf("git_author = %v, want dev", last.args[4])
+	}
+	if last.args[6] != "applied" {
+		t.Errorf("event = %v, want applied", last.args[6])
 	}
 }
 
-func TestSubscriberInsertAttemptOnObjectApplied(t *testing.T) {
+func TestSubscriberOnObjectFailed_ExecutesSQL(t *testing.T) {
 	conn := &mockConn{}
 	b := bus.New()
 	NewSubscriber(b, conn)
 
-	b.Publish(types.EventObjectApplied, &types.ObjectEvent{
-		NormalizedKey: "r/tables/t1",
-		Kind:          "tables",
-		ObjectName:    "t1",
-		RecordKind:    "object",
-	})
-
-	if conn.execCount.Load() == 0 {
-		t.Error("expected INSERT attempt on object.applied")
-	}
-}
-
-func TestSubscriberInsertAttemptOnObjectFailed(t *testing.T) {
-	conn := &mockConn{}
-	b := bus.New()
-	NewSubscriber(b, conn)
-
-	b.Publish(types.EventObjectFailed, &types.FailureEvent{
+	b.Publish(context.Background(), types.EventObjectFailed, &types.FailureEvent{
 		ObjectEvent: types.ObjectEvent{
 			NormalizedKey: "r/views/v1",
 			Kind:          "views",
@@ -190,7 +195,63 @@ func TestSubscriberInsertAttemptOnObjectFailed(t *testing.T) {
 		Error: "syntax error",
 	})
 
-	if conn.execCount.Load() == 0 {
-		t.Error("expected INSERT attempt on object.failed")
+	if conn.execCount.Load() != 2 {
+		t.Errorf("expected 2 execs (bootstrap + insert), got %d", conn.execCount.Load())
+		return
+	}
+	last := conn.queries[len(conn.queries)-1]
+	if last.args[6] != "failed" {
+		t.Errorf("event = %v, want failed", last.args[6])
+	}
+	if last.args[7] != "syntax error" {
+		t.Errorf("error_text = %v, want syntax error", last.args[7])
+	}
+}
+
+func TestLoadAppliedMigrations_ReturnsMigrationKeys(t *testing.T) {
+	conn := &mockConn{
+		rowsByPrefix: map[string]*mockRows{
+			"SELECT": newMockRows([][]any{{"r/tables/t1/001_deadbeef_add_col.sql"}}),
+		},
+	}
+	result, err := LoadAppliedMigrations(context.Background(), conn, "r/tables/t1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result["r/tables/t1/001_deadbeef_add_col.sql"] {
+		t.Error("expected migration key to be true")
+	}
+	if len(result) != 1 {
+		t.Errorf("expected 1 result, got %d", len(result))
+	}
+}
+
+func TestLoadAppliedMigrations_QueryError(t *testing.T) {
+	conn := &mockConn{queryErr: errors.New("dead")}
+	_, err := LoadAppliedMigrations(context.Background(), conn, "r/tables/t1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestSubscriberBootstrapCalledOnce(t *testing.T) {
+	conn := &mockConn{}
+	b := bus.New()
+	NewSubscriber(b, conn)
+
+	b.Publish(context.Background(), types.EventObjectApplied, &types.ObjectEvent{
+		NormalizedKey: "r/tables/t1",
+		Kind:          "tables",
+		RecordKind:    "object",
+	})
+
+	bootstrapCount := 0
+	for _, q := range conn.queries {
+		if len(q.args) == 0 {
+			bootstrapCount++
+		}
+	}
+	if bootstrapCount != 1 {
+		t.Errorf("expected 1 bootstrap query, got %d (queries: %d)", bootstrapCount, len(conn.queries))
 	}
 }

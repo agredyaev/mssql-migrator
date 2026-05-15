@@ -1,6 +1,7 @@
 package report
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ func TestDiffComputed_WritesPlanJSON(t *testing.T) {
 		Summary:   types.PlanSummary{ObjectCount: 3, CreateCount: 1, SkipCount: 2},
 	}
 
-	b.Publish(types.EventDiffComputed, &types.DiffResult{Plan: plan})
+	b.Publish(context.Background(), types.EventDiffComputed, &types.DiffResult{Plan: plan})
 
 	planPath := filepath.Join(baseDir, ".plan.json")
 	data, err := os.ReadFile(planPath)
@@ -49,7 +50,7 @@ func TestRunFinished_WritesReportJSON(t *testing.T) {
 
 	NewSubscriber(b, types.Config{ReportDir: baseDir})
 
-	b.Publish(types.EventRunFinished, &types.RunFinished{
+	b.Publish(context.Background(), types.EventRunFinished, &types.RunFinished{
 		Command:  "migrate",
 		Result:   "completed",
 		ExitCode: 0,
@@ -67,5 +68,40 @@ func TestRunFinished_WritesReportJSON(t *testing.T) {
 	}
 	if decoded.Command != "migrate" {
 		t.Errorf("command = %q, want %q", decoded.Command, "migrate")
+	}
+}
+
+func TestDiffComputed_NilPlanIgnored(t *testing.T) {
+	b := bus.New()
+	baseDir := t.TempDir()
+
+	var errMsg string
+	sub := NewSubscriber(b, types.Config{ReportDir: baseDir})
+	sub.SetErrorHandler(func(msg string) { errMsg = msg })
+
+	b.Publish(context.Background(), types.EventDiffComputed, &types.DiffResult{Plan: nil})
+
+	_, err := os.Stat(filepath.Join(baseDir, ".plan.json"))
+	if !os.IsNotExist(err) {
+		t.Error(".plan.json should not exist for nil plan")
+	}
+	if errMsg != "" {
+		t.Errorf("unexpected error: %s", errMsg)
+	}
+}
+
+func TestRunFinished_ToleratesMissingDir(t *testing.T) {
+	b := bus.New()
+
+	var errMsg string
+	sub := NewSubscriber(b, types.Config{ReportDir: "/nonexistent/path"})
+	sub.SetErrorHandler(func(msg string) { errMsg = msg })
+
+	b.Publish(context.Background(), types.EventRunFinished, &types.RunFinished{
+		Command: "migrate",
+	})
+
+	if errMsg == "" {
+		t.Error("expected write error for missing directory")
 	}
 }

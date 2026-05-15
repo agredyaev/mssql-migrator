@@ -63,7 +63,7 @@ func (e *Executor) Execute(ctx context.Context, conn driver.Conn, plan types.Mig
 				return result, nil
 			}
 			result.Applied++
-			b.Publish(types.EventSchemaCreated, &types.SchemaEvent{
+			b.Publish(ctx, types.EventSchemaCreated, &types.SchemaEvent{
 				SchemaName: schema.SchemaName,
 				Action:     types.SchemaActionCreateSchema,
 			})
@@ -72,8 +72,8 @@ func (e *Executor) Execute(ctx context.Context, conn driver.Conn, plan types.Mig
 		}
 	}
 
-	objIndex := buildObjectIndex(layout.Objects)
-	transIndex := buildTransitionIndex(layout.Transitions)
+	objIndex := layout.ObjectsByPath()
+	transIndex := layout.TransitionsByPath()
 
 	txBatches, nonTxStmts := e.collectStatements(plan, objIndex, result)
 	for _, batch := range txBatches {
@@ -86,22 +86,6 @@ func (e *Executor) Execute(ctx context.Context, conn driver.Conn, plan types.Mig
 	e.executeTransitions(ctx, conn, plan, transIndex, result, b)
 
 	return result, nil
-}
-
-func buildObjectIndex(objects []*fs.Object) map[string]*fs.Object {
-	m := make(map[string]*fs.Object, len(objects))
-	for _, obj := range objects {
-		m[obj.Path] = obj
-	}
-	return m
-}
-
-func buildTransitionIndex(transitions []*fs.TransitionScript) map[string]*fs.TransitionScript {
-	m := make(map[string]*fs.TransitionScript, len(transitions))
-	for _, ts := range transitions {
-		m[ts.Path] = ts
-	}
-	return m
 }
 
 var kindOrder = map[string]int{
@@ -238,10 +222,10 @@ func (e *Executor) executeTxBatch(ctx context.Context, conn driver.Conn, stmts [
 				}
 				result.Failed++
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", stmt.normalizedKey, stmtErr.Error()))
-				b.Publish(types.EventObjectFailed, newFailureEvent(stmt, stmtErr.Error()))
+				b.Publish(ctx, types.EventObjectFailed, newFailureEvent(stmt, stmtErr.Error()))
 			} else {
 				result.Applied++
-				b.Publish(types.EventObjectApplied, newObjectEvent(stmt))
+				b.Publish(ctx, types.EventObjectApplied, newObjectEvent(stmt))
 			}
 		}
 		return
@@ -249,7 +233,7 @@ func (e *Executor) executeTxBatch(ctx context.Context, conn driver.Conn, stmts [
 
 	result.Applied += len(stmts)
 	for _, stmt := range stmts {
-		b.Publish(types.EventObjectApplied, newObjectEvent(stmt))
+		b.Publish(ctx, types.EventObjectApplied, newObjectEvent(stmt))
 	}
 }
 
@@ -257,11 +241,11 @@ func (e *Executor) executeNonTx(ctx context.Context, conn driver.Conn, stmt batc
 	if _, err := conn.ExecContext(ctx, stmt.content); err != nil {
 		result.Failed++
 		result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", stmt.normalizedKey, err.Error()))
-		b.Publish(types.EventObjectFailed, newFailureEvent(stmt, err.Error()))
+		b.Publish(ctx, types.EventObjectFailed, newFailureEvent(stmt, err.Error()))
 		return
 	}
 	result.Applied++
-	b.Publish(types.EventObjectApplied, newObjectEvent(stmt))
+	b.Publish(ctx, types.EventObjectApplied, newObjectEvent(stmt))
 }
 
 func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, plan types.MigrationPlan, transIndex map[string]*fs.TransitionScript, result *ApplyResult, b bus.EventBus) {
@@ -278,7 +262,7 @@ func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, pla
 			if err != nil {
 				result.Failed++
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", tp, err.Error()))
-				b.Publish(types.EventObjectFailed, newFailureEvent(newMigrationStmt(obj, tp, "", "", ""), err.Error()))
+				b.Publish(ctx, types.EventObjectFailed, newFailureEvent(newMigrationStmt(obj, tp, "", "", ""), err.Error()))
 				continue
 			}
 
@@ -293,11 +277,11 @@ func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, pla
 				}
 				result.Failed++
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", tp, err.Error()))
-				b.Publish(types.EventObjectFailed, newFailureEvent(newMigrationStmt(obj, tp, gitHash, gitAuthor, gitDate), err.Error()))
+				b.Publish(ctx, types.EventObjectFailed, newFailureEvent(newMigrationStmt(obj, tp, gitHash, gitAuthor, gitDate), err.Error()))
 				continue
 			}
 			result.Applied++
-			b.Publish(types.EventObjectApplied, newObjectEvent(newMigrationStmt(obj, tp, gitHash, gitAuthor, gitDate)))
+			b.Publish(ctx, types.EventObjectApplied, newObjectEvent(newMigrationStmt(obj, tp, gitHash, gitAuthor, gitDate)))
 		}
 	}
 }

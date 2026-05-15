@@ -1,6 +1,7 @@
 package report
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,16 +12,15 @@ import (
 )
 
 type Subscriber struct {
-	bus     bus.EventBus
-	baseDir string
-	errf    func(msg string)
+	bus      bus.EventBus
+	baseDir  string
+	notifier types.ErrorNotifier
 }
 
 func NewSubscriber(b bus.EventBus, cfg types.Config) *Subscriber {
 	s := &Subscriber{
 		bus:     b,
 		baseDir: cfg.ReportDir,
-		errf:    func(msg string) {},
 	}
 	b.Subscribe(types.EventDiffComputed, s.onDiffComputed)
 	b.Subscribe(types.EventRunFinished, s.onRunFinished)
@@ -28,22 +28,22 @@ func NewSubscriber(b bus.EventBus, cfg types.Config) *Subscriber {
 }
 
 func (s *Subscriber) SetErrorHandler(fn func(msg string)) {
-	s.errf = fn
+	s.notifier.SetErrorHandler(fn)
 }
 
 func (s *Subscriber) writeJSON(filename string, v any) {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		s.errf("report marshal: " + err.Error())
+		s.notifier.Notify("report marshal: " + err.Error())
 		return
 	}
 	path := filepath.Join(s.baseDir, filename)
 	if err := os.WriteFile(path, data, 0644); err != nil {
-		s.errf(fmt.Sprintf("report write %s: %s", path, err.Error()))
+		s.notifier.Notify(fmt.Sprintf("report write %s: %s", path, err.Error()))
 	}
 }
 
-func (s *Subscriber) onDiffComputed(payload any) {
+func (s *Subscriber) onDiffComputed(_ context.Context, payload any) {
 	result, ok := payload.(*types.DiffResult)
 	if !ok || result.Plan == nil {
 		return
@@ -51,7 +51,7 @@ func (s *Subscriber) onDiffComputed(payload any) {
 	s.writeJSON(".plan.json", result.Plan)
 }
 
-func (s *Subscriber) onRunFinished(payload any) {
+func (s *Subscriber) onRunFinished(_ context.Context, payload any) {
 	result, ok := payload.(*types.RunFinished)
 	if !ok {
 		return

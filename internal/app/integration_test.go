@@ -220,8 +220,8 @@ func TestIntegration_Apply_AllObjects(t *testing.T) {
 	_ = auditSub
 
 	// Fire run started so subscriber creates run + bootstraps tables
-	b.Publish(types.EventRunStarted, &types.RunStarted{Command: "migrate"})
-	b.Publish(types.EventDiffComputed, &types.DiffResult{Plan: plan})
+	b.Publish(ctx, types.EventRunStarted, &types.RunStarted{Command: "migrate"})
+	b.Publish(ctx, types.EventDiffComputed, &types.DiffResult{Plan: plan})
 
 	executor := apply.New()
 	result, err := executor.Execute(ctx, conn, *plan, layout, b)
@@ -229,7 +229,7 @@ func TestIntegration_Apply_AllObjects(t *testing.T) {
 		t.Fatalf("apply: %v", err)
 	}
 
-	b.Publish(types.EventRunFinished, &types.RunFinished{Command: "migrate", Result: "success", ExitCode: 0})
+	b.Publish(ctx, types.EventRunFinished, &types.RunFinished{Command: "migrate", Result: "success", ExitCode: 0})
 
 	t.Logf("applied: %d failed: %d skipped: %d", result.Applied, result.Failed, result.Skipped)
 	for _, e := range result.Errors {
@@ -361,8 +361,8 @@ func applyAllObjects(t *testing.T, ctx context.Context, conn driver.Conn, cfg ty
 	auditSub := audit.NewSubscriber(b, conn)
 	_ = auditSub
 
-	b.Publish(types.EventRunStarted, &types.RunStarted{Command: "migrate"})
-	b.Publish(types.EventDiffComputed, &types.DiffResult{Plan: plan})
+	b.Publish(ctx, types.EventRunStarted, &types.RunStarted{Command: "migrate"})
+	b.Publish(ctx, types.EventDiffComputed, &types.DiffResult{Plan: plan})
 
 	executor := apply.New()
 	_, err = executor.Execute(ctx, conn, *plan, layout, b)
@@ -370,7 +370,7 @@ func applyAllObjects(t *testing.T, ctx context.Context, conn driver.Conn, cfg ty
 		t.Fatalf("apply: %v", err)
 	}
 
-	b.Publish(types.EventRunFinished, &types.RunFinished{Command: "migrate", Result: "success", ExitCode: 0})
+	b.Publish(ctx, types.EventRunFinished, &types.RunFinished{Command: "migrate", Result: "success", ExitCode: 0})
 }
 
 func configFromEnv() types.Config {

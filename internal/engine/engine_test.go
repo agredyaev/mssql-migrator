@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -15,9 +16,9 @@ import (
 func TestPlan_PublishesEvents(t *testing.T) {
 	b := bus.New()
 	var events []types.Event
-	b.Subscribe(types.EventRunStarted, func(p any) { events = append(events, types.EventRunStarted) })
-	b.Subscribe(types.EventDiffComputed, func(p any) { events = append(events, types.EventDiffComputed) })
-	b.Subscribe(types.EventRunFinished, func(p any) { events = append(events, types.EventRunFinished) })
+	b.Subscribe(types.EventRunStarted, func(_ context.Context, p any) { events = append(events, types.EventRunStarted) })
+	b.Subscribe(types.EventDiffComputed, func(_ context.Context, p any) { events = append(events, types.EventDiffComputed) })
+	b.Subscribe(types.EventRunFinished, func(_ context.Context, p any) { events = append(events, types.EventRunFinished) })
 
 	eng := &Engine{
 		cfg:  types.Config{SQLRoot: "/tmp/sql"},
@@ -82,6 +83,8 @@ type stubLoader struct {
 	err       error
 }
 
+func (s stubLoader) EnsureTables(ctx context.Context, conn driver.Conn) error { return nil }
+
 func (s stubLoader) LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[string]string, error) {
 	return s.checksums, s.err
 }
@@ -102,7 +105,7 @@ func (s stubComputer) Compute(ctx context.Context, layout fs.Layout, state *db.S
 func TestPlan_ScanError_PublishesRunFinishedFailure(t *testing.T) {
 	b := bus.New()
 	var runFinished types.RunFinished
-	b.Subscribe(types.EventRunFinished, func(p any) {
+	b.Subscribe(types.EventRunFinished, func(_ context.Context, p any) {
 		rf := p.(*types.RunFinished)
 		runFinished = *rf
 	})
@@ -136,7 +139,7 @@ func (e assertErr) Error() string { return string(e) }
 func TestPlan_BlockedPlan_StillPublished(t *testing.T) {
 	b := bus.New()
 	var diffPayload *types.DiffResult
-	b.Subscribe(types.EventDiffComputed, func(p any) {
+	b.Subscribe(types.EventDiffComputed, func(_ context.Context, p any) {
 		diffPayload = p.(*types.DiffResult)
 	})
 
@@ -192,11 +195,12 @@ func (s *stubApplier) Execute(ctx context.Context, conn driver.Conn, plan types.
 type stubLocker struct {
 	acquired bool
 	released bool
+	err      error
 }
 
 func (s *stubLocker) Acquire(ctx context.Context, conn driver.Conn, timeout time.Duration) error {
 	s.acquired = true
-	return nil
+	return s.err
 }
 func (s *stubLocker) Release(ctx context.Context, conn driver.Conn) error {
 	s.released = true
@@ -280,10 +284,10 @@ func TestMigrate_Success_CallsLockAndApply(t *testing.T) {
 func TestValidate_PublishesValidationEvents(t *testing.T) {
 	b := bus.New()
 	var events []types.Event
-	b.Subscribe(types.EventRunStarted, func(p any) { events = append(events, types.EventRunStarted) })
-	b.Subscribe(types.EventValidationStart, func(p any) { events = append(events, types.EventValidationStart) })
-	b.Subscribe(types.EventValidationDone, func(p any) { events = append(events, types.EventValidationDone) })
-	b.Subscribe(types.EventRunFinished, func(p any) { events = append(events, types.EventRunFinished) })
+	b.Subscribe(types.EventRunStarted, func(_ context.Context, p any) { events = append(events, types.EventRunStarted) })
+	b.Subscribe(types.EventValidationStart, func(_ context.Context, p any) { events = append(events, types.EventValidationStart) })
+	b.Subscribe(types.EventValidationDone, func(_ context.Context, p any) { events = append(events, types.EventValidationDone) })
+	b.Subscribe(types.EventRunFinished, func(_ context.Context, p any) { events = append(events, types.EventRunFinished) })
 
 	eng := &Engine{
 		cfg:  types.Config{SQLRoot: "/tmp"},
@@ -365,5 +369,139 @@ func TestRepairChecksum_Success(t *testing.T) {
 	}
 	if !appl.executed {
 		t.Error("expected apply to be called")
+	}
+}
+
+func TestBaseline_LockFailure(t *testing.T) {
+	lockErr := errors.New("lock denied")
+	eng := &Engine{
+		cfg:     types.Config{SQLRoot: "/tmp"},
+		bus:     bus.New(),
+		conn:    &stubConn{},
+		fs:      stubScanner{layout: fs.Layout{}},
+		db:      stubInspector{state: &db.State{}},
+		load:    stubLoader{},
+		diff:    stubComputer{plan: &types.MigrationPlan{}},
+		applier: &stubApplier{},
+		locker:  &stubLocker{err: lockErr},
+	}
+
+	err := eng.Baseline(context.Background())
+	if err == nil {
+		t.Fatal("expected lock error")
+	}
+	if !errors.Is(err, lockErr) {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestBaseline_ScanFailure(t *testing.T) {
+	eng := &Engine{
+		cfg:  types.Config{SQLRoot: "/bad"},
+		bus:  bus.New(),
+		conn: &stubConn{},
+		fs:   stubScanner{err: errors.New("scan failed")},
+		db:   stubInspector{},
+		load: stubLoader{},
+		diff: stubComputer{},
+	}
+
+	err := eng.Baseline(context.Background())
+	if err == nil {
+		t.Fatal("expected scan error")
+	}
+}
+
+func TestRepairChecksum_LockFailure(t *testing.T) {
+	lockErr := errors.New("lock denied")
+	eng := &Engine{
+		cfg:     types.Config{SQLRoot: "/tmp"},
+		bus:     bus.New(),
+		conn:    &stubConn{},
+		fs:      stubScanner{layout: fs.Layout{}},
+		db:      stubInspector{state: &db.State{}},
+		load:    stubLoader{checksums: map[string]string{}},
+		diff:    stubComputer{plan: &types.MigrationPlan{}},
+		applier: &stubApplier{},
+		locker:  &stubLocker{err: lockErr},
+	}
+
+	err := eng.RepairChecksum(context.Background())
+	if err == nil {
+		t.Fatal("expected lock error")
+	}
+	if !errors.Is(err, lockErr) {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRepairChecksum_ApplyFailure(t *testing.T) {
+	applyErr := errors.New("apply failed")
+	eng := &Engine{
+		cfg:     types.Config{SQLRoot: "/tmp"},
+		bus:     bus.New(),
+		conn:    &stubConn{},
+		fs:      stubScanner{layout: fs.Layout{}},
+		db:      stubInspector{state: &db.State{}},
+		load:    stubLoader{checksums: map[string]string{}},
+		diff:    stubComputer{plan: &types.MigrationPlan{}},
+		applier: &stubApplier{err: applyErr},
+		locker:  &stubLocker{},
+	}
+
+	err := eng.RepairChecksum(context.Background())
+	if err == nil {
+		t.Fatal("expected apply error")
+	}
+	if !errors.Is(err, applyErr) {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestMigrate_ApplyFailure(t *testing.T) {
+	applyErr := errors.New("SQL error")
+	eng := &Engine{
+		cfg:      types.Config{SQLBase: "/tmp", SQLRoot: "/tmp"},
+		bus:      bus.New(),
+		conn:     &stubConn{},
+		fs:       stubScanner{layout: fs.Layout{}},
+		db:       stubInspector{state: &db.State{TableColumns: map[string][]db.TableColumn{}}},
+		load:     stubLoader{checksums: map[string]string{}},
+		diff:     stubComputer{plan: &types.MigrationPlan{}},
+		scaffold: &stubScaffolder{},
+		applier:  &stubApplier{err: applyErr},
+		locker:   &stubLocker{},
+	}
+
+	err := eng.Migrate(context.Background())
+	if err == nil {
+		t.Fatal("expected apply error")
+	}
+	if !errors.Is(err, applyErr) {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestMigrate_LockFailure(t *testing.T) {
+	lockErr := errors.New("lock timeout")
+	eng := &Engine{
+		cfg:      types.Config{SQLBase: "/tmp", SQLRoot: "/tmp"},
+		bus:      bus.New(),
+		conn:     &stubConn{},
+		fs:       stubScanner{layout: fs.Layout{}},
+		db:       stubInspector{state: &db.State{TableColumns: map[string][]db.TableColumn{}}},
+		load:     stubLoader{checksums: map[string]string{}},
+		diff:     stubComputer{plan: &types.MigrationPlan{}},
+		scaffold: &stubScaffolder{},
+		applier:  &stubApplier{},
+		locker:   &stubLocker{err: lockErr},
+	}
+
+	err := eng.Migrate(context.Background())
+	if err == nil {
+		t.Fatal("expected lock error")
+	}
+	if !errors.Is(err, lockErr) {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
