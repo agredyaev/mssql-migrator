@@ -279,6 +279,10 @@ func TestBuildConfig_BooleanEnvVars(t *testing.T) {
 	}{
 		{name: "encrypt true", env: map[string]string{"RM_DB_ENCRYPT": "true"}, field: "Encrypt", want: true},
 		{name: "encrypt false", env: map[string]string{"RM_DB_ENCRYPT": "false"}, field: "Encrypt", want: false},
+		{name: "encrypt 0", env: map[string]string{"RM_DB_ENCRYPT": "0"}, field: "Encrypt", want: false},
+		{name: "encrypt empty", env: map[string]string{"RM_DB_ENCRYPT": ""}, field: "Encrypt", want: false},
+		{name: "encrypt TRUE", env: map[string]string{"RM_DB_ENCRYPT": "TRUE"}, field: "Encrypt", want: true},
+		{name: "encrypt xyz", env: map[string]string{"RM_DB_ENCRYPT": "xyz"}, field: "Encrypt", want: false},
 		{name: "trust cert true", env: map[string]string{"RM_DB_TRUST_SERVER_CERTIFICATE": "true"}, field: "TrustServerCertificate", want: true},
 		{name: "trust cert 1", env: map[string]string{"RM_DB_TRUST_SERVER_CERTIFICATE": "1"}, field: "TrustServerCertificate", want: true},
 	}
@@ -315,6 +319,27 @@ func TestBuildConfig_DurationEnvVars(t *testing.T) {
 	}
 	if cfg.LockTimeout.String() != "10s" {
 		t.Errorf("LockTimeout = %v, want 10s", cfg.LockTimeout)
+	}
+}
+
+func TestBuildConfig_DurationEdgeCases(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{name: "zero", env: map[string]string{"RM_COMMAND_TIMEOUT": "0s"}, want: "0s"},
+		{name: "empty", env: map[string]string{"RM_COMMAND_TIMEOUT": ""}, want: "0s"},
+		{name: "invalid", env: map[string]string{"RM_COMMAND_TIMEOUT": "abc"}, want: "0s"},
+		{name: "negative", env: map[string]string{"RM_COMMAND_TIMEOUT": "-1s"}, want: "-1s"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := buildConfig(cliFlags{}, tt.env, nil)
+			if cfg.CommandTimeout.String() != tt.want {
+				t.Errorf("CommandTimeout = %v, want %v", cfg.CommandTimeout, tt.want)
+			}
+		})
 	}
 }
 

@@ -124,3 +124,30 @@ func TestReleaseQueryError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestAcquireZeroTimeout(t *testing.T) {
+	conn := &mockConn{rows: newMockRows([][]any{{-1}})}
+	locker := New()
+	err := locker.Acquire(context.Background(), conn, 0)
+	if !errors.Is(err, rmerrors.ErrLockTimeout) {
+		t.Errorf("expected ErrLockTimeout for zero timeout, got %v", err)
+	}
+}
+
+func TestReleaseWithoutAcquire(t *testing.T) {
+	conn := &mockConn{}
+	locker := New()
+	err := locker.Release(context.Background(), conn)
+	if err != nil {
+		t.Errorf("Release without Acquire should not error, got %v", err)
+	}
+}
+
+func TestAcquireNegativeTimeout(t *testing.T) {
+	conn := &mockConn{rows: newMockRows([][]any{{-1}})}
+	locker := New()
+	err := locker.Acquire(context.Background(), conn, -time.Second)
+	if !errors.Is(err, rmerrors.ErrLockTimeout) {
+		t.Errorf("expected ErrLockTimeout for negative timeout, got %v", err)
+	}
+}
