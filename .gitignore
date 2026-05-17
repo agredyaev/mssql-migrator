@@ -21,3 +21,4 @@ export_code_to_txt.sh
 _old_*
 new_arch.txt
 review.md
+*.prof
