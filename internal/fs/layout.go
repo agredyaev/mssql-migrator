@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -12,6 +13,13 @@ import (
 	"sync"
 	"sync/atomic"
 )
+
+var layoutHashDigestsPool = sync.Pool{
+	New: func() any {
+		s := make([][32]byte, 0, 64)
+		return &s
+	},
+}
 
 type Layout struct {
 	RootPath    string
@@ -193,28 +201,42 @@ func (l *Layout) HasExecutableTransition() bool {
 
 func (l *Layout) LayoutHash() (string, error) {
 	h := sha256.New()
-	checksums := make([]string, 0, len(l.Objects)+len(l.Transitions))
+	p := layoutHashDigestsPool.Get().(*[][32]byte)
+	raw := (*p)[:0]
+	need := len(l.Objects) + len(l.Transitions)
+	if cap(raw) < need {
+		raw = make([][32]byte, 0, need)
+	}
+	defer func() {
+		*p = raw[:0]
+		layoutHashDigestsPool.Put(p)
+	}()
 
 	for _, obj := range l.Objects {
 		cs, err := obj.Checksum()
 		if err != nil {
 			return "", err
 		}
-		checksums = append(checksums, hex.EncodeToString(cs[:]))
+		raw = append(raw, cs)
 	}
 	for _, ts := range l.Transitions {
 		cs, err := ts.Checksum()
 		if err != nil {
 			return "", err
 		}
-		checksums = append(checksums, hex.EncodeToString(cs[:]))
+		raw = append(raw, cs)
 	}
 
-	sort.Strings(checksums)
-	for _, cs := range checksums {
-		h.Write([]byte(cs))
+	sort.Slice(raw, func(i, j int) bool {
+		return bytes.Compare(raw[i][:], raw[j][:]) < 0
+	})
+	for i := range raw {
+		h.Write(raw[i][:])
 	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+
+	var out [64]byte
+	hex.Encode(out[:], h.Sum(nil))
+	return string(out[:]), nil
 }
 
 func gitInfo(absPath string) (hash, author, date string, err error) {
