@@ -116,9 +116,8 @@ func TestExecute_CreateObject(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			ObjectRef:     types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views"},
+			ObjectRef:     types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views", ObjectPath: "r/views/v1.sql"},
 			PlannedAction: types.ActionCreateObject,
-			SourceFile:    "r/views/v1.sql",
 		}},
 	}
 	b := bus.New()
@@ -146,9 +145,8 @@ func TestExecute_SkipUnchanged(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			ObjectRef:     types.ObjectRef{NormalizedKey: "r/views/v1"},
+			ObjectRef:     types.ObjectRef{NormalizedKey: "r/views/v1", ObjectPath: "r/views/v1.sql"},
 			PlannedAction: types.ActionSkipUnchanged,
-			SourceFile:    "r/views/v1.sql",
 		}},
 	}
 	b := bus.New()
@@ -188,9 +186,8 @@ func TestExecute_UpdateModule(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			ObjectRef:     types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views"},
+			ObjectRef:     types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views", ObjectPath: "r/views/v1.sql"},
 			PlannedAction: types.ActionUpdateExistingModule,
-			SourceFile:    "r/views/v1.sql",
 		}},
 	}
 	b := bus.New()
@@ -278,9 +275,9 @@ func TestExecute_NonTxObjectsExecutedIndividually(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{
-			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v1.sql"},
-			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v2", Kind: "views"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v2.sql"},
-			{ObjectRef: types.ObjectRef{NormalizedKey: "r/procedures/p1", Kind: "procedures"}, PlannedAction: types.ActionUpdateExistingModule, SourceFile: "r/procedures/p1.sql"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views", ObjectPath: "r/views/v1.sql"}, PlannedAction: types.ActionCreateObject},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v2", Kind: "views", ObjectPath: "r/views/v2.sql"}, PlannedAction: types.ActionCreateObject},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/procedures/p1", Kind: "procedures", ObjectPath: "r/procedures/p1.sql"}, PlannedAction: types.ActionUpdateExistingModule},
 		},
 	}
 	b := bus.New()
@@ -321,8 +318,8 @@ func TestExecute_NonTxFailDoesNotAffectOthers(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{
-			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v1.sql"},
-			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v2", Kind: "views"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v2.sql"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views", ObjectPath: "r/views/v1.sql"}, PlannedAction: types.ActionCreateObject},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v2", Kind: "views", ObjectPath: "r/views/v2.sql"}, PlannedAction: types.ActionCreateObject},
 		},
 	}
 	b := bus.New()
@@ -365,8 +362,8 @@ func TestExecute_TxBatchWrappedInTransaction(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{
-			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t1.sql"},
-			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t2", Kind: "tables"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t2.sql"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectPath: "r/tables/t1.sql"}, PlannedAction: types.ActionCreateObject},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t2", Kind: "tables", ObjectPath: "r/tables/t2.sql"}, PlannedAction: types.ActionCreateObject},
 		},
 	}
 	b := bus.New()
@@ -414,8 +411,8 @@ func TestExecute_TxBatchFailsRetriesIndividuallyWrapped(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{
-			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t1.sql"},
-			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t2", Kind: "tables"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t2.sql"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectPath: "r/tables/t1.sql"}, PlannedAction: types.ActionCreateObject},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t2", Kind: "tables", ObjectPath: "r/tables/t2.sql"}, PlannedAction: types.ActionCreateObject},
 		},
 	}
 	b := bus.New()
@@ -467,7 +464,7 @@ func TestExecute_TxBatchFailsRollsback(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{
-			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t1.sql"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectPath: "r/tables/t1.sql"}, PlannedAction: types.ActionCreateObject},
 		},
 	}
 	b := bus.New()
@@ -618,10 +615,9 @@ func TestExecute_ReprocessChangedEmptyTransitions_Skipped(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			ObjectRef:       types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables"},
+			ObjectRef:       types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectPath: "r/tables/t1.sql"},
 			PlannedAction:   types.ActionReprocessChanged,
 			TransitionPaths: []string{},
-			SourceFile:      "r/tables/t1.sql",
 		}},
 	}
 	b := bus.New()
@@ -666,8 +662,8 @@ func TestExecute_MixedTxAndNonTx(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{
-			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/tables/t1.sql"},
-			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views"}, PlannedAction: types.ActionCreateObject, SourceFile: "r/views/v1.sql"},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectPath: "r/tables/t1.sql"}, PlannedAction: types.ActionCreateObject},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views", ObjectPath: "r/views/v1.sql"}, PlannedAction: types.ActionCreateObject},
 		},
 	}
 	b := bus.New()

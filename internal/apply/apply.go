@@ -137,7 +137,7 @@ func (e *Executor) collectStatements(plan types.MigrationPlan, objIndex map[stri
 			continue
 		}
 
-		fsObj := objIndex[obj.SourceFile]
+		fsObj := objIndex[obj.ObjectPath]
 		if fsObj == nil {
 			continue
 		}
@@ -155,13 +155,11 @@ func (e *Executor) collectStatements(plan types.MigrationPlan, objIndex map[stri
 			kind:          obj.Kind,
 			schemaName:    obj.SchemaName,
 			objectName:    obj.ObjectName,
-			sourceFile:    obj.SourceFile,
+			sourceFile:    obj.ObjectPath,
 			checksum:      hex.EncodeToString(obj.Checksum[:]),
-			gitHash:       obj.GitHash,
-			gitAuthor:     obj.GitAuthor,
-			gitDate:       obj.GitDate,
 			recordKind:    "object",
 		}
+		stmt.gitHash, stmt.gitAuthor, stmt.gitDate = obj.GitStrings()
 
 		if types.IsTransactionalKind(obj.Kind) {
 			txCurrent = append(txCurrent, stmt)

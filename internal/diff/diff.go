@@ -42,10 +42,13 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 		})
 	}
 
-	transitionsByKey := make(map[string][]*fs.TransitionScript, len(layout.Transitions))
-	for _, ts := range layout.Transitions {
-		if !ts.Scaffold {
-			transitionsByKey[ts.NormalizedKey] = append(transitionsByKey[ts.NormalizedKey], ts)
+	var transitionsByKey map[string][]*fs.TransitionScript
+	if len(layout.Transitions) > 0 {
+		transitionsByKey = make(map[string][]*fs.TransitionScript, len(layout.Transitions))
+		for _, ts := range layout.Transitions {
+			if !ts.Scaffold {
+				transitionsByKey[ts.NormalizedKey] = append(transitionsByKey[ts.NormalizedKey], ts)
+			}
 		}
 	}
 
@@ -77,7 +80,6 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 			},
 			DatabaseName: obj.DatabaseName,
 			Exists:       exists,
-			SourceFile:   obj.Path,
 		}
 
 		switch {
@@ -158,18 +160,22 @@ func priorDigestPresent(m map[string][32]byte, key string) bool {
 }
 
 func setGitInfo(obj *fs.Object, planned *types.PlannedObject) {
-	h, err := obj.GitHash()
-	if err == nil {
-		planned.GitHash = h
+	var g types.GitInfo
+	if h, err := obj.GitHash(); err == nil {
+		g.GitHash = h
 	}
-	a, err := obj.GitAuthor()
-	if err == nil {
-		planned.GitAuthor = a
+	if a, err := obj.GitAuthor(); err == nil {
+		g.GitAuthor = a
 	}
-	d, err := obj.GitDate()
-	if err == nil {
-		planned.GitDate = d
+	if d, err := obj.GitDate(); err == nil {
+		g.GitDate = d
 	}
+	if g.GitHash == "" && g.GitAuthor == "" && g.GitDate == "" {
+		planned.Git = nil
+		return
+	}
+	cp := g
+	planned.Git = &cp
 }
 
 type changeCtx struct {

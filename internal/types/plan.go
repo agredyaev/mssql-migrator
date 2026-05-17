@@ -27,16 +27,17 @@ type PlannedSchema struct {
 
 type PlannedObject struct {
 	ObjectRef
-	GitInfo
-	TransitionPaths []string
+	// Git is set only when at least one git field was resolved; nil on skip-heavy paths
+	// saves three string headers per object in the plan slice.
+	Git *GitInfo `json:"-"`
 
+	TransitionPaths []string
 	DatabaseName    string
 	ParentName      string
 	Checksum        [32]byte
 	PlannedAction   string
 	TransactionMode string
 	RollbackScope   string
-	SourceFile      string
 
 	MetadataMatch *bool
 	Exists        bool
