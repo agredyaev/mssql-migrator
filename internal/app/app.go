@@ -55,9 +55,10 @@ func runWithLookup(args []string, lookup envLookupFn, connect Connector) int {
 	defer conn.Close()
 
 	b := bus.New()
-	attachSubscribers(b, conn, cfg, logger)
+	auditSub := attachSubscribers(b, conn, cfg, logger)
 
 	eng := wireEngine(b, conn, cfg, logger)
+	eng.SetBootstrapChecker(auditSub)
 
 	var execErr error
 	switch flags.Command {

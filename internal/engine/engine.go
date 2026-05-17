@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 
 	"reporting-db-migrations/internal/apply"
@@ -13,6 +15,10 @@ import (
 	"reporting-db-migrations/internal/lock"
 	"reporting-db-migrations/internal/types"
 )
+
+type BootstrapChecker interface {
+	BootstrapError() error
+}
 
 type Engine struct {
 	cfg      types.Config
@@ -28,6 +34,7 @@ type Engine struct {
 
 	bootstrapOnce sync.Once
 	bootstrapErr  error
+	bc            BootstrapChecker
 }
 
 type Scanner interface {
@@ -69,6 +76,10 @@ func New(cfg types.Config, bus bus.EventBus, conn driver.Conn, fs Scanner, db In
 		applier:  applier,
 		locker:   locker,
 	}
+}
+
+func (e *Engine) SetBootstrapChecker(bc BootstrapChecker) {
+	e.bc = bc
 }
 
 func (e *Engine) Plan(ctx context.Context) error {
@@ -117,10 +128,21 @@ func (e *Engine) Migrate(ctx context.Context) error {
 		return err
 	}
 
-	_, err = e.applier.Execute(ctx, e.conn, *plan, layout, e.bus)
+	res, err := e.applier.Execute(ctx, e.conn, *plan, layout, e.bus)
 	if err != nil {
 		e.publishRunFailed(ctx, "migrate", err)
 		return err
+	}
+	if res.Failed > 0 {
+		msg := fmt.Sprintf("%d object(s) failed to apply: %s", res.Failed, strings.Join(res.Errors, "; "))
+		e.publishRunFailed(ctx, "migrate", errors.ErrSQLExecution)
+		return fmt.Errorf("%s", msg)
+	}
+	if e.bc != nil {
+		if berr := e.bc.BootstrapError(); berr != nil {
+			e.publishRunFailed(ctx, "migrate", berr)
+			return berr
+		}
 	}
 
 	e.bus.Publish(ctx, types.EventRunFinished, &types.RunFinished{Command: "migrate", Result: "success", ExitCode: 0})
@@ -199,10 +221,21 @@ func (e *Engine) executeLocked(ctx context.Context, command string) error {
 	}
 	defer e.locker.Release(ctx, e.conn)
 
-	_, err = e.applier.Execute(ctx, e.conn, *plan, layout, e.bus)
+	res, err := e.applier.Execute(ctx, e.conn, *plan, layout, e.bus)
 	if err != nil {
 		e.publishRunFailed(ctx, command, err)
 		return err
+	}
+	if res.Failed > 0 {
+		msg := fmt.Sprintf("%d object(s) failed to apply: %s", res.Failed, strings.Join(res.Errors, "; "))
+		e.publishRunFailed(ctx, command, errors.ErrSQLExecution)
+		return fmt.Errorf("%s", msg)
+	}
+	if e.bc != nil {
+		if berr := e.bc.BootstrapError(); berr != nil {
+			e.publishRunFailed(ctx, command, berr)
+			return berr
+		}
 	}
 
 	e.bus.Publish(ctx, types.EventRunFinished, &types.RunFinished{Command: command, Result: "success", ExitCode: 0})

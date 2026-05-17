@@ -89,8 +89,11 @@ func (s stubInspector) Inspect(ctx context.Context, conn driver.Conn, scope fs.L
 }
 
 type stubLoader struct {
-	checksums map[string]string
-	err       error
+	checksums               map[string]string
+	err                     error
+	appliedMigrations       map[string]bool
+	appliedMigrationsCalled bool
+	appliedMigrationsErr    error
 }
 
 func (s stubLoader) EnsureTables(ctx context.Context, conn driver.Conn) error { return nil }
@@ -100,7 +103,7 @@ func (s stubLoader) LoadChecksums(ctx context.Context, conn driver.Conn, keys []
 }
 
 func (s stubLoader) LoadAllAppliedMigrations(ctx context.Context, conn driver.Conn) (map[string]bool, error) {
-	return nil, nil
+	return s.appliedMigrations, s.appliedMigrationsErr
 }
 
 type stubComputer struct {
@@ -507,5 +510,213 @@ func TestMigrate_LockFailure(t *testing.T) {
 	}
 	if !errors.Is(err, lockErr) {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+type stubBootstrapChecker struct {
+	err error
+}
+
+func (s *stubBootstrapChecker) BootstrapError() error { return s.err }
+
+func TestMigrate_BootstrapError_AfterApply(t *testing.T) {
+	bootstrapErr := errors.New("audit table creation failed")
+	eng := &Engine{
+		cfg:      types.Config{SQLBase: "/tmp", SQLRoot: "/tmp"},
+		bus:      bus.New(),
+		conn:     &stubConn{},
+		fs:       stubScanner{layout: fs.Layout{}},
+		db:       stubInspector{state: &db.State{TableColumns: map[string][]db.TableColumn{}}},
+		load:     stubLoader{checksums: map[string]string{}},
+		diff:     stubComputer{plan: &types.MigrationPlan{}},
+		scaffold: &stubScaffolder{},
+		applier:  &stubApplier{},
+		locker:   &stubLocker{},
+		bc:       &stubBootstrapChecker{err: bootstrapErr},
+	}
+
+	err := eng.Migrate(context.Background())
+	if err == nil {
+		t.Fatal("expected bootstrap error")
+	}
+	if !errors.Is(err, bootstrapErr) {
+		t.Errorf("expected bootstrap error, got: %v", err)
+	}
+}
+
+func TestBaseline_BootstrapError_AfterApply(t *testing.T) {
+	bootstrapErr := errors.New("audit table creation failed")
+	eng := &Engine{
+		cfg:     types.Config{SQLRoot: "/tmp"},
+		bus:     bus.New(),
+		conn:    &stubConn{},
+		fs:      stubScanner{layout: fs.Layout{}},
+		db:      stubInspector{state: &db.State{}},
+		load:    stubLoader{checksums: map[string]string{}},
+		diff:    stubComputer{plan: &types.MigrationPlan{}},
+		applier: &stubApplier{},
+		locker:  &stubLocker{},
+		bc:      &stubBootstrapChecker{err: bootstrapErr},
+	}
+
+	err := eng.Baseline(context.Background())
+	if err == nil {
+		t.Fatal("expected bootstrap error")
+	}
+	if !errors.Is(err, bootstrapErr) {
+		t.Errorf("expected bootstrap error, got: %v", err)
+	}
+}
+
+func TestFilterAppliedMigrations_NoReprocessObjects(t *testing.T) {
+	eng := &Engine{
+		load: stubLoader{},
+		conn: &stubConn{},
+	}
+	plan := &types.MigrationPlan{
+		Objects: []types.PlannedObject{
+			{PlannedAction: types.ActionCreateObject, ObjectRef: types.ObjectRef{NormalizedKey: "a"}},
+			{PlannedAction: types.ActionSkipUnchanged, ObjectRef: types.ObjectRef{NormalizedKey: "b"}},
+		},
+	}
+
+	err := eng.filterAppliedMigrations(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestFilterAppliedMigrations_LoadError(t *testing.T) {
+	loadErr := errors.New("db down")
+	eng := &Engine{
+		load: stubLoader{appliedMigrationsErr: loadErr},
+		conn: &stubConn{},
+	}
+	plan := &types.MigrationPlan{
+		Objects: []types.PlannedObject{
+			{
+				PlannedAction:   types.ActionReprocessChanged,
+				ObjectRef:       types.ObjectRef{NormalizedKey: "t/tables/t1"},
+				TransitionPaths: []string{"t/tables/t1/001_add.sql"},
+			},
+		},
+	}
+
+	err := eng.filterAppliedMigrations(context.Background(), plan)
+	if err == nil {
+		t.Fatal("expected load error")
+	}
+	if !errors.Is(err, loadErr) {
+		t.Errorf("expected load error, got: %v", err)
+	}
+}
+
+func TestFilterAppliedMigrations_AllAlreadyApplied(t *testing.T) {
+	eng := &Engine{
+		load: stubLoader{
+			appliedMigrations: map[string]bool{
+				"t/tables/t1/001_add.sql":  true,
+				"t/tables/t1/002_drop.sql": true,
+			},
+		},
+		conn: &stubConn{},
+	}
+	plan := &types.MigrationPlan{
+		Objects: []types.PlannedObject{
+			{
+				PlannedAction: types.ActionReprocessChanged,
+				ObjectRef:     types.ObjectRef{NormalizedKey: "t/tables/t1"},
+				TransitionPaths: []string{
+					"t/tables/t1/001_add.sql",
+					"t/tables/t1/002_drop.sql",
+				},
+			},
+		},
+	}
+
+	err := eng.filterAppliedMigrations(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(plan.Objects[0].TransitionPaths) != 0 {
+		t.Errorf("expected all transitions filtered, got %d: %v",
+			len(plan.Objects[0].TransitionPaths), plan.Objects[0].TransitionPaths)
+	}
+}
+
+func TestFilterAppliedMigrations_PartialFilter(t *testing.T) {
+	eng := &Engine{
+		load: stubLoader{
+			appliedMigrations: map[string]bool{
+				"t/tables/t1/001_add.sql": true,
+			},
+		},
+		conn: &stubConn{},
+	}
+	plan := &types.MigrationPlan{
+		Objects: []types.PlannedObject{
+			{
+				PlannedAction: types.ActionReprocessChanged,
+				ObjectRef:     types.ObjectRef{NormalizedKey: "t/tables/t1"},
+				TransitionPaths: []string{
+					"t/tables/t1/001_add.sql",
+					"t/tables/t1/002_drop.sql",
+				},
+			},
+		},
+	}
+
+	err := eng.filterAppliedMigrations(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(plan.Objects[0].TransitionPaths) != 1 {
+		t.Fatalf("expected 1 transition remaining, got %d", len(plan.Objects[0].TransitionPaths))
+	}
+	if plan.Objects[0].TransitionPaths[0] != "t/tables/t1/002_drop.sql" {
+		t.Errorf("expected remaining transition 002_drop.sql, got %q", plan.Objects[0].TransitionPaths[0])
+	}
+}
+
+func TestFilterAppliedMigrations_MixedObjects(t *testing.T) {
+	eng := &Engine{
+		load: stubLoader{
+			appliedMigrations: map[string]bool{
+				"t/tables/t1/001_add.sql": true,
+			},
+		},
+		conn: &stubConn{},
+	}
+	plan := &types.MigrationPlan{
+		Objects: []types.PlannedObject{
+			{
+				PlannedAction: types.ActionCreateObject,
+				ObjectRef:     types.ObjectRef{NormalizedKey: "new/tables/t2"},
+			},
+			{
+				PlannedAction: types.ActionReprocessChanged,
+				ObjectRef:     types.ObjectRef{NormalizedKey: "t/tables/t1"},
+				TransitionPaths: []string{
+					"t/tables/t1/001_add.sql",
+					"t/tables/t1/002_drop.sql",
+				},
+			},
+			{
+				PlannedAction: types.ActionSkipUnchanged,
+				ObjectRef:     types.ObjectRef{NormalizedKey: "t/procedures/p1"},
+			},
+		},
+	}
+
+	err := eng.filterAppliedMigrations(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(plan.Objects[1].TransitionPaths) != 1 {
+		t.Fatalf("expected 1 transition remaining on reprocess object, got %d", len(plan.Objects[1].TransitionPaths))
+	}
+	if plan.Objects[1].TransitionPaths[0] != "t/tables/t1/002_drop.sql" {
+		t.Errorf("expected remaining transition 002_drop.sql, got %q", plan.Objects[1].TransitionPaths[0])
 	}
 }

@@ -32,6 +32,10 @@ func (s *Subscriber) SetErrorHandler(fn func(msg string)) {
 	s.notifier.SetErrorHandler(fn)
 }
 
+func (s *Subscriber) BootstrapError() error {
+	return s.bootstrapErr
+}
+
 func (s *Subscriber) onObjectApplied(ctx context.Context, payload any) {
 	ev, ok := payload.(*types.ObjectEvent)
 	if !ok {

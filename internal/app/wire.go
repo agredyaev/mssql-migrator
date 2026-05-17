@@ -32,12 +32,14 @@ func (loaderAdapter) LoadAllAppliedMigrations(ctx context.Context, conn driver.C
 	return audit.LoadAllAppliedMigrations(ctx, conn)
 }
 
-func attachSubscribers(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.Logger) {
+func attachSubscribers(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.Logger) *audit.Subscriber {
 	auditSub := audit.NewSubscriber(b, conn)
 	auditSub.SetErrorHandler(func(msg string) { logger.Warn("audit", msg) })
 
 	reportSub := report.NewSubscriber(b, cfg)
 	reportSub.SetErrorHandler(func(msg string) { logger.Warn("report", msg) })
+
+	return auditSub
 }
 
 func wireEngine(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.Logger) *engine.Engine {
