@@ -1,54 +1,49 @@
 package fs
 
-type sqlNormalizer struct {
-	sawCR             bool
-	pendingWhitespace []byte
-}
+import "strings"
 
 func normalizeSQL(input string) string {
-	n := sqlNormalizer{}
-	output := make([]byte, 0, len(input))
+	var b strings.Builder
+	b.Grow(len(input))
+	sawCR := false
+	wsBuf := make([]byte, 0, 16)
+
 	for i := 0; i < len(input); i++ {
-		n.processByte(input[i], &output)
-	}
-	n.finish(&output)
-	return string(output)
-}
+		ch := input[i]
 
-func (n *sqlNormalizer) processByte(b byte, output *[]byte) {
-	if n.sawCR {
-		if b == '\n' {
-			n.emitNewline(output)
-			n.sawCR = false
-			return
+		if sawCR {
+			sawCR = false
+			wsBuf = wsBuf[:0]
+			if ch == '\n' {
+				b.WriteByte('\n')
+				continue
+			}
+			b.WriteByte('\n')
 		}
-		n.emitNewline(output)
-		n.sawCR = false
+
+		switch ch {
+		case '\r':
+			sawCR = true
+		case '\n':
+			b.WriteByte('\n')
+			wsBuf = wsBuf[:0]
+		case ' ', '\t':
+			wsBuf = append(wsBuf, ch)
+		default:
+			b.Write(wsBuf)
+			wsBuf = wsBuf[:0]
+			start := i
+			for i < len(input) && input[i] > ' ' {
+				i++
+			}
+			b.WriteString(input[start:i])
+			i--
+		}
 	}
 
-	switch b {
-	case '\r':
-		n.sawCR = true
-	case '\n':
-		n.emitNewline(output)
-	case ' ', '\t':
-		n.pendingWhitespace = append(n.pendingWhitespace, b)
-	default:
-		*output = append(*output, n.pendingWhitespace...)
-		n.pendingWhitespace = n.pendingWhitespace[:0]
-		*output = append(*output, b)
+	if sawCR {
+		b.WriteByte('\n')
 	}
-}
 
-func (n *sqlNormalizer) finish(output *[]byte) {
-	if n.sawCR {
-		n.emitNewline(output)
-		n.sawCR = false
-	}
-	n.pendingWhitespace = n.pendingWhitespace[:0]
-}
-
-func (n *sqlNormalizer) emitNewline(output *[]byte) {
-	n.pendingWhitespace = n.pendingWhitespace[:0]
-	*output = append(*output, '\n')
+	return b.String()
 }
