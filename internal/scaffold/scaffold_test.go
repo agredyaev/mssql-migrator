@@ -22,7 +22,7 @@ func TestEnsureTransitionFiles_NoBlockedTables(t *testing.T) {
 	}
 	plan := &types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			ObjectRef:    types.ObjectRef{NormalizedKey: "r/views/v1"},
+			ObjectRef:     types.ObjectRef{NormalizedKey: "r/views/v1"},
 			PlannedAction: types.ActionCreateObject,
 		}},
 	}
@@ -51,7 +51,7 @@ func TestEnsureTransitionFiles_BlockedTableCreatesScaffold(t *testing.T) {
 	plan := &types.MigrationPlan{
 		Blocked: true,
 		Objects: []types.PlannedObject{{
-			ObjectRef:    types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectName: "t1", SchemaName: "r"},
+			ObjectRef:     types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectName: "t1", SchemaName: "r"},
 			PlannedAction: types.ActionReprocessChangedBlocked,
 		}},
 	}
@@ -114,7 +114,7 @@ func TestEnsureTransitionFiles_Idempotent(t *testing.T) {
 	plan := &types.MigrationPlan{
 		Blocked: true,
 		Objects: []types.PlannedObject{{
-			ObjectRef:    types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectName: "t1", SchemaName: "r"},
+			ObjectRef:     types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectName: "t1", SchemaName: "r"},
 			PlannedAction: types.ActionReprocessChangedBlocked,
 		}},
 	}
@@ -158,7 +158,7 @@ func TestEnsureTransitionFiles_ExistingRealTransitionSkips(t *testing.T) {
 	plan := &types.MigrationPlan{
 		Blocked: true,
 		Objects: []types.PlannedObject{{
-			ObjectRef:    types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectName: "t1", SchemaName: "r"},
+			ObjectRef:     types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectName: "t1", SchemaName: "r"},
 			PlannedAction: types.ActionReprocessChangedBlocked,
 		}},
 	}
@@ -189,7 +189,7 @@ func TestEnsureTransitionFiles_AutoAddColumn(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{{
-			CachedFile: fs.CachedFile{AbsPath: sqlPath},
+			CachedFile:    fs.CachedFile{AbsPath: sqlPath},
 			Path:          "r/tables/t1.sql",
 			NormalizedKey: "r/tables/t1",
 			Kind:          "tables",
@@ -200,7 +200,7 @@ func TestEnsureTransitionFiles_AutoAddColumn(t *testing.T) {
 	plan := &types.MigrationPlan{
 		Blocked: true,
 		Objects: []types.PlannedObject{{
-			ObjectRef:    types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectName: "t1", SchemaName: "r"},
+			ObjectRef:     types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectName: "t1", SchemaName: "r"},
 			PlannedAction: types.ActionReprocessChangedBlocked,
 		}},
 	}
@@ -264,7 +264,7 @@ func TestEnsureTransitionFiles_AutoAddColumn_FallsBackToScaffoldOnDrop(t *testin
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{{
-			CachedFile: fs.CachedFile{AbsPath: sqlPath},
+			CachedFile:    fs.CachedFile{AbsPath: sqlPath},
 			Path:          "r/tables/t1.sql",
 			NormalizedKey: "r/tables/t1",
 			Kind:          "tables",
@@ -275,7 +275,7 @@ func TestEnsureTransitionFiles_AutoAddColumn_FallsBackToScaffoldOnDrop(t *testin
 	plan := &types.MigrationPlan{
 		Blocked: true,
 		Objects: []types.PlannedObject{{
-			ObjectRef:    types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectName: "t1", SchemaName: "r"},
+			ObjectRef:     types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectName: "t1", SchemaName: "r"},
 			PlannedAction: types.ActionReprocessChangedBlocked,
 		}},
 	}

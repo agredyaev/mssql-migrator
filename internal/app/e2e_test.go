@@ -269,8 +269,8 @@ func TestE2E_Migrate_BlockedPlan(t *testing.T) {
 
 	conn := &testutil.MockConn{
 		RowsByPrefix: map[string]*testutil.MockRows{
-			"SELECT LOWER(s.name) AS schem": testutil.NewMockRows([][]any{{"smoke"}}),
-			"SELECT\n    LOWER(s.name) AS ": testutil.NewMockRows([][]any{{"smoke", "tables", "data_table", ""}}),
+			"SELECT LOWER(s.name) AS schem":  testutil.NewMockRows([][]any{{"smoke"}}),
+			"SELECT\n    LOWER(s.name) AS ":  testutil.NewMockRows([][]any{{"smoke", "tables", "data_table", ""}}),
 			"SELECT h.normalized_key, h.che": testutil.NewMockRows([][]any{{"smoke/tables/data_table", "oldhash"}}),
 		},
 	}

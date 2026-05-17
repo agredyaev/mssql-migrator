@@ -106,7 +106,7 @@ func TestExecute_CreateObject(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{{
-			CachedFile: fs.CachedFile{AbsPath: sqlPath},
+			CachedFile:    fs.CachedFile{AbsPath: sqlPath},
 			Path:          "r/views/v1.sql",
 			NormalizedKey: "r/views/v1",
 			Kind:          "views",
@@ -116,7 +116,7 @@ func TestExecute_CreateObject(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			ObjectRef:    types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views"},
+			ObjectRef:     types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views"},
 			PlannedAction: types.ActionCreateObject,
 			SourceFile:    "r/views/v1.sql",
 		}},
@@ -146,7 +146,7 @@ func TestExecute_SkipUnchanged(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			ObjectRef:    types.ObjectRef{NormalizedKey: "r/views/v1"},
+			ObjectRef:     types.ObjectRef{NormalizedKey: "r/views/v1"},
 			PlannedAction: types.ActionSkipUnchanged,
 			SourceFile:    "r/views/v1.sql",
 		}},
@@ -180,7 +180,7 @@ func TestExecute_UpdateModule(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{{
-			CachedFile: fs.CachedFile{AbsPath: sqlPath},
+			CachedFile:    fs.CachedFile{AbsPath: sqlPath},
 			Path:          "r/views/v1.sql",
 			NormalizedKey: "r/views/v1",
 			Kind:          "views",
@@ -188,7 +188,7 @@ func TestExecute_UpdateModule(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			ObjectRef:    types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views"},
+			ObjectRef:     types.ObjectRef{NormalizedKey: "r/views/v1", Kind: "views"},
 			PlannedAction: types.ActionUpdateExistingModule,
 			SourceFile:    "r/views/v1.sql",
 		}},
@@ -210,7 +210,7 @@ func TestExecute_AdoptExisting(t *testing.T) {
 	layout := fs.Layout{}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			ObjectRef:    types.ObjectRef{NormalizedKey: "r/tables/t1"},
+			ObjectRef:     types.ObjectRef{NormalizedKey: "r/tables/t1"},
 			PlannedAction: types.ActionAdoptExisting,
 		}},
 	}
@@ -503,7 +503,7 @@ func TestExecute_TransitionWrappedInTransaction(t *testing.T) {
 
 	layout := fs.Layout{
 		Transitions: []*fs.TransitionScript{{
-			CachedFile: fs.CachedFile{AbsPath: transPath},
+			CachedFile:    fs.CachedFile{AbsPath: transPath},
 			Path:          "r/tables/_migrations/t1/001_abc1234_add_col.sql",
 			SchemaName:    "r",
 			TableName:     "t1",
@@ -515,7 +515,7 @@ func TestExecute_TransitionWrappedInTransaction(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			ObjectRef:      types.ObjectRef{NormalizedKey: "r/tables/t1", SchemaName: "r", Kind: "tables", ObjectName: "t1"},
+			ObjectRef:       types.ObjectRef{NormalizedKey: "r/tables/t1", SchemaName: "r", Kind: "tables", ObjectName: "t1"},
 			PlannedAction:   types.ActionReprocessChanged,
 			TransitionPaths: []string{"r/tables/_migrations/t1/001_abc1234_add_col.sql"},
 		}},
@@ -555,7 +555,7 @@ func TestExecute_TransitionFailRollsback(t *testing.T) {
 
 	layout := fs.Layout{
 		Transitions: []*fs.TransitionScript{{
-			CachedFile: fs.CachedFile{AbsPath: transPath},
+			CachedFile:    fs.CachedFile{AbsPath: transPath},
 			Path:          "r/tables/_migrations/t1/001_abc1234_add_col.sql",
 			SchemaName:    "r",
 			TableName:     "t1",
@@ -567,7 +567,7 @@ func TestExecute_TransitionFailRollsback(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			ObjectRef:      types.ObjectRef{NormalizedKey: "r/tables/t1", SchemaName: "r", Kind: "tables", ObjectName: "t1"},
+			ObjectRef:       types.ObjectRef{NormalizedKey: "r/tables/t1", SchemaName: "r", Kind: "tables", ObjectName: "t1"},
 			PlannedAction:   types.ActionReprocessChanged,
 			TransitionPaths: []string{"r/tables/_migrations/t1/001_abc1234_add_col.sql"},
 		}},
@@ -608,7 +608,7 @@ func TestExecute_ReprocessChangedEmptyTransitions_Skipped(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{{
-			CachedFile: fs.CachedFile{AbsPath: sqlPath},
+			CachedFile:    fs.CachedFile{AbsPath: sqlPath},
 			Path:          "r/tables/t1.sql",
 			NormalizedKey: "r/tables/t1",
 			Kind:          "tables",
@@ -618,7 +618,7 @@ func TestExecute_ReprocessChangedEmptyTransitions_Skipped(t *testing.T) {
 	}
 	plan := types.MigrationPlan{
 		Objects: []types.PlannedObject{{
-			ObjectRef:      types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables"},
+			ObjectRef:       types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables"},
 			PlannedAction:   types.ActionReprocessChanged,
 			TransitionPaths: []string{},
 			SourceFile:      "r/tables/t1.sql",
