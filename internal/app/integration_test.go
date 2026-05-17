@@ -441,7 +441,7 @@ func (testLoaderAdapter) EnsureTables(ctx context.Context, conn driver.Conn) err
 	return audit.EnsureTables(ctx, conn)
 }
 
-func (testLoaderAdapter) LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[string]string, error) {
+func (testLoaderAdapter) LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[string][32]byte, error) {
 	return audit.LoadChecksums(ctx, conn, keys)
 }
 

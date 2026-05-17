@@ -2,7 +2,6 @@ package diff
 
 import (
 	"context"
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,7 +19,7 @@ func TestComputeEmptyLayout(t *testing.T) {
 		Objects:      map[string]db.Object{},
 		TableColumns: map[string][]db.TableColumn{},
 	}
-	checksums := map[string]string{}
+	checksums := map[string][32]byte{}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -50,7 +49,7 @@ func TestComputeNewObject_ActionCreateObject(t *testing.T) {
 		Objects:      map[string]db.Object{},
 		TableColumns: map[string][]db.TableColumn{},
 	}
-	checksums := map[string]string{}
+	checksums := map[string][32]byte{}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -64,6 +63,28 @@ func TestComputeNewObject_ActionCreateObject(t *testing.T) {
 	}
 	if plan.Summary.CreateCount != 1 {
 		t.Errorf("summary.CreateCount = %d, want 1", plan.Summary.CreateCount)
+	}
+}
+
+func TestIsMatch_NoAllocation(t *testing.T) {
+	obj := makeTempObject(t, "r/views/v1", "views", "CREATE VIEW r.v1 AS SELECT 1 AS x")
+	cs, err := obj.Checksum()
+	if err != nil {
+		t.Fatalf("checksum: %v", err)
+	}
+	prior := cs
+
+	var mismatch bool
+	n := int(testing.AllocsPerRun(200, func() {
+		if !isMatch(obj, prior) {
+			mismatch = true
+		}
+	}))
+	if mismatch {
+		t.Fatal("isMatch returned false")
+	}
+	if n != 0 {
+		t.Fatalf("isMatch allocs per run = %d, want 0", n)
 	}
 }
 
@@ -81,7 +102,7 @@ func TestComputeUnchangedObject_ActionSkip(t *testing.T) {
 			"r/views/v1": {SchemaName: "r", Kind: "views", ObjectName: "v1"},
 		},
 	}
-	checksums := map[string]string{"r/views/v1": hex.EncodeToString(checksum[:])}
+	checksums := map[string][32]byte{"r/views/v1": checksum}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -109,7 +130,7 @@ func TestComputeAdoptExisting(t *testing.T) {
 			"r/views/v1": {SchemaName: "r", Kind: "views", ObjectName: "v1"},
 		},
 	}
-	checksums := map[string]string{}
+	checksums := map[string][32]byte{}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -132,7 +153,7 @@ func TestComputeChecksumMismatch_Reprocess(t *testing.T) {
 			"r/types/t1": {SchemaName: "r", Kind: "types", ObjectName: "t1"},
 		},
 	}
-	checksums := map[string]string{"r/types/t1": "mismatched_checksum"}
+	checksums := map[string][32]byte{"r/types/t1": nonFileDigest(0x11)}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -155,7 +176,7 @@ func TestComputeTableChangedWithoutTransition_Blocked(t *testing.T) {
 			"r/tables/t1": {SchemaName: "r", Kind: "tables", ObjectName: "t1"},
 		},
 	}
-	checksums := map[string]string{"r/tables/t1": "old_checksum"}
+	checksums := map[string][32]byte{"r/tables/t1": nonFileDigest(0x22)}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -191,7 +212,7 @@ func TestComputeTableChangedWithTransition_NotBlocked(t *testing.T) {
 			"r/tables/t1": {SchemaName: "r", Kind: "tables", ObjectName: "t1"},
 		},
 	}
-	checksums := map[string]string{"r/tables/t1": "old_checksum"}
+	checksums := map[string][32]byte{"r/tables/t1": nonFileDigest(0x22)}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -221,7 +242,7 @@ func TestComputeViewChanged_UpdateModule(t *testing.T) {
 			"r/views/v1": {SchemaName: "r", Kind: "views", ObjectName: "v1"},
 		},
 	}
-	checksums := map[string]string{"r/views/v1": "old_checksum"}
+	checksums := map[string][32]byte{"r/views/v1": nonFileDigest(0x33)}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -268,7 +289,7 @@ func TestComputeTableScaffoldOnly_Blocked(t *testing.T) {
 			"r/tables/t1": {SchemaName: "r", Kind: "tables", ObjectName: "t1"},
 		},
 	}
-	checksums := map[string]string{"r/tables/t1": "old_checksum"}
+	checksums := map[string][32]byte{"r/tables/t1": nonFileDigest(0x22)}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -293,7 +314,7 @@ func TestComputeTriggerMissingParent_Blocked(t *testing.T) {
 			"r/triggers/trg1": {SchemaName: "r", Kind: "triggers", ObjectName: "trg1"},
 		},
 	}
-	checksums := map[string]string{"r/triggers/trg1": "old_checksum"}
+	checksums := map[string][32]byte{"r/triggers/trg1": nonFileDigest(0x44)}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -319,9 +340,9 @@ func TestComputeTriggerParentStable_UpdateModule(t *testing.T) {
 			"r/tables/t1":     {SchemaName: "r", Kind: "tables", ObjectName: "t1"},
 		},
 	}
-	checksums := map[string]string{
-		"r/triggers/trg1": "old_checksum",
-		"r/tables/t1":     "abc1234",
+	checksums := map[string][32]byte{
+		"r/triggers/trg1": nonFileDigest(0x55),
+		"r/tables/t1":     nonFileDigest(0x66),
 	}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
@@ -342,7 +363,7 @@ func TestComputeBlockedHasReason(t *testing.T) {
 			"r/tables/t1": {SchemaName: "r", Kind: "tables", ObjectName: "t1"},
 		},
 	}
-	checksums := map[string]string{"r/tables/t1": "old_checksum"}
+	checksums := map[string][32]byte{"r/tables/t1": nonFileDigest(0x22)}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -372,9 +393,9 @@ func TestComputeMultipleObjectsSummary(t *testing.T) {
 			"r/views/v1":  {SchemaName: "r", Kind: "views", ObjectName: "v1"},
 		},
 	}
-	checksums := map[string]string{
-		"r/tables/t1": hex.EncodeToString(cs1[:]),
-		"r/views/v1":  "mismatched",
+	checksums := map[string][32]byte{
+		"r/tables/t1": cs1,
+		"r/views/v1":  nonFileDigest(0x77),
 	}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
@@ -393,6 +414,16 @@ func TestComputeMultipleObjectsSummary(t *testing.T) {
 	if plan.Summary.ChangedCount != 1 {
 		t.Errorf("ChangedCount = %d, want 1", plan.Summary.ChangedCount)
 	}
+}
+
+// nonFileDigest returns a non-zero digest that does not match real SHA-256
+// outputs from test fixture SQL (used as a synthetic “prior DB” checksum).
+func nonFileDigest(fill byte) [32]byte {
+	var b [32]byte
+	for i := range b {
+		b[i] = fill
+	}
+	return b
 }
 
 func makeTempObject(t *testing.T, key, kind, content string) *fs.Object {
@@ -426,7 +457,7 @@ func TestCompute_OrphanedDBObject_NotInLayout(t *testing.T) {
 			"r/views/orphan": {SchemaName: "r", Kind: "views", ObjectName: "orphan"},
 		},
 	}
-	checksums := map[string]string{}
+	checksums := map[string][32]byte{}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {

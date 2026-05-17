@@ -2,7 +2,6 @@ package diff
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"runtime"
 	"sync"
@@ -19,7 +18,7 @@ func NewComputer() *Computer {
 	return &Computer{}
 }
 
-func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.State, checksums map[string]string) (*types.MigrationPlan, error) {
+func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.State, checksums map[string][32]byte) (*types.MigrationPlan, error) {
 	plan := &types.MigrationPlan{
 		PlannedAt: time.Now().UTC(),
 	}
@@ -28,7 +27,7 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 		state = &db.State{Objects: map[string]db.Object{}}
 	}
 	if checksums == nil {
-		checksums = map[string]string{}
+		checksums = map[string][32]byte{}
 	}
 
 	plan.Schemas = make([]types.PlannedSchema, 0, len(layout.Schemas))
@@ -58,25 +57,14 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 		blockedCount int
 	)
 
-	// Pre-calculate checksums and git info concurrently
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
-	for _, obj := range layout.Objects {
-		wg.Add(1)
-		obj := obj
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			_, _ = obj.Checksum()
-			_, _ = obj.GitHash()
-			_, _ = obj.GitAuthor()
-			_, _ = obj.GitDate()
-		}()
-	}
-	wg.Wait()
+	// Warm up checksums and git info concurrently — but only when at least
+	// one file still has a cold checksum cache. After Scanner.Scan, preloadChecksums
+	// has usually filled every CachedFile.checksumOnce, so this returns immediately
+	// and avoids ~N goroutine-stack allocations per Compute.
+	warmupIfNeeded(layout)
 
 	plan.Objects = make([]types.PlannedObject, 0, len(layout.Objects))
+	plan.Blockers = make([]string, 0, 8)
 	for _, obj := range layout.Objects {
 		dbObj, exists := state.Objects[obj.NormalizedKey]
 		plannedObj := types.PlannedObject{
@@ -103,34 +91,37 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 			setGitInfo(obj, &plannedObj)
 			createCount++
 
-		case exists && checksums[obj.NormalizedKey] == "":
-			plannedObj.PlannedAction = types.ActionAdoptExisting
-			cs, err := obj.Checksum()
-			if err != nil {
-				return nil, fmt.Errorf("checksum %s: %w", obj.NormalizedKey, err)
+		case exists:
+			prior, hasPrior := checksums[obj.NormalizedKey]
+			if !hasPrior || prior == ([32]byte{}) {
+				plannedObj.PlannedAction = types.ActionAdoptExisting
+				cs, err := obj.Checksum()
+				if err != nil {
+					return nil, fmt.Errorf("checksum %s: %w", obj.NormalizedKey, err)
+				}
+				plannedObj.Checksum = cs
+				setGitInfo(obj, &plannedObj)
+				adoptCount++
+			} else {
+				cs, err := obj.Checksum()
+				if err != nil {
+					return nil, fmt.Errorf("checksum %s: %w", obj.NormalizedKey, err)
+				}
+				if cs != ([32]byte{}) && cs == prior {
+					plannedObj.PlannedAction = types.ActionSkipUnchanged
+					plannedObj.Checksum = cs
+					skipCount++
+				} else {
+					changedCount++
+					plannedObj.Checksum = cs
+					setGitInfo(obj, &plannedObj)
+					blockedCount += c.handleChanged(changeCtx{
+						obj: obj, dbObj: dbObj, plannedObj: &plannedObj,
+						plan: plan, state: state,
+						transitionsByKey: transitionsByKey, checksums: checksums,
+					})
+				}
 			}
-			plannedObj.Checksum = cs
-			setGitInfo(obj, &plannedObj)
-			adoptCount++
-
-		case exists && isMatch(obj, checksums[obj.NormalizedKey]):
-			plannedObj.PlannedAction = types.ActionSkipUnchanged
-			hex.Decode(plannedObj.Checksum[:], []byte(checksums[obj.NormalizedKey]))
-			skipCount++
-
-		default:
-			changedCount++
-			cs, err := obj.Checksum()
-			if err != nil {
-				return nil, fmt.Errorf("checksum %s: %w", obj.NormalizedKey, err)
-			}
-			plannedObj.Checksum = cs
-			setGitInfo(obj, &plannedObj)
-			blockedCount += c.handleChanged(changeCtx{
-				obj: obj, dbObj: dbObj, plannedObj: &plannedObj,
-				plan: plan, state: state,
-				transitionsByKey: transitionsByKey, checksums: checksums,
-			})
 		}
 
 		plan.Objects = append(plan.Objects, plannedObj)
@@ -150,12 +141,20 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 	return plan, nil
 }
 
-func isMatch(obj *fs.Object, prior string) bool {
-	cs, err := obj.Checksum()
-	if err != nil || cs == [32]byte{} {
+func isMatch(obj *fs.Object, prior [32]byte) bool {
+	if prior == ([32]byte{}) {
 		return false
 	}
-	return hex.EncodeToString(cs[:]) == prior
+	cs, err := obj.Checksum()
+	if err != nil || cs == ([32]byte{}) {
+		return false
+	}
+	return cs == prior
+}
+
+func priorDigestPresent(m map[string][32]byte, key string) bool {
+	cs, ok := m[key]
+	return ok && cs != ([32]byte{})
 }
 
 func setGitInfo(obj *fs.Object, planned *types.PlannedObject) {
@@ -180,7 +179,7 @@ type changeCtx struct {
 	plan             *types.MigrationPlan
 	state            *db.State
 	transitionsByKey map[string][]*fs.TransitionScript
-	checksums        map[string]string
+	checksums        map[string][32]byte
 }
 
 func (c *Computer) handleChanged(ctx changeCtx) int {
@@ -207,7 +206,7 @@ func (c *Computer) handleChanged(ctx changeCtx) int {
 			ctx.plan.Blockers = append(ctx.plan.Blockers, "trigger "+ctx.obj.NormalizedKey+" parent table "+parentKey+" not found")
 			return 1
 		}
-		if ctx.checksums[parentKey] == "" {
+		if !priorDigestPresent(ctx.checksums, parentKey) {
 			ctx.plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
 			ctx.plan.Blocked = true
 			ctx.plan.Blockers = append(ctx.plan.Blockers, "trigger "+ctx.obj.NormalizedKey+" parent table "+parentKey+" is changing")
@@ -224,4 +223,42 @@ func (c *Computer) handleChanged(ctx changeCtx) int {
 		}
 		return 0
 	}
+}
+
+// warmupIfNeeded pre-computes Checksum and GitInfo for every object
+// concurrently — but only when at least one object still has a cold checksum
+// cache (IsChecksumCached is false).
+//
+// After Scanner.Scan, preloadChecksums runs and fills checksumOnce for every
+// file, so IsChecksumCached() is typically true for all objects and this
+// returns immediately without spawning goroutines.
+//
+// Cold path: layouts built without going through Scanner (or before preload),
+// tests, or checksum errors — fan-out proceeds as before.
+func warmupIfNeeded(layout fs.Layout) {
+	for _, obj := range layout.Objects {
+		if !obj.IsChecksumCached() {
+			warmupAll(layout)
+			return
+		}
+	}
+}
+
+func warmupAll(layout fs.Layout) {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
+	for _, obj := range layout.Objects {
+		wg.Add(1)
+		obj := obj
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			_, _ = obj.Checksum()
+			_, _ = obj.GitHash()
+			_, _ = obj.GitAuthor()
+			_, _ = obj.GitDate()
+		}()
+	}
+	wg.Wait()
 }

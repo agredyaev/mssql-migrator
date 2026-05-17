@@ -29,7 +29,7 @@ type PlannedObject struct {
 	ObjectRef
 	GitInfo
 	TransitionPaths []string
-	
+
 	DatabaseName    string
 	ParentName      string
 	Checksum        [32]byte
@@ -37,10 +37,10 @@ type PlannedObject struct {
 	TransactionMode string
 	RollbackScope   string
 	SourceFile      string
-	
-	MetadataMatch   *bool
-	Exists          bool
-	NoTransaction   bool
+
+	MetadataMatch *bool
+	Exists        bool
+	NoTransaction bool
 }
 
 type MigrationPlan struct {

@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"testing"
 
@@ -33,9 +34,13 @@ func TestLoadChecksumsConnectionError(t *testing.T) {
 }
 
 func TestLoadChecksumsReturnsResults(t *testing.T) {
+	var want [32]byte
+	for i := range want {
+		want[i] = byte(i + 1)
+	}
 	conn := &testutil.MockConn{
 		RowsByPrefix: map[string]*testutil.MockRows{
-			"SELECT": testutil.NewMockRows([][]any{{"k1", "abc123"}}),
+			"SELECT": testutil.NewMockRows([][]any{{"k1", hex.EncodeToString(want[:])}}),
 		},
 	}
 	result, err := LoadChecksums(context.Background(), conn, []string{"k1"})
@@ -45,8 +50,8 @@ func TestLoadChecksumsReturnsResults(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
-	if result["k1"] != "abc123" {
-		t.Errorf("checksum = %q", result["k1"])
+	if result["k1"] != want {
+		t.Errorf("checksum = %x, want %x", result["k1"], want)
 	}
 }
 

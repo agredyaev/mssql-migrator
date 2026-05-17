@@ -33,7 +33,7 @@ func TestPlan_PublishesEvents(t *testing.T) {
 		conn: &stubConn{},
 		fs:   stubScanner{layout: fs.Layout{}},
 		db:   stubInspector{state: &db.State{}},
-		load: stubLoader{checksums: map[string]string{}},
+		load: stubLoader{checksums: map[string][32]byte{}},
 		diff: stubComputer{plan: expectedPlan},
 	}
 
@@ -89,16 +89,15 @@ func (s stubInspector) Inspect(ctx context.Context, conn driver.Conn, scope fs.L
 }
 
 type stubLoader struct {
-	checksums               map[string]string
-	err                     error
-	appliedMigrations       map[string]bool
-	appliedMigrationsCalled bool
-	appliedMigrationsErr    error
+	checksums            map[string][32]byte
+	err                  error
+	appliedMigrations    map[string]bool
+	appliedMigrationsErr error
 }
 
 func (s stubLoader) EnsureTables(ctx context.Context, conn driver.Conn) error { return nil }
 
-func (s stubLoader) LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[string]string, error) {
+func (s stubLoader) LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[string][32]byte, error) {
 	return s.checksums, s.err
 }
 
@@ -111,7 +110,7 @@ type stubComputer struct {
 	err  error
 }
 
-func (s stubComputer) Compute(ctx context.Context, layout fs.Layout, state *db.State, checksums map[string]string) (*types.MigrationPlan, error) {
+func (s stubComputer) Compute(ctx context.Context, layout fs.Layout, state *db.State, checksums map[string][32]byte) (*types.MigrationPlan, error) {
 	return s.plan, s.err
 }
 
@@ -162,7 +161,7 @@ func TestPlan_BlockedPlan_StillPublished(t *testing.T) {
 		conn: &stubConn{},
 		fs:   stubScanner{layout: fs.Layout{}},
 		db:   stubInspector{state: &db.State{}},
-		load: stubLoader{checksums: map[string]string{}},
+		load: stubLoader{checksums: map[string][32]byte{}},
 		diff: stubComputer{plan: &types.MigrationPlan{
 			Blocked:  true,
 			Blockers: []string{"no transitions"},
@@ -235,7 +234,7 @@ func TestMigrate_BlockedPlan_CallsScaffoldNotApply(t *testing.T) {
 		conn:     &stubConn{},
 		fs:       stubScanner{layout: fs.Layout{}},
 		db:       stubInspector{state: &db.State{}},
-		load:     stubLoader{checksums: map[string]string{}},
+		load:     stubLoader{checksums: map[string][32]byte{}},
 		diff:     stubComputer{plan: &types.MigrationPlan{Blocked: true, Blockers: []string{"no transitions"}}},
 		scaffold: scaff,
 		applier:  appl,
@@ -269,7 +268,7 @@ func TestMigrate_Success_CallsLockAndApply(t *testing.T) {
 		conn:     &stubConn{},
 		fs:       stubScanner{layout: fs.Layout{}},
 		db:       stubInspector{state: &db.State{TableColumns: map[string][]db.TableColumn{}}},
-		load:     stubLoader{checksums: map[string]string{}},
+		load:     stubLoader{checksums: map[string][32]byte{}},
 		diff:     stubComputer{plan: &types.MigrationPlan{}},
 		scaffold: scaff,
 		applier:  appl,
@@ -312,7 +311,7 @@ func TestValidate_PublishesValidationEvents(t *testing.T) {
 		conn: &stubConn{},
 		fs:   stubScanner{layout: fs.Layout{}},
 		db:   stubInspector{state: &db.State{}},
-		load: stubLoader{checksums: map[string]string{}},
+		load: stubLoader{checksums: map[string][32]byte{}},
 		diff: stubComputer{plan: &types.MigrationPlan{
 			Summary: types.PlanSummary{ChangedCount: 5},
 		}},
@@ -359,7 +358,7 @@ func TestLockedCommands_Success(t *testing.T) {
 				conn:    &stubConn{},
 				fs:      stubScanner{layout: fs.Layout{}},
 				db:      stubInspector{state: &db.State{}},
-				load:    stubLoader{checksums: map[string]string{}},
+				load:    stubLoader{checksums: map[string][32]byte{}},
 				diff:    stubComputer{plan: &types.MigrationPlan{}},
 				applier: appl,
 				locker:  lock,
@@ -427,7 +426,7 @@ func TestRepairChecksum_LockFailure(t *testing.T) {
 		conn:    &stubConn{},
 		fs:      stubScanner{layout: fs.Layout{}},
 		db:      stubInspector{state: &db.State{}},
-		load:    stubLoader{checksums: map[string]string{}},
+		load:    stubLoader{checksums: map[string][32]byte{}},
 		diff:    stubComputer{plan: &types.MigrationPlan{}},
 		applier: &stubApplier{},
 		locker:  &stubLocker{err: lockErr},
@@ -450,7 +449,7 @@ func TestRepairChecksum_ApplyFailure(t *testing.T) {
 		conn:    &stubConn{},
 		fs:      stubScanner{layout: fs.Layout{}},
 		db:      stubInspector{state: &db.State{}},
-		load:    stubLoader{checksums: map[string]string{}},
+		load:    stubLoader{checksums: map[string][32]byte{}},
 		diff:    stubComputer{plan: &types.MigrationPlan{}},
 		applier: &stubApplier{err: applyErr},
 		locker:  &stubLocker{},
@@ -473,7 +472,7 @@ func TestMigrate_ApplyFailure(t *testing.T) {
 		conn:     &stubConn{},
 		fs:       stubScanner{layout: fs.Layout{}},
 		db:       stubInspector{state: &db.State{TableColumns: map[string][]db.TableColumn{}}},
-		load:     stubLoader{checksums: map[string]string{}},
+		load:     stubLoader{checksums: map[string][32]byte{}},
 		diff:     stubComputer{plan: &types.MigrationPlan{}},
 		scaffold: &stubScaffolder{},
 		applier:  &stubApplier{err: applyErr},
@@ -497,7 +496,7 @@ func TestMigrate_LockFailure(t *testing.T) {
 		conn:     &stubConn{},
 		fs:       stubScanner{layout: fs.Layout{}},
 		db:       stubInspector{state: &db.State{TableColumns: map[string][]db.TableColumn{}}},
-		load:     stubLoader{checksums: map[string]string{}},
+		load:     stubLoader{checksums: map[string][32]byte{}},
 		diff:     stubComputer{plan: &types.MigrationPlan{}},
 		scaffold: &stubScaffolder{},
 		applier:  &stubApplier{},
@@ -527,7 +526,7 @@ func TestMigrate_BootstrapError_AfterApply(t *testing.T) {
 		conn:     &stubConn{},
 		fs:       stubScanner{layout: fs.Layout{}},
 		db:       stubInspector{state: &db.State{TableColumns: map[string][]db.TableColumn{}}},
-		load:     stubLoader{checksums: map[string]string{}},
+		load:     stubLoader{checksums: map[string][32]byte{}},
 		diff:     stubComputer{plan: &types.MigrationPlan{}},
 		scaffold: &stubScaffolder{},
 		applier:  &stubApplier{},
@@ -552,7 +551,7 @@ func TestBaseline_BootstrapError_AfterApply(t *testing.T) {
 		conn:    &stubConn{},
 		fs:      stubScanner{layout: fs.Layout{}},
 		db:      stubInspector{state: &db.State{}},
-		load:    stubLoader{checksums: map[string]string{}},
+		load:    stubLoader{checksums: map[string][32]byte{}},
 		diff:    stubComputer{plan: &types.MigrationPlan{}},
 		applier: &stubApplier{},
 		locker:  &stubLocker{},

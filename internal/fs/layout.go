@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 type Layout struct {
@@ -32,6 +33,7 @@ type CachedFile struct {
 	contentOnce  sync.Once
 	checksumOnce sync.Once
 	gitOnce      sync.Once
+	checksumDone uint32
 	content      string
 	checksum     [32]byte
 	gitHash      string
@@ -62,8 +64,13 @@ func (c *CachedFile) Checksum() ([32]byte, error) {
 			return
 		}
 		c.checksum = NormalizeAndHash(content)
+		atomic.StoreUint32(&c.checksumDone, 1)
 	})
 	return c.checksum, c.checksumErr
+}
+
+func (c *CachedFile) IsChecksumCached() bool {
+	return atomic.LoadUint32(&c.checksumDone) == 1
 }
 
 func (c *CachedFile) loadGitInfo() {
@@ -101,7 +108,7 @@ func (c *CachedFile) GitDate() (string, error) {
 
 type Object struct {
 	CachedFile
-	
+
 	Path                 string
 	DatabaseName         string
 	SchemaName           string
@@ -115,7 +122,7 @@ type Object struct {
 
 type TransitionScript struct {
 	CachedFile
-	
+
 	Path          string
 	DatabaseName  string
 	SchemaName    string

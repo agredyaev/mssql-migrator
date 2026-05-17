@@ -47,12 +47,12 @@ type Inspector interface {
 
 type Loader interface {
 	EnsureTables(ctx context.Context, conn driver.Conn) error
-	LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[string]string, error)
+	LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[string][32]byte, error)
 	LoadAllAppliedMigrations(ctx context.Context, conn driver.Conn) (map[string]bool, error)
 }
 
 type Computer interface {
-	Compute(ctx context.Context, layout fs.Layout, state *db.State, checksums map[string]string) (*types.MigrationPlan, error)
+	Compute(ctx context.Context, layout fs.Layout, state *db.State, checksums map[string][32]byte) (*types.MigrationPlan, error)
 }
 
 type Scaffolder interface {
