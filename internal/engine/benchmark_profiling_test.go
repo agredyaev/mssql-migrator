@@ -42,6 +42,7 @@ func benchmarkDiffComputeCreateHeavy(b *testing.B, n int) {
 	}
 	checksums := map[string][32]byte{}
 
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := comp.Compute(context.Background(), layout, state, checksums)
@@ -81,6 +82,7 @@ func benchmarkDiffComputeSkipHeavy(b *testing.B, n int) {
 		checksums[k] = cs
 	}
 
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := comp.Compute(context.Background(), layout, state, checksums)
@@ -112,6 +114,7 @@ func benchmarkLayoutHash(b *testing.B, n int) {
 
 func benchmarkNormalize(b *testing.B, size int) {
 	sqlContent := makeBenchSQL(size)
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		fs.NormalizeAndHash(sqlContent)
