@@ -145,7 +145,7 @@ type TransitionScript struct {
 
 type CheckScript struct {
 	CachedFile
-	
+
 	Path          string
 	DatabaseName  string
 	SchemaName    string
@@ -156,13 +156,13 @@ type CheckScript struct {
 func NormalizeAndHash(input string) [32]byte {
 	bufPtr := normalizePool.Get().(*[]byte)
 	b := (*bufPtr)[:0]
-	
+
 	b = normalizeSQLBytes(input, b)
 	sum := sha256.Sum256(b)
-	
+
 	*bufPtr = b
 	normalizePool.Put(bufPtr)
-	
+
 	return sum
 }
 
