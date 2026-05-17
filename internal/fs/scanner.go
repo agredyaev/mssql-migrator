@@ -1,7 +1,7 @@
 package fs
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -102,6 +102,7 @@ func (s *Scanner) Scan(ctx context.Context, root string) (Layout, error) {
 	})
 
 	s.preloadGitInfo(root, &layout)
+	s.preloadChecksums(&layout)
 
 	return layout, nil
 }
@@ -238,11 +239,10 @@ func (s *Scanner) parseTransitionFile(dbName, schemaName, tableName, fileName, d
 		CachedFile:    CachedFile{AbsPath: fullPath, gitInfoFn: s.GitInfo},
 	}
 
-	f, err := os.Open(fullPath)
-	if err == nil {
-		firstLine, _ := bufio.NewReader(f).ReadString('\n')
-		f.Close()
-		if strings.HasPrefix(strings.TrimRight(firstLine, "\r\n"), TransitionScaffoldDirective) {
+	if data, err := os.ReadFile(fullPath); err == nil {
+		firstLine, _, _ := bytes.Cut(data, []byte{'\n'})
+		firstLine = bytes.TrimRight(firstLine, "\r")
+		if bytes.HasPrefix(firstLine, []byte(TransitionScaffoldDirective)) {
 			ts.Scaffold = true
 		}
 	}
@@ -344,6 +344,37 @@ func (s *Scanner) preloadGitInfo(root string, layout *Layout) {
 				e.cf.preloadGitInfo(hash, author, date)
 			}
 		}()
+	}
+	wg.Wait()
+}
+
+// preloadChecksums runs Checksum() for every scanned file in parallel so
+// diff.Compute can skip its goroutine warmup on the first call after Scan.
+func (s *Scanner) preloadChecksums(layout *Layout) {
+	n := len(layout.Objects) + len(layout.Transitions) + len(layout.Checks)
+	if n == 0 {
+		return
+	}
+
+	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
+	var wg sync.WaitGroup
+	run := func(cf *CachedFile) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			_, _ = cf.Checksum()
+		}()
+	}
+	for _, o := range layout.Objects {
+		run(&o.CachedFile)
+	}
+	for _, ts := range layout.Transitions {
+		run(&ts.CachedFile)
+	}
+	for _, c := range layout.Checks {
+		run(&c.CachedFile)
 	}
 	wg.Wait()
 }
