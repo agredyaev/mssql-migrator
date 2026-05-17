@@ -1,6 +1,9 @@
 package testutil
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 type MockRows struct {
 	Values [][]any
@@ -16,28 +19,32 @@ func (m *MockRows) Scan(dest ...any) error {
 	if m.pos < 0 || m.pos >= len(m.Values) {
 		return errors.New("no rows")
 	}
-	for i, v := range m.Values[m.pos] {
+	row := m.Values[m.pos]
+	if len(dest) != len(row) {
+		return fmt.Errorf("mockrows: Scan: got %d dest, row has %d values", len(dest), len(row))
+	}
+	for i, v := range row {
 		switch d := dest[i].(type) {
 		case *string:
 			s, ok := v.(string)
 			if !ok {
-				return errors.New("mock scan: expected string value")
+				return fmt.Errorf("mockrows: col %d: want string, got %T", i, v)
 			}
 			*d = s
 		case *int:
 			n, ok := v.(int)
 			if !ok {
-				return errors.New("mock scan: expected int value")
+				return fmt.Errorf("mockrows: col %d: want int, got %T", i, v)
 			}
 			*d = n
 		case *bool:
 			b, ok := v.(bool)
 			if !ok {
-				return errors.New("mock scan: expected bool value")
+				return fmt.Errorf("mockrows: col %d: want bool, got %T", i, v)
 			}
 			*d = b
 		default:
-			return errors.New("mock scan: unsupported destination type")
+			return fmt.Errorf("mockrows: col %d: unsupported dest type %T", i, dest[i])
 		}
 	}
 	return nil
