@@ -1,6 +1,13 @@
-.PHONY: all build test vet lint fmt check db-up db-down db-init test-int test-int-v
+.PHONY: all build test vet lint fmt check db-up db-down db-init test-int test-int-v \
+	bench-perf-diff-skip bench-perf-diff-create profile-perf-diff-skip-cpu profile-perf-diff-skip-mem \
+	bench-perf-chunkkeys
 
 STATICCHECK = $(shell go env GOPATH)/bin/staticcheck
+
+# Performance harness: `internal/engine/benchmark_profiling_test.go` and `docs/profiling-benchmark-plan.md`.
+RMIG_BENCH_PKG := ./internal/engine
+RMIG_TYPES_PKG := ./internal/types
+RMIG_PROFILE_DIR ?= /tmp/rmig-profiles
 
 all: check
 
@@ -53,3 +60,29 @@ test-int:
 
 test-int-v: ARGS="-count=1"
 test-int-v: test-int
+
+# --- Performance (benchmem + optional pprof; not part of `check`) ---
+
+bench-perf-diff-skip:
+	go test $(RMIG_BENCH_PKG) -run '^$$' -bench '^BenchmarkDiffCompute_SkipHeavy_2000Objects$$' \
+		-benchmem -count=5 -benchtime=400ms
+
+bench-perf-diff-create:
+	go test $(RMIG_BENCH_PKG) -run '^$$' -bench '^BenchmarkDiffCompute_Create_2000Objects$$' \
+		-benchmem -count=5 -benchtime=400ms
+
+bench-perf-chunkkeys:
+	go test $(RMIG_TYPES_PKG) -run '^$$' -bench '^BenchmarkChunkKeys_10k_2100$$' \
+		-benchmem -count=10 -benchtime=200ms
+
+profile-perf-diff-skip-cpu:
+	@mkdir -p $(RMIG_PROFILE_DIR)
+	go test $(RMIG_BENCH_PKG) -run '^$$' -bench '^BenchmarkDiffCompute_SkipHeavy_2000Objects$$' \
+		-count=1 -benchtime=200ms -cpuprofile=$(RMIG_PROFILE_DIR)/cpu-skip-2000.prof
+	@echo "Wrote $(RMIG_PROFILE_DIR)/cpu-skip-2000.prof — view: go tool pprof -http=:0 $(RMIG_PROFILE_DIR)/cpu-skip-2000.prof"
+
+profile-perf-diff-skip-mem:
+	@mkdir -p $(RMIG_PROFILE_DIR)
+	go test $(RMIG_BENCH_PKG) -run '^$$' -bench '^BenchmarkDiffCompute_SkipHeavy_2000Objects$$' \
+		-count=1 -benchtime=200ms -memprofile=$(RMIG_PROFILE_DIR)/mem-skip-2000.prof
+	@echo "Wrote $(RMIG_PROFILE_DIR)/mem-skip-2000.prof — alloc_objects: go tool pprof -http=:0 -alloc_objects $(RMIG_PROFILE_DIR)/mem-skip-2000.prof"
