@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -258,19 +259,65 @@ func (s *Scanner) preloadGitInfo(root string, layout *Layout) {
 		return
 	}
 
+	// Try fast batched git log
+	cmd := exec.Command("git", "-C", root, "log", "--name-only", "--format=COMMIT|%H|%an|%aI")
+	out, err := cmd.Output()
+	if err == nil {
+		gitMap := make(map[string]struct{ hash, author, date string })
+		var currentHash, currentAuthor, currentDate string
+		lines := strings.Split(string(out), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			if strings.HasPrefix(line, "COMMIT|") {
+				parts := strings.SplitN(line, "|", 4)
+				if len(parts) == 4 {
+					currentHash = parts[1]
+					currentAuthor = parts[2]
+					currentDate = parts[3]
+				}
+				continue
+			}
+			absPath := filepath.Join(root, line)
+			if _, ok := gitMap[absPath]; !ok && currentHash != "" {
+				gitMap[absPath] = struct{ hash, author, date string }{currentHash, currentAuthor, currentDate}
+			}
+		}
+
+		for i := range layout.Objects {
+			if info, ok := gitMap[layout.Objects[i].AbsPath]; ok {
+				layout.Objects[i].CachedFile.preloadGitInfo(info.hash, info.author, info.date)
+			}
+		}
+		for i := range layout.Transitions {
+			if info, ok := gitMap[layout.Transitions[i].AbsPath]; ok {
+				layout.Transitions[i].CachedFile.preloadGitInfo(info.hash, info.author, info.date)
+			}
+		}
+		for i := range layout.Checks {
+			if info, ok := gitMap[layout.Checks[i].AbsPath]; ok {
+				layout.Checks[i].CachedFile.preloadGitInfo(info.hash, info.author, info.date)
+			}
+		}
+		return
+	}
+
+	// Fallback to slow path if git batched command fails (e.g. testing mocks that don't have a real .git dir)
 	type entry struct {
 		cf   *CachedFile
 		path string
 	}
 	var entries []entry
-	for _, obj := range layout.Objects {
-		entries = append(entries, entry{cf: &obj.CachedFile, path: obj.AbsPath})
+	for i := range layout.Objects {
+		entries = append(entries, entry{cf: &layout.Objects[i].CachedFile, path: layout.Objects[i].AbsPath})
 	}
-	for _, ts := range layout.Transitions {
-		entries = append(entries, entry{cf: &ts.CachedFile, path: ts.AbsPath})
+	for i := range layout.Transitions {
+		entries = append(entries, entry{cf: &layout.Transitions[i].CachedFile, path: layout.Transitions[i].AbsPath})
 	}
-	for _, cs := range layout.Checks {
-		entries = append(entries, entry{cf: &cs.CachedFile, path: cs.AbsPath})
+	for i := range layout.Checks {
+		entries = append(entries, entry{cf: &layout.Checks[i].CachedFile, path: layout.Checks[i].AbsPath})
 	}
 
 	if len(entries) == 0 {
