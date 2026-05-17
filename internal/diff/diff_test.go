@@ -2,6 +2,7 @@ package diff
 
 import (
 	"context"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
@@ -80,7 +81,7 @@ func TestComputeUnchangedObject_ActionSkip(t *testing.T) {
 			"r/views/v1": {SchemaName: "r", Kind: "views", ObjectName: "v1"},
 		},
 	}
-	checksums := map[string]string{"r/views/v1": checksum}
+	checksums := map[string]string{"r/views/v1": hex.EncodeToString(checksum[:])}
 
 	plan, err := computer.Compute(context.Background(), layout, state, checksums)
 	if err != nil {
@@ -372,7 +373,7 @@ func TestComputeMultipleObjectsSummary(t *testing.T) {
 		},
 	}
 	checksums := map[string]string{
-		"r/tables/t1": cs1,
+		"r/tables/t1": hex.EncodeToString(cs1[:]),
 		"r/views/v1":  "mismatched",
 	}
 

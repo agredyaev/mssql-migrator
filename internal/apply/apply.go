@@ -3,6 +3,7 @@ package apply
 import (
 	"context"
 	_ "embed"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -155,7 +156,7 @@ func (e *Executor) collectStatements(plan types.MigrationPlan, objIndex map[stri
 			schemaName:    obj.SchemaName,
 			objectName:    obj.ObjectName,
 			sourceFile:    obj.SourceFile,
-			checksum:      obj.Checksum,
+			checksum:      hex.EncodeToString(obj.Checksum[:]),
 			gitHash:       obj.GitHash,
 			gitAuthor:     obj.GitAuthor,
 			gitDate:       obj.GitDate,
@@ -297,11 +298,11 @@ func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, pla
 				}
 				result.Failed++
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", tp, err.Error()))
-				b.Publish(ctx, types.EventObjectFailed, newFailureEvent(newMigrationStmt(obj, tp, cs, gitHash, gitAuthor, gitDate), err.Error()))
+				b.Publish(ctx, types.EventObjectFailed, newFailureEvent(newMigrationStmt(obj, tp, hex.EncodeToString(cs[:]), gitHash, gitAuthor, gitDate), err.Error()))
 				continue
 			}
 			result.Applied++
-			b.Publish(ctx, types.EventObjectApplied, newObjectEvent(newMigrationStmt(obj, tp, cs, gitHash, gitAuthor, gitDate)))
+			b.Publish(ctx, types.EventObjectApplied, newObjectEvent(newMigrationStmt(obj, tp, hex.EncodeToString(cs[:]), gitHash, gitAuthor, gitDate)))
 		}
 	}
 }

@@ -1,12 +1,18 @@
 package fs
 
-import "strings"
+import "sync"
 
-func normalizeSQL(input string) string {
-	var b strings.Builder
-	b.Grow(len(input))
+var normalizePool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, 0, 4096)
+		return &b
+	},
+}
+
+func normalizeSQLBytes(input string, b []byte) []byte {
 	sawCR := false
-	wsBuf := make([]byte, 0, 16)
+	var wsBufArr [256]byte
+	wsBuf := wsBufArr[:0]
 
 	for i := 0; i < len(input); i++ {
 		ch := input[i]
@@ -15,35 +21,48 @@ func normalizeSQL(input string) string {
 			sawCR = false
 			wsBuf = wsBuf[:0]
 			if ch == '\n' {
-				b.WriteByte('\n')
+				b = append(b, '\n')
 				continue
 			}
-			b.WriteByte('\n')
+			b = append(b, '\n')
 		}
 
 		switch ch {
 		case '\r':
 			sawCR = true
 		case '\n':
-			b.WriteByte('\n')
+			b = append(b, '\n')
 			wsBuf = wsBuf[:0]
 		case ' ', '\t':
 			wsBuf = append(wsBuf, ch)
 		default:
-			b.Write(wsBuf)
+			b = append(b, wsBuf...)
 			wsBuf = wsBuf[:0]
 			start := i
 			for i < len(input) && input[i] > ' ' {
 				i++
 			}
-			b.WriteString(input[start:i])
+			b = append(b, input[start:i]...)
 			i--
 		}
 	}
 
 	if sawCR {
-		b.WriteByte('\n')
+		b = append(b, '\n')
 	}
 
-	return b.String()
+	return b
+}
+
+func normalizeSQL(input string) string {
+	bufPtr := normalizePool.Get().(*[]byte)
+	b := (*bufPtr)[:0]
+
+	b = normalizeSQLBytes(input, b)
+	res := string(b)
+	
+	*bufPtr = b
+	normalizePool.Put(bufPtr)
+	
+	return res
 }

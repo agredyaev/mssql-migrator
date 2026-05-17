@@ -50,9 +50,9 @@ func TestNormalizeAndHashDeterministic(t *testing.T) {
 	h1 := NormalizeAndHash("SELECT 1;\t ")
 	h2 := NormalizeAndHash("SELECT 1;")
 	if h1 != h2 {
-		t.Errorf("normalized hashes should match: %q vs %q", h1, h2)
+		t.Errorf("normalized hashes should match: %x vs %x", h1, h2)
 	}
-	if h1 == "" {
+	if h1 == [32]byte{} {
 		t.Fatal("hash is empty")
 	}
 }

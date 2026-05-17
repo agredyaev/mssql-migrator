@@ -33,7 +33,7 @@ type CachedFile struct {
 	checksumOnce sync.Once
 	gitOnce      sync.Once
 	content      string
-	checksum     string
+	checksum     [32]byte
 	gitHash      string
 	gitAuthor    string
 	gitDate      string
@@ -54,7 +54,7 @@ func (c *CachedFile) Content() (string, error) {
 	return c.content, c.contentErr
 }
 
-func (c *CachedFile) Checksum() (string, error) {
+func (c *CachedFile) Checksum() ([32]byte, error) {
 	c.checksumOnce.Do(func() {
 		content, err := c.Content()
 		if err != nil {
@@ -100,6 +100,8 @@ func (c *CachedFile) GitDate() (string, error) {
 }
 
 type Object struct {
+	CachedFile
+	
 	Path                 string
 	DatabaseName         string
 	SchemaName           string
@@ -109,11 +111,11 @@ type Object struct {
 	ParentName           string
 	NormalizedKey        string
 	NoTransaction        bool
-
-	CachedFile
 }
 
 type TransitionScript struct {
+	CachedFile
+	
 	Path          string
 	DatabaseName  string
 	SchemaName    string
@@ -124,24 +126,29 @@ type TransitionScript struct {
 	Slug          string
 	NoTransaction bool
 	Scaffold      bool
-
-	CachedFile
 }
 
 type CheckScript struct {
+	CachedFile
+	
 	Path          string
 	DatabaseName  string
 	SchemaName    string
 	Name          string
 	NoTransaction bool
-
-	CachedFile
 }
 
-func NormalizeAndHash(input string) string {
-	normalized := normalizeSQL(input)
-	sum := sha256.Sum256([]byte(normalized))
-	return hex.EncodeToString(sum[:])
+func NormalizeAndHash(input string) [32]byte {
+	bufPtr := normalizePool.Get().(*[]byte)
+	b := (*bufPtr)[:0]
+	
+	b = normalizeSQLBytes(input, b)
+	sum := sha256.Sum256(b)
+	
+	*bufPtr = b
+	normalizePool.Put(bufPtr)
+	
+	return sum
 }
 
 func (l *Layout) NormalizedKeys() []string {
@@ -186,14 +193,14 @@ func (l *Layout) LayoutHash() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		checksums = append(checksums, cs)
+		checksums = append(checksums, hex.EncodeToString(cs[:]))
 	}
 	for _, ts := range l.Transitions {
 		cs, err := ts.Checksum()
 		if err != nil {
 			return "", err
 		}
-		checksums = append(checksums, cs)
+		checksums = append(checksums, hex.EncodeToString(cs[:]))
 	}
 
 	sort.Strings(checksums)

@@ -27,20 +27,20 @@ type PlannedSchema struct {
 
 type PlannedObject struct {
 	ObjectRef
-
+	GitInfo
+	TransitionPaths []string
+	
 	DatabaseName    string
 	ParentName      string
-	Checksum        string
+	Checksum        [32]byte
 	PlannedAction   string
 	TransactionMode string
 	RollbackScope   string
 	SourceFile      string
-	TransitionPaths []string
+	
 	MetadataMatch   *bool
 	Exists          bool
 	NoTransaction   bool
-
-	GitInfo
 }
 
 type MigrationPlan struct {

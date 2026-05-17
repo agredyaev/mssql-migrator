@@ -2,7 +2,10 @@ package diff
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
+	"runtime"
+	"sync"
 	"time"
 
 	"reporting-db-migrations/internal/db"
@@ -28,7 +31,19 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 		checksums = map[string]string{}
 	}
 
-	transitionsByKey := make(map[string][]*fs.TransitionScript)
+	plan.Schemas = make([]types.PlannedSchema, 0, len(layout.Schemas))
+	for _, schema := range layout.Schemas {
+		action := types.SchemaActionCreateSchema
+		if _, exists := state.Schemas[schema.NormalizedName]; exists {
+			action = types.SchemaActionExists
+		}
+		plan.Schemas = append(plan.Schemas, types.PlannedSchema{
+			SchemaName: schema.Name,
+			Action:     action,
+		})
+	}
+
+	transitionsByKey := make(map[string][]*fs.TransitionScript, len(layout.Transitions))
 	for _, ts := range layout.Transitions {
 		if !ts.Scaffold {
 			transitionsByKey[ts.NormalizedKey] = append(transitionsByKey[ts.NormalizedKey], ts)
@@ -43,6 +58,25 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 		blockedCount int
 	)
 
+	// Pre-calculate checksums and git info concurrently
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
+	for _, obj := range layout.Objects {
+		wg.Add(1)
+		obj := obj
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			_, _ = obj.Checksum()
+			_, _ = obj.GitHash()
+			_, _ = obj.GitAuthor()
+			_, _ = obj.GitDate()
+		}()
+	}
+	wg.Wait()
+
+	plan.Objects = make([]types.PlannedObject, 0, len(layout.Objects))
 	for _, obj := range layout.Objects {
 		dbObj, exists := state.Objects[obj.NormalizedKey]
 		plannedObj := types.PlannedObject{
@@ -81,7 +115,7 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 
 		case exists && isMatch(obj, checksums[obj.NormalizedKey]):
 			plannedObj.PlannedAction = types.ActionSkipUnchanged
-			plannedObj.Checksum = checksums[obj.NormalizedKey]
+			hex.Decode(plannedObj.Checksum[:], []byte(checksums[obj.NormalizedKey]))
 			skipCount++
 
 		default:
@@ -118,10 +152,10 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 
 func isMatch(obj *fs.Object, prior string) bool {
 	cs, err := obj.Checksum()
-	if err != nil || cs == "" {
+	if err != nil || cs == [32]byte{} {
 		return false
 	}
-	return cs == prior
+	return hex.EncodeToString(cs[:]) == prior
 }
 
 func setGitInfo(obj *fs.Object, planned *types.PlannedObject) {

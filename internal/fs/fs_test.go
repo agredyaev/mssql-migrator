@@ -176,10 +176,12 @@ func TestChecksumDeterministic(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	cs2, _ := obj.Checksum()
-	if cs1 != cs2 {
-		t.Errorf("checksum not stable: %q vs %q", cs1, cs2)
+	if cs1 == cs2 {
+		// they are equal, this is fine
+	} else {
+		t.Errorf("checksum not stable: %x vs %x", cs1, cs2)
 	}
-	if cs1 == "" {
+	if cs1 == [32]byte{} {
 		t.Fatal("checksum is empty")
 	}
 }
