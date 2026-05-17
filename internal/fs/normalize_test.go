@@ -4,6 +4,12 @@ import (
 	"testing"
 )
 
+// normalizeStringForTest applies normalizeSQLBytes for assertions only (not hot-path).
+func normalizeStringForTest(input string) string {
+	b := normalizeSQLBytes(input, nil)
+	return string(b)
+}
+
 func TestNormalizeSQL(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -38,9 +44,9 @@ func TestNormalizeSQL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := normalizeSQL(tt.input)
+			got := normalizeStringForTest(tt.input)
 			if got != tt.want {
-				t.Errorf("normalizeSQL(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("normalizeStringForTest(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}

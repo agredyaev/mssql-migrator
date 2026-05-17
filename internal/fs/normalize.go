@@ -53,16 +53,3 @@ func normalizeSQLBytes(input string, b []byte) []byte {
 
 	return b
 }
-
-func normalizeSQL(input string) string {
-	bufPtr := normalizePool.Get().(*[]byte)
-	b := (*bufPtr)[:0]
-
-	b = normalizeSQLBytes(input, b)
-	res := string(b)
-	
-	*bufPtr = b
-	normalizePool.Put(bufPtr)
-	
-	return res
-}
