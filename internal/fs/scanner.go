@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"reporting-db-migrations/internal/types"
 )
@@ -97,6 +99,8 @@ func (s *Scanner) Scan(ctx context.Context, root string) (Layout, error) {
 	sort.Slice(layout.Transitions, func(i, j int) bool {
 		return layout.Transitions[i].Ordinal < layout.Transitions[j].Ordinal
 	})
+
+	s.preloadGitInfo(root, &layout)
 
 	return layout, nil
 }
@@ -247,4 +251,52 @@ func (s *Scanner) parseTransitionFile(dbName, schemaName, tableName, fileName, d
 
 func isObjectKind(kind string) bool {
 	return types.IsKnownKind(kind) && kind != "tables" && kind != "checks"
+}
+
+func (s *Scanner) preloadGitInfo(root string, layout *Layout) {
+	if s.GitInfo == nil {
+		return
+	}
+
+	type entry struct {
+		cf   *CachedFile
+		path string
+	}
+	var entries []entry
+	for _, obj := range layout.Objects {
+		entries = append(entries, entry{cf: &obj.CachedFile, path: obj.AbsPath})
+	}
+	for _, ts := range layout.Transitions {
+		entries = append(entries, entry{cf: &ts.CachedFile, path: ts.AbsPath})
+	}
+	for _, cs := range layout.Checks {
+		entries = append(entries, entry{cf: &cs.CachedFile, path: cs.AbsPath})
+	}
+
+	if len(entries) == 0 {
+		return
+	}
+
+	workerCount := runtime.GOMAXPROCS(0)
+	if workerCount > 32 {
+		workerCount = 32
+	}
+
+	sem := make(chan struct{}, workerCount)
+	var wg sync.WaitGroup
+
+	for _, e := range entries {
+		wg.Add(1)
+		e := e
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			hash, author, date, err := s.GitInfo(e.path)
+			if err == nil {
+				e.cf.preloadGitInfo(hash, author, date)
+			}
+		}()
+	}
+	wg.Wait()
 }

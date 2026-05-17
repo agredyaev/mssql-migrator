@@ -76,6 +76,14 @@ func (c *CachedFile) loadGitInfo() {
 	})
 }
 
+func (c *CachedFile) preloadGitInfo(hash, author, date string) {
+	c.gitOnce.Do(func() {
+		c.gitHash = hash
+		c.gitAuthor = author
+		c.gitDate = date
+	})
+}
+
 func (c *CachedFile) GitHash() (string, error) {
 	c.loadGitInfo()
 	return c.gitHash, c.gitErr
