@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"bufio"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,11 +29,13 @@ func HasNonScaffoldSQL(dir string) bool {
 		if e.IsDir() || filepath.Ext(e.Name()) != ".sql" {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		f, err := os.Open(filepath.Join(dir, e.Name()))
 		if err != nil {
 			continue
 		}
-		if !strings.Contains(string(data), TransitionScaffoldDirective) {
+		firstLine, _ := bufio.NewReader(f).ReadString('\n')
+		f.Close()
+		if !strings.HasPrefix(strings.TrimRight(firstLine, "\r\n"), TransitionScaffoldDirective) {
 			return true
 		}
 	}
