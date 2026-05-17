@@ -9,7 +9,11 @@ func ChunkKeys(keys []string, size int) [][]string {
 	if len(keys) == 0 {
 		return nil
 	}
-	var chunks [][]string
+	if size <= 0 {
+		return [][]string{keys}
+	}
+	nchunks := (len(keys) + size - 1) / size
+	chunks := make([][]string, 0, nchunks)
 	for i := 0; i < len(keys); i += size {
 		end := i + size
 		if end > len(keys) {
