@@ -318,14 +318,20 @@ func TestLoad_StressApply(t *testing.T) {
 	t.Logf("applied %d objects in %v (failed=%d skipped=%d)", res.Applied, elapsed, res.Failed, res.Skipped)
 
 	var procCount int
-	rows, _ := conn.QueryContext(ctx, "SELECT COUNT(*) FROM sys.procedures WHERE SCHEMA_NAME(schema_id) = 'smoke'")
+	rows, err := conn.QueryContext(ctx, "SELECT COUNT(*) FROM sys.procedures WHERE SCHEMA_NAME(schema_id) = 'smoke'")
+	if err != nil {
+		t.Fatalf("count procedures: %v", err)
+	}
 	if rows.Next() {
 		rows.Scan(&procCount)
 	}
 	rows.Close()
 
 	var total int
-	rows2, _ := conn.QueryContext(ctx, "SELECT COUNT(*) FROM sys.objects WHERE SCHEMA_NAME(schema_id) = 'smoke' AND type IN ('U','V','P','FN','IF')")
+	rows2, err := conn.QueryContext(ctx, "SELECT COUNT(*) FROM sys.objects WHERE SCHEMA_NAME(schema_id) = 'smoke' AND type IN ('U','V','P','FN','IF')")
+	if err != nil {
+		t.Fatalf("count objects: %v", err)
+	}
 	if rows2.Next() {
 		rows2.Scan(&total)
 	}
