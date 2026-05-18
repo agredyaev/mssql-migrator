@@ -36,10 +36,10 @@ const defaultBatchSize = 100
 const allZeroChecksumHex = "0000000000000000000000000000000000000000000000000000000000000000"
 
 type ApplyResult struct {
+	Errors  []string
 	Applied int
 	Skipped int
 	Failed  int
-	Errors  []string
 }
 
 type Executor struct {
@@ -53,12 +53,12 @@ type batchedStmt struct {
 	schemaName    string
 	objectName    string
 	sourceFile    string
-	checksumSum   [32]byte // raw digest; hex materialized lazily for bus events
-	checksumHex   string   // memo from checksumHexString (empty until first use)
+	checksumHex   string
 	gitHash       string
 	gitAuthor     string
 	gitDate       string
 	recordKind    string
+	checksumSum   [32]byte
 }
 
 func New() *Executor {
@@ -148,41 +148,14 @@ var kindOrder = map[string]int{
 	"triggers":   8,
 }
 
-// stmtCollectCandidate mirrors collectStatements gating before Content(): skip
-// counters are applied in the main loop only.
-func stmtCollectCandidate(obj types.PlannedObject, objIndex map[string]*fs.Object) bool {
-	switch obj.PlannedAction {
-	case types.ActionSkipUnchanged, types.ActionAdoptExisting:
-		return false
-	case types.ActionReprocessChanged:
-		if len(obj.TransitionPaths) > 0 {
-			return false
-		}
-		return false
-	}
-	return objIndex[obj.ObjectPath] != nil
-}
-
 func (e *Executor) collectStatements(plan types.MigrationPlan, objIndex map[string]*fs.Object, result *ApplyResult) ([][]batchedStmt, []batchedStmt) {
 	batchSize := e.BatchSize
 	if batchSize <= 0 {
 		batchSize = defaultBatchSize
 	}
 
-	txHint, nonTxHint := 0, 0
-	for _, obj := range plan.Objects {
-		if !stmtCollectCandidate(obj, objIndex) {
-			continue
-		}
-		if types.IsTransactionalKind(obj.Kind) {
-			txHint++
-		} else {
-			nonTxHint++
-		}
-	}
-
-	allTx := make([]batchedStmt, 0, txHint)
-	nonTxStmts := make([]batchedStmt, 0, nonTxHint)
+	var allTx []batchedStmt
+	var nonTxStmts []batchedStmt
 
 	for _, obj := range plan.Objects {
 		switch obj.PlannedAction {
