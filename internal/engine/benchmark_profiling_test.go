@@ -14,15 +14,11 @@ import (
 	"reporting-db-migrations/internal/fs"
 )
 
+// BenchmarkDiffCompute_* (without SkipHeavy) — create-heavy: see benchmarkDiffComputeCreateHeavy.
 func BenchmarkDiffCompute_100Objects(b *testing.B)  { benchmarkDiffComputeCreateHeavy(b, 100) }
 func BenchmarkDiffCompute_500Objects(b *testing.B)  { benchmarkDiffComputeCreateHeavy(b, 500) }
 func BenchmarkDiffCompute_2000Objects(b *testing.B) { benchmarkDiffComputeCreateHeavy(b, 2000) }
 func BenchmarkDiffCompute_5000Objects(b *testing.B) { benchmarkDiffComputeCreateHeavy(b, 5000) }
-
-func BenchmarkDiffCompute_Create_100Objects(b *testing.B)  { benchmarkDiffComputeCreateHeavy(b, 100) }
-func BenchmarkDiffCompute_Create_500Objects(b *testing.B)  { benchmarkDiffComputeCreateHeavy(b, 500) }
-func BenchmarkDiffCompute_Create_2000Objects(b *testing.B) { benchmarkDiffComputeCreateHeavy(b, 2000) }
-func BenchmarkDiffCompute_Create_5000Objects(b *testing.B) { benchmarkDiffComputeCreateHeavy(b, 5000) }
 
 func BenchmarkDiffCompute_SkipHeavy_100Objects(b *testing.B)  { benchmarkDiffComputeSkipHeavy(b, 100) }
 func BenchmarkDiffCompute_SkipHeavy_500Objects(b *testing.B)  { benchmarkDiffComputeSkipHeavy(b, 500) }
