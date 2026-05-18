@@ -27,12 +27,45 @@ func Open(ctx context.Context, cfg types.Config) (*Conn, error) {
 	return &Conn{db: database}, nil
 }
 
-func (c *Conn) QueryContext(ctx context.Context, query string, args ...any) (driver.Rows, error) {
+func (c *Conn) queryAnyContext(ctx context.Context, query string, args []any) (driver.Rows, error) {
 	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	return &rowsAdapter{rows: rows}, nil
+}
+
+func (c *Conn) QueryContext(ctx context.Context, query string, args ...any) (driver.Rows, error) {
+	return c.queryAnyContext(ctx, query, args)
+}
+
+func (c *Conn) QueryStringsContext(ctx context.Context, query string, args []string) (driver.Rows, error) {
+	if len(args) == 0 {
+		return c.queryAnyContext(ctx, query, nil)
+	}
+	boxed := make([]any, len(args))
+	for i := range args {
+		boxed[i] = args[i]
+	}
+	return c.queryAnyContext(ctx, query, boxed)
+}
+
+func (c *Conn) QueryStringSlicesContext(ctx context.Context, query string, args1 []string, args2 []string) (driver.Rows, error) {
+	n := len(args1) + len(args2)
+	if n == 0 {
+		return c.queryAnyContext(ctx, query, nil)
+	}
+	boxed := make([]any, n)
+	pos := 0
+	for i := range args1 {
+		boxed[pos] = args1[i]
+		pos++
+	}
+	for i := range args2 {
+		boxed[pos] = args2[i]
+		pos++
+	}
+	return c.queryAnyContext(ctx, query, boxed)
 }
 
 func (c *Conn) ExecContext(ctx context.Context, query string, args ...any) (driver.Result, error) {

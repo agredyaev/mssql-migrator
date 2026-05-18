@@ -64,6 +64,12 @@ type stubConn struct{}
 func (s *stubConn) QueryContext(ctx context.Context, query string, args ...any) (driver.Rows, error) {
 	return nil, nil
 }
+func (s *stubConn) QueryStringsContext(ctx context.Context, query string, args []string) (driver.Rows, error) {
+	return nil, nil
+}
+func (s *stubConn) QueryStringSlicesContext(ctx context.Context, query string, args1 []string, args2 []string) (driver.Rows, error) {
+	return nil, nil
+}
 func (s *stubConn) ExecContext(ctx context.Context, query string, args ...any) (driver.Result, error) {
 	return nil, nil
 }
