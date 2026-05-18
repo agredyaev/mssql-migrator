@@ -1,6 +1,9 @@
 package types
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNormalizedKey(t *testing.T) {
 	tests := []struct {
@@ -31,6 +34,30 @@ func TestNormalizedKeyDeterministic(t *testing.T) {
 	key2 := NormalizedKey("reporting", "views", "monthly")
 	if key1 != key2 {
 		t.Errorf("NormalizedKey not deterministic: %q != %q", key1, key2)
+	}
+}
+
+// normalizedKeyRef mirrors the historical one-line implementation. Any future
+// optimized NormalizedKey must stay byte-for-byte identical for all inputs.
+func normalizedKeyRef(schema, kind, name string) string {
+	return strings.ToLower(schema + "/" + kind + "/" + name)
+}
+
+func TestNormalizedKeyUnicodeAgainstConcatReference(t *testing.T) {
+	cases := []struct {
+		schema, kind, name string
+	}{
+		{"Σ", "K", "Ω"},
+		{"Sch\u00e9ma", "v\u00e9", "Obj"},
+		{"prefix/withslash", "k", "n"},
+		{"", "EMPTY_SCHEMA_SEG", "x"},
+	}
+	for _, c := range cases {
+		got := NormalizedKey(c.schema, c.kind, c.name)
+		want := normalizedKeyRef(c.schema, c.kind, c.name)
+		if got != want {
+			t.Fatalf("NormalizedKey(%q,%q,%q) = %q, ref %q", c.schema, c.kind, c.name, got, want)
+		}
 	}
 }
 
@@ -131,6 +158,17 @@ func TestBuildINQuery(t *testing.T) {
 	const want = "SELECT * FROM t WHERE c IN (@p1, @p2, @p3)"
 	if q != want {
 		t.Errorf("query = %q, want %q", q, want)
+	}
+}
+
+func TestBuildINQuery_twiceSamePlaceholder(t *testing.T) {
+	q, args := BuildINQuery("({{list}}) AND ({{list}})", "{{list}}", []string{"a"}, 1)
+	const want = "(@p1) AND (@p1)"
+	if q != want {
+		t.Errorf("query = %q, want %q", q, want)
+	}
+	if len(args) != 1 || args[0] != "a" {
+		t.Errorf("args = %v, want [a]", args)
 	}
 }
 
