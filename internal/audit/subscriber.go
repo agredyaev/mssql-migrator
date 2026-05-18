@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,9 +13,6 @@ import (
 	"reporting-db-migrations/internal/driver"
 	"reporting-db-migrations/internal/types"
 )
-
-//go:embed sql/insert_history.sql
-var insertHistorySQL string
 
 //go:embed sql/insert_history_openjson.sql
 var insertHistoryOpenJSONSQL string
@@ -86,7 +84,7 @@ func (s *Subscriber) boot(ctx context.Context) error {
 		s.bootstrapErr = EnsureTables(ctx, s.conn)
 	})
 	if s.bootstrapErr != nil {
-		s.notifier.Notify("audit bootstrap: " + s.bootstrapErr.Error())
+		s.notifier.Notify(fmt.Sprintf("audit bootstrap: %s", s.bootstrapErr.Error()))
 	}
 	return s.bootstrapErr
 }
@@ -108,7 +106,7 @@ func (s *Subscriber) insertHistoryBatch(ctx context.Context, records []historyRe
 			return
 		}
 		if err != nil {
-			s.notifier.Notify("audit insert_history: " + err.Error())
+			s.notifier.Notify(fmt.Sprintf("audit insert_history: %s", err.Error()))
 			return
 		}
 	}
@@ -125,7 +123,7 @@ func (s *Subscriber) insertHistoryBatch(ctx context.Context, records []historyRe
 		chunk := records[start:end]
 		query, args := s.buildInsertHistoryBatchQuery(chunk)
 		if _, err := s.conn.ExecContext(ctx, query, args...); err != nil {
-			s.notifier.Notify("audit insert_history: " + err.Error())
+			s.notifier.Notify(fmt.Sprintf("audit insert_history: %s", err.Error()))
 			continue
 		}
 		storeLatestChecksumsFromHistory(s.conn, chunk)
@@ -167,7 +165,7 @@ func (s *Subscriber) buildInsertHistoryBatchQuery(records []historyRecord) (stri
 		}
 		gitDate, err := parseGitDate(rec.ev.GitDate)
 		if err != nil {
-			s.notifier.Notify("audit insert_history: bad git date: " + err.Error())
+			s.notifier.Notify(fmt.Sprintf("audit insert_history: bad git date: %s", err.Error()))
 			gitDate = sqlDefaultDate
 		}
 		b.WriteByte('(')

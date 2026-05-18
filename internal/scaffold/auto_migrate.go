@@ -28,8 +28,8 @@ func tryAutoAddColumn(schemaName, tableName string, dbColumns []db.TableColumn, 
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("-- Auto-generated migration for [%s].[%s]\n", schemaName, tableName))
-	b.WriteString(fmt.Sprintf("-- Added columns: %d\n", len(added)))
+	fmt.Fprintf(&b, "-- Auto-generated migration for [%s].[%s]\n", schemaName, tableName)
+	fmt.Fprintf(&b, "-- Added columns: %d\n", len(added))
 	b.WriteString("-- Review this migration before running.\n\n")
 
 	for _, col := range added {
@@ -37,8 +37,8 @@ func tryAutoAddColumn(schemaName, tableName string, dbColumns []db.TableColumn, 
 		if !col.nullable {
 			nullable = "NOT NULL"
 		}
-		b.WriteString(fmt.Sprintf("ALTER TABLE [%s].[%s] ADD [%s] %s %s;\n",
-			schemaName, tableName, col.name, col.typeName, nullable))
+		fmt.Fprintf(&b, "ALTER TABLE [%s].[%s] ADD [%s] %s %s;\n",
+			schemaName, tableName, col.name, col.typeName, nullable)
 	}
 
 	return b.String(), true

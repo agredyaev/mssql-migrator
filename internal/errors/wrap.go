@@ -1,5 +1,7 @@
 package errors
 
+import "fmt"
+
 type errorWithCause struct {
 	base  error
 	cause error
@@ -20,7 +22,7 @@ func (e errorWithCause) Error() string {
 	if e.cause == nil {
 		return e.base.Error()
 	}
-	return e.base.Error() + ": " + e.cause.Error()
+	return fmt.Sprintf("%s: %s", e.base.Error(), e.cause.Error())
 }
 
 func (e errorWithCause) Unwrap() []error {
