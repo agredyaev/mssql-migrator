@@ -128,4 +128,68 @@ func TestBuildINQuery(t *testing.T) {
 	if len(q) == 0 {
 		t.Error("query is empty")
 	}
+	const want = "SELECT * FROM t WHERE c IN (@p1, @p2, @p3)"
+	if q != want {
+		t.Errorf("query = %q, want %q", q, want)
+	}
+}
+
+func TestBuildDualINQuery(t *testing.T) {
+	q, args := BuildDualINQuery(
+		"SELECT * FROM t WHERE s IN ({{s}}) AND o IN ({{o}})",
+		"{{s}}", []string{"s1"},
+		"{{o}}", []string{"o1", "o2"},
+		1,
+	)
+	if len(args) != 3 {
+		t.Fatalf("expected 3 args, got %d", len(args))
+	}
+	if args[0] != "s1" || args[1] != "o1" || args[2] != "o2" {
+		t.Errorf("unexpected args: %v", args)
+	}
+	if len(q) == 0 {
+		t.Error("query is empty")
+	}
+	const want = "SELECT * FROM t WHERE s IN (@p1) AND o IN (@p2, @p3)"
+	if q != want {
+		t.Errorf("query = %q, want %q", q, want)
+	}
+}
+
+func TestBuildDualINQueryReversedPlaceholderOrder(t *testing.T) {
+	q, args := BuildDualINQuery(
+		"SELECT * FROM t WHERE o IN ({{o}}) AND s IN ({{s}})",
+		"{{s}}", []string{"s1"},
+		"{{o}}", []string{"o1", "o2"},
+		1,
+	)
+	if len(args) != 3 {
+		t.Fatalf("expected 3 args, got %d", len(args))
+	}
+	if args[0] != "s1" || args[1] != "o1" || args[2] != "o2" {
+		t.Errorf("unexpected args: %v", args)
+	}
+	const want = "SELECT * FROM t WHERE o IN (@p2, @p3) AND s IN (@p1)"
+	if q != want {
+		t.Errorf("query = %q, want %q", q, want)
+	}
+}
+
+func TestBuildDualINQueryRepeatedPlaceholders(t *testing.T) {
+	q, args := BuildDualINQuery(
+		"WHERE s IN ({{s}}) OR s IN ({{s}}) AND o IN ({{o}}) OR o IN ({{o}})",
+		"{{s}}", []string{"s1", "s2"},
+		"{{o}}", []string{"o1"},
+		1,
+	)
+	if len(args) != 3 {
+		t.Fatalf("expected 3 args, got %d", len(args))
+	}
+	if args[0] != "s1" || args[1] != "s2" || args[2] != "o1" {
+		t.Errorf("unexpected args: %v", args)
+	}
+	const want = "WHERE s IN (@p1, @p2) OR s IN (@p1, @p2) AND o IN (@p3) OR o IN (@p3)"
+	if q != want {
+		t.Errorf("query = %q, want %q", q, want)
+	}
 }
