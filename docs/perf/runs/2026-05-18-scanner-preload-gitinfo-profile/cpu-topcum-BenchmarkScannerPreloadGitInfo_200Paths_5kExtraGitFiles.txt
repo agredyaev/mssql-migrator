@@ -1,0 +1,42 @@
+File: fs-bench.test
+Type: cpu
+Time: 2026-05-18 01:56:31 CEST
+Duration: 6.04s, Total samples = 1780ms (29.45%)
+Showing nodes accounting for 1750ms, 98.31% of 1780ms total
+Showing top 35 nodes out of 67
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%     1760ms 98.88%  testing.(*B).run1.func1
+         0     0%     0%     1760ms 98.88%  testing.(*B).runN
+    1750ms 98.31% 98.31%     1750ms 98.31%  syscall.rawsyscalln
+         0     0% 98.31%     1750ms 98.31%  syscall.syscalln
+         0     0% 98.31%     1740ms 97.75%  syscall.syscall
+         0     0% 98.31%     1490ms 83.71%  os.ignoringEINTR (inline)
+         0     0% 98.31%     1110ms 62.36%  reporting-db-migrations/internal/fs.BenchmarkScannerPreloadGitInfo_200Paths_5kExtraGitFiles
+         0     0% 98.31%     1100ms 61.80%  os.WriteFile
+         0     0% 98.31%      840ms 47.19%  os.OpenFile
+         0     0% 98.31%      840ms 47.19%  os.openFileNolog
+         0     0% 98.31%      810ms 45.51%  os.open (inline)
+         0     0% 98.31%      810ms 45.51%  os.openFileNolog.func1 (inline)
+         0     0% 98.31%      810ms 45.51%  syscall.Open
+         0     0% 98.31%      650ms 36.52%  os.RemoveAll (inline)
+         0     0% 98.31%      650ms 36.52%  os.removeAll
+         0     0% 98.31%      650ms 36.52%  os.removeAllFrom
+         0     0% 98.31%      650ms 36.52%  testing.(*B).runN.func1
+         0     0% 98.31%      650ms 36.52%  testing.(*common).Cleanup.func1
+         0     0% 98.31%      650ms 36.52%  testing.(*common).makeTempDir.func1
+         0     0% 98.31%      650ms 36.52%  testing.(*common).runCleanup
+         0     0% 98.31%      650ms 36.52%  testing.removeAll
+         0     0% 98.31%      640ms 35.96%  internal/syscall/unix.Unlinkat (inline)
+         0     0% 98.31%      640ms 35.96%  os.removeAllFrom.removefileat.func1 (inline)
+         0     0% 98.31%      640ms 35.96%  os.removefileat (inline)
+         0     0% 98.31%      640ms 35.96%  syscall.unlinkat
+         0     0% 98.31%      150ms  8.43%  internal/poll.(*FD).Write
+         0     0% 98.31%      150ms  8.43%  internal/poll.ignoringEINTRIO (inline)
+         0     0% 98.31%      150ms  8.43%  os.(*File).Write
+         0     0% 98.31%      150ms  8.43%  os.(*File).write (inline)
+         0     0% 98.31%      150ms  8.43%  syscall.Write (inline)
+         0     0% 98.31%      150ms  8.43%  syscall.write
+         0     0% 98.31%      110ms  6.18%  internal/poll.(*FD).Close
+         0     0% 98.31%      110ms  6.18%  internal/poll.(*FD).decref
+         0     0% 98.31%      110ms  6.18%  internal/poll.(*FD).destroy
+         0     0% 98.31%      110ms  6.18%  internal/poll.(*SysFile).destroy (inline)

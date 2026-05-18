@@ -1,0 +1,42 @@
+File: fs-bench.test
+Type: cpu
+Time: 2026-05-18 01:56:22 CEST
+Duration: 919.87ms, Total samples = 80ms ( 8.70%)
+Showing nodes accounting for 70ms, 87.50% of 80ms total
+Showing top 35 nodes out of 47
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%       70ms 87.50%  testing.(*B).run1.func1
+         0     0%     0%       70ms 87.50%  testing.(*B).runN
+         0     0%     0%       60ms 75.00%  os.ignoringEINTR (inline)
+      60ms 75.00% 75.00%       60ms 75.00%  syscall.rawsyscalln
+         0     0% 75.00%       60ms 75.00%  syscall.syscall
+         0     0% 75.00%       60ms 75.00%  syscall.syscalln
+         0     0% 75.00%       40ms 50.00%  reporting-db-migrations/internal/fs.BenchmarkScannerPreloadGitInfo_200Paths
+         0     0% 75.00%       30ms 37.50%  internal/syscall/unix.Unlinkat (inline)
+         0     0% 75.00%       30ms 37.50%  os.OpenFile
+         0     0% 75.00%       30ms 37.50%  os.RemoveAll (inline)
+         0     0% 75.00%       30ms 37.50%  os.WriteFile
+         0     0% 75.00%       30ms 37.50%  os.open (inline)
+         0     0% 75.00%       30ms 37.50%  os.openFileNolog
+         0     0% 75.00%       30ms 37.50%  os.openFileNolog.func1 (inline)
+         0     0% 75.00%       30ms 37.50%  os.removeAll
+         0     0% 75.00%       30ms 37.50%  os.removeAllFrom
+         0     0% 75.00%       30ms 37.50%  os.removeAllFrom.removefileat.func1 (inline)
+         0     0% 75.00%       30ms 37.50%  os.removefileat (inline)
+         0     0% 75.00%       30ms 37.50%  reporting-db-migrations/internal/fs.makeGitBenchRepoWithTrackedViews
+         0     0% 75.00%       30ms 37.50%  syscall.Open
+         0     0% 75.00%       30ms 37.50%  syscall.unlinkat
+         0     0% 75.00%       30ms 37.50%  testing.(*B).runN.func1
+         0     0% 75.00%       30ms 37.50%  testing.(*common).Cleanup.func1
+         0     0% 75.00%       30ms 37.50%  testing.(*common).makeTempDir.func1
+         0     0% 75.00%       30ms 37.50%  testing.(*common).runCleanup
+         0     0% 75.00%       30ms 37.50%  testing.removeAll
+      10ms 12.50% 87.50%       10ms 12.50%  internal/runtime/atomic.(*UnsafePointer).StoreNoWB (inline)
+         0     0% 87.50%       10ms 12.50%  runtime.(*atomicMSpanPointer).StoreNoWB (inline)
+         0     0% 87.50%       10ms 12.50%  runtime.(*mcache).releaseAll
+         0     0% 87.50%       10ms 12.50%  runtime.(*mcentral).uncacheSpan
+         0     0% 87.50%       10ms 12.50%  runtime.(*spanSet).push
+         0     0% 87.50%       10ms 12.50%  runtime.ReadMemStats
+         0     0% 87.50%       10ms 12.50%  runtime.ReadMemStats.func1
+         0     0% 87.50%       10ms 12.50%  runtime.findRunnable
+         0     0% 87.50%       10ms 12.50%  runtime.flushallmcaches

@@ -1,0 +1,47 @@
+File: fs-bench.test
+Type: cpu
+Time: 2026-05-18 01:57:08 CEST
+Duration: 7.05s, Total samples = 670ms ( 9.50%)
+Showing nodes accounting for 490ms, 73.13% of 670ms total
+Showing top 40 nodes out of 160
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%      390ms 58.21%  testing.(*B).runN
+         0     0%     0%      350ms 52.24%  testing.(*B).launch
+         0     0%     0%      310ms 46.27%  reporting-db-migrations/internal/fs.BenchmarkScannerPreloadGitInfo_200Paths
+         0     0%     0%      230ms 34.33%  runtime.mcall
+         0     0%     0%      230ms 34.33%  runtime.schedule
+         0     0%     0%      220ms 32.84%  runtime.findRunnable
+     210ms 31.34% 31.34%      210ms 31.34%  syscall.rawsyscalln
+         0     0% 31.34%      210ms 31.34%  syscall.syscalln
+         0     0% 31.34%      180ms 26.87%  runtime.mPark (inline)
+         0     0% 31.34%      180ms 26.87%  runtime.notesleep
+         0     0% 31.34%      180ms 26.87%  runtime.park_m
+     180ms 26.87% 58.21%      180ms 26.87%  runtime.pthread_cond_wait
+         0     0% 58.21%      180ms 26.87%  runtime.semasleep
+         0     0% 58.21%      180ms 26.87%  runtime.stopm
+         0     0% 58.21%      170ms 25.37%  os.ignoringEINTR (inline)
+         0     0% 58.21%      170ms 25.37%  syscall.syscall
+         0     0% 58.21%      150ms 22.39%  runtime.mallocgc
+         0     0% 58.21%      110ms 16.42%  reporting-db-migrations/internal/fs.(*Scanner).preloadGitInfo
+         0     0% 58.21%      110ms 16.42%  reporting-db-migrations/internal/fs.freshGitBenchLayout
+         0     0% 58.21%      110ms 16.42%  runtime.(*mcache).nextFree
+         0     0% 58.21%      110ms 16.42%  runtime.(*mcache).refill
+         0     0% 58.21%      100ms 14.93%  runtime.(*mcentral).cacheSpan
+     100ms 14.93% 73.13%      100ms 14.93%  runtime.memclrNoHeapPointers
+         0     0% 73.13%       90ms 13.43%  reporting-db-migrations/internal/fs.makeGitBenchRepoWithTrackedViews
+         0     0% 73.13%       80ms 11.94%  os.RemoveAll (inline)
+         0     0% 73.13%       80ms 11.94%  os.WriteFile
+         0     0% 73.13%       80ms 11.94%  os.removeAll
+         0     0% 73.13%       80ms 11.94%  os.removeAllFrom
+         0     0% 73.13%       80ms 11.94%  runtime.mallocgcSmallScanNoHeader
+         0     0% 73.13%       80ms 11.94%  testing.(*B).runN.func1
+         0     0% 73.13%       80ms 11.94%  testing.(*common).Cleanup.func1
+         0     0% 73.13%       80ms 11.94%  testing.(*common).makeTempDir.func1
+         0     0% 73.13%       80ms 11.94%  testing.(*common).runCleanup
+         0     0% 73.13%       80ms 11.94%  testing.removeAll
+         0     0% 73.13%       70ms 10.45%  runtime.(*mcentral).grow
+         0     0% 73.13%       70ms 10.45%  runtime.newobject
+         0     0% 73.13%       60ms  8.96%  os.OpenFile
+         0     0% 73.13%       60ms  8.96%  os.open (inline)
+         0     0% 73.13%       60ms  8.96%  os.openFileNolog
+         0     0% 73.13%       60ms  8.96%  os.openFileNolog.func1 (inline)
