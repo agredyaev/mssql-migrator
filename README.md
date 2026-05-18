@@ -153,3 +153,5 @@ The tool reads repo-driven SQL files from `<RM_SQL_ROOT>/<RM_SQL_BASE>`, prints 
 
 - `docs/runbook.md`
 - `docs/integration-test-plan.md`
+- `docs/profiling-benchmark-plan.md`
+- `docs/perf/README.md` (benchmark deltas vs baseline, `pprof` run index)

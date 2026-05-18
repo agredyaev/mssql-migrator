@@ -1,0 +1,7 @@
+goos: darwin
+goarch: arm64
+pkg: reporting-db-migrations/internal/apply
+cpu: Apple M2
+BenchmarkCollectStatements_500Transactional-8   	    5124	     84913 ns/op	  226667 B/op	      16 allocs/op
+PASS
+ok  	reporting-db-migrations/internal/apply	1.189s

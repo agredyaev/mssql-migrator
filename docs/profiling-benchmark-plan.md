@@ -11,7 +11,7 @@ This document defines how to validate performance-sensitive paths in `rmig` with
 - Correctness gate: `Makefile` target `check`
 - Benchmarks and profiling harness: `internal/engine/benchmark_profiling_test.go`
 - Optional repeatable bench/profile entrypoints: `Makefile` targets `bench-perf-diff-skip`, `bench-perf-diff-create`, `bench-perf-chunkkeys`, `bench-perf-audit` (internal bus, db, fs, apply backlog benches; see `docs/internal-performance-audit.md`), `profile-perf-diff-skip-cpu`, `profile-perf-diff-skip-mem` (see **Progress tracking (80/20)** below)
-- Hot-path implementation under test: `internal/diff/diff.go`, `internal/fs/normalize.go`, `internal/fs/layout.go` (including `LayoutHash` digest buffer pool), `internal/types/chunk.go` (SQL parameter chunking for inspector queries)
+- Hot-path implementation under test: `internal/diff/diff.go`, `internal/fs/normalize.go`, `internal/fs/layout.go` (including `LayoutHash` digest buffer pool), `internal/types/chunk.go` (SQL parameter chunking for inspector fallback queries), `internal/db/inspector_impl.go` (cached `OPENJSON` capability probe plus JSON-parameter inspector reads)
 
 ## Progress tracking (80/20: CPU and heap evidence)
 
@@ -41,6 +41,8 @@ Use a short feedback loop so most effort goes where measurements show cost (CPU 
 **Scanner batched `preloadGitInfo` (`pprof`):** for `BenchmarkScannerPreloadGitInfo_*`, use `docs/perf/runs/2026-05-18-scanner-preload-gitinfo-profile/README.md`. Prefer the **`*-steady`** captures (`-benchtime=3s` on the 200-path bench) when attributing **`alloc_objects`** to `preloadGitInfo` vs fixture; short `-benchtime` runs often have **`b.N==1`** and skew toward setup and tempdir cleanup.
 
 **Bench delta vs saved audit stdout:** `docs/perf/runs/2026-05-18-baseline-vs-post/README.md` documents `benchstat` of the current tree against the excerpt from `docs/perf/runs/2026-05-18-audit-bench/bench-output.txt` (same `go test` flags). Use it when you need percentage deltas, not only `pprof` flat/cum tables.
+
+**Inspector `OPENJSON` path:** `docs/perf/runs/2026-05-18-openjson-inspector/README.md` records the SQL-side inspector change (`internal/db/sql/*_openjson.sql`, cached compatibility probe, unit and integration coverage, and focused `BenchmarkInspectorInspect_*` reruns). Read it before interpreting inspector cold-path deltas from older audit captures.
 
 Benchmarks build a temporary Git repo and scanned layout (`makeRealLayout` / `makeRealFS`), then call `diff.(*Computer).Compute` or `fs.NormalizeAndHash`. Profiles therefore include **fixture construction** (`makeBenchSQL`, `fmt.Sprintf`) as well as steady-state `Compute`; when reading `alloc_space`, always separate **one-time setup** from the **per-iteration** line in `go test -benchmem` output.
 
@@ -254,7 +256,8 @@ $(go env GOPATH)/bin/benchstat /tmp/bench-old.txt /tmp/bench-new.txt
 - `internal/types/planned_json.go` (`PlannedObject` JSON compatibility, `GitStrings`)
 - `internal/types/chunk_bench_test.go` (`BenchmarkChunkKeys_10k_2100`)
 - `internal/diff/diff.go` (`warmupIfNeeded`, `isMatch`, `decodeHex32`, transition index build)
-- `internal/apply/apply.go` (layout lookup by `PlannedObject.ObjectRef.ObjectPath`)
+- `internal/apply/apply.go` (layout lookup by `PlannedObject.ObjectRef.ObjectPath`; skips building `ObjectEvent` / `FailureEvent` when `bus.EventBus.HasHandlers` is false for that event; zero digest checksum uses constant hex instead of `hex.EncodeToString`)
+- `internal/bus/bus.go` (`EventBus.HasHandlers`, `Publish` no-op when no subscribers)
 - Prior narrative analysis (goroutine fan-out, `hex.EncodeToString`, `LayoutHash`): retained as **historical context** in section **Baseline analysis (2026-05-17)**
 - Full profiling round (benchmark matrix, CPU/mem text extracts, triage A–E): `docs/perf/runs/2026-05-17-profiling-round/TRIAGE.md`
 - External methodology (measure → profile → optimize → validate): [Optimization Strategies](https://psavelis.github.io/golang-performance-optimization/optimization/), [algorithms](https://psavelis.github.io/golang-performance-optimization/optimization/algorithms/), [data structures](https://psavelis.github.io/golang-performance-optimization/optimization/algorithms/data-structures.html), [space complexity](https://psavelis.github.io/golang-performance-optimization/optimization/algorithms/space-complexity.html)

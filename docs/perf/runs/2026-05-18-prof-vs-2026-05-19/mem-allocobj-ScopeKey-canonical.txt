@@ -1,0 +1,32 @@
+File: db-bench.test
+Type: alloc_objects
+Time: 2026-05-18 23:03:43 CEST
+Showing nodes accounting for 262232, 99.85% of 262626 total
+Dropped 36 nodes (cum <= 1313)
+Showing top 25 nodes out of 27
+      flat  flat%   sum%        cum   cum%
+    101027 38.47% 38.47%     191353 72.86%  reporting-db-migrations/internal/db.scopeKey
+     49153 18.72% 57.18%      49153 18.72%  fmt.Sprintf
+     35712 13.60% 70.78%      35712 13.60%  internal/bytealg.MakeNoZero
+     32769 12.48% 83.26%      54614 20.80%  internal/reflectlite.Swapper
+     21845  8.32% 91.58%      21845  8.32%  internal/reflectlite.unsafe_New
+     16390  6.24% 97.82%      65543 24.96%  reporting-db-migrations/internal/db.largeBenchLayout
+      3277  1.25% 99.07%       3277  1.25%  compress/gzip.NewWriterLevel
+      2059  0.78% 99.85%       2059  0.78%  runtime.mallocgc
+         0     0% 99.85%     256896 97.82%  reporting-db-migrations/internal/db.BenchmarkScopeKey_2000Parts
+         0     0% 99.85%       2059  0.78%  runtime.allocm
+         0     0% 99.85%       1348  0.51%  runtime.mcall
+         0     0% 99.85%       1547  0.59%  runtime.mcommoninit
+         0     0% 99.85%       2059  0.78%  runtime.newm
+         0     0% 99.85%       1604  0.61%  runtime.newobject
+         0     0% 99.85%       1348  0.51%  runtime.park_m
+         0     0% 99.85%       1604  0.61%  runtime.resetspinning
+         0     0% 99.85%       2059  0.78%  runtime.schedule
+         0     0% 99.85%       2059  0.78%  runtime.startm
+         0     0% 99.85%       1604  0.61%  runtime.wakep
+         0     0% 99.85%       3277  1.25%  runtime/pprof.newProfileBuilder
+         0     0% 99.85%       3377  1.29%  runtime/pprof.profileWriter
+         0     0% 99.85%      54614 20.80%  sort.Slice
+         0     0% 99.85%      35712 13.60%  strings.(*Builder).Grow
+         0     0% 99.85%      35712 13.60%  strings.(*Builder).grow
+         0     0% 99.85%     235469 89.66%  testing.(*B).launch

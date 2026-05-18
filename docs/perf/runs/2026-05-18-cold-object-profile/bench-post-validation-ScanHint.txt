@@ -1,0 +1,9 @@
+# go test ./internal/fs -run '^$' -bench '^BenchmarkObjectChecksumSharedBytesAfterScan/' -benchmem -benchtime=500ms -count=3
+# darwin/arm64 Apple M2 (example capture 2026-05-18)
+
+BenchmarkObjectChecksumSharedBytesAfterScan/withScanHint-8         	 1490553	       398.5 ns/op	     416 B/op	       1 allocs/op
+BenchmarkObjectChecksumSharedBytesAfterScan/withScanHint-8         	 1497832	       398.7 ns/op	     416 B/op	       1 allocs/op
+BenchmarkObjectChecksumSharedBytesAfterScan/withScanHint-8         	 1440324	       405.3 ns/op	     416 B/op	       1 allocs/op
+BenchmarkObjectChecksumSharedBytesAfterScan/withoutScanHint-8      	  178260	      3341 ns/op	     784 B/op	       3 allocs/op
+BenchmarkObjectChecksumSharedBytesAfterScan/withoutScanHint-8      	  177378	      3372 ns/op	     784 B/op	       3 allocs/op
+BenchmarkObjectChecksumSharedBytesAfterScan/withoutScanHint-8      	  178257	      3334 ns/op	     784 B/op	       3 allocs/op

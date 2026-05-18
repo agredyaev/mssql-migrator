@@ -1,0 +1,7 @@
+goos: darwin
+goarch: arm64
+pkg: reporting-db-migrations/internal/fs
+cpu: Apple M2
+BenchmarkObjectChecksumSharedBytesAfterScan/withScanHint-8         	 8478764	       424.2 ns/op	     416 B/op	       1 allocs/op
+PASS
+ok  	reporting-db-migrations/internal/fs	4.763s

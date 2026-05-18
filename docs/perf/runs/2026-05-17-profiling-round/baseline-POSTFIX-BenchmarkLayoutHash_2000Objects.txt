@@ -1,0 +1,16 @@
+goos: darwin
+goarch: arm64
+pkg: reporting-db-migrations/internal/engine
+cpu: Apple M2
+BenchmarkLayoutHash_2000Objects-8   	     423	    500849 ns/op	     343 B/op	       5 allocs/op
+BenchmarkLayoutHash_2000Objects-8   	     354	    598295 ns/op	     371 B/op	       5 allocs/op
+BenchmarkLayoutHash_2000Objects-8   	     582	    523298 ns/op	     304 B/op	       5 allocs/op
+BenchmarkLayoutHash_2000Objects-8   	     451	    461714 ns/op	     334 B/op	       5 allocs/op
+BenchmarkLayoutHash_2000Objects-8   	     486	    509818 ns/op	     324 B/op	       5 allocs/op
+BenchmarkLayoutHash_2000Objects-8   	     496	    511530 ns/op	     322 B/op	       5 allocs/op
+BenchmarkLayoutHash_2000Objects-8   	     490	    478394 ns/op	     323 B/op	       5 allocs/op
+BenchmarkLayoutHash_2000Objects-8   	     502	    507377 ns/op	     320 B/op	       5 allocs/op
+BenchmarkLayoutHash_2000Objects-8   	     424	    575338 ns/op	     342 B/op	       5 allocs/op
+BenchmarkLayoutHash_2000Objects-8   	     514	    506214 ns/op	     317 B/op	       5 allocs/op
+PASS
+ok  	reporting-db-migrations/internal/engine	96.453s

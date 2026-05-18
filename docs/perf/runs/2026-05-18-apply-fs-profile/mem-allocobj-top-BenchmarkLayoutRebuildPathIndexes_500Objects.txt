@@ -1,0 +1,33 @@
+File: fs-layout-bench.test
+Type: alloc_objects
+Time: 2026-05-18 00:57:55 CEST
+Showing nodes accounting for 148838, 100% of 148838 total
+Dropped 5 nodes (cum <= 744)
+      flat  flat%   sum%        cum   cum%
+     54615 36.69% 36.69%      54615 36.69%  reporting-db-migrations/internal/fs.buildTransitionsByPath (inline)
+     48274 32.43% 69.13%      48274 32.43%  reporting-db-migrations/internal/fs.buildObjectsByPath (inline)
+     21845 14.68% 83.81%      21845 14.68%  internal/bytealg.MakeNoZero
+     10923  7.34% 91.14%      10923  7.34%  os.statNolog
+     10923  7.34% 98.48%      10923  7.34%  testing.(*B).ResetTimer
+      1489  1.00% 99.48%      34257 23.02%  reporting-db-migrations/internal/fs.benchLayoutForPathIndex
+       769  0.52%   100%        769  0.52%  runtime.mallocgc
+         0     0%   100%      10923  7.34%  os.Stat
+         0     0%   100%      21845 14.68%  path/filepath.Join (inline)
+         0     0%   100%      21845 14.68%  path/filepath.join
+         0     0%   100%     102889 69.13%  reporting-db-migrations/internal/fs.(*Layout).RebuildPathIndexes (inline)
+         0     0%   100%     137146 92.14%  reporting-db-migrations/internal/fs.BenchmarkLayoutRebuildPathIndexes_500Objects
+         0     0%   100%        769  0.52%  runtime.allocm
+         0     0%   100%        769  0.52%  runtime.newm
+         0     0%   100%        769  0.52%  runtime.newobject
+         0     0%   100%        769  0.52%  runtime.resetspinning
+         0     0%   100%        769  0.52%  runtime.schedule
+         0     0%   100%        769  0.52%  runtime.startm
+         0     0%   100%        769  0.52%  runtime.wakep
+         0     0%   100%      21845 14.68%  strings.(*Builder).Grow
+         0     0%   100%      21845 14.68%  strings.(*Builder).grow
+         0     0%   100%      21845 14.68%  strings.Join
+         0     0%   100%     137146 92.14%  testing.(*B).launch
+         0     0%   100%      10923  7.34%  testing.(*B).run1.func1
+         0     0%   100%     148069 99.48%  testing.(*B).runN
+         0     0%   100%      10923  7.34%  testing.(*common).TempDir
+         0     0%   100%      10923  7.34%  testing.(*common).makeTempDir

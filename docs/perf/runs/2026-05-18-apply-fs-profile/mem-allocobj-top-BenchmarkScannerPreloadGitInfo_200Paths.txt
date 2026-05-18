@@ -1,0 +1,42 @@
+File: fs.test
+Type: alloc_objects
+Time: 2026-05-18 00:57:08 CEST
+Showing nodes accounting for 118243, 99.58% of 118738 total
+Dropped 17 nodes (cum <= 593)
+Showing top 35 nodes out of 59
+      flat  flat%   sum%        cum   cum%
+     33281 28.03% 28.03%      33281 28.03%  runtime.mallocgc
+     28675 24.15% 52.18%      28675 24.15%  internal/bytealg.MakeNoZero
+     21845 18.40% 70.58%      21845 18.40%  os.(*Process).pidWait
+     11919 10.04% 80.61%      11919 10.04%  reporting-db-migrations/internal/fs.freshGitBenchLayout
+     10650  8.97% 89.58%      10650  8.97%  syscall.ByteSliceFromString
+      5461  4.60% 94.18%       5461  4.60%  os.newFile
+      5042  4.25% 98.43%      11596  9.77%  os.statNolog
+      1056  0.89% 99.32%       1056  0.89%  bytes.growSlice
+       195  0.16% 99.48%        605  0.51%  os/exec.(*Cmd).environ
+        86 0.072% 99.56%      57245 48.21%  reporting-db-migrations/internal/fs.(*Scanner).preloadGitInfo
+        33 0.028% 99.58%       1089  0.92%  io.copyBuffer
+         0     0% 99.58%       1056  0.89%  bytes.(*Buffer).ReadFrom
+         0     0% 99.58%       1056  0.89%  bytes.(*Buffer).grow
+         0     0% 99.58%       1089  0.92%  io.Copy (inline)
+         0     0% 99.58%       1089  0.92%  os.(*File).WriteTo
+         0     0% 99.58%      21845 18.40%  os.(*Process).Wait (inline)
+         0     0% 99.58%      21845 18.40%  os.(*Process).wait
+         0     0% 99.58%       9557  8.05%  os.OpenFile
+         0     0% 99.58%      11596  9.77%  os.Stat
+         0     0% 99.58%       9557  8.05%  os.WriteFile
+         0     0% 99.58%       1089  0.92%  os.genericWriteTo
+         0     0% 99.58%      10650  8.97%  os.ignoringEINTR (inline)
+         0     0% 99.58%       4096  3.45%  os.open (inline)
+         0     0% 99.58%       9557  8.05%  os.openFileNolog
+         0     0% 99.58%       4096  3.45%  os.openFileNolog.func1 (inline)
+         0     0% 99.58%       6554  5.52%  os.statNolog.func1 (inline)
+         0     0% 99.58%        605  0.51%  os/exec.(*Cmd).CombinedOutput
+         0     0% 99.58%      21930 18.47%  os/exec.(*Cmd).Output
+         0     0% 99.58%      22535 18.98%  os/exec.(*Cmd).Run
+         0     0% 99.58%        690  0.58%  os/exec.(*Cmd).Start
+         0     0% 99.58%       1089  0.92%  os/exec.(*Cmd).Start.func2
+         0     0% 99.58%      21845 18.40%  os/exec.(*Cmd).Wait
+         0     0% 99.58%       1089  0.92%  os/exec.(*Cmd).writerDescriptor.func1
+         0     0% 99.58%       9075  7.64%  os/exec.Command
+         0     0% 99.58%       9075  7.64%  os/exec.LookPath (inline)

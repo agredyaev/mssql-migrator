@@ -1,0 +1,35 @@
+File: engine.test
+Type: alloc_space
+Time: 2026-05-17 22:05:53 CEST
+Showing nodes accounting for 1004.07MB, 98.37% of 1020.73MB total
+Dropped 66 nodes (cum <= 5.10MB)
+      flat  flat%   sum%        cum   cum%
+  201.08MB 19.70% 19.70%   592.75MB 58.07%  reporting-db-migrations/internal/engine.makeRealFS
+  197.02MB 19.30% 39.00%   197.02MB 19.30%  os.readFileContents
+  192.34MB 18.84% 57.84%   392.36MB 38.44%  reporting-db-migrations/internal/fs.(*CachedFile).Content.func1
+  183.51MB 17.98% 75.82%   183.51MB 17.98%  internal/bytealg.MakeNoZero
+  155.65MB 15.25% 91.07%   155.65MB 15.25%  strings.(*Builder).Write
+   53.50MB  5.24% 96.31%   387.17MB 37.93%  reporting-db-migrations/internal/engine.makeBenchSQL
+   17.95MB  1.76% 98.07%    17.95MB  1.76%  reporting-db-migrations/internal/fs.normalizeSQLBytes
+    2.50MB  0.25% 98.32%        6MB  0.59%  reporting-db-migrations/internal/fs.(*Scanner).scanObjectDir
+    0.50MB 0.049% 98.37%   411.32MB 40.30%  reporting-db-migrations/internal/fs.(*Scanner).preloadChecksums.func1.1
+         0     0% 98.37%   155.65MB 15.25%  fmt.Fprintf
+         0     0% 98.37%   200.02MB 19.60%  os.ReadFile
+         0     0% 98.37%     5.50MB  0.54%  path/filepath.Join (inline)
+         0     0% 98.37%     5.50MB  0.54%  path/filepath.join
+         0     0% 98.37%   603.39MB 59.11%  reporting-db-migrations/internal/engine.BenchmarkLayoutHash_2000Objects
+         0     0% 98.37%   603.39MB 59.11%  reporting-db-migrations/internal/engine.benchmarkLayoutHash
+         0     0% 98.37%   602.86MB 59.06%  reporting-db-migrations/internal/engine.makeRealLayout
+         0     0% 98.37%   410.82MB 40.25%  reporting-db-migrations/internal/fs.(*CachedFile).Checksum
+         0     0% 98.37%   410.82MB 40.25%  reporting-db-migrations/internal/fs.(*CachedFile).Checksum.func1
+         0     0% 98.37%   392.36MB 38.44%  reporting-db-migrations/internal/fs.(*CachedFile).Content
+         0     0% 98.37%    10.11MB  0.99%  reporting-db-migrations/internal/fs.(*Scanner).Scan
+         0     0% 98.37%    18.46MB  1.81%  reporting-db-migrations/internal/fs.NormalizeAndHash
+         0     0% 98.37%   183.51MB 17.98%  strings.(*Builder).Grow
+         0     0% 98.37%   183.51MB 17.98%  strings.(*Builder).grow
+         0     0% 98.37%     5.50MB  0.54%  strings.Join
+         0     0% 98.37%   410.82MB 40.25%  sync.(*Once).Do (inline)
+         0     0% 98.37%   410.82MB 40.25%  sync.(*Once).doSlow
+         0     0% 98.37%   454.50MB 44.53%  testing.(*B).launch
+         0     0% 98.37%   149.89MB 14.68%  testing.(*B).run1.func1
+         0     0% 98.37%   604.39MB 59.21%  testing.(*B).runN

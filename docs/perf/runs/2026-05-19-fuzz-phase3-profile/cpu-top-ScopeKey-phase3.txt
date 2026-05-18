@@ -1,0 +1,33 @@
+File: db-bench.test
+Type: cpu
+Time: 2026-05-18 22:55:00 CEST
+Duration: 4.53s, Total samples = 5.15s (113.79%)
+Showing nodes accounting for 4.97s, 96.50% of 5.15s total
+Dropped 49 nodes (cum <= 0.03s)
+Showing top 25 nodes out of 94
+      flat  flat%   sum%        cum   cum%
+     2.16s 41.94% 41.94%      2.16s 41.94%  runtime.kevent
+     0.62s 12.04% 53.98%      0.62s 12.04%  runtime.pthread_cond_wait
+     0.43s  8.35% 62.33%      0.43s  8.35%  runtime.pthread_kill
+     0.36s  6.99% 69.32%      0.36s  6.99%  runtime.pthread_cond_signal
+     0.35s  6.80% 76.12%      0.35s  6.80%  runtime.usleep
+     0.25s  4.85% 80.97%      0.25s  4.85%  crypto/internal/fips140/sha256.blockSHA2
+     0.11s  2.14% 83.11%      0.12s  2.33%  runtime.tryDeferToSpanScan
+     0.08s  1.55% 84.66%      0.08s  1.55%  runtime.memmove
+     0.07s  1.36% 86.02%      0.34s  6.60%  sort.partialInsertionSort_func
+     0.06s  1.17% 87.18%      0.06s  1.17%  runtime.madvise
+     0.05s  0.97% 88.16%      0.20s  3.88%  internal/reflectlite.typedmemmove
+     0.05s  0.97% 89.13%      0.05s  0.97%  runtime.asyncPreempt
+     0.05s  0.97% 90.10%      0.05s  0.97%  runtime.pthread_cond_timedwait_relative_np
+     0.04s  0.78% 90.87%      0.55s 10.68%  reporting-db-migrations/internal/db.scopeKey
+     0.04s  0.78% 91.65%      0.08s  1.55%  runtime.scanObject
+     0.04s  0.78% 92.43%      0.09s  1.75%  strings.(*Builder).WriteByte (inline)
+     0.04s  0.78% 93.20%      0.05s  0.97%  strings.(*Builder).copyCheck (inline)
+     0.03s  0.58% 93.79%      0.05s  0.97%  reporting-db-migrations/internal/db.scopeKey.func1
+     0.03s  0.58% 94.37%      0.07s  1.36%  runtime.scanObjectsSmall
+     0.03s  0.58% 94.95%      0.15s  2.91%  runtime.typedmemmove
+     0.02s  0.39% 95.34%      0.22s  4.27%  internal/reflectlite.Swapper.func9
+     0.02s  0.39% 95.73%      0.10s  1.94%  runtime.stealWork
+     0.02s  0.39% 96.12%      0.05s  0.97%  strings.(*Builder).WriteString (inline)
+     0.01s  0.19% 96.31%      0.07s  1.36%  runtime.bulkBarrierPreWrite
+     0.01s  0.19% 96.50%      0.52s 10.10%  runtime.gcDrain

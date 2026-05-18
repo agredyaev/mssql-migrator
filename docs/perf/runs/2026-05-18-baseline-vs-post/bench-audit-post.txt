@@ -1,0 +1,89 @@
+goos: darwin
+goarch: arm64
+pkg: reporting-db-migrations/internal/bus
+cpu: Apple M2
+BenchmarkBusPublish_1Handler_Empty-8          	 6562586	        27.95 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_1Handler_Empty-8          	 6368844	        27.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_1Handler_Empty-8          	 6532903	        27.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_1Handler_Empty-8          	 6586520	        27.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_1Handler_Empty-8          	 6456220	        27.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Empty-8        	 2509335	        72.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Empty-8        	 2505086	        71.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Empty-8        	 2504326	        72.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Empty-8        	 2506936	        71.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Empty-8        	 2507052	        71.95 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_100Handlers_Empty-8       	  308274	       585.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_100Handlers_Empty-8       	  308071	       586.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_100Handlers_Empty-8       	  305740	       591.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_100Handlers_Empty-8       	  307077	       584.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_100Handlers_Empty-8       	  306493	       585.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Sleep100ns-8   	   12732	     13462 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Sleep100ns-8   	   15764	     13223 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Sleep100ns-8   	   12560	     13696 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Sleep100ns-8   	   12566	     13979 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Sleep100ns-8   	   12670	     13910 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Panic-8        	   66219	      2769 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Panic-8        	   64588	      2765 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Panic-8        	   62977	      2808 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Panic-8        	   66037	      2720 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBusPublish_10Handlers_Panic-8        	   66652	      2789 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	reporting-db-migrations/internal/bus	6.438s
+goos: darwin
+goarch: arm64
+pkg: reporting-db-migrations/internal/db
+cpu: Apple M2
+BenchmarkScopeKey_2000Parts-8                     	    1448	    120674 ns/op	  154128 B/op	    2003 allocs/op
+BenchmarkScopeKey_2000Parts-8                     	    1518	    120239 ns/op	  154128 B/op	    2003 allocs/op
+BenchmarkScopeKey_2000Parts-8                     	    1549	    121448 ns/op	  154128 B/op	    2003 allocs/op
+BenchmarkScopeKey_2000Parts-8                     	    1548	    119889 ns/op	  154128 B/op	    2003 allocs/op
+BenchmarkScopeKey_2000Parts-8                     	    1527	    127322 ns/op	  154128 B/op	    2003 allocs/op
+BenchmarkBuildDualINQuery_500x500-8               	    1380	    129632 ns/op	  126849 B/op	    2754 allocs/op
+BenchmarkBuildDualINQuery_500x500-8               	    1389	    128561 ns/op	  126848 B/op	    2754 allocs/op
+BenchmarkBuildDualINQuery_500x500-8               	    1359	    129034 ns/op	  126849 B/op	    2754 allocs/op
+BenchmarkBuildDualINQuery_500x500-8               	    1392	    128771 ns/op	  126848 B/op	    2754 allocs/op
+BenchmarkBuildDualINQuery_500x500-8               	    1383	    128733 ns/op	  126850 B/op	    2754 allocs/op
+BenchmarkInspectorInspect_Cold_500Objects-8       	    1050	    169625 ns/op	  165539 B/op	    1797 allocs/op
+BenchmarkInspectorInspect_Cold_500Objects-8       	    1039	    171486 ns/op	  165547 B/op	    1797 allocs/op
+BenchmarkInspectorInspect_Cold_500Objects-8       	    1058	    174214 ns/op	  165537 B/op	    1797 allocs/op
+BenchmarkInspectorInspect_Cold_500Objects-8       	    1029	    168660 ns/op	  165552 B/op	    1797 allocs/op
+BenchmarkInspectorInspect_Cold_500Objects-8       	    1047	    167662 ns/op	  165542 B/op	    1797 allocs/op
+BenchmarkInspectorInspect_HotCache_500Objects-8   	    5848	     29485 ns/op	   37776 B/op	     503 allocs/op
+BenchmarkInspectorInspect_HotCache_500Objects-8   	    6133	     29457 ns/op	   37776 B/op	     503 allocs/op
+BenchmarkInspectorInspect_HotCache_500Objects-8   	    6015	     29454 ns/op	   37776 B/op	     503 allocs/op
+BenchmarkInspectorInspect_HotCache_500Objects-8   	    6201	     29474 ns/op	   37776 B/op	     503 allocs/op
+BenchmarkInspectorInspect_HotCache_500Objects-8   	    6052	     29596 ns/op	   37776 B/op	     503 allocs/op
+PASS
+ok  	reporting-db-migrations/internal/db	4.603s
+goos: darwin
+goarch: arm64
+pkg: reporting-db-migrations/internal/fs
+cpu: Apple M2
+BenchmarkScannerPreloadGitInfo_200Paths-8   	       1	 163772084 ns/op	  372136 B/op	    1838 allocs/op
+BenchmarkScannerPreloadGitInfo_200Paths-8   	       1	 165993583 ns/op	  370904 B/op	    1832 allocs/op
+BenchmarkScannerPreloadGitInfo_200Paths-8   	       1	 168543708 ns/op	  369512 B/op	    1827 allocs/op
+BenchmarkScannerPreloadGitInfo_200Paths-8   	       1	 162813333 ns/op	  370424 B/op	    1831 allocs/op
+BenchmarkScannerPreloadGitInfo_200Paths-8   	       1	 171145291 ns/op	  369688 B/op	    1829 allocs/op
+PASS
+ok  	reporting-db-migrations/internal/fs	1.231s
+goos: darwin
+goarch: arm64
+pkg: reporting-db-migrations/internal/apply
+cpu: Apple M2
+BenchmarkCollectStatements_500Transactional-8         	    1519	    114343 ns/op	  154360 B/op	    1007 allocs/op
+BenchmarkCollectStatements_500Transactional-8         	    1518	    115896 ns/op	  154360 B/op	    1007 allocs/op
+BenchmarkCollectStatements_500Transactional-8         	    1551	    114841 ns/op	  154363 B/op	    1007 allocs/op
+BenchmarkCollectStatements_500Transactional-8         	    1506	    115451 ns/op	  154360 B/op	    1007 allocs/op
+BenchmarkCollectStatements_500Transactional-8         	    1519	    114612 ns/op	  154360 B/op	    1007 allocs/op
+BenchmarkExecuteTxBatch_SuccessPath_100Statements-8   	   21288	      8422 ns/op	   20919 B/op	     104 allocs/op
+BenchmarkExecuteTxBatch_SuccessPath_100Statements-8   	   21301	      8984 ns/op	   20919 B/op	     104 allocs/op
+BenchmarkExecuteTxBatch_SuccessPath_100Statements-8   	   21216	      8547 ns/op	   20919 B/op	     104 allocs/op
+BenchmarkExecuteTxBatch_SuccessPath_100Statements-8   	   21415	      8428 ns/op	   20919 B/op	     104 allocs/op
+BenchmarkExecuteTxBatch_SuccessPath_100Statements-8   	   21422	      8429 ns/op	   20919 B/op	     104 allocs/op
+BenchmarkExecuteTxBatch_FailurePath_100Statements-8   	    9428	     18560 ns/op	   43729 B/op	     220 allocs/op
+BenchmarkExecuteTxBatch_FailurePath_100Statements-8   	    9878	     18398 ns/op	   43729 B/op	     220 allocs/op
+BenchmarkExecuteTxBatch_FailurePath_100Statements-8   	    9817	     18602 ns/op	   43729 B/op	     220 allocs/op
+BenchmarkExecuteTxBatch_FailurePath_100Statements-8   	   10000	     18463 ns/op	   43729 B/op	     220 allocs/op
+BenchmarkExecuteTxBatch_FailurePath_100Statements-8   	    9490	     18425 ns/op	   43730 B/op	     220 allocs/op
+PASS
+ok  	reporting-db-migrations/internal/apply	5.081s

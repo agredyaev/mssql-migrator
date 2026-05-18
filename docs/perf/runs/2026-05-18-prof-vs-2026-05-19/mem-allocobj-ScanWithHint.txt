@@ -1,0 +1,10 @@
+File: fs-bench.test
+Type: alloc_objects
+Time: 2026-05-18 23:03:35 CEST
+Showing nodes accounting for 9588443, 99.54% of 9632503 total
+Dropped 53 nodes (cum <= 48162)
+      flat  flat%   sum%        cum   cum%
+   9588443 99.54% 99.54%    9588443 99.54%  reporting-db-migrations/internal/fs.benchCopyObjectForChecksumLoop (inline)
+         0     0% 99.54%    9614890 99.82%  reporting-db-migrations/internal/fs.BenchmarkObjectChecksumSharedBytesAfterScan.func1
+         0     0% 99.54%    9614890 99.82%  testing.(*B).launch
+         0     0% 99.54%    9626268 99.94%  testing.(*B).runN

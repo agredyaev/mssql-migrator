@@ -1,0 +1,17 @@
+goos: darwin
+goarch: arm64
+pkg: reporting-db-migrations/internal/engine
+cpu: Apple M2
+                                 │ docs/perf/runs/2026-05-17-profiling-round/baseline-BenchmarkDiffCompute_Create_2000Objects.txt │ docs/perf/runs/2026-05-17-profiling-round/baseline-POSTFIX-BenchmarkDiffCompute_Create_2000Objects.txt │
+                                 │                                             sec/op                                             │                                     sec/op                                      vs base                │
+DiffCompute_Create_2000Objects-8                                                                                      111.9µ ± 4%                                                                     188.6µ ± 32%  +68.51% (p=0.000 n=10)
+
+                                 │ docs/perf/runs/2026-05-17-profiling-round/baseline-BenchmarkDiffCompute_Create_2000Objects.txt │ docs/perf/runs/2026-05-17-profiling-round/baseline-POSTFIX-BenchmarkDiffCompute_Create_2000Objects.txt │
+                                 │                                              B/op                                              │                                        B/op                                         vs base            │
+DiffCompute_Create_2000Objects-8                                                                                     512.9Ki ± 0%                                                                         512.9Ki ± 0%  ~ (p=1.000 n=10) ¹
+¹ all samples are equal
+
+                                 │ docs/perf/runs/2026-05-17-profiling-round/baseline-BenchmarkDiffCompute_Create_2000Objects.txt │ docs/perf/runs/2026-05-17-profiling-round/baseline-POSTFIX-BenchmarkDiffCompute_Create_2000Objects.txt │
+                                 │                                           allocs/op                                            │                                     allocs/op                                       vs base            │
+DiffCompute_Create_2000Objects-8                                                                                       4.000 ± 0%                                                                           4.000 ± 0%  ~ (p=1.000 n=10) ¹
+¹ all samples are equal

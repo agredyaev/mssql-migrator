@@ -1,0 +1,32 @@
+File: apply.test
+Type: alloc_objects
+Time: 2026-05-18 22:16:11 CEST
+Showing nodes accounting for 121650, 100% of 121650 total
+Dropped 5 nodes (cum <= 608)
+Showing top 25 nodes out of 41
+      flat  flat%   sum%        cum   cum%
+     57573 47.33% 47.33%      68724 56.49%  reporting-db-migrations/internal/apply.(*Executor).collectStatements
+     32768 26.94% 74.26%      32768 26.94%  reporting-db-migrations/internal/types.NormalizedKey (inline)
+     16384 13.47% 87.73%      16384 13.47%  os.newFile
+      5450  4.48% 92.21%       5450  4.48%  runtime.mallocgc
+      3641  2.99% 95.20%       3641  2.99%  syscall.ByteSliceFromString
+      2521  2.07% 97.28%       2521  2.07%  os.statNolog
+      2049  1.68% 98.96%       2049  1.68%  os.readFileContents
+      1264  1.04%   100%      44955 36.95%  reporting-db-migrations/internal/apply.benchCollectStatementsFixture
+         0     0%   100%       9102  7.48%  os.Open (inline)
+         0     0%   100%      20025 16.46%  os.OpenFile
+         0     0%   100%      11151  9.17%  os.ReadFile
+         0     0%   100%       2521  2.07%  os.Stat
+         0     0%   100%      10923  8.98%  os.WriteFile
+         0     0%   100%       3641  2.99%  os.ignoringEINTR (inline)
+         0     0%   100%       3641  2.99%  os.open (inline)
+         0     0%   100%      20025 16.46%  os.openFileNolog
+         0     0%   100%       3641  2.99%  os.openFileNolog.func1 (inline)
+         0     0%   100%     116200 95.52%  reporting-db-migrations/internal/apply.BenchmarkCollectStatements_500Transactional
+         0     0%   100%      11151  9.17%  reporting-db-migrations/internal/fs.(*CachedFile).Content
+         0     0%   100%      11151  9.17%  reporting-db-migrations/internal/fs.(*CachedFile).Content.func1
+         0     0%   100%       4681  3.85%  runtime.acquireSudog
+         0     0%   100%        769  0.63%  runtime.allocm
+         0     0%   100%       4681  3.85%  runtime.gcBgMarkWorker
+         0     0%   100%       4681  3.85%  runtime.gcMarkDone
+         0     0%   100%        769  0.63%  runtime.newm
