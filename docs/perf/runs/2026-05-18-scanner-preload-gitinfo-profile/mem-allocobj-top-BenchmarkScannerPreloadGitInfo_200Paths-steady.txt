@@ -1,0 +1,52 @@
+File: fs-bench.test
+Type: alloc_objects
+Time: 2026-05-18 01:57:08 CEST
+Showing nodes accounting for 467352, 99.45% of 469917 total
+Dropped 31 nodes (cum <= 2349)
+Showing top 45 nodes out of 51
+      flat  flat%   sum%        cum   cum%
+    173029 36.82% 36.82%     173029 36.82%  reporting-db-migrations/internal/fs.freshGitBenchLayout
+    131919 28.07% 64.89%     264531 56.29%  reporting-db-migrations/internal/fs.(*Scanner).preloadGitInfo
+     65543 13.95% 78.84%      65543 13.95%  internal/bytealg.MakeNoZero
+     21845  4.65% 83.49%      21845  4.65%  os.(*Process).pidWait
+     21845  4.65% 88.14%      24302  5.17%  os/exec.(*Cmd).Start
+     21007  4.47% 92.61%      21007  4.47%  os.statNolog
+     10923  2.32% 94.93%      10923  2.32%  testing.(*B).ResetTimer
+      6554  1.39% 96.33%       6639  1.41%  reporting-db-migrations/internal/fs.makeGitBenchRepoWithTrackedViews
+      5461  1.16% 97.49%       5461  1.16%  os.joinPath (inline)
+      4937  1.05% 98.54%       4937  1.05%  runtime.mallocgc
+      3910  0.83% 99.37%       3910  0.83%  bytes.growSlice
+       379 0.081% 99.45%       4289  0.91%  io.copyBuffer
+         0     0% 99.45%       3910  0.83%  bytes.(*Buffer).ReadFrom
+         0     0% 99.45%       3910  0.83%  bytes.(*Buffer).grow
+         0     0% 99.45%       4289  0.91%  io.Copy (inline)
+         0     0% 99.45%      10923  2.32%  main.main
+         0     0% 99.45%       4289  0.91%  os.(*File).WriteTo
+         0     0% 99.45%      21845  4.65%  os.(*Process).Wait (inline)
+         0     0% 99.45%      21845  4.65%  os.(*Process).wait
+         0     0% 99.45%       5461  1.16%  os.MkdirTemp
+         0     0% 99.45%      21007  4.47%  os.Stat
+         0     0% 99.45%       4289  0.91%  os.genericWriteTo
+         0     0% 99.45%      46062  9.80%  os/exec.(*Cmd).Output
+         0     0% 99.45%      46147  9.82%  os/exec.(*Cmd).Run
+         0     0% 99.45%       4289  0.91%  os/exec.(*Cmd).Start.func2
+         0     0% 99.45%      21845  4.65%  os/exec.(*Cmd).Wait
+         0     0% 99.45%       4289  0.91%  os/exec.(*Cmd).writerDescriptor.func1
+         0     0% 99.45%      21007  4.47%  os/exec.Command
+         0     0% 99.45%      21007  4.47%  os/exec.LookPath (inline)
+         0     0% 99.45%      21007  4.47%  os/exec.findExecutable
+         0     0% 99.45%      21007  4.47%  os/exec.lookPath
+         0     0% 99.45%      65543 13.95%  path/filepath.Join (inline)
+         0     0% 99.45%      65543 13.95%  path/filepath.join
+         0     0% 99.45%     449660 95.69%  reporting-db-migrations/internal/fs.BenchmarkScannerPreloadGitInfo_200Paths
+         0     0% 99.45%       4681     1%  runtime.acquireSudog
+         0     0% 99.45%       4681     1%  runtime.gcBgMarkWorker
+         0     0% 99.45%       4681     1%  runtime.gcMarkDone
+         0     0% 99.45%      10923  2.32%  runtime.main
+         0     0% 99.45%       4937  1.05%  runtime.newobject
+         0     0% 99.45%       4681     1%  runtime.semacquire (inline)
+         0     0% 99.45%       4681     1%  runtime.semacquire1
+         0     0% 99.45%      65543 13.95%  strings.(*Builder).Grow
+         0     0% 99.45%      65543 13.95%  strings.(*Builder).grow
+         0     0% 99.45%      65543 13.95%  strings.Join
+         0     0% 99.45%     437232 93.04%  testing.(*B).launch
