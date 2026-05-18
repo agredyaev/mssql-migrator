@@ -144,8 +144,34 @@ func TestLoadChecksumsCachesUntilAuditWriteInvalidates(t *testing.T) {
 	if _, err := LoadChecksums(context.Background(), conn, []string{"k1"}); err != nil {
 		t.Fatalf("third LoadChecksums: %v", err)
 	}
-	if len(conn.queries) != 2 {
-		t.Fatalf("expected cache invalidation to force a new query, got %d", len(conn.queries))
+	if len(conn.queries) != 1 {
+		t.Fatalf("expected latest checksum cache to avoid a new query after invalidation, got %d", len(conn.queries))
+	}
+}
+
+func TestLoadChecksumsUsesLatestAuditWriteCache(t *testing.T) {
+	conn := &testutil.MockConn{}
+	b := bus.New()
+	NewSubscriber(b, conn)
+
+	b.Publish(context.Background(), types.EventObjectApplied, []*types.ObjectEvent{
+		{
+			ObjectRef:  types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectName: "t1"},
+			Checksum:   strings.Repeat("ab", 32),
+			RecordKind: "object",
+		},
+	})
+
+	before := conn.QueryCount.Load()
+	result, err := LoadChecksums(context.Background(), conn, []string{"r/tables/t1"})
+	if err != nil {
+		t.Fatalf("LoadChecksums: %v", err)
+	}
+	if got := conn.QueryCount.Load(); got != before {
+		t.Fatalf("expected LoadChecksums to avoid DB query via latest cache, got query count %d -> %d", before, got)
+	}
+	if len(result) != 1 {
+		t.Fatalf("expected 1 checksum from latest cache, got %d", len(result))
 	}
 }
 
@@ -184,9 +210,9 @@ func TestSubscriberOnObjectApplied_ExecutesSQL(t *testing.T) {
 }
 
 type checksumQueryConn struct {
-	queries      []checksumQuery
 	openJSONRows driver.Rows
 	fallbackRows driver.Rows
+	queries      []checksumQuery
 	failOpenJSON bool
 }
 
