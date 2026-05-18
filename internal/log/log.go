@@ -21,10 +21,18 @@ const (
 )
 
 type Logger struct {
-	writer io.Writer
-	level  Level
-	mu     sync.Mutex
-	json   bool
+	writer  io.Writer
+	level   Level
+	mu      sync.Mutex
+	json    bool
+	jsonEnc *json.Encoder
+}
+
+type jsonLogEntry struct {
+	Time    string `json:"time"`
+	Level   string `json:"level"`
+	Event   string `json:"event"`
+	Message string `json:"message"`
 }
 
 var levelRanks = map[Level]int{
@@ -63,18 +71,19 @@ func (l *Logger) write(level Level, event, message string) {
 	defer l.mu.Unlock()
 
 	if l.json {
-		entry := map[string]string{
-			"time":    time.Now().UTC().Format(time.RFC3339),
-			"level":   string(level),
-			"event":   event,
-			"message": message,
+		if l.jsonEnc == nil {
+			l.jsonEnc = json.NewEncoder(l.writer)
 		}
-		data, err := json.Marshal(entry)
-		if err != nil {
-			fmt.Fprintf(l.writer, `{"error":"marshal failed: %s"}`+"\n", err.Error())
+		entry := jsonLogEntry{
+			Time:    time.Now().UTC().Format(time.RFC3339),
+			Level:   string(level),
+			Event:   event,
+			Message: message,
+		}
+		if err := l.jsonEnc.Encode(&entry); err != nil {
+			fmt.Fprintf(l.writer, "{\"error\":\"marshal failed: %s\"}\n", err.Error())
 			return
 		}
-		fmt.Fprintln(l.writer, string(data))
 		return
 	}
 
