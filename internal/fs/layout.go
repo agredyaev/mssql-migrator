@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 )
 
 var layoutHashDigestsPool = sync.Pool{
@@ -27,6 +28,13 @@ type Layout struct {
 	Objects     []*Object
 	Transitions []*TransitionScript
 	Checks      []*CheckScript
+
+	// objectsByPath and transitionsByPath are derived from Objects / Transitions.
+	// Scanner.Scan ends with rebuildPathIndexes so Apply avoids rebuilding maps.
+	// If you mutate Objects or Transitions after the first index build, call
+	// RebuildPathIndexes before lookups.
+	objectsByPath     map[string]*Object
+	transitionsByPath map[string]*TransitionScript
 }
 
 type Schema struct {
@@ -42,6 +50,7 @@ type CachedFile struct {
 	checksumOnce sync.Once
 	gitOnce      sync.Once
 	checksumDone uint32
+	contentBytes []byte
 	content      string
 	checksum     [32]byte
 	gitHash      string
@@ -59,7 +68,14 @@ func (c *CachedFile) Content() (string, error) {
 			c.contentErr = err
 			return
 		}
-		c.content = string(data)
+		c.contentBytes = data
+		if len(data) == 0 {
+			c.content = ""
+			return
+		}
+		// Keep the os.ReadFile buffer on CachedFile so Content and Checksum can
+		// share the same bytes without a second full string copy.
+		c.content = unsafe.String(unsafe.SliceData(data), len(data))
 	})
 	return c.content, c.contentErr
 }
@@ -79,6 +95,13 @@ func (c *CachedFile) Checksum() ([32]byte, error) {
 
 func (c *CachedFile) IsChecksumCached() bool {
 	return atomic.LoadUint32(&c.checksumDone) == 1
+}
+
+func (c *CachedFile) preloadChecksum(sum [32]byte) {
+	c.checksumOnce.Do(func() {
+		c.checksum = sum
+		atomic.StoreUint32(&c.checksumDone, 1)
+	})
 }
 
 func (c *CachedFile) loadGitInfo() {
@@ -174,20 +197,43 @@ func (l *Layout) NormalizedKeys() []string {
 	return keys
 }
 
-func (l *Layout) ObjectsByPath() map[string]*Object {
-	m := make(map[string]*Object, len(l.Objects))
-	for _, obj := range l.Objects {
+func buildObjectsByPath(objs []*Object) map[string]*Object {
+	m := make(map[string]*Object, len(objs))
+	for _, obj := range objs {
 		m[obj.Path] = obj
 	}
 	return m
 }
 
-func (l *Layout) TransitionsByPath() map[string]*TransitionScript {
-	m := make(map[string]*TransitionScript, len(l.Transitions))
-	for _, ts := range l.Transitions {
+func buildTransitionsByPath(trans []*TransitionScript) map[string]*TransitionScript {
+	m := make(map[string]*TransitionScript, len(trans))
+	for _, ts := range trans {
 		m[ts.Path] = ts
 	}
 	return m
+}
+
+// RebuildPathIndexes refreshes path lookup maps from the current Objects and
+// Transitions slices. Scanner.Scan calls this after scanning; tests that append
+// to Objects or Transitions after Scan should call it before ObjectsByPath /
+// TransitionsByPath.
+func (l *Layout) RebuildPathIndexes() {
+	l.objectsByPath = buildObjectsByPath(l.Objects)
+	l.transitionsByPath = buildTransitionsByPath(l.Transitions)
+}
+
+func (l *Layout) ObjectsByPath() map[string]*Object {
+	if l.objectsByPath == nil {
+		l.objectsByPath = buildObjectsByPath(l.Objects)
+	}
+	return l.objectsByPath
+}
+
+func (l *Layout) TransitionsByPath() map[string]*TransitionScript {
+	if l.transitionsByPath == nil {
+		l.transitionsByPath = buildTransitionsByPath(l.Transitions)
+	}
+	return l.transitionsByPath
 }
 
 func (l *Layout) HasExecutableTransition() bool {
