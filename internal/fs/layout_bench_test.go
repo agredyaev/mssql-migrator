@@ -33,7 +33,7 @@ func benchLayoutForPathIndex(b *testing.B, n int) Layout {
 		name := fmt.Sprintf("v_%04d", i)
 		file := name + ".sql"
 		abs := filepath.Join(viewsDir, file)
-		if err := os.WriteFile(abs, []byte("CREATE VIEW r."+name+" AS SELECT 1 AS x;\n"), 0o644); err != nil {
+		if err := os.WriteFile(abs, []byte(fmt.Sprintf("CREATE VIEW r.%s AS SELECT 1 AS x;\n", name)), 0o644); err != nil {
 			b.Fatal(err)
 		}
 		rel := filepath.ToSlash(filepath.Join("db", "r", "views", file))
@@ -77,15 +77,15 @@ func benchMinimalScanObjectFixture(b *testing.B) (Layout, *Object) {
 
 func benchCopyObjectForChecksumLoop(template *Object) *Object {
 	return &Object{
-		Path:                 template.Path,
-		DatabaseName:         template.DatabaseName,
-		SchemaName:           template.SchemaName,
-		NormalizedSchemaName: template.NormalizedSchemaName,
-		Kind:                 template.Kind,
-		ObjectName:           template.ObjectName,
-		ParentName:           template.ParentName,
-		NormalizedKey:        template.NormalizedKey,
-		NoTransaction:        template.NoTransaction,
+		Path:                        template.Path,
+		DatabaseName:                template.DatabaseName,
+		SchemaName:                  template.SchemaName,
+		NormalizedSchemaName:        template.NormalizedSchemaName,
+		Kind:                        template.Kind,
+		ObjectName:                  template.ObjectName,
+		ParentName:                  template.ParentName,
+		NormalizedKey:               template.NormalizedKey,
+		NoTransaction:               template.NoTransaction,
 		objectStatForByteCache:      template.objectStatForByteCache,
 		objectStatForByteCacheValid: template.objectStatForByteCacheValid,
 		CachedFile: CachedFile{

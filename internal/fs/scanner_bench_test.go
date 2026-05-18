@@ -57,7 +57,7 @@ func BenchmarkScannerPreloadGitInfo_200Paths(b *testing.B) {
 // BenchmarkScannerPreloadGitInfo_200Paths_5kExtraGitFiles commits thousands of
 // unrelated paths so `git log --name-only` is large while the layout still
 // references only 200 views. Exercises the wanted-path filter in
-// `preloadGitInfo` (see `docs/perf/scanner-preload-gitinfo-plan.md`).
+// `preloadGitInfo` (see `docs/specs/internals/module-fs.md`).
 func BenchmarkScannerPreloadGitInfo_200Paths_5kExtraGitFiles(b *testing.B) {
 	dir := b.TempDir()
 	paths := makeGitBenchRepoWithTrackedViews(b, dir, 200)
@@ -101,12 +101,17 @@ func makeScanBenchmarkLayout(b *testing.B, dir string, tables, transitionsPerTab
 	}
 
 	transitionBody := strings.Repeat("ALTER TABLE t ADD c INT;\n", bodyLines)
-	scaffoldBody := TransitionScaffoldDirective + "\n" + transitionBody
+	var scb strings.Builder
+	scb.Grow(len(TransitionScaffoldDirective) + 1 + len(transitionBody))
+	scb.WriteString(TransitionScaffoldDirective)
+	scb.WriteByte('\n')
+	scb.WriteString(transitionBody)
+	scaffoldBody := scb.String()
 
 	for i := 0; i < tables; i++ {
 		tableName := fmt.Sprintf("table_%04d", i)
 		tableFile := filepath.Join(tablesDir, tableName+".sql")
-		if err := os.WriteFile(tableFile, []byte("CREATE TABLE "+tableName+" (id INT);\n"), 0o644); err != nil {
+		if err := os.WriteFile(tableFile, []byte(fmt.Sprintf("CREATE TABLE %s (id INT);\n", tableName)), 0o644); err != nil {
 			b.Fatal(err)
 		}
 
@@ -139,8 +144,14 @@ func makeChecksumBenchmarkFiles(b *testing.B, dir string, count, bodyLines int) 
 	paths := make([]string, 0, count)
 	for i := 0; i < count; i++ {
 		path := filepath.Join(objectsDir, fmt.Sprintf("view_%04d.sql", i))
-		sql := "CREATE OR ALTER VIEW reporting.view AS\n" + body + "SELECT 1 AS tail;\n"
-		if err := os.WriteFile(path, []byte(sql), 0o644); err != nil {
+		var sqlb strings.Builder
+		const head = "CREATE OR ALTER VIEW reporting.view AS\n"
+		const tail = "SELECT 1 AS tail;\n"
+		sqlb.Grow(len(head) + len(body) + len(tail))
+		sqlb.WriteString(head)
+		sqlb.WriteString(body)
+		sqlb.WriteString(tail)
+		if err := os.WriteFile(path, []byte(sqlb.String()), 0o644); err != nil {
 			b.Fatal(err)
 		}
 		paths = append(paths, path)
@@ -161,7 +172,7 @@ func makeChecksumBenchmarkLayout(paths []string) Layout {
 			NormalizedSchemaName: "reporting",
 			Kind:                 "views",
 			ObjectName:           name,
-			NormalizedKey:        "reporting/views/" + name,
+			NormalizedKey:        fmt.Sprintf("reporting/views/%s", name),
 			CachedFile:           CachedFile{AbsPath: path},
 		})
 	}
@@ -216,7 +227,7 @@ func freshGitBenchLayout(repoRoot string, absPaths []string) Layout {
 			SchemaName:    "sch",
 			Kind:          "views",
 			ObjectName:    name,
-			NormalizedKey: "sch/views/" + name,
+			NormalizedKey: fmt.Sprintf("sch/views/%s", name),
 			CachedFile:    CachedFile{AbsPath: abs, gitInfoFn: gitInfo},
 		})
 	}

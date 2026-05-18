@@ -84,7 +84,7 @@ func benchCollectStatementsFixture(b *testing.B, dir string, n int) (fs.Layout, 
 		name := fmt.Sprintf("t_%04d", i)
 		file := name + ".sql"
 		abs := filepath.Join(tablesDir, file)
-		sql := "CREATE TABLE r." + name + " (id INT);\n"
+		sql := fmt.Sprintf("CREATE TABLE r.%s (id INT);\n", name)
 		if err := os.WriteFile(abs, []byte(sql), 0o644); err != nil {
 			b.Fatal(err)
 		}

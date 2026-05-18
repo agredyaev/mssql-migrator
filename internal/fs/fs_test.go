@@ -2,6 +2,7 @@ package fs
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -528,8 +529,7 @@ func TestPreloadGitInfoCachesBatchedGitLogAcrossScans(t *testing.T) {
 		if gitRoot != root {
 			t.Fatalf("GitLog root = %q, want %q", gitRoot, root)
 		}
-		return []byte("COMMIT|abc123|Jane Doe|2026-01-02T15:04:05Z\n" +
-			"db/sch/views/monthly.sql\n"), nil
+		return []byte("COMMIT|abc123|Jane Doe|2026-01-02T15:04:05Z\ndb/sch/views/monthly.sql\n"), nil
 	}
 
 	layout1 := Layout{
@@ -581,8 +581,7 @@ func TestPreloadGitInfoInvalidatesCacheWhenRepoStateChanges(t *testing.T) {
 		if n > 1 {
 			hash = "def456"
 		}
-		return []byte("COMMIT|" + hash + "|Jane Doe|2026-01-02T15:04:05Z\n" +
-			"db/sch/views/monthly.sql\n"), nil
+		return []byte(fmt.Sprintf("COMMIT|%s|Jane Doe|2026-01-02T15:04:05Z\ndb/sch/views/monthly.sql\n", hash)), nil
 	}
 
 	layout1 := Layout{
@@ -972,8 +971,7 @@ func TestScanLayoutCacheInvalidatesOnGitRepoStateChange(t *testing.T) {
 		if n > 1 {
 			hash = "def456"
 		}
-		return []byte("COMMIT|" + hash + "|Jane Doe|2026-01-02T15:04:05Z\n" +
-			"db/sch/views/monthly.sql\n"), nil
+		return []byte(fmt.Sprintf("COMMIT|%s|Jane Doe|2026-01-02T15:04:05Z\ndb/sch/views/monthly.sql\n", hash)), nil
 	}
 
 	layout1, err := scanner.Scan(context.Background(), root)
