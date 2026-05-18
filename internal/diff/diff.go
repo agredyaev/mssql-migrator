@@ -179,12 +179,12 @@ func setGitInfo(obj *fs.Object, planned *types.PlannedObject) {
 
 type changeCtx struct {
 	obj              *fs.Object
-	dbObj            db.Object
 	plannedObj       *types.PlannedObject
 	plan             *types.MigrationPlan
 	state            *db.State
 	transitionsByKey map[string][]*fs.TransitionScript
 	checksums        map[string][32]byte
+	dbObj            db.Object
 }
 
 func appendBlocker(plan *types.MigrationPlan, msg string) {
@@ -213,7 +213,10 @@ func (c *Computer) handleChanged(ctx changeCtx) int {
 		return 0
 
 	case ctx.obj.Kind == "triggers" && ctx.obj.ParentName != "":
-		parentKey := types.NormalizedKey(ctx.obj.SchemaName, "tables", ctx.obj.ParentName)
+		parentKey := ctx.obj.ParentNormalizedKey
+		if parentKey == "" {
+			parentKey = types.NormalizedKey(ctx.obj.SchemaName, "tables", ctx.obj.ParentName)
+		}
 		if _, ok := ctx.state.Objects[parentKey]; !ok {
 			ctx.plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
 			ctx.plan.Blocked = true
