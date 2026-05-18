@@ -44,11 +44,23 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 
 	var transitionsByKey map[string][]*fs.TransitionScript
 	if len(layout.Transitions) > 0 {
-		transitionsByKey = make(map[string][]*fs.TransitionScript, len(layout.Transitions))
+		counts := make(map[string]int, len(layout.Transitions))
 		for _, ts := range layout.Transitions {
-			if !ts.Scaffold {
-				transitionsByKey[ts.NormalizedKey] = append(transitionsByKey[ts.NormalizedKey], ts)
+			if ts.Scaffold {
+				continue
 			}
+			counts[ts.NormalizedKey]++
+		}
+		transitionsByKey = make(map[string][]*fs.TransitionScript, len(counts))
+		for k, n := range counts {
+			transitionsByKey[k] = make([]*fs.TransitionScript, 0, n)
+		}
+		for _, ts := range layout.Transitions {
+			if ts.Scaffold {
+				continue
+			}
+			k := ts.NormalizedKey
+			transitionsByKey[k] = append(transitionsByKey[k], ts)
 		}
 	}
 
@@ -67,7 +79,6 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 	warmupIfNeeded(layout)
 
 	plan.Objects = make([]types.PlannedObject, 0, len(layout.Objects))
-	plan.Blockers = make([]string, 0, 8)
 	for _, obj := range layout.Objects {
 		dbObj, exists := state.Objects[obj.NormalizedKey]
 		plannedObj := types.PlannedObject{
@@ -82,14 +93,15 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 			Exists:       exists,
 		}
 
+		cs, err := obj.Checksum()
+		if err != nil {
+			return nil, fmt.Errorf("checksum %s: %w", obj.NormalizedKey, err)
+		}
+		plannedObj.Checksum = cs
+
 		switch {
 		case !exists:
 			plannedObj.PlannedAction = types.ActionCreateObject
-			cs, err := obj.Checksum()
-			if err != nil {
-				return nil, fmt.Errorf("checksum %s: %w", obj.NormalizedKey, err)
-			}
-			plannedObj.Checksum = cs
 			setGitInfo(obj, &plannedObj)
 			createCount++
 
@@ -97,32 +109,19 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 			prior, hasPrior := checksums[obj.NormalizedKey]
 			if !hasPrior || prior == ([32]byte{}) {
 				plannedObj.PlannedAction = types.ActionAdoptExisting
-				cs, err := obj.Checksum()
-				if err != nil {
-					return nil, fmt.Errorf("checksum %s: %w", obj.NormalizedKey, err)
-				}
-				plannedObj.Checksum = cs
 				setGitInfo(obj, &plannedObj)
 				adoptCount++
+			} else if cs != ([32]byte{}) && cs == prior {
+				plannedObj.PlannedAction = types.ActionSkipUnchanged
+				skipCount++
 			} else {
-				cs, err := obj.Checksum()
-				if err != nil {
-					return nil, fmt.Errorf("checksum %s: %w", obj.NormalizedKey, err)
-				}
-				if cs != ([32]byte{}) && cs == prior {
-					plannedObj.PlannedAction = types.ActionSkipUnchanged
-					plannedObj.Checksum = cs
-					skipCount++
-				} else {
-					changedCount++
-					plannedObj.Checksum = cs
-					setGitInfo(obj, &plannedObj)
-					blockedCount += c.handleChanged(changeCtx{
-						obj: obj, dbObj: dbObj, plannedObj: &plannedObj,
-						plan: plan, state: state,
-						transitionsByKey: transitionsByKey, checksums: checksums,
-					})
-				}
+				changedCount++
+				setGitInfo(obj, &plannedObj)
+				blockedCount += c.handleChanged(changeCtx{
+					obj: obj, dbObj: dbObj, plannedObj: &plannedObj,
+					plan: plan, state: state,
+					transitionsByKey: transitionsByKey, checksums: checksums,
+				})
 			}
 		}
 
@@ -188,6 +187,13 @@ type changeCtx struct {
 	checksums        map[string][32]byte
 }
 
+func appendBlocker(plan *types.MigrationPlan, msg string) {
+	if plan.Blockers == nil {
+		plan.Blockers = make([]string, 0, 8)
+	}
+	plan.Blockers = append(plan.Blockers, msg)
+}
+
 func (c *Computer) handleChanged(ctx changeCtx) int {
 	switch {
 	case ctx.obj.Kind == "tables":
@@ -195,13 +201,15 @@ func (c *Computer) handleChanged(ctx changeCtx) int {
 		if len(transitions) == 0 {
 			ctx.plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
 			ctx.plan.Blocked = true
-			ctx.plan.Blockers = append(ctx.plan.Blockers, "table "+ctx.obj.NormalizedKey+" changed but has no non-scaffold transition scripts")
+			appendBlocker(ctx.plan, "table "+ctx.obj.NormalizedKey+" changed but has no non-scaffold transition scripts")
 			return 1
 		}
 		ctx.plannedObj.PlannedAction = types.ActionReprocessChanged
-		for _, ts := range transitions {
-			ctx.plannedObj.TransitionPaths = append(ctx.plannedObj.TransitionPaths, ts.Path)
+		paths := make([]string, len(transitions))
+		for i, ts := range transitions {
+			paths[i] = ts.Path
 		}
+		ctx.plannedObj.TransitionPaths = paths
 		return 0
 
 	case ctx.obj.Kind == "triggers" && ctx.obj.ParentName != "":
@@ -209,13 +217,13 @@ func (c *Computer) handleChanged(ctx changeCtx) int {
 		if _, ok := ctx.state.Objects[parentKey]; !ok {
 			ctx.plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
 			ctx.plan.Blocked = true
-			ctx.plan.Blockers = append(ctx.plan.Blockers, "trigger "+ctx.obj.NormalizedKey+" parent table "+parentKey+" not found")
+			appendBlocker(ctx.plan, "trigger "+ctx.obj.NormalizedKey+" parent table "+parentKey+" not found")
 			return 1
 		}
 		if !priorDigestPresent(ctx.checksums, parentKey) {
 			ctx.plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
 			ctx.plan.Blocked = true
-			ctx.plan.Blockers = append(ctx.plan.Blockers, "trigger "+ctx.obj.NormalizedKey+" parent table "+parentKey+" is changing")
+			appendBlocker(ctx.plan, "trigger "+ctx.obj.NormalizedKey+" parent table "+parentKey+" is changing")
 			return 1
 		}
 		ctx.plannedObj.PlannedAction = types.ActionUpdateExistingModule
@@ -235,12 +243,12 @@ func (c *Computer) handleChanged(ctx changeCtx) int {
 // concurrently — but only when at least one object still has a cold checksum
 // cache (IsChecksumCached is false).
 //
-// After Scanner.Scan, preloadChecksums runs and fills checksumOnce for every
-// file, so IsChecksumCached() is typically true for all objects and this
-// returns immediately without spawning goroutines.
+// After Scanner.Scan, object checksums are often already warm from preload and
+// this returns immediately without spawning goroutines.
 //
-// Cold path: layouts built without going through Scanner (or before preload),
-// tests, or checksum errors — fan-out proceeds as before.
+// Cold path: layouts built without going through Scanner, tests, or checksum
+// errors — a small worker pool fans out Checksum/Git work
+// instead of spawning one goroutine per object (large alloc/scheduling savings).
 func warmupIfNeeded(layout fs.Layout) {
 	for _, obj := range layout.Objects {
 		if !obj.IsChecksumCached() {
@@ -251,20 +259,35 @@ func warmupIfNeeded(layout fs.Layout) {
 }
 
 func warmupAll(layout fs.Layout) {
+	n := len(layout.Objects)
+	if n == 0 {
+		return
+	}
+	workers := runtime.GOMAXPROCS(0)
+	if workers > n {
+		workers = n
+	}
+	if workers < 1 {
+		workers = 1
+	}
+
+	jobs := make(chan *fs.Object, workers)
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
-	for _, obj := range layout.Objects {
-		wg.Add(1)
-		obj := obj
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
 		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			_, _ = obj.Checksum()
-			_, _ = obj.GitHash()
-			_, _ = obj.GitAuthor()
-			_, _ = obj.GitDate()
+			for obj := range jobs {
+				_, _ = obj.Checksum()
+				_, _ = obj.GitHash()
+				_, _ = obj.GitAuthor()
+				_, _ = obj.GitDate()
+			}
 		}()
 	}
+	for _, obj := range layout.Objects {
+		jobs <- obj
+	}
+	close(jobs)
 	wg.Wait()
 }
