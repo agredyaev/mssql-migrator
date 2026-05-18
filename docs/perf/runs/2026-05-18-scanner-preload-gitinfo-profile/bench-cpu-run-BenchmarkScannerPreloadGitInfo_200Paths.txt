@@ -1,7 +1,0 @@
-goos: darwin
-goarch: arm64
-pkg: reporting-db-migrations/internal/fs
-cpu: Apple M2
-BenchmarkScannerPreloadGitInfo_200Paths-8   	       1	 712075541 ns/op	  373088 B/op	    2038 allocs/op
-PASS
-ok  	reporting-db-migrations/internal/fs	1.119s

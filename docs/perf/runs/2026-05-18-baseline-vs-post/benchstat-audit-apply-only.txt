@@ -1,3 +1,0 @@
-benchstat: parsing -filter: syntax error: expected key:value
-	/CollectStatements|ExecuteTxBatch/
-	^

@@ -1,7 +1,0 @@
-goos: darwin
-goarch: arm64
-pkg: reporting-db-migrations/internal/fs
-cpu: Apple M2
-BenchmarkLayoutRebuildPathIndexes_500Objects-8   	  150631	     23513 ns/op	   27456 B/op	       7 allocs/op
-PASS
-ok  	reporting-db-migrations/internal/fs	4.285s
