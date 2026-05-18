@@ -53,6 +53,33 @@ func (m *mockConn) QueryContext(ctx context.Context, query string, args ...any) 
 	return m.rows, nil
 }
 
+func (m *mockConn) QueryStringsContext(ctx context.Context, query string, args []string) (driver.Rows, error) {
+	m.querySQL = query
+	m.queryArgs = make([]any, len(args))
+	for i := range args {
+		m.queryArgs[i] = args[i]
+	}
+	if m.queryErr != nil {
+		return nil, m.queryErr
+	}
+	return m.rows, nil
+}
+
+func (m *mockConn) QueryStringSlicesContext(ctx context.Context, query string, args1 []string, args2 []string) (driver.Rows, error) {
+	m.querySQL = query
+	m.queryArgs = make([]any, 0, len(args1)+len(args2))
+	for i := range args1 {
+		m.queryArgs = append(m.queryArgs, args1[i])
+	}
+	for i := range args2 {
+		m.queryArgs = append(m.queryArgs, args2[i])
+	}
+	if m.queryErr != nil {
+		return nil, m.queryErr
+	}
+	return m.rows, nil
+}
+
 func (m *mockConn) ExecContext(ctx context.Context, query string, args ...any) (driver.Result, error) {
 	return nil, nil
 }
