@@ -107,6 +107,10 @@ When adding a new component, image, deploy path, or architecture decision, ensur
 - Generic durable document template: `docs/templates/document-template.md`
 - Generic NASA-style document rule: `docs/specs/nasa-document-spec.md`
 
+## Internal Go packages
+
+- Canonical specifications for `internal/*` packages: `docs/specs/internals/README.md` and the `module-*.md` files in the same directory.
+
 ## Change Synchronization Rule
 
 - Material changes to implementation paths must include at least one durable
