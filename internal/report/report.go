@@ -44,7 +44,7 @@ func (s *Subscriber) writeJSON(filename string, v any) {
 }
 
 func (s *Subscriber) onDiffComputed(_ context.Context, payload any) {
-	result, ok := payload.(*types.DiffResult)
+	result, ok := bus.ParseDiffResult(payload)
 	if !ok || result.Plan == nil {
 		return
 	}
@@ -52,7 +52,7 @@ func (s *Subscriber) onDiffComputed(_ context.Context, payload any) {
 }
 
 func (s *Subscriber) onRunFinished(_ context.Context, payload any) {
-	result, ok := payload.(*types.RunFinished)
+	result, ok := bus.ParseRunFinished(payload)
 	if !ok {
 		return
 	}
