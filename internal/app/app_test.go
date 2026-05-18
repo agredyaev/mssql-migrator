@@ -270,6 +270,20 @@ func TestBuildConfig_JSONFlag(t *testing.T) {
 	}
 }
 
+func TestBuildConfig_PlanRepairFromEnv(t *testing.T) {
+	env := map[string]string{
+		"RM_PLAN_FILE":     "/tmp/plan.json",
+		"RM_REPAIR_SCRIPT": "reporting/views/monthly.sql",
+	}
+	cfg := buildConfig(cliFlags{}, env, nil)
+	if cfg.PlanFile != "/tmp/plan.json" {
+		t.Errorf("PlanFile = %q, want /tmp/plan.json", cfg.PlanFile)
+	}
+	if cfg.RepairTarget != "reporting/views/monthly.sql" {
+		t.Errorf("RepairTarget = %q, want reporting/views/monthly.sql", cfg.RepairTarget)
+	}
+}
+
 func TestBuildConfig_BooleanEnvVars(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -351,17 +365,27 @@ func TestValidateConfig_MissingRequired(t *testing.T) {
 	}{
 		{
 			name:    "all present",
-			cfg:     types.Config{Server: "localhost", Database: "testdb"},
+			cfg:     types.Config{Server: "localhost", Database: "testdb", SQLRoot: "/sql", SQLBase: "dwh"},
 			wantErr: false,
 		},
 		{
 			name:    "missing server",
-			cfg:     types.Config{Database: "testdb"},
+			cfg:     types.Config{Database: "testdb", SQLRoot: "/sql", SQLBase: "dwh"},
 			wantErr: true,
 		},
 		{
 			name:    "missing database",
-			cfg:     types.Config{Server: "localhost"},
+			cfg:     types.Config{Server: "localhost", SQLRoot: "/sql", SQLBase: "dwh"},
+			wantErr: true,
+		},
+		{
+			name:    "missing sql root",
+			cfg:     types.Config{Server: "localhost", Database: "db", SQLBase: "dwh"},
+			wantErr: true,
+		},
+		{
+			name:    "missing sql base",
+			cfg:     types.Config{Server: "localhost", Database: "db", SQLRoot: "/sql"},
 			wantErr: true,
 		},
 		{
@@ -399,7 +423,12 @@ func TestRunWithLookup_UnknownCommand(t *testing.T) {
 }
 
 func TestRunWithLookup_MissingRequiredConfig(t *testing.T) {
-	code := runWithLookup([]string{"rmig", "plan"}, func(k string) (string, bool) {
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, ".env")
+	if err := os.WriteFile(envPath, []byte("# no RM_* keys\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	code := runWithLookup([]string{"rmig", "--env", envPath, "plan"}, func(k string) (string, bool) {
 		return "", false
 	}, nil)
 	if code != types.ExitConfigError {
@@ -456,6 +485,10 @@ func configField(cfg types.Config, key string) string {
 		return cfg.UpdatePolicy
 	case "RM_TRANSACTION_MODE":
 		return cfg.TransactionMode
+	case "RM_PLAN_FILE":
+		return cfg.PlanFile
+	case "RM_REPAIR_SCRIPT":
+		return cfg.RepairTarget
 	default:
 		return ""
 	}
