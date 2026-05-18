@@ -20,8 +20,8 @@ func BenchmarkChunkKeys_10k_2100(b *testing.B) {
 	}
 }
 
-// BenchmarkBuildDualINQuery_500x500 mirrors internal/db/inspector_bench_test.go
-// to track allocation shape of IN placeholder expansion without importing db.
+// BenchmarkBuildDualINQuery_500x500 tracks IN placeholder expansion for large
+// schema/object lists (same shape as inspector chunking).
 func BenchmarkBuildDualINQuery_500x500(b *testing.B) {
 	const tpl = "SELECT 1 WHERE s IN ({{schema_list}}) AND o IN ({{object_list}})"
 	sc := make([]string, 500)

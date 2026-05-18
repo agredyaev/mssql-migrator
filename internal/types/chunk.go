@@ -51,13 +51,29 @@ func placeholderListGrowEstimate(count int) int {
 }
 
 func BuildINQuery(template, placeholder string, keys []string, startIndex int) (string, []string) {
-	var b strings.Builder
-	if n := len(keys); n > 0 {
-		b.Grow(placeholderListGrowEstimate(n))
+	n := len(keys)
+	if n == 0 {
+		return strings.Replace(template, placeholder, "", -1), keys
 	}
-	appendINPlaceholderList(&b, startIndex, len(keys))
-	query := strings.Replace(template, placeholder, b.String(), -1)
-	return query, keys
+	if !strings.Contains(template, placeholder) {
+		return template, keys
+	}
+	var out strings.Builder
+	occ := strings.Count(template, placeholder)
+	out.Grow(len(template) + occ*(placeholderListGrowEstimate(n)-len(placeholder)))
+	pos := 0
+	for {
+		i := strings.Index(template[pos:], placeholder)
+		if i < 0 {
+			out.WriteString(template[pos:])
+			break
+		}
+		i += pos
+		out.WriteString(template[pos:i])
+		appendINPlaceholderList(&out, startIndex, n)
+		pos = i + len(placeholder)
+	}
+	return out.String(), keys
 }
 
 func buildDualINQueryFallback(template, placeholder1 string, keys1 []string, placeholder2 string, keys2 []string, startIndex int) string {
@@ -112,10 +128,10 @@ func buildDualINTemplatePlan(template, placeholder1, placeholder2 string) dualIN
 }
 
 type DualINTemplate struct {
+	plan            dualINTemplatePlan
 	templateLen     int
 	placeholder1Len int
 	placeholder2Len int
-	plan            dualINTemplatePlan
 }
 
 // CompileDualINTemplate parses a SQL template once so repeated calls can skip
