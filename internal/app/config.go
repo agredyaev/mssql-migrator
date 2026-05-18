@@ -60,6 +60,8 @@ func buildConfig(flags cliFlags, env map[string]string, lookup envLookupFn) type
 
 	cfg.SQLRoot = lookupStr("RM_SQL_ROOT")
 	cfg.SQLBase = lookupStr("RM_SQL_BASE")
+	cfg.PlanFile = lookupStr("RM_PLAN_FILE")
+	cfg.RepairTarget = lookupStr("RM_REPAIR_SCRIPT")
 	cfg.ReportDir = lookupStr("RM_REPORT_DIR")
 	cfg.LogLevel = lookupStr("RM_LOG_LEVEL")
 	cfg.Server = lookupStr("RM_DB_SERVER")
@@ -112,6 +114,12 @@ func validateConfig(cfg types.Config) error {
 	}
 	if cfg.Database == "" {
 		missing = append(missing, "RM_DB_DATABASE")
+	}
+	if cfg.SQLRoot == "" {
+		missing = append(missing, "RM_SQL_ROOT")
+	}
+	if cfg.SQLBase == "" {
+		missing = append(missing, "RM_SQL_BASE")
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("configuration error: missing required variables: %s", strings.Join(missing, ", "))
