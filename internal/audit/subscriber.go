@@ -47,42 +47,38 @@ func (s *Subscriber) onObjectApplied(ctx context.Context, payload any) {
 	if err := s.boot(ctx); err != nil {
 		return
 	}
-	switch ev := payload.(type) {
-	case *types.ObjectEvent:
-		s.insertHistoryBatch(ctx, []historyRecord{{ev: ev, event: "applied"}})
-	case []*types.ObjectEvent:
-		if len(ev) == 0 {
-			return
-		}
-		records := make([]historyRecord, len(ev))
-		for i := range ev {
-			records[i] = historyRecord{ev: ev[i], event: "applied"}
-		}
-		s.insertHistoryBatch(ctx, records)
-	default:
+	events, ok := bus.ParseObjectAppliedPayload(payload)
+	if !ok {
 		s.notifier.Notify("audit: unexpected payload type for EventObjectApplied")
+		return
 	}
+	if len(events) == 0 {
+		return
+	}
+	records := make([]historyRecord, len(events))
+	for i := range events {
+		records[i] = historyRecord{ev: events[i], event: "applied"}
+	}
+	s.insertHistoryBatch(ctx, records)
 }
 
 func (s *Subscriber) onObjectFailed(ctx context.Context, payload any) {
 	if err := s.boot(ctx); err != nil {
 		return
 	}
-	switch ev := payload.(type) {
-	case *types.FailureEvent:
-		s.insertHistoryBatch(ctx, []historyRecord{{ev: &ev.ObjectEvent, event: "failed", errText: ev.Error}})
-	case []*types.FailureEvent:
-		if len(ev) == 0 {
-			return
-		}
-		records := make([]historyRecord, len(ev))
-		for i := range ev {
-			records[i] = historyRecord{ev: &ev[i].ObjectEvent, event: "failed", errText: ev[i].Error}
-		}
-		s.insertHistoryBatch(ctx, records)
-	default:
+	failures, ok := bus.ParseObjectFailedPayload(payload)
+	if !ok {
 		s.notifier.Notify("audit: unexpected payload type for EventObjectFailed")
+		return
 	}
+	if len(failures) == 0 {
+		return
+	}
+	records := make([]historyRecord, len(failures))
+	for i := range failures {
+		records[i] = historyRecord{ev: &failures[i].ObjectEvent, event: "failed", errText: failures[i].Error}
+	}
+	s.insertHistoryBatch(ctx, records)
 }
 
 func (s *Subscriber) boot(ctx context.Context) error {

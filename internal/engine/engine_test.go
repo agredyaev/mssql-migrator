@@ -23,7 +23,11 @@ func TestPlan_PublishesEvents(t *testing.T) {
 	b.Subscribe(types.EventRunStarted, func(_ context.Context, p any) { events = append(events, types.EventRunStarted) })
 	b.Subscribe(types.EventDiffComputed, func(_ context.Context, p any) {
 		events = append(events, types.EventDiffComputed)
-		diffResult = p.(*types.DiffResult)
+		dr, ok := bus.ParseDiffResult(p)
+		if !ok {
+			t.Fatal("EventDiffComputed: expected *types.DiffResult")
+		}
+		diffResult = dr
 	})
 	b.Subscribe(types.EventRunFinished, func(_ context.Context, p any) { events = append(events, types.EventRunFinished) })
 
@@ -124,7 +128,10 @@ func TestPlan_ScanError_PublishesRunFinishedFailure(t *testing.T) {
 	b := bus.New()
 	var runFinished types.RunFinished
 	b.Subscribe(types.EventRunFinished, func(_ context.Context, p any) {
-		rf := p.(*types.RunFinished)
+		rf, ok := bus.ParseRunFinished(p)
+		if !ok {
+			t.Fatal("EventRunFinished: expected *types.RunFinished")
+		}
 		runFinished = *rf
 	})
 
@@ -158,7 +165,11 @@ func TestPlan_BlockedPlan_StillPublished(t *testing.T) {
 	b := bus.New()
 	var diffPayload *types.DiffResult
 	b.Subscribe(types.EventDiffComputed, func(_ context.Context, p any) {
-		diffPayload = p.(*types.DiffResult)
+		dr, ok := bus.ParseDiffResult(p)
+		if !ok {
+			t.Fatal("EventDiffComputed: expected *types.DiffResult")
+		}
+		diffPayload = dr
 	})
 
 	eng := &Engine{
@@ -307,7 +318,11 @@ func TestValidate_PublishesValidationEvents(t *testing.T) {
 	b.Subscribe(types.EventValidationStart, func(_ context.Context, p any) { events = append(events, types.EventValidationStart) })
 	b.Subscribe(types.EventValidationDone, func(_ context.Context, p any) {
 		events = append(events, types.EventValidationDone)
-		validationResult = p.(*types.ValidationResult)
+		vr, ok := bus.ParseValidationResult(p)
+		if !ok {
+			t.Fatal("EventValidationDone: expected *types.ValidationResult")
+		}
+		validationResult = vr
 	})
 	b.Subscribe(types.EventRunFinished, func(_ context.Context, p any) { events = append(events, types.EventRunFinished) })
 

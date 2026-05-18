@@ -257,9 +257,9 @@ func TestExecuteTxBatchPublishesAppliedBatch(t *testing.T) {
 	gotLen := 0
 	b.Subscribe(types.EventObjectApplied, func(_ context.Context, payload any) {
 		gotCalls++
-		events, ok := payload.([]*types.ObjectEvent)
+		events, ok := bus.ParseObjectAppliedPayload(payload)
 		if !ok {
-			t.Fatalf("payload type = %T, want []*types.ObjectEvent", payload)
+			t.Fatalf("payload type = %T, want *ObjectEvent or []*ObjectEvent", payload)
 		}
 		gotLen = len(events)
 	})
@@ -317,9 +317,9 @@ func TestExecuteNonTxPublishesAppliedBatch(t *testing.T) {
 	gotLen := 0
 	b.Subscribe(types.EventObjectApplied, func(_ context.Context, payload any) {
 		gotCalls++
-		events, ok := payload.([]*types.ObjectEvent)
+		events, ok := bus.ParseObjectAppliedPayload(payload)
 		if !ok {
-			t.Fatalf("payload type = %T, want []*types.ObjectEvent", payload)
+			t.Fatalf("payload type = %T, want *ObjectEvent or []*ObjectEvent", payload)
 		}
 		gotLen = len(events)
 	})

@@ -78,8 +78,8 @@ func TestDifferentEventsAreDeliveredIndependently(t *testing.T) {
 	startPayload := &types.RunStarted{Command: "migrate"}
 	b.Publish(context.Background(), types.EventRunStarted, startPayload)
 
-	if got, ok := finished.(*types.RunFinished); ok {
-		t.Errorf("finished subscriber received wrong payload: %v", got)
+	if _, ok := ParseRunFinished(finished); ok {
+		t.Errorf("finished subscriber received wrong payload: %v", finished)
 	}
 
 	finishPayload := &types.RunFinished{Command: "migrate", Result: "success"}
