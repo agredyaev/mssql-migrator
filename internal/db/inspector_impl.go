@@ -2,9 +2,10 @@ package db
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -41,23 +42,23 @@ var (
 )
 
 type cachedScope struct {
-	once  sync.Once
-	state *State
 	err   error
+	state *State
+	once  sync.Once
 }
 
 type inspector struct {
-	mu                sync.Mutex
-	cache             map[string]*cachedScope
-	openJSONProbeOnce sync.Once
-	openJSONEnabled   bool
 	openJSONProbeErr  error
+	cache             map[string]*cachedScope // keys: scopeKeySHA256Hex(canonical); "" for empty layout
+	openJSONProbeOnce sync.Once
+	mu                sync.Mutex
+	openJSONEnabled   bool
 }
 
 var sharedInspectorCache = struct {
-	mu         sync.Mutex
 	generation map[string]uint64
 	entries    map[string]*cachedScope
+	mu         sync.Mutex
 }{
 	generation: make(map[string]uint64),
 	entries:    make(map[string]*cachedScope),
@@ -70,14 +71,15 @@ func NewInspector() Inspector {
 }
 
 func (d *inspector) Inspect(ctx context.Context, conn driver.Conn, scope fs.Layout) (*State, error) {
-	scopeKey := scopeKey(scope)
-	cacheKey := sharedScopeCacheKey(conn, scopeKey)
+	canonical := scopeKey(scope)
+	slotKey := scopeKeySHA256Hex(canonical)
+	cacheKey := sharedScopeCacheKey(conn, slotKey)
 
 	d.mu.Lock()
-	cs, ok := d.cache[scopeKey]
+	cs, ok := d.cache[slotKey]
 	if !ok {
 		cs = sharedCachedScope(cacheKey)
-		d.cache[scopeKey] = cs
+		d.cache[slotKey] = cs
 	}
 	d.mu.Unlock()
 
@@ -89,7 +91,7 @@ func (d *inspector) Inspect(ctx context.Context, conn driver.Conn, scope fs.Layo
 }
 
 func InvalidateInspectorCache(conn driver.Conn) {
-	connKey := inspectorConnKey(conn)
+	connKey := driver.ConnStableKey(conn)
 	sharedInspectorCache.mu.Lock()
 	sharedInspectorCache.generation[connKey]++
 	sharedInspectorCache.mu.Unlock()
@@ -262,10 +264,7 @@ func (d *inspector) querySchemas(ctx context.Context, conn driver.Conn, schemaNa
 }
 
 func (d *inspector) querySchemasOpenJSON(ctx context.Context, conn driver.Conn, schemaNames []string) (map[string]struct{}, error) {
-	arg, err := marshalStringSliceJSON(schemaNames)
-	if err != nil {
-		return nil, err
-	}
+	arg := types.MarshalStringSliceJSON(schemaNames)
 	rows, err := conn.QueryStringsContext(ctx, schemaOpenJSONSQL, []string{arg})
 	if err != nil {
 		return nil, err
@@ -317,14 +316,8 @@ func (d *inspector) queryObjects(ctx context.Context, conn driver.Conn, schemaNa
 }
 
 func (d *inspector) queryObjectsOpenJSON(ctx context.Context, conn driver.Conn, schemaNames, objectNames []string) (map[string]Object, error) {
-	schemaArg, err := marshalStringSliceJSON(schemaNames)
-	if err != nil {
-		return nil, err
-	}
-	objectArg, err := marshalStringSliceJSON(objectNames)
-	if err != nil {
-		return nil, err
-	}
+	schemaArg := types.MarshalStringSliceJSON(schemaNames)
+	objectArg := types.MarshalStringSliceJSON(objectNames)
 	rows, err := conn.QueryStringsContext(ctx, objectOpenJSONSQL, []string{schemaArg, objectArg})
 	if err != nil {
 		return nil, err
@@ -387,14 +380,8 @@ func (d *inspector) queryColumns(ctx context.Context, conn driver.Conn, schemaNa
 }
 
 func (d *inspector) queryColumnsOpenJSON(ctx context.Context, conn driver.Conn, schemaNames, tableNames []string) (map[string][]TableColumn, error) {
-	schemaArg, err := marshalStringSliceJSON(schemaNames)
-	if err != nil {
-		return nil, err
-	}
-	tableArg, err := marshalStringSliceJSON(tableNames)
-	if err != nil {
-		return nil, err
-	}
+	schemaArg := types.MarshalStringSliceJSON(schemaNames)
+	tableArg := types.MarshalStringSliceJSON(tableNames)
 	rows, err := conn.QueryStringsContext(ctx, columnOpenJSONSQL, []string{schemaArg, tableArg})
 	if err != nil {
 		return nil, err
@@ -483,16 +470,16 @@ func scopeKey(scope fs.Layout) string {
 	}
 	parts := make([]scopePart, 0, n)
 	for _, s := range scope.Schemas {
-		parts = append(parts, scopePart{'s', s.NormalizedName})
+		parts = append(parts, scopePart{s: s.NormalizedName, kind: 's'})
 	}
 	for _, obj := range scope.Objects {
-		parts = append(parts, scopePart{'o', obj.NormalizedKey})
+		parts = append(parts, scopePart{s: obj.NormalizedKey, kind: 'o'})
 	}
 	for _, ts := range scope.Transitions {
-		parts = append(parts, scopePart{'t', ts.NormalizedKey})
+		parts = append(parts, scopePart{s: ts.NormalizedKey, kind: 't'})
 	}
 	for _, cs := range scope.Checks {
-		parts = append(parts, scopePart{'c', cs.Path})
+		parts = append(parts, scopePart{s: cs.Path, kind: 'c'})
 	}
 	sort.Slice(parts, func(i, j int) bool {
 		a, b := parts[i], parts[j]
@@ -524,6 +511,18 @@ func scopeKey(scope fs.Layout) string {
 	return b.String()
 }
 
+// scopeKeySHA256Hex is the Phase 3 inspector cache slot key: SHA-256 over the
+// UTF-8 bytes of the canonical scopeKey string, hex-encoded (64 ASCII chars).
+// Empty canonical maps to "" so an empty layout keeps the historical empty
+// cache slot key.
+func scopeKeySHA256Hex(canonical string) string {
+	if canonical == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(canonical))
+	return hex.EncodeToString(sum[:])
+}
+
 func sharedCachedScope(cacheKey string) *cachedScope {
 	sharedInspectorCache.mu.Lock()
 	defer sharedInspectorCache.mu.Unlock()
@@ -535,29 +534,18 @@ func sharedCachedScope(cacheKey string) *cachedScope {
 	return cs
 }
 
-func sharedScopeCacheKey(conn driver.Conn, scopeKey string) string {
-	connKey := inspectorConnKey(conn)
+func sharedScopeCacheKey(conn driver.Conn, scopeSlotKey string) string {
+	connKey := driver.ConnStableKey(conn)
 	sharedInspectorCache.mu.Lock()
 	generation := sharedInspectorCache.generation[connKey]
 	sharedInspectorCache.mu.Unlock()
-	return fmt.Sprintf("%s|g:%d|%s", connKey, generation, scopeKey)
-}
-
-func inspectorConnKey(conn driver.Conn) string {
-	v := reflect.ValueOf(conn)
-	if !v.IsValid() {
-		return "<nil>"
-	}
-	if v.Kind() == reflect.Pointer && !v.IsNil() {
-		return fmt.Sprintf("%T:%x", conn, v.Pointer())
-	}
-	return fmt.Sprintf("%T", conn)
+	return fmt.Sprintf("%s|g:%d|%s", connKey, generation, scopeSlotKey)
 }
 
 // scopePart is one scopeKey fragment: same lexical order as "kind:payload" string.
 type scopePart struct {
-	kind byte
 	s    string
+	kind byte
 }
 
 func buildDualINQueryText(template, placeholder1 string, keys1 []string, placeholder2 string, keys2 []string) string {
@@ -569,8 +557,4 @@ func buildDualINQueryText(template, placeholder1 string, keys1 []string, placeho
 	}
 	q, _ := types.BuildDualINQuery(template, placeholder1, keys1, placeholder2, keys2, 1)
 	return q
-}
-
-func marshalStringSliceJSON(values []string) (string, error) {
-	return types.MarshalStringSliceJSON(values), nil
 }
