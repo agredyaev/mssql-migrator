@@ -28,7 +28,7 @@ func TestEnsureTransitionFiles_NoBlockedTables(t *testing.T) {
 	}
 	columns := map[string][]db.TableColumn{}
 
-	created, err := s.EnsureTransitionFiles(context.Background(), types.Config{}, layout, plan, columns)
+	created, err := s.Ensure(context.Background(), types.Config{}, layout, plan, columns)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestEnsureTransitionFiles_BlockedTableCreatesScaffold(t *testing.T) {
 	}
 	cfg := types.Config{SQLBase: baseDir}
 
-	created, err := s.EnsureTransitionFiles(context.Background(), cfg, layout, plan, columns)
+	created, err := s.Ensure(context.Background(), cfg, layout, plan, columns)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -121,11 +121,11 @@ func TestEnsureTransitionFiles_Idempotent(t *testing.T) {
 	columns := map[string][]db.TableColumn{}
 	cfg := types.Config{SQLBase: baseDir}
 
-	created1, err := s.EnsureTransitionFiles(context.Background(), cfg, layout, plan, columns)
+	created1, err := s.Ensure(context.Background(), cfg, layout, plan, columns)
 	if err != nil {
 		t.Fatalf("first call error: %v", err)
 	}
-	created2, err := s.EnsureTransitionFiles(context.Background(), cfg, layout, plan, columns)
+	created2, err := s.Ensure(context.Background(), cfg, layout, plan, columns)
 	if err != nil {
 		t.Fatalf("second call error: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestEnsureTransitionFiles_ExistingRealTransitionSkips(t *testing.T) {
 	columns := map[string][]db.TableColumn{}
 	cfg := types.Config{SQLBase: baseDir}
 
-	created, err := s.EnsureTransitionFiles(context.Background(), cfg, layout, plan, columns)
+	created, err := s.Ensure(context.Background(), cfg, layout, plan, columns)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestEnsureTransitionFiles_AutoAddColumn(t *testing.T) {
 	}
 
 	cfg := types.Config{SQLBase: baseDir}
-	created, err := s.EnsureTransitionFiles(context.Background(), cfg, layout, plan, dbColumns)
+	created, err := s.Ensure(context.Background(), cfg, layout, plan, dbColumns)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -288,7 +288,7 @@ func TestEnsureTransitionFiles_AutoAddColumn_FallsBackToScaffoldOnDrop(t *testin
 	}
 
 	cfg := types.Config{SQLBase: baseDir}
-	created, err := s.EnsureTransitionFiles(context.Background(), cfg, layout, plan, dbColumns)
+	created, err := s.Ensure(context.Background(), cfg, layout, plan, dbColumns)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

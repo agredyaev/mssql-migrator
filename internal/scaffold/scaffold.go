@@ -21,10 +21,6 @@ func New() *Scaffolder {
 }
 
 func (s *Scaffolder) Ensure(ctx context.Context, cfg types.Config, layout fs.Layout, plan *types.MigrationPlan, columns map[string][]db.TableColumn) (bool, error) {
-	return s.EnsureTransitionFiles(ctx, cfg, layout, plan, columns)
-}
-
-func (s *Scaffolder) EnsureTransitionFiles(ctx context.Context, cfg types.Config, layout fs.Layout, plan *types.MigrationPlan, columns map[string][]db.TableColumn) (bool, error) {
 	baseDir := cfg.SQLBase
 	created := false
 	commit := s.GitShortHash()
