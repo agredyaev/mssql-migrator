@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"fmt"
-	"reflect"
 	"strings"
 	"sync"
 
@@ -31,17 +30,29 @@ var loadAllMigrationsSQL string
 var loadChecksumsOpenJSONSupport sync.Map
 
 var loadChecksumsCache = struct {
-	mu         sync.Mutex
 	generation map[string]uint64
 	entries    map[string]checksumsCacheEntry
+	mu         sync.Mutex
 }{
 	generation: make(map[string]uint64),
 	entries:    make(map[string]checksumsCacheEntry),
 }
 
+var loadChecksumsLatest = struct {
+	byConn map[string]map[string]latestChecksumEntry
+	mu     sync.Mutex
+}{
+	byConn: make(map[string]map[string]latestChecksumEntry),
+}
+
 type checksumsCacheEntry struct {
-	generation uint64
 	result     map[string][32]byte
+	generation uint64
+}
+
+type latestChecksumEntry struct {
+	sum   [32]byte
+	known bool
 }
 
 func EnsureTables(ctx context.Context, conn driver.Conn) error {
@@ -56,6 +67,9 @@ func LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[st
 	if len(keys) == 0 {
 		return map[string][32]byte{}, nil
 	}
+	if result, ok := lookupLatestChecksums(conn, keys); ok {
+		return result, nil
+	}
 	if cached, ok := lookupChecksumsCache(conn, keys); ok {
 		return cached, nil
 	}
@@ -63,6 +77,7 @@ func LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[st
 		result, err := loadChecksumsOpenJSON(ctx, conn, keys)
 		if err == nil {
 			storeChecksumsCache(conn, keys, result)
+			storeLatestChecksums(conn, keys, result)
 			return result, nil
 		}
 		if openJSONStateKnown(conn) {
@@ -98,6 +113,7 @@ func LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[st
 		rows.Close()
 	}
 	storeChecksumsCache(conn, keys, result)
+	storeLatestChecksums(conn, keys, result)
 	return result, nil
 }
 
@@ -127,38 +143,26 @@ func loadChecksumsOpenJSON(ctx context.Context, conn driver.Conn, keys []string)
 	return result, nil
 }
 
-func connSupportKey(conn driver.Conn) string {
-	v := reflect.ValueOf(conn)
-	if !v.IsValid() {
-		return "<nil>"
-	}
-	if v.Kind() == reflect.Pointer && !v.IsNil() {
-		return fmt.Sprintf("%T:%x", conn, v.Pointer())
-	}
-	return fmt.Sprintf("%T", conn)
-}
-
 func useOpenJSONForChecksums(conn driver.Conn) bool {
-	key := connSupportKey(conn)
+	key := driver.ConnStableKey(conn)
 	if v, ok := loadChecksumsOpenJSONSupport.Load(key); ok {
 		return v.(bool)
 	}
-	t := fmt.Sprintf("%T", conn)
-	return strings.Contains(strings.ToLower(t), "mssql")
+	return strings.Contains(driver.ConnTypeNameLower(conn), "mssql")
 }
 
 func openJSONStateKnown(conn driver.Conn) bool {
-	_, ok := loadChecksumsOpenJSONSupport.Load(connSupportKey(conn))
+	_, ok := loadChecksumsOpenJSONSupport.Load(driver.ConnStableKey(conn))
 	return ok
 }
 
 func setOpenJSONSupport(conn driver.Conn, enabled bool) {
-	loadChecksumsOpenJSONSupport.Store(connSupportKey(conn), enabled)
+	loadChecksumsOpenJSONSupport.Store(driver.ConnStableKey(conn), enabled)
 }
 
 func lookupChecksumsCache(conn driver.Conn, keys []string) (map[string][32]byte, bool) {
 	cacheKey := checksumsCacheKey(conn, keys)
-	connKey := connSupportKey(conn)
+	connKey := driver.ConnStableKey(conn)
 	loadChecksumsCache.mu.Lock()
 	defer loadChecksumsCache.mu.Unlock()
 	entry, ok := loadChecksumsCache.entries[cacheKey]
@@ -174,7 +178,7 @@ func lookupChecksumsCache(conn driver.Conn, keys []string) (map[string][32]byte,
 
 func storeChecksumsCache(conn driver.Conn, keys []string, result map[string][32]byte) {
 	cacheKey := checksumsCacheKey(conn, keys)
-	connKey := connSupportKey(conn)
+	connKey := driver.ConnStableKey(conn)
 	loadChecksumsCache.mu.Lock()
 	loadChecksumsCache.entries[cacheKey] = checksumsCacheEntry{
 		generation: loadChecksumsCache.generation[connKey],
@@ -184,7 +188,7 @@ func storeChecksumsCache(conn driver.Conn, keys []string, result map[string][32]
 }
 
 func bumpChecksumsCacheGeneration(conn driver.Conn) {
-	connKey := connSupportKey(conn)
+	connKey := driver.ConnStableKey(conn)
 	loadChecksumsCache.mu.Lock()
 	loadChecksumsCache.generation[connKey]++
 	loadChecksumsCache.mu.Unlock()
@@ -192,7 +196,7 @@ func bumpChecksumsCacheGeneration(conn driver.Conn) {
 
 func checksumsCacheKey(conn driver.Conn, keys []string) string {
 	var b strings.Builder
-	connKey := connSupportKey(conn)
+	connKey := driver.ConnStableKey(conn)
 	total := len(connKey)
 	for _, key := range keys {
 		total += 1 + len(key)
@@ -212,6 +216,66 @@ func cloneChecksumsMap(src map[string][32]byte) map[string][32]byte {
 		dst[k] = v
 	}
 	return dst
+}
+
+func lookupLatestChecksums(conn driver.Conn, keys []string) (map[string][32]byte, bool) {
+	connKey := driver.ConnStableKey(conn)
+	loadChecksumsLatest.mu.Lock()
+	entries, ok := loadChecksumsLatest.byConn[connKey]
+	loadChecksumsLatest.mu.Unlock()
+	if !ok {
+		return nil, false
+	}
+	result := make(map[string][32]byte, len(keys))
+	for _, key := range keys {
+		entry, ok := entries[key]
+		if !ok || !entry.known {
+			return nil, false
+		}
+		if entry.sum != ([32]byte{}) {
+			result[key] = entry.sum
+		}
+	}
+	return result, true
+}
+
+func storeLatestChecksums(conn driver.Conn, keys []string, result map[string][32]byte) {
+	connKey := driver.ConnStableKey(conn)
+	loadChecksumsLatest.mu.Lock()
+	entries := loadChecksumsLatest.byConn[connKey]
+	if entries == nil {
+		entries = make(map[string]latestChecksumEntry, len(keys))
+		loadChecksumsLatest.byConn[connKey] = entries
+	}
+	for _, key := range keys {
+		sum := result[key]
+		entries[key] = latestChecksumEntry{sum: sum, known: true}
+	}
+	loadChecksumsLatest.mu.Unlock()
+}
+
+func storeLatestChecksumsFromHistory(conn driver.Conn, records []historyRecord) {
+	connKey := driver.ConnStableKey(conn)
+	loadChecksumsLatest.mu.Lock()
+	entries := loadChecksumsLatest.byConn[connKey]
+	if entries == nil {
+		entries = make(map[string]latestChecksumEntry, len(records))
+		loadChecksumsLatest.byConn[connKey] = entries
+	}
+	for _, rec := range records {
+		if rec.ev == nil || rec.ev.RecordKind != "object" {
+			continue
+		}
+		if rec.event != "applied" && rec.event != "adopted" {
+			continue
+		}
+		sum, err := parseHistoryChecksum(rec.ev.NormalizedKey, rec.ev.Checksum)
+		if err != nil {
+			continue
+		}
+		entries[rec.ev.NormalizedKey] = latestChecksumEntry{sum: sum, known: true}
+	}
+	loadChecksumsLatest.mu.Unlock()
 }
 
 func parseHistoryChecksum(key, s string) ([32]byte, error) {

@@ -3,8 +3,6 @@ package audit
 import (
 	"context"
 	_ "embed"
-	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,9 +21,9 @@ var insertHistoryOpenJSONSQL string
 
 type Subscriber struct {
 	conn          driver.Conn
+	bootstrapErr  error
 	notifier      types.ErrorNotifier
 	bootstrapOnce sync.Once
-	bootstrapErr  error
 }
 
 var insertHistoryOpenJSONSupport sync.Map
@@ -134,6 +132,7 @@ func (s *Subscriber) insertHistoryBatch(ctx context.Context, records []historyRe
 			s.notifier.Notify("audit insert_history: " + err.Error())
 			continue
 		}
+		storeLatestChecksumsFromHistory(s.conn, chunk)
 		bumpChecksumsCacheGeneration(s.conn)
 	}
 }
@@ -145,6 +144,7 @@ func (s *Subscriber) insertHistoryBatchOpenJSON(ctx context.Context, records []h
 	}
 	_, err = s.conn.ExecContext(ctx, insertHistoryOpenJSONSQL, payload)
 	if err == nil {
+		storeLatestChecksumsFromHistory(s.conn, records)
 		setOpenJSONHistoryInsertSupport(s.conn, true)
 		return true, nil
 	}
@@ -257,34 +257,23 @@ func appendJSONStringField(dst []byte, key, value string, withComma bool) []byte
 }
 
 func useOpenJSONForHistoryInsert(conn driver.Conn) bool {
-	key := historyInsertConnKey(conn)
+	key := driver.ConnStableKey(conn)
 	if v, ok := insertHistoryOpenJSONSupport.Load(key); ok {
 		return v.(bool)
 	}
-	return strings.Contains(strings.ToLower(fmt.Sprintf("%T", conn)), "mssql")
+	return strings.Contains(driver.ConnTypeNameLower(conn), "mssql")
 }
 
 func setOpenJSONHistoryInsertSupport(conn driver.Conn, enabled bool) {
-	insertHistoryOpenJSONSupport.Store(historyInsertConnKey(conn), enabled)
+	insertHistoryOpenJSONSupport.Store(driver.ConnStableKey(conn), enabled)
 }
 
 func shouldFallbackOpenJSONHistoryInsert(conn driver.Conn, err error) bool {
-	if _, known := insertHistoryOpenJSONSupport.Load(historyInsertConnKey(conn)); known {
+	if _, known := insertHistoryOpenJSONSupport.Load(driver.ConnStableKey(conn)); known {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "openjson") || strings.Contains(msg, "compatibility level")
-}
-
-func historyInsertConnKey(conn driver.Conn) string {
-	v := reflect.ValueOf(conn)
-	if !v.IsValid() {
-		return "<nil>"
-	}
-	if v.Kind() == reflect.Pointer && !v.IsNil() {
-		return fmt.Sprintf("%T:%x", conn, v.Pointer())
-	}
-	return fmt.Sprintf("%T", conn)
 }
 
 var sqlDefaultDate = time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
