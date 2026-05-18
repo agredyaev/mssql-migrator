@@ -1,5 +1,7 @@
 # AGENT.md
 
+Lifecycle: `Current`.
+
 This repository uses checked-in docs as the source of truth.
 
 ## Core Rules
