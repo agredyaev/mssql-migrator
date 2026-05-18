@@ -1,7 +1,0 @@
-goos: darwin
-goarch: arm64
-pkg: reporting-db-migrations/internal/apply
-cpu: Apple M2
-BenchmarkExecuteTxBatch_FailurePath_100Statements-8   	   25038	     17814 ns/op	   43729 B/op	     220 allocs/op
-PASS
-ok  	reporting-db-migrations/internal/apply	0.803s

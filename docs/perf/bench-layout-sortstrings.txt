@@ -1,4 +1,0 @@
-# reporting-db-migrations/internal/diff
-internal/diff/diff.go:263:11: obj.IsChecksumCached undefined (type *"reporting-db-migrations/internal/fs".Object has no field or method IsChecksumCached)
-FAIL	reporting-db-migrations/internal/engine [build failed]
-FAIL

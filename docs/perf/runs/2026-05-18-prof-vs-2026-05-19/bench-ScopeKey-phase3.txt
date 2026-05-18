@@ -1,7 +1,0 @@
-goos: darwin
-goarch: arm64
-pkg: reporting-db-migrations/internal/db
-cpu: Apple M2
-BenchmarkScopeKeyPhase3SlotKey_2000Parts-8   	   17325	    143807 ns/op	  164064 B/op	       8 allocs/op
-PASS
-ok  	reporting-db-migrations/internal/db	4.201s
