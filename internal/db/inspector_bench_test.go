@@ -20,19 +20,14 @@ func BenchmarkScopeKey_2000Parts(b *testing.B) {
 	}
 }
 
-func BenchmarkBuildDualINQuery_500x500(b *testing.B) {
-	sc := make([]string, 500)
-	oc := make([]string, 500)
-	for i := range sc {
-		sc[i] = fmt.Sprintf("sch_%03d", i)
-	}
-	for i := range oc {
-		oc[i] = fmt.Sprintf("obj_%03d", i)
-	}
+// BenchmarkScopeKeyPhase3SlotKey_2000Parts measures canonical scopeKey plus
+// SHA-256 hex digest used as the per-inspector cache map key (Phase 3).
+func BenchmarkScopeKeyPhase3SlotKey_2000Parts(b *testing.B) {
+	layout := largeBenchLayout(1, 2000, 0, 0)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = buildDualINQueryText(objectSQL, "{{schema_list}}", sc, "{{object_list}}", oc)
+		_ = scopeKeySHA256Hex(scopeKey(layout))
 	}
 }
 

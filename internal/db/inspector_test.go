@@ -54,6 +54,56 @@ func TestScopeKeyGoldenMixed(t *testing.T) {
 	}
 }
 
+func TestScopeKeyGoldenWithAllPartKinds(t *testing.T) {
+	layout := fs.Layout{
+		Schemas: []fs.Schema{
+			{Name: "Z", NormalizedName: "z"},
+			{Name: "M", NormalizedName: "m"},
+		},
+		Objects: []*fs.Object{
+			{NormalizedKey: "b/obj"},
+		},
+		Transitions: []*fs.TransitionScript{
+			{NormalizedKey: "a/trans"},
+		},
+		Checks: []*fs.CheckScript{
+			{Path: "db/x/checks/a.sql"},
+		},
+	}
+	got := scopeKey(layout)
+	const want = "c:db/x/checks/a.sql|o:b/obj|s:m|s:z|t:a/trans"
+	if got != want {
+		t.Errorf("scopeKey = %q, want %q", got, want)
+	}
+}
+
+func TestScopeKeySHA256HexEmptyCanonical(t *testing.T) {
+	if got := scopeKeySHA256Hex(""); got != "" {
+		t.Errorf("scopeKeySHA256Hex(\"\") = %q, want empty", got)
+	}
+}
+
+func TestScopeKeySHA256HexGoldenVectors(t *testing.T) {
+	cases := []struct {
+		canonical string
+		wantHex   string
+	}{
+		{
+			"o:sch/views/x|s:a|s:b",
+			"307d4ee76fe11f0fa33fbbe496863d483900b6e3190c7eb70997fad37d66ba10",
+		},
+		{
+			"c:db/x/checks/a.sql|o:b/obj|s:m|s:z|t:a/trans",
+			"6d238d4bb6bebf01f258289560516771eb3f131ce0be5a0aee179110b7e066f9",
+		},
+	}
+	for _, tc := range cases {
+		if got := scopeKeySHA256Hex(tc.canonical); got != tc.wantHex {
+			t.Errorf("scopeKeySHA256Hex(%q) = %q, want %q", tc.canonical, got, tc.wantHex)
+		}
+	}
+}
+
 func TestInspectCachesResult(t *testing.T) {
 	insp := NewInspector()
 	conn := &testutil.MockConn{}
@@ -171,21 +221,6 @@ func TestInspectSharedCacheInvalidatesAfterGenerationBump(t *testing.T) {
 	}
 }
 
-func TestBuildDualINQuery(t *testing.T) {
-	q := buildDualINQueryText(
-		"SELECT * FROM t WHERE s IN ({{s}}) AND o IN ({{o}})",
-		"{{s}}", []string{"s1"},
-		"{{o}}", []string{"o1", "o2"},
-	)
-	if len(q) == 0 {
-		t.Error("query is empty")
-	}
-	const want = "SELECT * FROM t WHERE s IN (@p1) AND o IN (@p2, @p3)"
-	if q != want {
-		t.Errorf("query = %q, want %q", q, want)
-	}
-}
-
 func TestInspectUsesOpenJSONQueriesWhenSupported(t *testing.T) {
 	layout := openJSONTestLayout()
 	conn := &testutil.MockConn{
@@ -284,10 +319,7 @@ func TestMarshalStringSliceJSONRoundTripAwkwardIdentifiers(t *testing.T) {
 		`bracket]name`,
 		`space name`,
 	}
-	got, err := marshalStringSliceJSON(values)
-	if err != nil {
-		t.Fatalf("marshalStringSliceJSON: %v", err)
-	}
+	got := types.MarshalStringSliceJSON(values)
 	var roundTrip []string
 	if err := json.Unmarshal([]byte(got), &roundTrip); err != nil {
 		t.Fatalf("json.Unmarshal: %v", err)
