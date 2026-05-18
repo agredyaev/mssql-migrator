@@ -49,6 +49,22 @@ func TestPublishToEventWithNoSubscribers(t *testing.T) {
 	b.Publish(context.Background(), types.EventObjectApplied, &types.ObjectEvent{})
 }
 
+func TestHasHandlers(t *testing.T) {
+	b := New()
+	if b.HasHandlers(types.EventObjectApplied) {
+		t.Fatal("expected no handlers before Subscribe")
+	}
+	var got int
+	b.Subscribe(types.EventObjectApplied, func(context.Context, any) { got++ })
+	if !b.HasHandlers(types.EventObjectApplied) {
+		t.Fatal("expected handlers after Subscribe")
+	}
+	b.Publish(context.Background(), types.EventObjectApplied, &types.ObjectEvent{})
+	if got != 1 {
+		t.Fatalf("handler calls = %d, want 1", got)
+	}
+}
+
 func TestDifferentEventsAreDeliveredIndependently(t *testing.T) {
 	b := New()
 	var started, finished any
