@@ -16,8 +16,8 @@ type EventBus interface {
 }
 
 type Bus struct {
-	mu       sync.Mutex
 	handlers map[types.Event][]func(ctx context.Context, payload any)
+	mu       sync.Mutex
 }
 
 func New() *Bus {

@@ -21,10 +21,10 @@ const (
 )
 
 type Logger struct {
-	json   bool
-	level  Level
 	writer io.Writer
+	level  Level
 	mu     sync.Mutex
+	json   bool
 }
 
 var levelRanks = map[Level]int{

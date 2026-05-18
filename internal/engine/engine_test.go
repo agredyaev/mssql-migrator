@@ -77,8 +77,8 @@ func (s *stubConn) Ping(ctx context.Context) error { return nil }
 func (s *stubConn) Close() error                   { return nil }
 
 type stubScanner struct {
-	layout fs.Layout
 	err    error
+	layout fs.Layout
 }
 
 func (s stubScanner) Scan(ctx context.Context, root string) (fs.Layout, error) {
@@ -190,8 +190,8 @@ func TestPlan_BlockedPlan_StillPublished(t *testing.T) {
 }
 
 type stubScaffolder struct {
-	ensured bool
 	err     error
+	ensured bool
 }
 
 func (s *stubScaffolder) Ensure(ctx context.Context, cfg types.Config, layout fs.Layout, plan *types.MigrationPlan, columns map[string][]db.TableColumn) (bool, error) {
@@ -200,9 +200,9 @@ func (s *stubScaffolder) Ensure(ctx context.Context, cfg types.Config, layout fs
 }
 
 type stubApplier struct {
-	executed bool
-	result   *apply.ApplyResult
 	err      error
+	result   *apply.ApplyResult
+	executed bool
 }
 
 func (s *stubApplier) Execute(ctx context.Context, conn driver.Conn, plan types.MigrationPlan, layout fs.Layout, eb bus.EventBus) (*apply.ApplyResult, error) {
@@ -214,9 +214,9 @@ func (s *stubApplier) Execute(ctx context.Context, conn driver.Conn, plan types.
 }
 
 type stubLocker struct {
+	err      error
 	acquired bool
 	released bool
-	err      error
 }
 
 func (s *stubLocker) Acquire(ctx context.Context, conn driver.Conn, timeout time.Duration) error {
@@ -346,11 +346,11 @@ func TestValidate_PublishesValidationEvents(t *testing.T) {
 
 func TestLockedCommands_Success(t *testing.T) {
 	tests := []struct {
-		name string
 		run  func(*Engine, context.Context) error
+		name string
 	}{
-		{"baseline", (*Engine).Baseline},
-		{"repair", (*Engine).RepairChecksum},
+		{name: "baseline", run: (*Engine).Baseline},
+		{name: "repair", run: (*Engine).RepairChecksum},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

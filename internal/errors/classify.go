@@ -38,9 +38,9 @@ func Classify(base error, cause error) string {
 }
 
 type classifyRule struct {
+	result     string
 	sentinels  []error
 	substrings []string
-	result     string
 	exitCode   int
 }
 

@@ -5,20 +5,20 @@ import "encoding/json"
 // plannedObjectWire matches the historical JSON shape of PlannedObject when Git
 // metadata was embedded (flat GitHash / GitAuthor / GitDate next to ObjectRef).
 type plannedObjectWire struct {
+	MetadataMatch *bool
 	ObjectRef
-	TransitionPaths []string
-	DatabaseName    string
-	ParentName      string
-	Checksum        [32]byte
-	PlannedAction   string
 	TransactionMode string
+	ParentName      string
+	PlannedAction   string
+	DatabaseName    string
 	RollbackScope   string
-	MetadataMatch   *bool
-	Exists          bool
-	NoTransaction   bool
 	GitHash         string
 	GitAuthor       string
 	GitDate         string
+	TransitionPaths []string
+	Checksum        [32]byte
+	Exists          bool
+	NoTransaction   bool
 }
 
 // MarshalJSON preserves the flat git field layout used by .plan.json consumers.

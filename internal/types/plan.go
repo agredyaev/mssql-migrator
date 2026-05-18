@@ -26,29 +26,25 @@ type PlannedSchema struct {
 }
 
 type PlannedObject struct {
+	Git           *GitInfo `json:"-"`
+	MetadataMatch *bool
 	ObjectRef
-	// Git is set only when at least one git field was resolved; nil on skip-heavy paths
-	// saves three string headers per object in the plan slice.
-	Git *GitInfo `json:"-"`
-
-	TransitionPaths []string
 	DatabaseName    string
 	ParentName      string
-	Checksum        [32]byte
 	PlannedAction   string
 	TransactionMode string
 	RollbackScope   string
-
-	MetadataMatch *bool
-	Exists        bool
-	NoTransaction bool
+	TransitionPaths []string
+	Checksum        [32]byte
+	Exists          bool
+	NoTransaction   bool
 }
 
 type MigrationPlan struct {
 	PlannedAt         time.Time
-	SchemaVersion     string
-	Command           string
-	Tool              string
+	Target            PlanTarget
+	ComparisonMode    string
+	UpdatePolicy      string
 	ToolVersion       string
 	ToolCommit        string
 	GitCommit         string
@@ -56,17 +52,17 @@ type MigrationPlan struct {
 	SQLRoot           string
 	Base              string
 	EffectiveBasePath string
-	LayoutHash        string
-	ComparisonMode    string
-	UpdatePolicy      string
 	TransactionMode   string
+	Tool              string
+	Command           string
+	LayoutHash        string
 	Rollback          string
-	Target            PlanTarget
-	Summary           PlanSummary
+	SchemaVersion     string
 	Schemas           []PlannedSchema
 	Objects           []PlannedObject
 	Failures          []string
 	Blockers          []string
 	BlockReasons      []string
+	Summary           PlanSummary
 	Blocked           bool
 }

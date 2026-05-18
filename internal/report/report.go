@@ -13,8 +13,8 @@ import (
 
 type Subscriber struct {
 	bus      bus.EventBus
-	baseDir  string
 	notifier types.ErrorNotifier
+	baseDir  string
 }
 
 func NewSubscriber(b bus.EventBus, cfg types.Config) *Subscriber {

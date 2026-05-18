@@ -38,10 +38,10 @@ func (m *mockRows) Err() error   { return nil }
 func (m *mockRows) Close() error { return nil }
 
 type mockConn struct {
+	queryErr  error
+	rows      *mockRows
 	querySQL  string
 	queryArgs []any
-	rows      *mockRows
-	queryErr  error
 }
 
 func (m *mockConn) QueryContext(ctx context.Context, query string, args ...any) (driver.Rows, error) {

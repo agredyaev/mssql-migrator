@@ -21,20 +21,19 @@ type BootstrapChecker interface {
 }
 
 type Engine struct {
-	cfg      types.Config
-	bus      bus.EventBus
-	conn     driver.Conn
-	fs       Scanner
-	db       Inspector
-	load     Loader
-	diff     Computer
-	scaffold Scaffolder
-	applier  Applier
-	locker   lock.Locker
-
-	bootstrapOnce sync.Once
+	diff          Computer
+	bus           bus.EventBus
+	conn          driver.Conn
+	fs            Scanner
+	db            Inspector
+	load          Loader
+	scaffold      Scaffolder
+	applier       Applier
+	locker        lock.Locker
 	bootstrapErr  error
 	bc            BootstrapChecker
+	cfg           types.Config
+	bootstrapOnce sync.Once
 }
 
 type Scanner interface {
