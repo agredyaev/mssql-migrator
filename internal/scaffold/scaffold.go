@@ -106,10 +106,10 @@ func defaultGitShortHash() string {
 func scaffoldContent(schemaName, tableName string, columns []db.TableColumn) string {
 	var b strings.Builder
 	b.WriteString("-- rmig: transition-scaffold\n")
-	b.WriteString(fmt.Sprintf("-- Table: [%s].[%s]\n", schemaName, tableName))
+	fmt.Fprintf(&b, "-- Table: [%s].[%s]\n", schemaName, tableName)
 	b.WriteString("-- Replace this scaffold with the actual migration SQL.\n")
-	b.WriteString(fmt.Sprintf("-- Schema: %s\n", schemaName))
-	b.WriteString(fmt.Sprintf("-- Table: %s\n", tableName))
+	fmt.Fprintf(&b, "-- Schema: %s\n", schemaName)
+	fmt.Fprintf(&b, "-- Table: %s\n", tableName)
 	b.WriteString("-- Press Ctrl+C to stop migration.\n")
 	if len(columns) > 0 {
 		b.WriteString("-- Detected columns:\n")
@@ -120,7 +120,7 @@ func scaffoldContent(schemaName, tableName string, columns []db.TableColumn) str
 			} else {
 				nullable = " NOT NULL"
 			}
-			b.WriteString(fmt.Sprintf("--   %s %s%s\n", col.Name, col.TypeName, nullable))
+			fmt.Fprintf(&b, "--   %s %s%s\n", col.Name, col.TypeName, nullable)
 		}
 	}
 	return b.String()

@@ -2,6 +2,7 @@ package errors
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"reporting-db-migrations/internal/types"
@@ -165,7 +166,7 @@ func messageFor(base error, cause error) string {
 	}
 	message := base.Error()
 	if cause != nil {
-		message += ": " + cause.Error()
+		return fmt.Sprintf("%s: %s", message, cause.Error())
 	}
 	return message
 }

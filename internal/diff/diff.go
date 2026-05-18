@@ -201,7 +201,7 @@ func (c *Computer) handleChanged(ctx changeCtx) int {
 		if len(transitions) == 0 {
 			ctx.plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
 			ctx.plan.Blocked = true
-			appendBlocker(ctx.plan, "table "+ctx.obj.NormalizedKey+" changed but has no non-scaffold transition scripts")
+			appendBlocker(ctx.plan, fmt.Sprintf("table %s changed but has no non-scaffold transition scripts", ctx.obj.NormalizedKey))
 			return 1
 		}
 		ctx.plannedObj.PlannedAction = types.ActionReprocessChanged
@@ -220,13 +220,13 @@ func (c *Computer) handleChanged(ctx changeCtx) int {
 		if _, ok := ctx.state.Objects[parentKey]; !ok {
 			ctx.plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
 			ctx.plan.Blocked = true
-			appendBlocker(ctx.plan, "trigger "+ctx.obj.NormalizedKey+" parent table "+parentKey+" not found")
+			appendBlocker(ctx.plan, fmt.Sprintf("trigger %s parent table %s not found", ctx.obj.NormalizedKey, parentKey))
 			return 1
 		}
 		if !priorDigestPresent(ctx.checksums, parentKey) {
 			ctx.plannedObj.PlannedAction = types.ActionReprocessChangedBlocked
 			ctx.plan.Blocked = true
-			appendBlocker(ctx.plan, "trigger "+ctx.obj.NormalizedKey+" parent table "+parentKey+" is changing")
+			appendBlocker(ctx.plan, fmt.Sprintf("trigger %s parent table %s is changing", ctx.obj.NormalizedKey, parentKey))
 			return 1
 		}
 		ctx.plannedObj.PlannedAction = types.ActionUpdateExistingModule
