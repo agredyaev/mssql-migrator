@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,11 +31,25 @@ type Layout struct {
 	Checks      []*CheckScript
 
 	// objectsByPath and transitionsByPath are derived from Objects / Transitions.
-	// Scanner.Scan ends with rebuildPathIndexes so Apply avoids rebuilding maps.
+	// Scanner.Scan ends with RebuildPathIndexes so Apply avoids rebuilding maps.
 	// If you mutate Objects or Transitions after the first index build, call
 	// RebuildPathIndexes before lookups.
 	objectsByPath     map[string]*Object
 	transitionsByPath map[string]*TransitionScript
+
+	// retainObjectOrder and nonObjectOrder are permutations sorted by AbsPath
+	// (RebuildPathIndexes). They partition SQL files into objects (checksum may
+	// retain raw bytes for Content) vs transitions/checks (checksum-only by
+	// default) without duplicating path strings. Policy is enforced in code via
+	// (*Object).Checksum vs (*CachedFile).Checksum.
+	retainObjectOrder []int
+	nonObjectOrder    []layoutNonObjectSlot
+}
+
+// layoutNonObjectSlot indexes either Transitions or Checks for sorted-path metadata.
+type layoutNonObjectSlot struct {
+	transition bool // true = Transitions[i], false = Checks[i]
+	i          int
 }
 
 type Schema struct {
@@ -44,53 +59,126 @@ type Schema struct {
 }
 
 type CachedFile struct {
-	AbsPath      string
+	contentErr   error
+	gitErr       error
+	checksumErr  error
 	gitInfoFn    func(string) (string, string, string, error)
-	contentOnce  sync.Once
-	checksumOnce sync.Once
-	gitOnce      sync.Once
-	checksumDone uint32
-	contentBytes []byte
+	gitDate      string
 	content      string
-	checksum     [32]byte
 	gitHash      string
 	gitAuthor    string
-	gitDate      string
-	contentErr   error
-	checksumErr  error
-	gitErr       error
+	AbsPath      string
+	contentBytes []byte
+	gitOnce      sync.Once
+	checksumOnce sync.Once
+	contentOnce  sync.Once
+	contentDone  uint32
+	checksumDone uint32
+	checksum     [32]byte
 }
 
 func (c *CachedFile) Content() (string, error) {
 	c.contentOnce.Do(func() {
+		if c.contentBytes != nil {
+			if len(c.contentBytes) == 0 {
+				c.content = ""
+			} else {
+				c.content = unsafe.String(unsafe.SliceData(c.contentBytes), len(c.contentBytes))
+			}
+			atomic.StoreUint32(&c.contentDone, 1)
+			return
+		}
 		data, err := os.ReadFile(c.AbsPath)
 		if err != nil {
 			c.contentErr = err
+			atomic.StoreUint32(&c.contentDone, 1)
 			return
 		}
 		c.contentBytes = data
 		if len(data) == 0 {
 			c.content = ""
+			atomic.StoreUint32(&c.contentDone, 1)
 			return
 		}
 		// Keep the os.ReadFile buffer on CachedFile so Content and Checksum can
 		// share the same bytes without a second full string copy.
 		c.content = unsafe.String(unsafe.SliceData(data), len(data))
+		atomic.StoreUint32(&c.contentDone, 1)
 	})
 	return c.content, c.contentErr
 }
 
 func (c *CachedFile) Checksum() ([32]byte, error) {
+	return checksumOnceForFile(c, false, nil)
+}
+
+func (o *Object) Checksum() ([32]byte, error) {
+	var hint *scanPathState
+	if o.objectStatForByteCacheValid {
+		hint = &o.objectStatForByteCache
+	}
+	return checksumOnceForFile(&o.CachedFile, true, hint)
+}
+
+func checksumOnceForFile(c *CachedFile, retainContentBytes bool, objectStatHint *scanPathState) ([32]byte, error) {
 	c.checksumOnce.Do(func() {
-		content, err := c.Content()
+		if atomic.LoadUint32(&c.contentDone) == 1 {
+			if c.contentErr != nil {
+				c.checksumErr = c.contentErr
+				return
+			}
+			if c.contentBytes != nil {
+				c.checksum = NormalizeAndHashBytes(c.contentBytes)
+				atomic.StoreUint32(&c.checksumDone, 1)
+				return
+			}
+		}
+		if retainContentBytes {
+			if data, ok := lookupSharedObjectBytes(c.AbsPath, objectStatHint); ok {
+				c.contentBytes = data
+				c.checksum = NormalizeAndHashBytes(data)
+				atomic.StoreUint32(&c.checksumDone, 1)
+				return
+			}
+		}
+		if retainContentBytes {
+			data, st, err := readFileBytesAndStat(c.AbsPath)
+			if err != nil {
+				c.checksumErr = err
+				return
+			}
+			c.contentBytes = data
+			storeSharedObjectBytesWithStat(c.AbsPath, data, st)
+			c.checksum = NormalizeAndHashBytes(data)
+			atomic.StoreUint32(&c.checksumDone, 1)
+			return
+		}
+		data, err := os.ReadFile(c.AbsPath)
 		if err != nil {
 			c.checksumErr = err
 			return
 		}
-		c.checksum = NormalizeAndHash(content)
+		c.checksum = NormalizeAndHashBytes(data)
 		atomic.StoreUint32(&c.checksumDone, 1)
 	})
 	return c.checksum, c.checksumErr
+}
+
+func readFileBytesAndStat(path string) ([]byte, scanPathState, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, scanPathState{}, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, scanPathState{}, err
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, scanPathState{}, err
+	}
+	return data, scanPathState{size: info.Size(), modTime: info.ModTime().UnixNano()}, nil
 }
 
 func (c *CachedFile) IsChecksumCached() bool {
@@ -138,8 +226,6 @@ func (c *CachedFile) GitDate() (string, error) {
 }
 
 type Object struct {
-	CachedFile
-
 	Path                 string
 	DatabaseName         string
 	SchemaName           string
@@ -147,13 +233,18 @@ type Object struct {
 	Kind                 string
 	ObjectName           string
 	ParentName           string
-	NormalizedKey        string
-	NoTransaction        bool
+	// ParentNormalizedKey is types.NormalizedKey(SchemaName, "tables", ParentName)
+	// when Kind=="triggers" and ParentName is non-empty; set in Scanner.newObject.
+	// Empty when not applicable. Used to avoid recomputing the parent map key in diff.
+	ParentNormalizedKey string
+	NormalizedKey       string
+	CachedFile
+	objectStatForByteCache      scanPathState
+	NoTransaction               bool
+	objectStatForByteCacheValid bool
 }
 
 type TransitionScript struct {
-	CachedFile
-
 	Path          string
 	DatabaseName  string
 	SchemaName    string
@@ -162,17 +253,17 @@ type TransitionScript struct {
 	Ordinal       string
 	Commit        string
 	Slug          string
+	CachedFile
 	NoTransaction bool
 	Scaffold      bool
 }
 
 type CheckScript struct {
+	Path         string
+	DatabaseName string
+	SchemaName   string
+	Name         string
 	CachedFile
-
-	Path          string
-	DatabaseName  string
-	SchemaName    string
-	Name          string
 	NoTransaction bool
 }
 
@@ -181,6 +272,21 @@ func NormalizeAndHash(input string) [32]byte {
 	b := (*bufPtr)[:0]
 
 	b = normalizeSQLBytes(input, b)
+	sum := sha256.Sum256(b)
+
+	*bufPtr = b
+	normalizePool.Put(bufPtr)
+
+	return sum
+}
+
+func NormalizeAndHashBytes(input []byte) [32]byte {
+	bufPtr := normalizePool.Get().(*[]byte)
+	b := (*bufPtr)[:0]
+
+	if len(input) > 0 {
+		b = normalizeSQLBytes(unsafe.String(unsafe.SliceData(input), len(input)), b)
+	}
 	sum := sha256.Sum256(b)
 
 	*bufPtr = b
@@ -220,6 +326,49 @@ func buildTransitionsByPath(trans []*TransitionScript) map[string]*TransitionScr
 func (l *Layout) RebuildPathIndexes() {
 	l.objectsByPath = buildObjectsByPath(l.Objects)
 	l.transitionsByPath = buildTransitionsByPath(l.Transitions)
+	l.rebuildContentRetainPathLists()
+}
+
+func (l *Layout) rebuildContentRetainPathLists() {
+	l.retainObjectOrder = l.retainObjectOrder[:0]
+	if cap(l.retainObjectOrder) < len(l.Objects) {
+		l.retainObjectOrder = make([]int, 0, len(l.Objects))
+	}
+	for i, o := range l.Objects {
+		if o != nil {
+			l.retainObjectOrder = append(l.retainObjectOrder, i)
+		}
+	}
+	sort.Slice(l.retainObjectOrder, func(a, b int) bool {
+		ia, ib := l.retainObjectOrder[a], l.retainObjectOrder[b]
+		return l.Objects[ia].AbsPath < l.Objects[ib].AbsPath
+	})
+
+	l.nonObjectOrder = l.nonObjectOrder[:0]
+	need := len(l.Transitions) + len(l.Checks)
+	if cap(l.nonObjectOrder) < need {
+		l.nonObjectOrder = make([]layoutNonObjectSlot, 0, need)
+	}
+	for i := range l.Transitions {
+		if l.Transitions[i] != nil {
+			l.nonObjectOrder = append(l.nonObjectOrder, layoutNonObjectSlot{transition: true, i: i})
+		}
+	}
+	for i := range l.Checks {
+		if l.Checks[i] != nil {
+			l.nonObjectOrder = append(l.nonObjectOrder, layoutNonObjectSlot{transition: false, i: i})
+		}
+	}
+	sort.Slice(l.nonObjectOrder, func(a, b int) bool {
+		return l.nonObjectAbsPath(&l.nonObjectOrder[a]) < l.nonObjectAbsPath(&l.nonObjectOrder[b])
+	})
+}
+
+func (l *Layout) nonObjectAbsPath(s *layoutNonObjectSlot) string {
+	if s.transition {
+		return l.Transitions[s.i].AbsPath
+	}
+	return l.Checks[s.i].AbsPath
 }
 
 func (l *Layout) ObjectsByPath() map[string]*Object {

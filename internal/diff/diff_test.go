@@ -308,6 +308,7 @@ func TestComputeTriggerMissingParent_Blocked(t *testing.T) {
 	obj := makeTempObject(t, "r/triggers/trg1", "triggers", "CREATE TRIGGER r.trg1 ON r.t1 AFTER INSERT AS SELECT 1")
 	obj.SchemaName = "r"
 	obj.ParentName = "missing_parent"
+	syncTriggerParentNormalizedKey(obj)
 	layout := fs.Layout{Objects: []*fs.Object{obj}}
 	state := &db.State{
 		Objects: map[string]db.Object{
@@ -333,6 +334,7 @@ func TestComputeTriggerParentStable_UpdateModule(t *testing.T) {
 	obj := makeTempObject(t, "r/triggers/trg1", "triggers", "CREATE TRIGGER r.trg1 ON r.t1 AFTER INSERT AS SELECT 1")
 	obj.SchemaName = "r"
 	obj.ParentName = "t1"
+	syncTriggerParentNormalizedKey(obj)
 	layout := fs.Layout{Objects: []*fs.Object{obj}}
 	state := &db.State{
 		Objects: map[string]db.Object{
@@ -442,6 +444,14 @@ func makeTempObject(t *testing.T, key, kind, content string) *fs.Object {
 		CachedFile:    fs.CachedFile{AbsPath: absPath},
 		NormalizedKey: key,
 		Kind:          kind,
+	}
+}
+
+// syncTriggerParentNormalizedKey mirrors Scanner.newObject: parent table key
+// for trigger objects. Call after SchemaName and ParentName are set.
+func syncTriggerParentNormalizedKey(o *fs.Object) {
+	if o.Kind == "triggers" && o.SchemaName != "" && o.ParentName != "" {
+		o.ParentNormalizedKey = types.NormalizedKey(o.SchemaName, "tables", o.ParentName)
 	}
 }
 

@@ -188,6 +188,97 @@ func TestChecksumDeterministic(t *testing.T) {
 	}
 }
 
+func TestScanAttachesObjectByteCacheStatHints(t *testing.T) {
+	dir := createTestLayout(t)
+	layout, err := NewScanner().Scan(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, o := range layout.Objects {
+		if o == nil {
+			continue
+		}
+		n++
+		if !o.objectStatForByteCacheValid {
+			t.Errorf("object %q: expected byte-cache stat hint after Scan", o.AbsPath)
+		}
+	}
+	if n == 0 {
+		t.Fatal("expected at least one object in fixture")
+	}
+}
+
+func TestLookupSharedObjectBytesHintMatchesCacheEntry(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "o.sql")
+	content := []byte("select 1")
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := scanPathState{size: info.Size(), modTime: info.ModTime().UnixNano()}
+	storeSharedObjectBytesWithStat(path, content, st)
+
+	got, ok := lookupSharedObjectBytes(path, &st)
+	if !ok || string(got) != string(content) {
+		t.Fatalf("lookup with matching hint: ok=%v got=%q", ok, got)
+	}
+	badHint := scanPathState{size: 0, modTime: 0}
+	got2, ok2 := lookupSharedObjectBytes(path, &badHint)
+	if !ok2 || string(got2) != string(content) {
+		t.Fatalf("mismatched hint should fall back to Stat and still hit cache: ok=%v", ok2)
+	}
+}
+
+func TestRebuildPathIndexesRetainOrderSortedByAbsPath(t *testing.T) {
+	dir := t.TempDir()
+	zPath := filepath.Join(dir, "z.sql")
+	aPath := filepath.Join(dir, "a.sql")
+	_ = os.WriteFile(zPath, []byte("z"), 0o644)
+	_ = os.WriteFile(aPath, []byte("a"), 0o644)
+	layout := Layout{
+		Objects: []*Object{
+			{Path: "db/s/views/z.sql", CachedFile: CachedFile{AbsPath: zPath}},
+			{Path: "db/s/views/a.sql", CachedFile: CachedFile{AbsPath: aPath}},
+		},
+	}
+	layout.RebuildPathIndexes()
+	if len(layout.retainObjectOrder) != 2 {
+		t.Fatalf("retainObjectOrder len=%d", len(layout.retainObjectOrder))
+	}
+	i0, i1 := layout.retainObjectOrder[0], layout.retainObjectOrder[1]
+	if layout.Objects[i0].AbsPath != aPath || layout.Objects[i1].AbsPath != zPath {
+		t.Fatalf("wrong sort order: got %q then %q", layout.Objects[i0].AbsPath, layout.Objects[i1].AbsPath)
+	}
+}
+
+func TestChecksumRetainsContentBytesForObjects(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "view.sql")
+	if err := os.WriteFile(path, []byte("CREATE VIEW v AS SELECT 1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	obj := &Object{CachedFile: CachedFile{AbsPath: path}}
+	if _, err := obj.Checksum(); err != nil {
+		t.Fatalf("checksum: %v", err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	got, err := obj.Content()
+	if err != nil {
+		t.Fatalf("content: %v", err)
+	}
+	if !strings.Contains(got, "CREATE VIEW v") {
+		t.Fatalf("content = %q, want cached SQL", got)
+	}
+}
+
 func TestTransitionScaffoldDetection(t *testing.T) {
 	dir := t.TempDir()
 	migrationsDir := filepath.Join(dir, "dactests", "reporting", "tables", "_migrations", "snapshot")

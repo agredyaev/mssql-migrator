@@ -21,13 +21,12 @@ import (
 const TransitionScaffoldDirective = "-- rmig: transition-scaffold"
 
 type Scanner struct {
-	GitInfo func(AbsPath string) (hash, author, date string, err error)
-	GitLog  func(root string) ([]byte, error)
-	ReadDir func(name string) ([]os.DirEntry, error)
-
-	mu               sync.Mutex
+	GitInfo          func(AbsPath string) (hash, author, date string, err error)
+	GitLog           func(root string) ([]byte, error)
+	ReadDir          func(name string) ([]os.DirEntry, error)
 	gitPreloadByRoot map[string]gitPreloadCache
 	layoutByRoot     map[string]layoutCacheEntry
+	mu               sync.Mutex
 }
 
 func NewScanner() *Scanner {
@@ -41,8 +40,8 @@ func NewScanner() *Scanner {
 }
 
 type gitPreloadCache struct {
-	repoState string
 	entries   map[string]gitMeta
+	repoState string
 }
 
 type gitMeta struct {
@@ -57,18 +56,18 @@ type scanPathState struct {
 }
 
 type layoutCacheEntry struct {
-	layout           Layout
 	dirStates        map[string]scanPathState
 	transitionStates map[string]scanPathState
 	fileStates       map[string]layoutFileCacheState
 	resolvedGitDir   string
 	repoState        string
+	layout           Layout
 }
 
 type layoutFileCacheState struct {
+	gitMeta  gitMeta
 	state    scanPathState
 	checksum [32]byte
-	gitMeta  gitMeta
 }
 
 type checksumCacheEntry struct {
@@ -77,23 +76,36 @@ type checksumCacheEntry struct {
 	sum     [32]byte
 }
 
+type rawBytesCacheEntry struct {
+	data    []byte
+	size    int64
+	modTime int64
+}
+
 var sharedGitPreloadCache = struct {
-	mu     sync.Mutex
 	byRoot map[string]gitPreloadCache
+	mu     sync.Mutex
 }{
 	byRoot: make(map[string]gitPreloadCache),
 }
 
 var sharedChecksumCache = struct {
-	mu     sync.Mutex
 	byPath map[string]checksumCacheEntry
+	mu     sync.Mutex
 }{
 	byPath: make(map[string]checksumCacheEntry),
 }
 
-var sharedLayoutCache = struct {
+var sharedObjectBytesCache = struct {
+	byPath map[string]rawBytesCacheEntry
 	mu     sync.Mutex
+}{
+	byPath: make(map[string]rawBytesCacheEntry),
+}
+
+var sharedLayoutCache = struct {
 	byRoot map[string]layoutCacheEntry
+	mu     sync.Mutex
 }{
 	byRoot: make(map[string]layoutCacheEntry),
 }
@@ -181,12 +193,12 @@ func (s *Scanner) Scan(ctx context.Context, root string) (Layout, error) {
 		return layout.Transitions[i].Ordinal < layout.Transitions[j].Ordinal
 	})
 
-	s.finalizeLayout(root, hasGitRepo, &layout, false, false)
-	s.storeLayoutCache(root, resolvedGitDir, cacheState, layout, root)
+	fileStates := s.finalizeLayout(root, hasGitRepo, &layout, false, false)
+	s.storeLayoutCache(root, resolvedGitDir, cacheState, layout, fileStates, root)
 	return layout, nil
 }
 
-func (s *Scanner) finalizeLayout(root string, hasGitRepo bool, layout *Layout, checksumsReady, gitReady bool) {
+func (s *Scanner) finalizeLayout(root string, hasGitRepo bool, layout *Layout, checksumsReady, gitReady bool) map[string]layoutFileCacheState {
 	if !hasGitRepo {
 		disableLayoutGitInfo(layout)
 	}
@@ -196,7 +208,11 @@ func (s *Scanner) finalizeLayout(root string, hasGitRepo bool, layout *Layout, c
 	}
 	if !checksumsReady {
 		s.preloadChecksums(layout)
+		fs := buildLayoutFileCacheState(*layout)
+		attachObjectByteCacheStatHints(layout, fs)
+		return fs
 	}
+	return nil
 }
 
 func (s *Scanner) readDir(path string, cacheState *layoutCacheBuilder) ([]os.DirEntry, error) {
@@ -296,7 +312,7 @@ func (s *Scanner) scanCheckDir(layout *Layout, cacheState *layoutCacheBuilder, d
 func (s *Scanner) newObject(dbName, schemaName, kind, parentName, fileName, dirPath string) *Object {
 	fullPath := filepath.Join(dirPath, fileName)
 	name := strings.TrimSuffix(fileName, ".sql")
-	return &Object{
+	obj := &Object{
 		Path:                 filepath.ToSlash(filepath.Join(dbName, schemaName, kind, fileName)),
 		DatabaseName:         dbName,
 		SchemaName:           schemaName,
@@ -308,6 +324,10 @@ func (s *Scanner) newObject(dbName, schemaName, kind, parentName, fileName, dirP
 		NoTransaction:        types.IsModuleKind(kind),
 		CachedFile:           CachedFile{AbsPath: fullPath, gitInfoFn: s.GitInfo},
 	}
+	if kind == "triggers" && parentName != "" {
+		obj.ParentNormalizedKey = types.NormalizedKey(schemaName, "tables", parentName)
+	}
+	return obj
 }
 
 func (s *Scanner) newCheck(dbName, schemaName, fileName, dirPath string) *CheckScript {
@@ -698,30 +718,34 @@ func (s *Scanner) preloadChecksums(layout *Layout) {
 	}
 
 	workers := boundedWorkerCount(n)
-	jobs := make(chan *CachedFile, workers)
+	jobs := make(chan *Object, workers)
 	var wg sync.WaitGroup
 	for range workers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for cf := range jobs {
-				preloadChecksumWithCache(cf)
+			for o := range jobs {
+				preloadChecksumWithCache(o)
 			}
 		}()
 	}
 	for _, o := range layout.Objects {
-		jobs <- &o.CachedFile
+		jobs <- o
 	}
 	close(jobs)
 	wg.Wait()
 }
 
-func preloadChecksumWithCache(cf *CachedFile) {
+func preloadChecksumWithCache(o *Object) {
+	if o == nil {
+		return
+	}
+	cf := &o.CachedFile
 	if sum, ok := lookupSharedChecksum(cf.AbsPath); ok {
 		cf.preloadChecksum(sum)
 		return
 	}
-	sum, err := cf.Checksum()
+	sum, err := o.Checksum()
 	if err != nil {
 		return
 	}
@@ -757,6 +781,55 @@ func storeSharedChecksum(path string, sum [32]byte) {
 		sum:     sum,
 	}
 	sharedChecksumCache.mu.Unlock()
+}
+
+func attachObjectByteCacheStatHints(layout *Layout, fileStates map[string]layoutFileCacheState) {
+	for _, o := range layout.Objects {
+		if o == nil {
+			continue
+		}
+		st, ok := fileStates[o.AbsPath]
+		if !ok {
+			o.objectStatForByteCacheValid = false
+			continue
+		}
+		o.objectStatForByteCache = st.state
+		o.objectStatForByteCacheValid = true
+	}
+}
+
+// lookupSharedObjectBytes returns cached file bytes when the on-disk file
+// still matches the cached size and mtime. If hint matches the cache entry
+// metadata, os.Stat is skipped; hint must come from attachObjectByteCacheStatHints
+// (same Scanner layout snapshot as when the cache entry was validated).
+func lookupSharedObjectBytes(path string, hint *scanPathState) ([]byte, bool) {
+	sharedObjectBytesCache.mu.Lock()
+	entry, ok := sharedObjectBytesCache.byPath[path]
+	sharedObjectBytesCache.mu.Unlock()
+	if !ok {
+		return nil, false
+	}
+	if hint != nil && hint.size == entry.size && hint.modTime == entry.modTime {
+		return entry.data, true
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, false
+	}
+	if entry.size != info.Size() || entry.modTime != info.ModTime().UnixNano() {
+		return nil, false
+	}
+	return entry.data, true
+}
+
+func storeSharedObjectBytesWithStat(path string, data []byte, st scanPathState) {
+	sharedObjectBytesCache.mu.Lock()
+	sharedObjectBytesCache.byPath[path] = rawBytesCacheEntry{
+		size:    st.size,
+		modTime: st.modTime,
+		data:    data,
+	}
+	sharedObjectBytesCache.mu.Unlock()
 }
 
 func boundedWorkerCount(total int) int {
@@ -859,17 +932,21 @@ func (s *Scanner) tryLayoutCacheEntry(root, resolvedGitDir string, entry layoutC
 	}
 	layout := cloneLayoutMetadata(entry.layout, s.GitInfo)
 	applyLayoutFileCache(&layout, entry.fileStates)
+	attachObjectByteCacheStatHints(&layout, entry.fileStates)
 	return layout, true
 }
 
-func (s *Scanner) storeLayoutCache(root, resolvedGitDir string, cacheState *layoutCacheBuilder, layout Layout, scanRoot string) {
+func (s *Scanner) storeLayoutCache(root, resolvedGitDir string, cacheState *layoutCacheBuilder, layout Layout, fileStates map[string]layoutFileCacheState, scanRoot string) {
+	if fileStates == nil {
+		fileStates = buildLayoutFileCacheState(layout)
+	}
 	snapshot := cloneLayoutMetadata(layout, s.GitInfo)
 	repoState, _ := gitRepoState(scanRoot)
 	entry := layoutCacheEntry{
 		layout:           snapshot,
 		dirStates:        clonePathStateMap(cacheState.dirStates),
 		transitionStates: clonePathStateMap(cacheState.transitionStates),
-		fileStates:       buildLayoutFileCacheState(layout),
+		fileStates:       fileStates,
 		resolvedGitDir:   resolvedGitDir,
 		repoState:        repoState,
 	}
@@ -936,6 +1013,7 @@ func cloneLayoutMetadata(src Layout, gitInfoFn func(string) (string, string, str
 				Kind:                 obj.Kind,
 				ObjectName:           obj.ObjectName,
 				ParentName:           obj.ParentName,
+				ParentNormalizedKey:  obj.ParentNormalizedKey,
 				NormalizedKey:        obj.NormalizedKey,
 				NoTransaction:        obj.NoTransaction,
 				CachedFile: CachedFile{
