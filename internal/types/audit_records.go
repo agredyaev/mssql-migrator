@@ -3,30 +3,30 @@ package types
 import "time"
 
 type RunRecord struct {
-	ID        int64
-	Command   string
 	StartedAt time.Time
+	Command   string
 	Status    string
+	ID        int64
 	ExitCode  int
 }
 
 type ItemRecord struct {
-	ID            int64
-	RunID         int64
 	NormalizedKey string
 	PlannedAction string
 	Checksum      string
+	ID            int64
+	RunID         int64
 }
 
 type AttemptRecord struct {
-	ID            int64
-	RunID         int64
-	ItemID        int64
+	AttemptedAt   time.Time
 	NormalizedKey string
 	Checksum      string
 	Action        string
 	Error         string
-	AttemptedAt   time.Time
+	ID            int64
+	RunID         int64
+	ItemID        int64
 }
 
 type ItemResult struct {

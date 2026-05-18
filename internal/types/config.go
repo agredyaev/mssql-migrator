@@ -15,19 +15,33 @@ const (
 )
 
 type Config struct {
-	SQLRoot, SQLBase, ReportDir, LogLevel      string
-	JSONLogs                                   bool
-	CommandTimeout, ScriptTimeout, LockTimeout time.Duration
-	PlanFile, RepairTarget                     string
-
-	Server, Port, Database, DBAuth, User, Password string
-	Encrypt, TrustServerCertificate                bool
-
-	GitCommit, GitBranch, PipelineRunID, PipelineURL, Actor string
-	ToolVersion, ToolCommit                                 string
-
-	UpdatePolicy    string
-	TransactionMode string
+	GitCommit              string
+	GitBranch              string
+	ReportDir              string
+	LogLevel               string
+	TransactionMode        string
+	UpdatePolicy           string
+	DBAuth                 string
+	ToolVersion            string
+	PlanFile               string
+	RepairTarget           string
+	Server                 string
+	User                   string
+	SQLBase                string
+	ToolCommit             string
+	Port                   string
+	Password               string
+	Actor                  string
+	PipelineURL            string
+	SQLRoot                string
+	Database               string
+	PipelineRunID          string
+	LockTimeout            time.Duration
+	ScriptTimeout          time.Duration
+	CommandTimeout         time.Duration
+	TrustServerCertificate bool
+	Encrypt                bool
+	JSONLogs               bool
 }
 
 func (c Config) DBAuthMode() string {

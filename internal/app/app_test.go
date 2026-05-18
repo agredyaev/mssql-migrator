@@ -11,8 +11,8 @@ import (
 func TestParseFlags_Commands(t *testing.T) {
 	tests := []struct {
 		name    string
-		args    []string
 		wantCmd string
+		args    []string
 		wantErr bool
 	}{
 		{name: "plan", args: []string{"plan"}, wantCmd: "plan"},
@@ -47,9 +47,9 @@ func TestParseFlags_Commands(t *testing.T) {
 func TestParseFlags_Options(t *testing.T) {
 	tests := []struct {
 		name     string
-		args     []string
 		wantCmd  string
 		wantEnv  string
+		args     []string
 		wantJSON bool
 		wantErr  bool
 	}{
@@ -202,11 +202,11 @@ func TestLoadEnvFile(t *testing.T) {
 
 func TestBuildConfig_EnvPrecedence(t *testing.T) {
 	tests := []struct {
-		name   string
-		flags  cliFlags
 		env    map[string]string
 		lookup func(string) (string, bool)
 		want   map[string]string
+		name   string
+		flags  cliFlags
 	}{
 		{
 			name:  "env file values",

@@ -9,15 +9,15 @@ import (
 )
 
 type MockConn struct {
-	QueryCount   atomic.Int32
-	ExecCount    atomic.Int32
 	QueryErr     error
 	ExecErr      error
+	RowsByPrefix map[string]*MockRows
 	Queries      []MockQuery
 	ExecQueries  []string
-	RowsByPrefix map[string]*MockRows
 	FailN        int
 	execN        int
+	QueryCount   atomic.Int32
+	ExecCount    atomic.Int32
 }
 
 type MockQuery struct {

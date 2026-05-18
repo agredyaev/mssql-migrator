@@ -3,9 +3,11 @@ package types
 import "time"
 
 type ScriptResult struct {
-	Script, Type, Checksum string
-	ExecutionMS            int
-	Reason                 string
+	Script      string
+	Type        string
+	Checksum    string
+	Reason      string
+	ExecutionMS int
 }
 
 type Failure struct {
@@ -13,29 +15,39 @@ type Failure struct {
 }
 
 type BaseReport struct {
-	Tool, Version, ToolCommit, Environment, Database string
-	GitCommit, GitBranch, LayoutHash                 string
-	SQLRoot, Base                                    string
-	PipelineRunID, PipelineURL, Actor                string
-	StartedAt, FinishedAt                            time.Time
-	Result                                           string
-	Validation                                       ValidationResult
-	Failed                                           *Failure
+	StartedAt     time.Time
+	FinishedAt    time.Time
+	Failed        *Failure
+	SQLRoot       string
+	PipelineRunID string
+	GitCommit     string
+	GitBranch     string
+	LayoutHash    string
+	Tool          string
+	Base          string
+	Database      string
+	PipelineURL   string
+	Actor         string
+	Environment   string
+	ToolCommit    string
+	Result        string
+	Version       string
+	Validation    ValidationResult
 }
 
 type MigrationReport struct {
-	BaseReport
 	EffectiveBasePath string
-	DurationMS        int64
+	ValidationScope   string
 	Applied           []ScriptResult
 	Skipped           []ScriptResult
-	ValidationScope   string
+	BaseReport
+	DurationMS        int64
 	ValidationSkipped bool
 }
 
 type ValidationReport struct {
+	Command string
+	Scope   string
 	BaseReport
-	Command        string
-	Scope          string
 	IncludesChecks bool
 }
