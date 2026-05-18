@@ -1,0 +1,46 @@
+goos: darwin
+goarch: arm64
+pkg: reporting-db-migrations/internal/engine
+cpu: Apple M2
+BenchmarkDiffCompute_2000Objects-8      	      16	  21359711 ns/op	 7487364 B/op	    2528 allocs/op
+BenchmarkDiffCompute_2000Objects-8      	     375	    889986 ns/op	  875405 B/op	    1787 allocs/op
+BenchmarkDiffCompute_2000Objects-8      	     336	    920951 ns/op	  914144 B/op	    1791 allocs/op
+BenchmarkDiffCompute_2000Objects-8      	     332	    906530 ns/op	  915197 B/op	    1792 allocs/op
+BenchmarkDiffCompute_2000Objects-8      	     338	    933538 ns/op	  910366 B/op	    1791 allocs/op
+BenchmarkDiffCompute_2000Objects-8      	     331	    923134 ns/op	  914730 B/op	    1792 allocs/op
+BenchmarkDiffCompute_2000Objects-8      	     333	    913829 ns/op	  917659 B/op	    1792 allocs/op
+BenchmarkDiffCompute_2000Objects-8      	     340	    905384 ns/op	  905524 B/op	    1791 allocs/op
+BenchmarkDiffCompute_2000Objects-8      	     331	   2083339 ns/op	  917662 B/op	    1793 allocs/op
+BenchmarkDiffCompute_2000Objects-8      	      38	   8293787 ns/op	 3460089 B/op	    2078 allocs/op
+BenchmarkNormalizeAndHash_MediumSQL-8   	     727	    496194 ns/op	     698 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_MediumSQL-8   	     715	    605253 ns/op	     709 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_MediumSQL-8   	     789	    573848 ns/op	     643 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_MediumSQL-8   	     584	    590317 ns/op	     869 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_MediumSQL-8   	     714	    504396 ns/op	     710 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_MediumSQL-8   	     726	    621848 ns/op	     699 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_MediumSQL-8   	     741	    571540 ns/op	     684 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_MediumSQL-8   	     552	    598245 ns/op	     919 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_MediumSQL-8   	     889	    551235 ns/op	     570 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_MediumSQL-8   	     721	    535129 ns/op	     705 B/op	       0 allocs/op
+BenchmarkLayoutHash_500Objects-8        	    2754	    109325 ns/op	  101904 B/op	    1315 allocs/op
+BenchmarkLayoutHash_500Objects-8        	    2744	    110137 ns/op	  101993 B/op	    1315 allocs/op
+BenchmarkLayoutHash_500Objects-8        	    3303	    105261 ns/op	  100345 B/op	    1315 allocs/op
+BenchmarkLayoutHash_500Objects-8        	    2768	    110086 ns/op	  101961 B/op	    1315 allocs/op
+BenchmarkLayoutHash_500Objects-8        	    3259	    104987 ns/op	  100486 B/op	    1315 allocs/op
+BenchmarkLayoutHash_500Objects-8        	    3304	    104971 ns/op	  100342 B/op	    1315 allocs/op
+BenchmarkLayoutHash_500Objects-8        	    2702	    112229 ns/op	  102118 B/op	    1315 allocs/op
+BenchmarkLayoutHash_500Objects-8        	    2734	    110830 ns/op	  102056 B/op	    1315 allocs/op
+BenchmarkLayoutHash_500Objects-8        	    3313	    105077 ns/op	  100276 B/op	    1315 allocs/op
+BenchmarkLayoutHash_500Objects-8        	    2756	    108874 ns/op	  101950 B/op	    1315 allocs/op
+BenchmarkLayoutHash_2000Objects-8       	      16	  37040240 ns/op	 7045866 B/op	    5913 allocs/op
+BenchmarkLayoutHash_2000Objects-8       	       1	 488860333 ns/op	107457392 B/op	   15832 allocs/op
+BenchmarkLayoutHash_2000Objects-8       	       1	 523000167 ns/op	107263592 B/op	   15812 allocs/op
+BenchmarkLayoutHash_2000Objects-8       	       1	 540977917 ns/op	107057984 B/op	   15797 allocs/op
+BenchmarkLayoutHash_2000Objects-8       	       1	 424340833 ns/op	106748664 B/op	   15776 allocs/op
+BenchmarkLayoutHash_2000Objects-8       	       1	 623459750 ns/op	107233584 B/op	   15812 allocs/op
+BenchmarkLayoutHash_2000Objects-8       	       1	 425299542 ns/op	107497536 B/op	   15834 allocs/op
+BenchmarkLayoutHash_2000Objects-8       	       6	  57686764 ns/op	18313728 B/op	    7023 allocs/op
+BenchmarkLayoutHash_2000Objects-8       	      24	  14252372 ns/op	 4835026 B/op	    5695 allocs/op
+BenchmarkLayoutHash_2000Objects-8       	       2	 153918500 ns/op	54091620 B/op	   10553 allocs/op
+PASS
+ok  	reporting-db-migrations/internal/engine	850.246s

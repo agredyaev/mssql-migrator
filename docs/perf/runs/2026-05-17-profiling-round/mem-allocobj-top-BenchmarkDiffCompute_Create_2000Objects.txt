@@ -1,0 +1,37 @@
+File: engine.test
+Type: alloc_objects
+Time: 2026-05-17 22:05:35 CEST
+Showing nodes accounting for 3607475, 98.17% of 3674694 total
+Dropped 66 nodes (cum <= 18373)
+Showing top 30 nodes out of 36
+      flat  flat%   sum%        cum   cum%
+   3440691 93.63% 93.63%    3453077 93.97%  reporting-db-migrations/internal/engine.makeBenchSQL
+     40554  1.10% 94.74%    3532014 96.12%  reporting-db-migrations/internal/engine.makeRealFS
+     38231  1.04% 95.78%      38231  1.04%  os.newFile
+     36595     1% 96.77%      36595     1%  runtime.mallocgc
+     29101  0.79% 97.56%      29101  0.79%  internal/bytealg.MakeNoZero
+      9363  0.25% 97.82%      45158  1.23%  reporting-db-migrations/internal/fs.(*Scanner).preloadChecksums.func1.1
+      6982  0.19% 98.01%      34961  0.95%  reporting-db-migrations/internal/fs.(*CachedFile).Content.func1
+      5958  0.16% 98.17%      25074  0.68%  reporting-db-migrations/internal/fs.(*Scanner).scanObjectDir
+         0     0% 98.17%      52795  1.44%  os.OpenFile
+         0     0% 98.17%      27979  0.76%  os.ReadFile
+         0     0% 98.17%      34590  0.94%  os.WriteFile
+         0     0% 98.17%      52795  1.44%  os.openFileNolog
+         0     0% 98.17%      21847  0.59%  path/filepath.Join (inline)
+         0     0% 98.17%      21847  0.59%  path/filepath.join
+         0     0% 98.17%    3581563 97.47%  reporting-db-migrations/internal/engine.BenchmarkDiffCompute_Create_2000Objects
+         0     0% 98.17%    3581563 97.47%  reporting-db-migrations/internal/engine.benchmarkDiffComputeCreateHeavy
+         0     0% 98.17%    3564872 97.01%  reporting-db-migrations/internal/engine.makeRealLayout
+         0     0% 98.17%      35795  0.97%  reporting-db-migrations/internal/fs.(*CachedFile).Checksum
+         0     0% 98.17%      35795  0.97%  reporting-db-migrations/internal/fs.(*CachedFile).Checksum.func1
+         0     0% 98.17%      34961  0.95%  reporting-db-migrations/internal/fs.(*CachedFile).Content
+         0     0% 98.17%      32858  0.89%  reporting-db-migrations/internal/fs.(*Scanner).Scan
+         0     0% 98.17%      32768  0.89%  runtime.(*scavengerState).sleep
+         0     0% 98.17%      32768  0.89%  runtime.(*timer).maybeAdd
+         0     0% 98.17%      32768  0.89%  runtime.(*timer).modify
+         0     0% 98.17%      32768  0.89%  runtime.(*timer).reset (inline)
+         0     0% 98.17%      32768  0.89%  runtime.(*timers).addHeap
+         0     0% 98.17%      32768  0.89%  runtime.bgscavenge
+         0     0% 98.17%      32768  0.89%  runtime.growslice
+         0     0% 98.17%      29101  0.79%  strings.(*Builder).Grow
+         0     0% 98.17%      29101  0.79%  strings.(*Builder).grow

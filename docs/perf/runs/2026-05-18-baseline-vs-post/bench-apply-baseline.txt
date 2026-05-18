@@ -1,0 +1,17 @@
+pkg: reporting-db-migrations/internal/apply
+cpu: Apple M2
+BenchmarkCollectStatements_500Transactional-8         	    1309	    128684 ns/op	  309024 B/op	    1048 allocs/op
+BenchmarkCollectStatements_500Transactional-8         	    1378	    139017 ns/op	  309016 B/op	    1048 allocs/op
+BenchmarkCollectStatements_500Transactional-8         	    1363	    129350 ns/op	  309016 B/op	    1048 allocs/op
+BenchmarkCollectStatements_500Transactional-8         	    1368	    128023 ns/op	  309016 B/op	    1048 allocs/op
+BenchmarkCollectStatements_500Transactional-8         	    1389	    128152 ns/op	  309016 B/op	    1048 allocs/op
+BenchmarkExecuteTxBatch_SuccessPath_100Statements-8   	   21163	      9069 ns/op	   23768 B/op	     111 allocs/op
+BenchmarkExecuteTxBatch_SuccessPath_100Statements-8   	   20763	      9004 ns/op	   23768 B/op	     111 allocs/op
+BenchmarkExecuteTxBatch_SuccessPath_100Statements-8   	   20766	      8521 ns/op	   23768 B/op	     111 allocs/op
+BenchmarkExecuteTxBatch_SuccessPath_100Statements-8   	   21123	      8526 ns/op	   23768 B/op	     111 allocs/op
+BenchmarkExecuteTxBatch_SuccessPath_100Statements-8   	   21134	      8538 ns/op	   23768 B/op	     111 allocs/op
+BenchmarkExecuteTxBatch_FailurePath_100Statements-8   	   10000	     17662 ns/op	   46571 B/op	     227 allocs/op
+BenchmarkExecuteTxBatch_FailurePath_100Statements-8   	   10000	     17575 ns/op	   46571 B/op	     227 allocs/op
+BenchmarkExecuteTxBatch_FailurePath_100Statements-8   	   10000	     17655 ns/op	   46571 B/op	     227 allocs/op
+BenchmarkExecuteTxBatch_FailurePath_100Statements-8   	   10000	     20326 ns/op	   46571 B/op	     227 allocs/op
+BenchmarkExecuteTxBatch_FailurePath_100Statements-8   	    6868	     36207 ns/op	   46572 B/op	     227 allocs/op

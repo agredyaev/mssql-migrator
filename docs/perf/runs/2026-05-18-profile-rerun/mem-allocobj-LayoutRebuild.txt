@@ -1,0 +1,31 @@
+File: fs-bench.test
+Type: alloc_objects
+Time: 2026-05-18 22:16:05 CEST
+Showing nodes accounting for 1150354, 99.55% of 1155547 total
+Dropped 18 nodes (cum <= 5777)
+      flat  flat%   sum%        cum   cum%
+    675064 58.42% 58.42%     675064 58.42%  reporting-db-migrations/internal/fs.buildObjectsByPath (inline)
+    152920 13.23% 71.65%     300380 25.99%  reporting-db-migrations/internal/fs.(*Layout).rebuildContentRetainPathLists
+    147460 12.76% 84.41%     147460 12.76%  internal/reflectlite.Swapper
+    142001 12.29% 96.70%     142001 12.29%  reporting-db-migrations/internal/fs.buildTransitionsByPath (inline)
+     21845  1.89% 98.59%      21845  1.89%  internal/bytealg.MakeNoZero
+      7282  0.63% 99.22%       7282  0.63%  syscall.ByteSliceFromString
+      3782  0.33% 99.55%      32909  2.85%  reporting-db-migrations/internal/fs.benchLayoutForPathIndex
+         0     0% 99.55%       7282  0.63%  os.OpenFile
+         0     0% 99.55%       7282  0.63%  os.WriteFile
+         0     0% 99.55%       7282  0.63%  os.ignoringEINTR (inline)
+         0     0% 99.55%       7282  0.63%  os.open (inline)
+         0     0% 99.55%       7282  0.63%  os.openFileNolog
+         0     0% 99.55%       7282  0.63%  os.openFileNolog.func1 (inline)
+         0     0% 99.55%      21845  1.89%  path/filepath.Join (inline)
+         0     0% 99.55%      21845  1.89%  path/filepath.join
+         0     0% 99.55%    1117445 96.70%  reporting-db-migrations/internal/fs.(*Layout).RebuildPathIndexes
+         0     0% 99.55%    1150354 99.55%  reporting-db-migrations/internal/fs.BenchmarkLayoutRebuildPathIndexes_500Objects
+         0     0% 99.55%     147460 12.76%  sort.Slice
+         0     0% 99.55%      21845  1.89%  strings.(*Builder).Grow
+         0     0% 99.55%      21845  1.89%  strings.(*Builder).grow
+         0     0% 99.55%      21845  1.89%  strings.Join
+         0     0% 99.55%       7282  0.63%  syscall.BytePtrFromString (inline)
+         0     0% 99.55%       7282  0.63%  syscall.Open
+         0     0% 99.55%    1150354 99.55%  testing.(*B).launch
+         0     0% 99.55%    1150354 99.55%  testing.(*B).runN

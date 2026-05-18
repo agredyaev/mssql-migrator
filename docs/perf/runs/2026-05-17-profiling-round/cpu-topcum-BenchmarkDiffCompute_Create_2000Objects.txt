@@ -1,0 +1,43 @@
+File: engine.test
+Type: cpu
+Time: 2026-05-17 21:55:04 CEST
+Duration: 11.41s, Total samples = 5.04s (44.19%)
+Showing nodes accounting for 3.92s, 77.78% of 5.04s total
+Dropped 90 nodes (cum <= 0.03s)
+Showing top 35 nodes out of 131
+      flat  flat%   sum%        cum   cum%
+     3.89s 77.18% 77.18%      3.89s 77.18%  syscall.rawsyscalln
+         0     0% 77.18%      3.89s 77.18%  syscall.syscalln
+         0     0% 77.18%      3.81s 75.60%  syscall.syscall
+         0     0% 77.18%      3.45s 68.45%  os.ignoringEINTR (inline)
+         0     0% 77.18%      3.09s 61.31%  testing.(*B).runN
+         0     0% 77.18%      2.44s 48.41%  os.OpenFile
+         0     0% 77.18%      2.44s 48.41%  os.openFileNolog
+         0     0% 77.18%      2.39s 47.42%  os.open (inline)
+         0     0% 77.18%      2.39s 47.42%  syscall.Open
+         0     0% 77.18%      2.38s 47.22%  os.openFileNolog.func1 (inline)
+         0     0% 77.18%      2.36s 46.83%  testing.(*B).launch
+         0     0% 77.18%      2.06s 40.87%  reporting-db-migrations/internal/engine.BenchmarkDiffCompute_Create_2000Objects
+         0     0% 77.18%      2.06s 40.87%  reporting-db-migrations/internal/engine.benchmarkDiffComputeCreateHeavy
+         0     0% 77.18%      1.83s 36.31%  reporting-db-migrations/internal/engine.makeRealLayout
+         0     0% 77.18%      1.79s 35.52%  reporting-db-migrations/internal/engine.makeRealFS
+         0     0% 77.18%      1.72s 34.13%  os.WriteFile
+     0.03s   0.6% 77.78%      1.32s 26.19%  reporting-db-migrations/internal/fs.(*CachedFile).Checksum
+         0     0% 77.78%      1.29s 25.60%  reporting-db-migrations/internal/fs.(*CachedFile).Checksum.func1
+         0     0% 77.78%      1.29s 25.60%  reporting-db-migrations/internal/fs.(*Scanner).preloadChecksums.func1.1
+         0     0% 77.78%      1.29s 25.60%  sync.(*Once).Do (inline)
+         0     0% 77.78%      1.29s 25.60%  sync.(*Once).doSlow
+         0     0% 77.78%      1.17s 23.21%  reporting-db-migrations/internal/fs.(*CachedFile).Content
+         0     0% 77.78%      1.17s 23.21%  reporting-db-migrations/internal/fs.(*CachedFile).Content.func1
+         0     0% 77.78%      1.11s 22.02%  os.ReadFile
+         0     0% 77.78%      1.03s 20.44%  os.RemoveAll (inline)
+         0     0% 77.78%      1.03s 20.44%  os.removeAll
+         0     0% 77.78%      1.03s 20.44%  os.removeAllFrom
+         0     0% 77.78%      1.03s 20.44%  testing.(*B).runN.func1
+         0     0% 77.78%      1.03s 20.44%  testing.(*common).Cleanup.func1
+         0     0% 77.78%      1.03s 20.44%  testing.(*common).makeTempDir.func1
+         0     0% 77.78%      1.03s 20.44%  testing.(*common).runCleanup
+         0     0% 77.78%      1.03s 20.44%  testing.removeAll
+         0     0% 77.78%         1s 19.84%  os.Open (inline)
+         0     0% 77.78%      0.94s 18.65%  internal/syscall/unix.Unlinkat (inline)
+         0     0% 77.78%      0.94s 18.65%  syscall.unlinkat

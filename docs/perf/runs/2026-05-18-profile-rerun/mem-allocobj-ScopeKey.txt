@@ -1,0 +1,27 @@
+File: db-bench.test
+Type: alloc_objects
+Time: 2026-05-18 22:16:09 CEST
+Showing nodes accounting for 372353, 99.78% of 373188 total
+Dropped 25 nodes (cum <= 1865)
+Showing top 20 nodes out of 23
+      flat  flat%   sum%        cum   cum%
+    104608 28.03% 28.03%     202912 54.37%  reporting-db-migrations/internal/db.largeBenchLayout
+     79907 21.41% 49.44%     158518 42.48%  reporting-db-migrations/internal/db.scopeKey
+     65536 17.56% 67.00%      65536 17.56%  sync.(*Pool).pinSlow
+     34920  9.36% 76.36%      34920  9.36%  internal/bytealg.MakeNoZero
+     32768  8.78% 85.14%      98304 26.34%  fmt.Sprintf
+     21846  5.85% 91.00%      43691 11.71%  internal/reflectlite.Swapper
+     21845  5.85% 96.85%      21845  5.85%  internal/reflectlite.unsafe_New
+      7646  2.05% 98.90%       7646  2.05%  runtime/pprof.allFrames
+      3277  0.88% 99.78%       3277  0.88%  compress/gzip.NewWriterLevel
+         0     0% 99.78%      65536 17.56%  fmt.newPrinter
+         0     0% 99.78%     361430 96.85%  reporting-db-migrations/internal/db.BenchmarkScopeKey_2000Parts
+         0     0% 99.78%       7647  2.05%  runtime/pprof.(*profileBuilder).appendLocsForStack
+         0     0% 99.78%       7647  2.05%  runtime/pprof.(*profileBuilder).build
+         0     0% 99.78%       3277  0.88%  runtime/pprof.newProfileBuilder
+         0     0% 99.78%      10988  2.94%  runtime/pprof.profileWriter
+         0     0% 99.78%      43691 11.71%  sort.Slice
+         0     0% 99.78%      34920  9.36%  strings.(*Builder).Grow
+         0     0% 99.78%      34920  9.36%  strings.(*Builder).grow
+         0     0% 99.78%      65536 17.56%  sync.(*Pool).Get
+         0     0% 99.78%      65536 17.56%  sync.(*Pool).pin

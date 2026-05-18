@@ -1,0 +1,16 @@
+goos: darwin
+goarch: arm64
+pkg: reporting-db-migrations/internal/engine
+cpu: Apple M2
+BenchmarkNormalizeAndHash_LargeSQL-8   	      37	   6050490 ns/op	  179360 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_LargeSQL-8   	      34	   6867871 ns/op	  195186 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_LargeSQL-8   	      34	   6147043 ns/op	  195186 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_LargeSQL-8   	      36	   6671375 ns/op	  184342 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_LargeSQL-8   	      36	   6089759 ns/op	  184346 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_LargeSQL-8   	      36	   6847081 ns/op	  184342 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_LargeSQL-8   	      34	   6514409 ns/op	  195186 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_LargeSQL-8   	      36	   6148412 ns/op	  184342 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_LargeSQL-8   	      36	   6148888 ns/op	  184342 B/op	       0 allocs/op
+BenchmarkNormalizeAndHash_LargeSQL-8   	      36	   6138583 ns/op	  184345 B/op	       0 allocs/op
+PASS
+ok  	reporting-db-migrations/internal/engine	3.113s

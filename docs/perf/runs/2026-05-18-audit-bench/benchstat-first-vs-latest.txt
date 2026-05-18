@@ -1,0 +1,83 @@
+goos: darwin
+goarch: arm64
+pkg: reporting-db-migrations/internal/bus
+cpu: Apple M2
+                                   │ /tmp/rmig-audit-bench-2026-02-10.txt │ docs/perf/runs/2026-05-18-audit-bench/bench-output.txt │
+                                   │                sec/op                │             sec/op               vs base               │
+BusPublish_1Handler_Empty-8                                  27.64n ± ∞ ¹                      27.46n ± ∞ ¹        ~ (p=0.151 n=5)
+BusPublish_10Handlers_Empty-8                                71.97n ± ∞ ¹                      71.83n ± ∞ ¹        ~ (p=0.548 n=5)
+BusPublish_100Handlers_Empty-8                               586.3n ± ∞ ¹                      586.3n ± ∞ ¹        ~ (p=1.000 n=5)
+BusPublish_10Handlers_Sleep100ns-8                          14.808µ ± ∞ ¹                      8.385µ ± ∞ ¹        ~ (p=0.310 n=5)
+BusPublish_10Handlers_Panic-8                                3.996µ ± ∞ ¹                      3.228µ ± ∞ ¹        ~ (p=0.421 n=5)
+geomean                                                      585.8n                            500.2n        -14.63%
+¹ need >= 6 samples for confidence interval at level 0.95
+
+                                   │ /tmp/rmig-audit-bench-2026-02-10.txt │ docs/perf/runs/2026-05-18-audit-bench/bench-output.txt │
+                                   │                 B/op                 │              B/op               vs base                │
+BusPublish_1Handler_Empty-8                                   0.000 ± ∞ ¹                      0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+BusPublish_10Handlers_Empty-8                                 0.000 ± ∞ ¹                      0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+BusPublish_100Handlers_Empty-8                                0.000 ± ∞ ¹                      0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+BusPublish_10Handlers_Sleep100ns-8                            0.000 ± ∞ ¹                      0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+BusPublish_10Handlers_Panic-8                                 0.000 ± ∞ ¹                      0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+geomean                                                                 ³                                   +0.00%               ³
+¹ need >= 6 samples for confidence interval at level 0.95
+² all samples are equal
+³ summaries must be >0 to compute geomean
+
+                                   │ /tmp/rmig-audit-bench-2026-02-10.txt │ docs/perf/runs/2026-05-18-audit-bench/bench-output.txt │
+                                   │              allocs/op               │           allocs/op             vs base                │
+BusPublish_1Handler_Empty-8                                   0.000 ± ∞ ¹                      0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+BusPublish_10Handlers_Empty-8                                 0.000 ± ∞ ¹                      0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+BusPublish_100Handlers_Empty-8                                0.000 ± ∞ ¹                      0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+BusPublish_10Handlers_Sleep100ns-8                            0.000 ± ∞ ¹                      0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+BusPublish_10Handlers_Panic-8                                 0.000 ± ∞ ¹                      0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+geomean                                                                 ³                                   +0.00%               ³
+¹ need >= 6 samples for confidence interval at level 0.95
+² all samples are equal
+³ summaries must be >0 to compute geomean
+
+pkg: reporting-db-migrations/internal/db
+                                       │ /tmp/rmig-audit-bench-2026-02-10.txt │ docs/perf/runs/2026-05-18-audit-bench/bench-output.txt │
+                                       │                sec/op                │              sec/op               vs base              │
+ScopeKey_2000Parts-8                                             178.8µ ± ∞ ¹                       165.5µ ± ∞ ¹       ~ (p=0.222 n=5)
+BuildDualINQuery_500x500-8                                       164.4µ ± ∞ ¹                       151.7µ ± ∞ ¹  -7.69% (p=0.008 n=5)
+InspectorInspect_Cold_500Objects-8                               235.0µ ± ∞ ¹                       214.9µ ± ∞ ¹  -8.58% (p=0.008 n=5)
+InspectorInspect_HotCache_500Objects-8                           37.71µ ± ∞ ¹                       35.58µ ± ∞ ¹       ~ (p=0.063 n=5)
+geomean                                                          127.0µ                             117.7µ        -7.36%
+¹ need >= 6 samples for confidence interval at level 0.95
+
+                                       │ /tmp/rmig-audit-bench-2026-02-10.txt │ docs/perf/runs/2026-05-18-audit-bench/bench-output.txt │
+                                       │                 B/op                 │              B/op               vs base                │
+ScopeKey_2000Parts-8                                            150.5Ki ± ∞ ¹                    150.5Ki ± ∞ ¹       ~ (p=1.000 n=5) ²
+BuildDualINQuery_500x500-8                                      123.9Ki ± ∞ ¹                    123.9Ki ± ∞ ¹       ~ (p=0.643 n=5)
+InspectorInspect_Cold_500Objects-8                              161.7Ki ± ∞ ¹                    161.8Ki ± ∞ ¹       ~ (p=0.889 n=5)
+InspectorInspect_HotCache_500Objects-8                          36.89Ki ± ∞ ¹                    36.89Ki ± ∞ ¹       ~ (p=1.000 n=5) ²
+geomean                                                         102.7Ki                          102.7Ki        +0.00%
+¹ need >= 6 samples for confidence interval at level 0.95
+² all samples are equal
+
+                                       │ /tmp/rmig-audit-bench-2026-02-10.txt │ docs/perf/runs/2026-05-18-audit-bench/bench-output.txt │
+                                       │              allocs/op               │           allocs/op             vs base                │
+ScopeKey_2000Parts-8                                             2.003k ± ∞ ¹                     2.003k ± ∞ ¹       ~ (p=1.000 n=5) ²
+BuildDualINQuery_500x500-8                                       2.754k ± ∞ ¹                     2.754k ± ∞ ¹       ~ (p=1.000 n=5) ²
+InspectorInspect_Cold_500Objects-8                               1.799k ± ∞ ¹                     1.798k ± ∞ ¹       ~ (p=0.524 n=5)
+InspectorInspect_HotCache_500Objects-8                            503.0 ± ∞ ¹                      503.0 ± ∞ ¹       ~ (p=1.000 n=5) ²
+geomean                                                          1.495k                           1.495k        -0.01%
+¹ need >= 6 samples for confidence interval at level 0.95
+² all samples are equal
+
+pkg: reporting-db-migrations/internal/fs
+                                 │ /tmp/rmig-audit-bench-2026-02-10.txt │ docs/perf/runs/2026-05-18-audit-bench/bench-output.txt │
+                                 │                sec/op                │                sec/op                  vs base         │
+ScannerPreloadGitInfo_200Paths-8                           224.4m ± ∞ ¹                            175.3m ± ∞ ¹  ~ (p=0.095 n=5)
+¹ need >= 6 samples for confidence interval at level 0.95
+
+                                 │ /tmp/rmig-audit-bench-2026-02-10.txt │ docs/perf/runs/2026-05-18-audit-bench/bench-output.txt │
+                                 │                 B/op                 │                 B/op                   vs base         │
+ScannerPreloadGitInfo_200Paths-8                          361.9Ki ± ∞ ¹                           362.4Ki ± ∞ ¹  ~ (p=0.595 n=5)
+¹ need >= 6 samples for confidence interval at level 0.95
+
+                                 │ /tmp/rmig-audit-bench-2026-02-10.txt │ docs/perf/runs/2026-05-18-audit-bench/bench-output.txt │
+                                 │              allocs/op               │               allocs/op                vs base         │
+ScannerPreloadGitInfo_200Paths-8                           1.832k ± ∞ ¹                            1.835k ± ∞ ¹  ~ (p=0.437 n=5)
+¹ need >= 6 samples for confidence interval at level 0.95

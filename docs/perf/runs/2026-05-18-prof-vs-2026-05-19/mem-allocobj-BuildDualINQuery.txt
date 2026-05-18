@@ -1,0 +1,32 @@
+File: types-bench.test
+Type: alloc_objects
+Time: 2026-05-18 23:03:51 CEST
+Showing nodes accounting for 267431, 100% of 267431 total
+Dropped 9 nodes (cum <= 1337)
+Showing top 25 nodes out of 29
+      flat  flat%   sum%        cum   cum%
+     65536 24.51% 24.51%      65536 24.51%  sync.(*Pool).pinSlow
+     62144 23.24% 47.74%      62144 23.24%  reporting-db-migrations/internal/types.combineStringArgs (inline)
+     60824 22.74% 70.49%      60824 22.74%  internal/bytealg.MakeNoZero
+     40965 15.32% 85.80%      40965 15.32%  reporting-db-migrations/internal/types.buildDualINTemplatePlan
+     37962 14.20%   100%      37962 14.20%  runtime.mallocgc
+         0     0%   100%      65536 24.51%  fmt.Sprintf
+         0     0%   100%      65536 24.51%  fmt.newPrinter
+         0     0%   100%     229469 85.80%  reporting-db-migrations/internal/types.BenchmarkBuildDualINQuery_500x500
+         0     0%   100%     163933 61.30%  reporting-db-migrations/internal/types.BuildDualINQuery
+         0     0%   100%      60824 22.74%  reporting-db-migrations/internal/types.buildDualINQueryFromPlan
+         0     0%   100%      32768 12.25%  runtime.(*scavengerState).sleep
+         0     0%   100%      32768 12.25%  runtime.(*timer).maybeAdd
+         0     0%   100%      32768 12.25%  runtime.(*timer).modify
+         0     0%   100%      32768 12.25%  runtime.(*timer).reset (inline)
+         0     0%   100%      32768 12.25%  runtime.(*timers).addHeap
+         0     0%   100%       4681  1.75%  runtime.acquireSudog
+         0     0%   100%      32768 12.25%  runtime.bgscavenge
+         0     0%   100%       4681  1.75%  runtime.gcBgMarkWorker
+         0     0%   100%       4681  1.75%  runtime.gcMarkDone
+         0     0%   100%      32768 12.25%  runtime.growslice
+         0     0%   100%       5194  1.94%  runtime.newobject
+         0     0%   100%       4681  1.75%  runtime.semacquire (inline)
+         0     0%   100%       4681  1.75%  runtime.semacquire1
+         0     0%   100%      60824 22.74%  strings.(*Builder).Grow
+         0     0%   100%      60824 22.74%  strings.(*Builder).grow

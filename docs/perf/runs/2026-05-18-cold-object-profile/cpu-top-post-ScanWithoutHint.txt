@@ -1,0 +1,28 @@
+File: fs-bench.test
+Type: cpu
+Time: 2026-05-18 21:58:07 CEST
+Duration: 2.52s, Total samples = 2.24s (88.89%)
+Showing nodes accounting for 2.21s, 98.66% of 2.24s total
+Dropped 15 nodes (cum <= 0.01s)
+Showing top 20 nodes out of 35
+      flat  flat%   sum%        cum   cum%
+     2.14s 95.54% 95.54%      2.14s 95.54%  syscall.rawsyscalln
+     0.05s  2.23% 97.77%      0.05s  2.23%  runtime.pthread_cond_wait
+     0.02s  0.89% 98.66%      0.02s  0.89%  runtime.pthread_cond_signal
+         0     0% 98.66%      2.14s 95.54%  os.Stat
+         0     0% 98.66%      2.14s 95.54%  os.ignoringEINTR (inline)
+         0     0% 98.66%      2.14s 95.54%  os.statNolog
+         0     0% 98.66%      2.14s 95.54%  os.statNolog.func1 (inline)
+         0     0% 98.66%      2.14s 95.54%  reporting-db-migrations/internal/fs.(*Object).Checksum
+         0     0% 98.66%      2.14s 95.54%  reporting-db-migrations/internal/fs.BenchmarkObjectChecksumSharedBytesAfterScan.func2
+         0     0% 98.66%      2.14s 95.54%  reporting-db-migrations/internal/fs.checksumOnceForFile
+         0     0% 98.66%      2.14s 95.54%  reporting-db-migrations/internal/fs.checksumOnceForFile.func1
+         0     0% 98.66%      2.14s 95.54%  reporting-db-migrations/internal/fs.lookupSharedObjectBytes
+         0     0% 98.66%      0.05s  2.23%  runtime.findRunnable
+         0     0% 98.66%      0.02s  0.89%  runtime.gcBgMarkWorker.func2
+         0     0% 98.66%      0.02s  0.89%  runtime.gcDrain
+         0     0% 98.66%      0.02s  0.89%  runtime.gcDrainMarkWorkerDedicated (inline)
+         0     0% 98.66%      0.05s  2.23%  runtime.mPark (inline)
+         0     0% 98.66%      0.07s  3.12%  runtime.mcall
+         0     0% 98.66%      0.05s  2.23%  runtime.notesleep
+         0     0% 98.66%      0.02s  0.89%  runtime.notewakeup

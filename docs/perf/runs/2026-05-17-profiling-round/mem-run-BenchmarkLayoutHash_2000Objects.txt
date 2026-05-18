@@ -1,0 +1,7 @@
+goos: darwin
+goarch: arm64
+pkg: reporting-db-migrations/internal/engine
+cpu: Apple M2
+BenchmarkLayoutHash_2000Objects-8   	     348	    482293 ns/op	     374 B/op	       5 allocs/op
+PASS
+ok  	reporting-db-migrations/internal/engine	10.968s

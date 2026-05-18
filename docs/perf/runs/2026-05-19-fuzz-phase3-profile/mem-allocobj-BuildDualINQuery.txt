@@ -1,0 +1,23 @@
+File: types-bench.test
+Type: alloc_objects
+Time: 2026-05-18 22:55:09 CEST
+Showing nodes accounting for 268025, 100% of 268025 total
+Dropped 14 nodes (cum <= 1340)
+      flat  flat%   sum%        cum   cum%
+    135177 50.43% 50.43%     135177 50.43%  reporting-db-migrations/internal/types.buildDualINTemplatePlan
+     64049 23.90% 74.33%      64049 23.90%  internal/bytealg.MakeNoZero
+     63055 23.53% 97.86%      63055 23.53%  reporting-db-migrations/internal/types.combineStringArgs (inline)
+      5744  2.14%   100%       5744  2.14%  runtime.mallocgc
+         0     0%   100%     262281 97.86%  reporting-db-migrations/internal/types.BenchmarkBuildDualINQuery_500x500
+         0     0%   100%     262281 97.86%  reporting-db-migrations/internal/types.BuildDualINQuery
+         0     0%   100%      64049 23.90%  reporting-db-migrations/internal/types.buildDualINQueryFromPlan
+         0     0%   100%       4681  1.75%  runtime.acquireSudog
+         0     0%   100%       4681  1.75%  runtime.gcBgMarkWorker
+         0     0%   100%       4681  1.75%  runtime.gcMarkDone
+         0     0%   100%       5744  2.14%  runtime.newobject
+         0     0%   100%       4681  1.75%  runtime.semacquire (inline)
+         0     0%   100%       4681  1.75%  runtime.semacquire1
+         0     0%   100%      64049 23.90%  strings.(*Builder).Grow
+         0     0%   100%      64049 23.90%  strings.(*Builder).grow
+         0     0%   100%     262281 97.86%  testing.(*B).launch
+         0     0%   100%     262281 97.86%  testing.(*B).runN

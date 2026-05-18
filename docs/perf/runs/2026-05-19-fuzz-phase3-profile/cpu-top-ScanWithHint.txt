@@ -1,0 +1,33 @@
+File: fs-bench.test
+Type: cpu
+Time: 2026-05-18 22:54:47 CEST
+Duration: 4.03s, Total samples = 4.18s (103.81%)
+Showing nodes accounting for 3.91s, 93.54% of 4.18s total
+Dropped 73 nodes (cum <= 0.02s)
+Showing top 25 nodes out of 80
+      flat  flat%   sum%        cum   cum%
+     2.27s 54.31% 54.31%      2.27s 54.31%  runtime.kevent
+     0.34s  8.13% 62.44%      0.50s 11.96%  reporting-db-migrations/internal/fs.normalizeSQLBytes
+     0.21s  5.02% 67.46%      0.21s  5.02%  runtime.madvise
+     0.20s  4.78% 72.25%      0.20s  4.78%  runtime.pthread_cond_wait
+     0.17s  4.07% 76.32%      0.17s  4.07%  runtime.memmove
+     0.17s  4.07% 80.38%      0.17s  4.07%  runtime.usleep
+     0.08s  1.91% 82.30%      0.08s  1.91%  runtime.pthread_kill
+     0.06s  1.44% 83.73%      0.06s  1.44%  runtime.pthread_cond_signal
+     0.05s  1.20% 84.93%      0.12s  2.87%  crypto/internal/fips140/sha256.(*Digest).checkSum
+     0.05s  1.20% 86.12%      0.05s  1.20%  crypto/internal/fips140/sha256.blockSHA2
+     0.05s  1.20% 87.32%      0.17s  4.07%  runtime.mallocgcSmallScanNoHeader
+     0.04s  0.96% 88.28%      0.04s  0.96%  runtime.pthread_cond_timedwait_relative_np
+     0.03s  0.72% 89.00%      0.09s  2.15%  crypto/internal/fips140/sha256.(*Digest).Write
+     0.03s  0.72% 89.71%      0.04s  0.96%  runtime.(*mspan).writeHeapBitsSmall
+     0.03s  0.72% 90.43%      0.03s  0.72%  runtime.memclrNoHeapPointers
+     0.02s  0.48% 90.91%      0.16s  3.83%  crypto/internal/fips140/sha256.(*Digest).Sum
+     0.02s  0.48% 91.39%      0.76s 18.18%  reporting-db-migrations/internal/fs.NormalizeAndHashBytes
+     0.02s  0.48% 91.87%      0.19s  4.55%  runtime.newobject
+     0.01s  0.24% 92.11%      0.03s  0.72%  internal/runtime/maps.(*Map).getWithoutKeySmallFastStr
+     0.01s  0.24% 92.34%      0.85s 20.33%  reporting-db-migrations/internal/fs.(*Object).Checksum
+     0.01s  0.24% 92.58%      0.21s  5.02%  reporting-db-migrations/internal/fs.benchCopyObjectForChecksumLoop
+     0.01s  0.24% 92.82%      0.83s 19.86%  reporting-db-migrations/internal/fs.checksumOnceForFile.func1
+     0.01s  0.24% 93.06%      0.25s  5.98%  runtime.findRunnable
+     0.01s  0.24% 93.30%      0.04s  0.96%  runtime.mapaccess2_faststr
+     0.01s  0.24% 93.54%      0.03s  0.72%  runtime.scanObject

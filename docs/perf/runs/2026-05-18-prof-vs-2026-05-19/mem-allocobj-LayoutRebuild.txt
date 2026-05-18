@@ -1,0 +1,30 @@
+File: fs-bench.test
+Type: alloc_objects
+Time: 2026-05-18 23:03:39 CEST
+Showing nodes accounting for 1208374, 99.27% of 1217208 total
+Dropped 24 nodes (cum <= 6086)
+      flat  flat%   sum%        cum   cum%
+    701575 57.64% 57.64%     701575 57.64%  reporting-db-migrations/internal/fs.buildObjectsByPath (inline)
+    185693 15.26% 72.89%     185693 15.26%  reporting-db-migrations/internal/fs.buildTransitionsByPath (inline)
+    152920 12.56% 85.46%     300380 24.68%  reporting-db-migrations/internal/fs.(*Layout).rebuildContentRetainPathLists
+    147460 12.11% 97.57%     147460 12.11%  internal/reflectlite.Swapper
+     10923   0.9% 98.47%      10923   0.9%  testing.(*B).ResetTimer
+      7282   0.6% 99.07%       7282   0.6%  syscall.ByteSliceFromString
+      2521  0.21% 99.27%      13444  1.10%  reporting-db-migrations/internal/fs.benchLayoutForPathIndex
+         0     0% 99.27%      10923   0.9%  main.main
+         0     0% 99.27%       7282   0.6%  os.OpenFile
+         0     0% 99.27%       7282   0.6%  os.WriteFile
+         0     0% 99.27%       7282   0.6%  os.ignoringEINTR (inline)
+         0     0% 99.27%       7282   0.6%  os.open (inline)
+         0     0% 99.27%       7282   0.6%  os.openFileNolog
+         0     0% 99.27%       7282   0.6%  os.openFileNolog.func1 (inline)
+         0     0% 99.27%    1187648 97.57%  reporting-db-migrations/internal/fs.(*Layout).RebuildPathIndexes
+         0     0% 99.27%    1201092 98.68%  reporting-db-migrations/internal/fs.BenchmarkLayoutRebuildPathIndexes_500Objects
+         0     0% 99.27%      10923   0.9%  runtime.main
+         0     0% 99.27%     147460 12.11%  sort.Slice
+         0     0% 99.27%       7282   0.6%  syscall.BytePtrFromString (inline)
+         0     0% 99.27%       7282   0.6%  syscall.Open
+         0     0% 99.27%    1201092 98.68%  testing.(*B).launch
+         0     0% 99.27%    1212015 99.57%  testing.(*B).runN
+         0     0% 99.27%      10923   0.9%  testing.(*M).Run
+         0     0% 99.27%      10923   0.9%  testing.runBenchmarks
