@@ -248,6 +248,97 @@ func TestExecute_ExecError(t *testing.T) {
 	}
 }
 
+func TestExecuteTxBatchPublishesAppliedBatch(t *testing.T) {
+	e := New()
+	conn := &testutil.MockConn{}
+	b := bus.New()
+
+	gotCalls := 0
+	gotLen := 0
+	b.Subscribe(types.EventObjectApplied, func(_ context.Context, payload any) {
+		gotCalls++
+		events, ok := payload.([]*types.ObjectEvent)
+		if !ok {
+			t.Fatalf("payload type = %T, want []*types.ObjectEvent", payload)
+		}
+		gotLen = len(events)
+	})
+
+	res := &ApplyResult{}
+	stmts := []batchedStmt{
+		{content: "CREATE TABLE t1(id int)", normalizedKey: "r/tables/t1", kind: "tables", schemaName: "r", objectName: "t1", sourceFile: "r/tables/t1.sql", recordKind: "object"},
+		{content: "CREATE VIEW v1 AS SELECT 1", normalizedKey: "r/views/v1", kind: "views", schemaName: "r", objectName: "v1", sourceFile: "r/views/v1.sql", recordKind: "object"},
+	}
+
+	e.executeTxBatch(context.Background(), conn, stmts, res, b)
+
+	if gotCalls != 1 {
+		t.Fatalf("publish calls = %d, want 1", gotCalls)
+	}
+	if gotLen != 2 {
+		t.Fatalf("batched event len = %d, want 2", gotLen)
+	}
+	if res.Applied != 2 {
+		t.Fatalf("applied = %d, want 2", res.Applied)
+	}
+}
+
+func TestExecuteNonTxPublishesAppliedBatch(t *testing.T) {
+	e := New()
+	conn := &testutil.MockConn{}
+	baseDir := t.TempDir()
+
+	write := func(rel, content string) {
+		path := filepath.Join(baseDir, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	write("r/procedures/p1.sql", "CREATE OR ALTER PROC r.p1 AS SELECT 1")
+	write("r/procedures/p2.sql", "CREATE OR ALTER PROC r.p2 AS SELECT 2")
+
+	layout := fs.Layout{
+		Objects: []*fs.Object{
+			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r", "procedures", "p1.sql")}, Path: "r/procedures/p1.sql", NormalizedKey: "r/procedures/p1", Kind: "procedures", SchemaName: "r", ObjectName: "p1"},
+			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r", "procedures", "p2.sql")}, Path: "r/procedures/p2.sql", NormalizedKey: "r/procedures/p2", Kind: "procedures", SchemaName: "r", ObjectName: "p2"},
+		},
+	}
+	plan := types.MigrationPlan{
+		Objects: []types.PlannedObject{
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/procedures/p1", Kind: "procedures", ObjectPath: "r/procedures/p1.sql"}, PlannedAction: types.ActionCreateObject},
+			{ObjectRef: types.ObjectRef{NormalizedKey: "r/procedures/p2", Kind: "procedures", ObjectPath: "r/procedures/p2.sql"}, PlannedAction: types.ActionCreateObject},
+		},
+	}
+	b := bus.New()
+	gotCalls := 0
+	gotLen := 0
+	b.Subscribe(types.EventObjectApplied, func(_ context.Context, payload any) {
+		gotCalls++
+		events, ok := payload.([]*types.ObjectEvent)
+		if !ok {
+			t.Fatalf("payload type = %T, want []*types.ObjectEvent", payload)
+		}
+		gotLen = len(events)
+	})
+
+	res, err := e.Execute(context.Background(), conn, plan, layout, b)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if res.Applied != 2 {
+		t.Fatalf("applied = %d, want 2", res.Applied)
+	}
+	if gotCalls != 1 {
+		t.Fatalf("publish calls = %d, want 1", gotCalls)
+	}
+	if gotLen != 2 {
+		t.Fatalf("batched event len = %d, want 2", gotLen)
+	}
+}
+
 func TestExecute_NonTxObjectsExecutedIndividually(t *testing.T) {
 	e := New()
 	mock := &testutil.MockConn{}
@@ -693,5 +784,21 @@ func TestExecute_MixedTxAndNonTx(t *testing.T) {
 	}
 	if !nonTxDirect {
 		t.Errorf("expected non-tx statement without wrapping")
+	}
+}
+
+func TestBatchedStmtZeroChecksumHex(t *testing.T) {
+	var stmt batchedStmt
+	if got := stmt.checksumHexString(); got != allZeroChecksumHex {
+		t.Fatalf("checksumHexString() = %q, want %q", got, allZeroChecksumHex)
+	}
+	if stmt.checksumHex != allZeroChecksumHex {
+		t.Fatalf("memoized checksumHex = %q, want constant", stmt.checksumHex)
+	}
+	stmt.checksumSum[0] = 1
+	stmt.checksumHex = ""
+	got := stmt.checksumHexString()
+	if want := "0100000000000000000000000000000000000000000000000000000000000000"; got != want {
+		t.Fatalf("non-zero digest: got %q want %q", got, want)
 	}
 }
