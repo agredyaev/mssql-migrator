@@ -70,9 +70,11 @@ func (stubValueConn) QueryStringsContext(context.Context, string, []string) (dri
 func (stubValueConn) QueryStringSlicesContext(context.Context, string, []string, []string) (driver.Rows, error) {
 	return nil, nil
 }
-func (stubValueConn) ExecContext(context.Context, string, ...any) (driver.Result, error) { return nil, nil }
-func (stubValueConn) Ping(context.Context) error                                            { return nil }
-func (stubValueConn) Close() error                                                          { return nil }
+func (stubValueConn) ExecContext(context.Context, string, ...any) (driver.Result, error) {
+	return nil, nil
+}
+func (stubValueConn) Ping(context.Context) error { return nil }
+func (stubValueConn) Close() error               { return nil }
 
 func TestConnStableKey_nonPointerConcrete(t *testing.T) {
 	var c driver.Conn = stubValueConn{}
