@@ -1,12 +1,14 @@
 .PHONY: all build test vet lint fmt check db-up db-down db-init test-int test-int-v \
 	bench-perf-diff-skip bench-perf-diff-create profile-perf-diff-skip-cpu profile-perf-diff-skip-mem \
-	bench-perf-chunkkeys
+	bench-perf-chunkkeys bench-perf-audit
 
 STATICCHECK = $(shell go env GOPATH)/bin/staticcheck
 
-# Performance harness: `internal/engine/benchmark_profiling_test.go` and `docs/profiling-benchmark-plan.md`.
+# Performance harness: `internal/engine/benchmark_profiling_test.go`, `docs/profiling-benchmark-plan.md`,
+# and audit backlog benches (`make bench-perf-audit`).
 RMIG_BENCH_PKG := ./internal/engine
 RMIG_TYPES_PKG := ./internal/types
+RMIG_AUDIT_BENCH_PKGS := ./internal/bus ./internal/db ./internal/fs ./internal/apply
 RMIG_PROFILE_DIR ?= /tmp/rmig-profiles
 
 all: check
@@ -74,6 +76,12 @@ bench-perf-diff-create:
 bench-perf-chunkkeys:
 	go test $(RMIG_TYPES_PKG) -run '^$$' -bench '^BenchmarkChunkKeys_10k_2100$$' \
 		-benchmem -count=10 -benchtime=200ms
+
+# Internal audit backlog: bus publish, inspector scope key / dual IN / cache, scanner git preload.
+bench-perf-audit:
+	go test $(RMIG_AUDIT_BENCH_PKGS) -run '^$$' \
+		-bench '^BenchmarkBusPublish_|BenchmarkScopeKey_|BenchmarkBuildDualINQuery_|BenchmarkInspectorInspect_|BenchmarkScannerPreloadGitInfo_|BenchmarkLayoutRebuildPathIndexes_|BenchmarkCollectStatements_|BenchmarkExecuteTxBatch_' \
+		-benchmem -count=5 -benchtime=150ms
 
 profile-perf-diff-skip-cpu:
 	@mkdir -p $(RMIG_PROFILE_DIR)
