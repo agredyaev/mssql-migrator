@@ -1,6 +1,7 @@
 package report
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -32,14 +33,27 @@ func (s *Subscriber) SetErrorHandler(fn func(msg string)) {
 }
 
 func (s *Subscriber) writeJSON(filename string, v any) {
-	data, err := json.MarshalIndent(v, "", "  ")
+	path := filepath.Join(s.baseDir, filename)
+	f, err := os.Create(path)
 	if err != nil {
-		s.notifier.Notify("report marshal: " + err.Error())
+		s.notifier.Notify(fmt.Sprintf("report create %s: %s", path, err.Error()))
 		return
 	}
-	path := filepath.Join(s.baseDir, filename)
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		s.notifier.Notify(fmt.Sprintf("report write %s: %s", path, err.Error()))
+	defer f.Close()
+
+	bw := bufio.NewWriter(f)
+	enc := json.NewEncoder(bw)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		s.notifier.Notify(fmt.Sprintf("report marshal: %s", err.Error()))
+		return
+	}
+	if err := bw.Flush(); err != nil {
+		s.notifier.Notify(fmt.Sprintf("report flush %s: %s", path, err.Error()))
+		return
+	}
+	if err := f.Sync(); err != nil {
+		s.notifier.Notify(fmt.Sprintf("report sync %s: %s", path, err.Error()))
 	}
 }
 
