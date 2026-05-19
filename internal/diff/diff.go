@@ -12,10 +12,12 @@ import (
 	"reporting-db-migrations/internal/types"
 )
 
-type Computer struct{}
+type Computer struct {
+	skipGit bool
+}
 
-func NewComputer() *Computer {
-	return &Computer{}
+func NewComputer(cfg types.Config) *Computer {
+	return &Computer{skipGit: cfg.SkipGit}
 }
 
 func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.State, checksums map[string][32]byte) (*types.MigrationPlan, error) {
@@ -76,7 +78,7 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 	// one file still has a cold checksum cache. After Scanner.Scan, preloadChecksums
 	// has usually filled every CachedFile.checksumOnce, so this returns immediately
 	// and avoids ~N goroutine-stack allocations per Compute.
-	warmupIfNeeded(layout)
+	warmupIfNeeded(layout, c.skipGit)
 
 	plan.Objects = make([]types.PlannedObject, 0, len(layout.Objects))
 	for _, obj := range layout.Objects {
@@ -102,21 +104,21 @@ func (c *Computer) Compute(ctx context.Context, layout fs.Layout, state *db.Stat
 		switch {
 		case !exists:
 			plannedObj.PlannedAction = types.ActionCreateObject
-			setGitInfo(obj, &plannedObj)
+			c.setGitInfo(obj, &plannedObj)
 			createCount++
 
 		case exists:
 			prior, hasPrior := checksums[obj.NormalizedKey]
 			if !hasPrior || prior == ([32]byte{}) {
 				plannedObj.PlannedAction = types.ActionAdoptExisting
-				setGitInfo(obj, &plannedObj)
+				c.setGitInfo(obj, &plannedObj)
 				adoptCount++
 			} else if cs != ([32]byte{}) && cs == prior {
 				plannedObj.PlannedAction = types.ActionSkipUnchanged
 				skipCount++
 			} else {
 				changedCount++
-				setGitInfo(obj, &plannedObj)
+				c.setGitInfo(obj, &plannedObj)
 				blockedCount += c.handleChanged(changeCtx{
 					obj: obj, dbObj: dbObj, plannedObj: &plannedObj,
 					plan: plan, state: state,
@@ -158,7 +160,11 @@ func priorDigestPresent(m map[string][32]byte, key string) bool {
 	return ok && cs != ([32]byte{})
 }
 
-func setGitInfo(obj *fs.Object, planned *types.PlannedObject) {
+func (c *Computer) setGitInfo(obj *fs.Object, planned *types.PlannedObject) {
+	if c.skipGit {
+		planned.Git = nil
+		return
+	}
 	var g types.GitInfo
 	if h, err := obj.GitHash(); err == nil {
 		g.GitHash = h
@@ -252,16 +258,16 @@ func (c *Computer) handleChanged(ctx changeCtx) int {
 // Cold path: layouts built without going through Scanner, tests, or checksum
 // errors — a small worker pool fans out Checksum/Git work
 // instead of spawning one goroutine per object (large alloc/scheduling savings).
-func warmupIfNeeded(layout fs.Layout) {
+func warmupIfNeeded(layout fs.Layout, skipGit bool) {
 	for _, obj := range layout.Objects {
 		if !obj.IsChecksumCached() {
-			warmupAll(layout)
+			warmupAll(layout, skipGit)
 			return
 		}
 	}
 }
 
-func warmupAll(layout fs.Layout) {
+func warmupAll(layout fs.Layout, skipGit bool) {
 	n := len(layout.Objects)
 	if n == 0 {
 		return
@@ -282,9 +288,11 @@ func warmupAll(layout fs.Layout) {
 			defer wg.Done()
 			for obj := range jobs {
 				_, _ = obj.Checksum()
-				_, _ = obj.GitHash()
-				_, _ = obj.GitAuthor()
-				_, _ = obj.GitDate()
+				if !skipGit {
+					_, _ = obj.GitHash()
+					_, _ = obj.GitAuthor()
+					_, _ = obj.GitDate()
+				}
 			}
 		}()
 	}

@@ -42,6 +42,10 @@ type Config struct {
 	TrustServerCertificate bool
 	Encrypt                bool
 	JSONLogs               bool
+	// SkipGit disables git metadata preload during scan and omits git fields from plans.
+	SkipGit bool
+	// ReportSync fsyncs report files after write (RM_REPORT_SYNC=1). Default is false.
+	ReportSync bool
 }
 
 func (c Config) DBAuthMode() string {
