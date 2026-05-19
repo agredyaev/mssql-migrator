@@ -15,15 +15,6 @@ import (
 	"reporting-db-migrations/internal/types"
 )
 
-//go:embed sql/schemas.sql
-var schemaSQL string
-
-//go:embed sql/objects.sql
-var objectSQL string
-
-//go:embed sql/columns.sql
-var columnSQL string
-
 //go:embed sql/schemas_openjson.sql
 var schemaOpenJSONSQL string
 
@@ -33,14 +24,6 @@ var objectOpenJSONSQL string
 //go:embed sql/columns_openjson.sql
 var columnOpenJSONSQL string
 
-//go:embed sql/openjson_compatibility.sql
-var openJSONCompatibilitySQL string
-
-var (
-	objectSQLTemplate = types.CompileDualINTemplate(objectSQL, "{{schema_list}}", "{{object_list}}")
-	columnSQLTemplate = types.CompileDualINTemplate(columnSQL, "{{schema_list}}", "{{table_list}}")
-)
-
 type cachedScope struct {
 	err   error
 	state *State
@@ -48,11 +31,8 @@ type cachedScope struct {
 }
 
 type inspector struct {
-	openJSONProbeErr  error
-	cache             map[string]*cachedScope // keys: scopeKeySHA256Hex(canonical); "" for empty layout
-	openJSONProbeOnce sync.Once
-	mu                sync.Mutex
-	openJSONEnabled   bool
+	cache map[string]*cachedScope // keys: scopeKeySHA256Hex(canonical); "" for empty layout
+	mu    sync.Mutex
 }
 
 var sharedInspectorCache = struct {
@@ -90,6 +70,18 @@ func (d *inspector) Inspect(ctx context.Context, conn driver.Conn, scope fs.Layo
 	return cs.state, cs.err
 }
 
+func (d *inspector) LoadTableColumns(ctx context.Context, conn driver.Conn, scope fs.Layout) (map[string][]TableColumn, error) {
+	schemaNames := scopeSchemaNames(scope)
+	if len(schemaNames) == 0 {
+		return map[string][]TableColumn{}, nil
+	}
+	tableNames := scopeObjectNames(scope, "tables")
+	if len(tableNames) == 0 {
+		return map[string][]TableColumn{}, nil
+	}
+	return d.queryColumnsOpenJSON(ctx, conn, schemaNames, tableNames)
+}
+
 func InvalidateInspectorCache(conn driver.Conn) {
 	connKey := driver.ConnStableKey(conn)
 	sharedInspectorCache.mu.Lock()
@@ -107,80 +99,6 @@ func (d *inspector) readState(ctx context.Context, conn driver.Conn, scope fs.La
 		}, nil
 	}
 
-	useOpenJSON, err := d.supportsOpenJSON(ctx, conn)
-	if err != nil {
-		return nil, err
-	}
-	if useOpenJSON {
-		return d.readStateOpenJSON(ctx, conn, scope, schemaNames)
-	}
-	return d.readStateChunked(ctx, conn, scope, schemaNames)
-}
-
-func (d *inspector) readStateChunked(ctx context.Context, conn driver.Conn, scope fs.Layout, schemaNames []string) (*State, error) {
-	schemas, err := d.querySchemas(ctx, conn, schemaNames)
-	if err != nil {
-		return nil, err
-	}
-
-	objectsBySchema := scopeObjectNamesBySchema(scope, "")
-	objects := make(map[string]Object)
-	for _, schemaChunk := range types.ChunkKeys(schemaNames, driver.DefaultMaxParameters) {
-		nObj := 0
-		for _, schema := range schemaChunk {
-			nObj += len(objectsBySchema[schema])
-		}
-		allObjNames := make([]string, 0, nObj)
-		for _, schema := range schemaChunk {
-			allObjNames = append(allObjNames, objectsBySchema[schema]...)
-		}
-		if len(allObjNames) == 0 {
-			continue
-		}
-		for _, objChunk := range types.ChunkKeys(allObjNames, driver.DefaultMaxParameters) {
-			chunkObjs, err := d.queryObjects(ctx, conn, schemaChunk, objChunk)
-			if err != nil {
-				return nil, err
-			}
-			for k, v := range chunkObjs {
-				objects[k] = v
-			}
-		}
-	}
-
-	tablesBySchema := scopeObjectNamesBySchema(scope, "tables")
-	columns := make(map[string][]TableColumn)
-	for _, schemaChunk := range types.ChunkKeys(schemaNames, driver.DefaultMaxParameters) {
-		nTbl := 0
-		for _, schema := range schemaChunk {
-			nTbl += len(tablesBySchema[schema])
-		}
-		allTblNames := make([]string, 0, nTbl)
-		for _, schema := range schemaChunk {
-			allTblNames = append(allTblNames, tablesBySchema[schema]...)
-		}
-		if len(allTblNames) == 0 {
-			continue
-		}
-		for _, tblChunk := range types.ChunkKeys(allTblNames, driver.DefaultMaxParameters) {
-			chunkCols, err := d.queryColumns(ctx, conn, schemaChunk, tblChunk)
-			if err != nil {
-				return nil, err
-			}
-			for k, v := range chunkCols {
-				columns[k] = v
-			}
-		}
-	}
-
-	return &State{
-		Schemas:      schemas,
-		Objects:      objects,
-		TableColumns: columns,
-	}, nil
-}
-
-func (d *inspector) readStateOpenJSON(ctx context.Context, conn driver.Conn, scope fs.Layout, schemaNames []string) (*State, error) {
 	schemas, err := d.querySchemasOpenJSON(ctx, conn, schemaNames)
 	if err != nil {
 		return nil, err
@@ -195,72 +113,11 @@ func (d *inspector) readStateOpenJSON(ctx context.Context, conn driver.Conn, sco
 		}
 	}
 
-	tableNames := scopeObjectNames(scope, "tables")
-	columns := map[string][]TableColumn{}
-	if len(tableNames) > 0 {
-		columns, err = d.queryColumnsOpenJSON(ctx, conn, schemaNames, tableNames)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return &State{
 		Schemas:      schemas,
 		Objects:      objects,
-		TableColumns: columns,
+		TableColumns: map[string][]TableColumn{},
 	}, nil
-}
-
-func (d *inspector) supportsOpenJSON(ctx context.Context, conn driver.Conn) (bool, error) {
-	d.openJSONProbeOnce.Do(func() {
-		d.openJSONEnabled, d.openJSONProbeErr = probeOpenJSONSupport(ctx, conn)
-	})
-	return d.openJSONEnabled, d.openJSONProbeErr
-}
-
-func probeOpenJSONSupport(ctx context.Context, conn driver.Conn) (bool, error) {
-	rows, err := conn.QueryContext(ctx, openJSONCompatibilitySQL)
-	if err != nil {
-		return false, err
-	}
-	defer rows.Close()
-
-	if !rows.Next() {
-		if err := rows.Err(); err != nil {
-			return false, err
-		}
-		return false, nil
-	}
-	var enabled int
-	if err := rows.Scan(&enabled); err != nil {
-		return false, err
-	}
-	if err := rows.Err(); err != nil {
-		return false, err
-	}
-	return enabled == 1, nil
-}
-
-func (d *inspector) querySchemas(ctx context.Context, conn driver.Conn, schemaNames []string) (map[string]struct{}, error) {
-	result := make(map[string]struct{}, len(schemaNames))
-	for _, chunk := range types.ChunkKeys(schemaNames, driver.DefaultMaxParameters) {
-		q, args := types.BuildINQuery(schemaSQL, "{{schema_list}}", chunk, 1)
-		rows, err := conn.QueryStringsContext(ctx, q, args)
-		if err != nil {
-			return nil, err
-		}
-
-		for rows.Next() {
-			var name string
-			if err := rows.Scan(&name); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			result[name] = struct{}{}
-		}
-		rows.Close()
-	}
-	return result, nil
 }
 
 func (d *inspector) querySchemasOpenJSON(ctx context.Context, conn driver.Conn, schemaNames []string) (map[string]struct{}, error) {
@@ -281,36 +138,6 @@ func (d *inspector) querySchemasOpenJSON(ctx context.Context, conn driver.Conn, 
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
-	}
-	return result, nil
-}
-
-func (d *inspector) queryObjects(ctx context.Context, conn driver.Conn, schemaNames, objectNames []string) (map[string]Object, error) {
-	result := make(map[string]Object, len(objectNames))
-	for _, sc := range types.ChunkKeys(schemaNames, driver.DefaultMaxParameters) {
-		for _, oc := range types.ChunkKeys(objectNames, driver.DefaultMaxParameters) {
-			q := buildDualINQueryText(objectSQL, "{{schema_list}}", sc, "{{object_list}}", oc)
-			rows, err := conn.QueryStringSlicesContext(ctx, q, sc, oc)
-			if err != nil {
-				return nil, err
-			}
-
-			for rows.Next() {
-				var schemaName, kind, objectName, parentName string
-				if err := rows.Scan(&schemaName, &kind, &objectName, &parentName); err != nil {
-					rows.Close()
-					return nil, err
-				}
-				key := types.NormalizedKey(schemaName, kind, objectName)
-				result[key] = Object{
-					SchemaName: schemaName,
-					Kind:       kind,
-					ObjectName: objectName,
-					ParentName: parentName,
-				}
-			}
-			rows.Close()
-		}
 	}
 	return result, nil
 }
@@ -340,41 +167,6 @@ func (d *inspector) queryObjectsOpenJSON(ctx context.Context, conn driver.Conn, 
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
-	}
-	return result, nil
-}
-
-func (d *inspector) queryColumns(ctx context.Context, conn driver.Conn, schemaNames, tableNames []string) (map[string][]TableColumn, error) {
-	result := make(map[string][]TableColumn, len(tableNames))
-	for _, sc := range types.ChunkKeys(schemaNames, driver.DefaultMaxParameters) {
-		for _, tc := range types.ChunkKeys(tableNames, driver.DefaultMaxParameters) {
-			q := buildDualINQueryText(columnSQL, "{{schema_list}}", sc, "{{table_list}}", tc)
-			rows, err := conn.QueryStringSlicesContext(ctx, q, sc, tc)
-			if err != nil {
-				return nil, err
-			}
-
-			for rows.Next() {
-				var schemaName, tableName, colName, typeName string
-				var length, precision, scale int
-				var nullable bool
-				if err := rows.Scan(&schemaName, &tableName, &colName, &typeName, &length, &precision, &scale, &nullable); err != nil {
-					rows.Close()
-					return nil, err
-				}
-				key := types.NormalizedKey(schemaName, "tables", tableName)
-				result[key] = append(result[key], TableColumn{
-					Name:           colName,
-					NormalizedName: colName,
-					TypeName:       typeName,
-					Length:         length,
-					Precision:      precision,
-					Scale:          scale,
-					Nullable:       nullable,
-				})
-			}
-			rows.Close()
-		}
 	}
 	return result, nil
 }
@@ -425,29 +217,6 @@ func scopeSchemaNames(scope fs.Layout) []string {
 	return names
 }
 
-func scopeObjectNamesBySchema(scope fs.Layout, kind string) map[string][]string {
-	result := make(map[string]map[string]struct{})
-	for _, obj := range scope.Objects {
-		if kind != "" && obj.Kind != kind {
-			continue
-		}
-		schema := obj.NormalizedSchemaName
-		if result[schema] == nil {
-			result[schema] = make(map[string]struct{})
-		}
-		result[schema][obj.ObjectName] = struct{}{}
-	}
-	out := make(map[string][]string, len(result))
-	for s, names := range result {
-		list := make([]string, 0, len(names))
-		for n := range names {
-			list = append(list, n)
-		}
-		out[s] = list
-	}
-	return out
-}
-
 func scopeObjectNames(scope fs.Layout, kind string) []string {
 	seen := map[string]struct{}{}
 	for _, obj := range scope.Objects {
@@ -489,8 +258,6 @@ func scopeKey(scope fs.Layout) string {
 		return a.s < b.s
 	})
 
-	// One pass into strings.Builder avoids ~n separate "x:"+payload string allocations
-	// from the previous []string + sort.Strings + strings.Join approach.
 	var est int
 	for _, p := range parts {
 		est += 2 + len(p.s)
@@ -542,19 +309,7 @@ func sharedScopeCacheKey(conn driver.Conn, scopeSlotKey string) string {
 	return fmt.Sprintf("%s|g:%d|%s", connKey, generation, scopeSlotKey)
 }
 
-// scopePart is one scopeKey fragment: same lexical order as "kind:payload" string.
 type scopePart struct {
 	s    string
 	kind byte
-}
-
-func buildDualINQueryText(template, placeholder1 string, keys1 []string, placeholder2 string, keys2 []string) string {
-	if template == objectSQL && placeholder1 == "{{schema_list}}" && placeholder2 == "{{object_list}}" {
-		return objectSQLTemplate.BuildQuery(keys1, keys2, 1)
-	}
-	if template == columnSQL && placeholder1 == "{{schema_list}}" && placeholder2 == "{{table_list}}" {
-		return columnSQLTemplate.BuildQuery(keys1, keys2, 1)
-	}
-	q, _ := types.BuildDualINQuery(template, placeholder1, keys1, placeholder2, keys2, 1)
-	return q
 }

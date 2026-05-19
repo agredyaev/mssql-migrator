@@ -106,7 +106,7 @@ func TestScopeKeySHA256HexGoldenVectors(t *testing.T) {
 
 func TestInspectCachesResult(t *testing.T) {
 	insp := NewInspector()
-	conn := &testutil.MockConn{}
+	conn := openJSONMockConnForSchemaOnly()
 	layout := fs.Layout{
 		Schemas: []fs.Schema{{Name: "r", NormalizedName: "r"}},
 	}
@@ -151,7 +151,7 @@ func TestInspectConnectionError(t *testing.T) {
 
 func TestInspectDifferentScopeNotCached(t *testing.T) {
 	insp := NewInspector()
-	conn := &testutil.MockConn{}
+	conn := openJSONMockConnForSchemaOnly()
 	layout1 := fs.Layout{
 		Schemas: []fs.Schema{{Name: "r", NormalizedName: "r"}},
 	}
@@ -170,7 +170,7 @@ func TestInspectDifferentScopeNotCached(t *testing.T) {
 }
 
 func TestInspectSharedCacheAcrossInspectorInstances(t *testing.T) {
-	conn := &testutil.MockConn{}
+	conn := openJSONMockConnForSchemaOnly()
 	layout := fs.Layout{
 		Schemas: []fs.Schema{{Name: "r", NormalizedName: "r"}},
 	}
@@ -197,7 +197,7 @@ func TestInspectSharedCacheAcrossInspectorInstances(t *testing.T) {
 }
 
 func TestInspectSharedCacheInvalidatesAfterGenerationBump(t *testing.T) {
-	conn := &testutil.MockConn{}
+	conn := openJSONMockConnForSchemaOnly()
 	layout := fs.Layout{
 		Schemas: []fs.Schema{{Name: "r", NormalizedName: "r"}},
 	}
@@ -221,94 +221,44 @@ func TestInspectSharedCacheInvalidatesAfterGenerationBump(t *testing.T) {
 	}
 }
 
-func TestInspectUsesOpenJSONQueriesWhenSupported(t *testing.T) {
+func TestInspectUsesOpenJSONQueriesWithoutColumns(t *testing.T) {
 	layout := openJSONTestLayout()
-	conn := &testutil.MockConn{
-		RowsByPrefix: map[string]*testutil.MockRows{
-			"SELECT CASE":                              testutil.NewMockRows([][]any{{1}}),
-			"WITH inspector_schema_filter AS (":        testutil.NewMockRows([][]any{{"r"}}),
-			"WITH inspector_object_schema_filter AS (": testutil.NewMockRows([][]any{{"r", "tables", "t1", ""}}),
-			"WITH inspector_column_schema_filter AS (": testutil.NewMockRows([][]any{{"r", "t1", "id", "int", 4, 10, 0, false}}),
-		},
-	}
+	conn := openJSONMockConnFull()
 
-	insp := NewInspector().(*inspector)
-	state, err := insp.Inspect(context.Background(), conn, layout)
+	state, err := NewInspector().Inspect(context.Background(), conn, layout)
 	if err != nil {
 		t.Fatalf("Inspect: %v", err)
 	}
-	if !insp.openJSONEnabled {
-		t.Fatal("expected OPENJSON path to be enabled")
+	if got := conn.QueryCount.Load(); got != 2 {
+		t.Fatalf("expected 2 queries (schemas + objects), got %d", got)
 	}
-	if got := conn.QueryCount.Load(); got != 4 {
-		t.Fatalf("expected 4 queries (probe + schemas + objects + columns), got %d", got)
+	if !strings.Contains(conn.Queries[0].Query, "OPENJSON(@p1)") {
+		t.Fatalf("expected schemas query to use OPENJSON, got %q", conn.Queries[0].Query)
 	}
-	if !strings.Contains(conn.Queries[1].Query, "OPENJSON(@p1)") {
-		t.Fatalf("expected schemas query to use OPENJSON, got %q", conn.Queries[1].Query)
-	}
-	if !strings.Contains(conn.Queries[2].Query, "OPENJSON(@p2)") {
-		t.Fatalf("expected objects query to use OPENJSON, got %q", conn.Queries[2].Query)
-	}
-	if len(conn.Queries[2].StringArgs1) != 2 {
-		t.Fatalf("expected 2 JSON args for objects query, got %d", len(conn.Queries[2].StringArgs1))
-	}
-	var schemaNames, objectNames []string
-	if err := json.Unmarshal([]byte(conn.Queries[2].StringArgs1[0]), &schemaNames); err != nil {
-		t.Fatalf("unmarshal schema JSON: %v", err)
-	}
-	if err := json.Unmarshal([]byte(conn.Queries[2].StringArgs1[1]), &objectNames); err != nil {
-		t.Fatalf("unmarshal object JSON: %v", err)
-	}
-	if len(schemaNames) != 1 || schemaNames[0] != "r" {
-		t.Fatalf("schema JSON = %v, want [r]", schemaNames)
-	}
-	if len(objectNames) != 1 || objectNames[0] != "t1" {
-		t.Fatalf("object JSON = %v, want [t1]", objectNames)
+	if !strings.Contains(conn.Queries[1].Query, "OPENJSON(@p2)") {
+		t.Fatalf("expected objects query to use OPENJSON, got %q", conn.Queries[1].Query)
 	}
 	if _, ok := state.Objects["r/tables/t1"]; !ok {
 		t.Fatalf("expected object r/tables/t1 in state, got %v", state.Objects)
 	}
-	if got := len(state.TableColumns["r/tables/t1"]); got != 1 {
-		t.Fatalf("expected 1 table column, got %d", got)
+	if len(state.TableColumns) != 0 {
+		t.Fatalf("expected no table columns from Inspect, got %d tables", len(state.TableColumns))
 	}
 }
 
-func TestInspectFallsBackWhenOpenJSONUnsupported(t *testing.T) {
+func TestLoadTableColumnsOpenJSON(t *testing.T) {
 	layout := openJSONTestLayout()
-	conn := &testutil.MockConn{
-		RowsByPrefix: map[string]*testutil.MockRows{
-			"SELECT CASE":                         testutil.NewMockRows([][]any{{0}}),
-			"SELECT LOWER(s.name) AS schema_name": testutil.NewMockRows([][]any{{"r"}}),
-			"SELECT\n    LOWER(s.name) AS schema_name,\n    CASE LOWER(o.type_desc)":     testutil.NewMockRows([][]any{{"r", "tables", "t1", ""}}),
-			"SELECT\n    LOWER(s.name) AS schema_name,\n    LOWER(o.name) AS table_name": testutil.NewMockRows([][]any{{"r", "t1", "id", "int", 4, 10, 0, false}}),
-		},
-	}
+	conn := openJSONMockConnFull()
 
-	insp := NewInspector().(*inspector)
-	state, err := insp.Inspect(context.Background(), conn, layout)
+	cols, err := NewInspector().LoadTableColumns(context.Background(), conn, layout)
 	if err != nil {
-		t.Fatalf("Inspect: %v", err)
+		t.Fatalf("LoadTableColumns: %v", err)
 	}
-	if insp.openJSONEnabled {
-		t.Fatal("expected OPENJSON path to be disabled")
+	if got := conn.QueryCount.Load(); got != 1 {
+		t.Fatalf("expected 1 column query, got %d", got)
 	}
-	if got := conn.QueryCount.Load(); got != 4 {
-		t.Fatalf("expected 4 queries (probe + schemas + objects + columns), got %d", got)
-	}
-	if strings.Contains(conn.Queries[1].Query, "OPENJSON(") {
-		t.Fatalf("expected fallback schemas query, got %q", conn.Queries[1].Query)
-	}
-	if len(conn.Queries[1].StringArgs1) != 1 || conn.Queries[1].StringArgs1[0] != "r" {
-		t.Fatalf("schema fallback args = %v, want [r]", conn.Queries[1].StringArgs1)
-	}
-	if len(conn.Queries[2].StringArgs1) != 1 || conn.Queries[2].StringArgs1[0] != "r" {
-		t.Fatalf("object fallback schema args = %v, want [r]", conn.Queries[2].StringArgs1)
-	}
-	if len(conn.Queries[2].StringArgs2) != 1 || conn.Queries[2].StringArgs2[0] != "t1" {
-		t.Fatalf("object fallback object args = %v, want [t1]", conn.Queries[2].StringArgs2)
-	}
-	if _, ok := state.Objects["r/tables/t1"]; !ok {
-		t.Fatalf("expected object r/tables/t1 in state, got %v", state.Objects)
+	if got := len(cols["r/tables/t1"]); got != 1 {
+		t.Fatalf("expected 1 table column, got %d", got)
 	}
 }
 
@@ -347,6 +297,24 @@ func openJSONTestLayout() fs.Layout {
 				ObjectName:           "t1",
 				NormalizedKey:        types.NormalizedKey("r", "tables", "t1"),
 			},
+		},
+	}
+}
+
+func openJSONMockConnFull() *testutil.MockConn {
+	return &testutil.MockConn{
+		RowsByPrefix: map[string]*testutil.MockRows{
+			"WITH inspector_schema_filter AS (":        testutil.NewMockRows([][]any{{"r"}}),
+			"WITH inspector_object_schema_filter AS (": testutil.NewMockRows([][]any{{"r", "tables", "t1", ""}}),
+			"WITH inspector_column_schema_filter AS (": testutil.NewMockRows([][]any{{"r", "t1", "id", "int", 4, 10, 0, false}}),
+		},
+	}
+}
+
+func openJSONMockConnForSchemaOnly() *testutil.MockConn {
+	return &testutil.MockConn{
+		RowsByPrefix: map[string]*testutil.MockRows{
+			"WITH inspector_schema_filter AS (": testutil.NewMockRows([][]any{{"r"}}),
 		},
 	}
 }
