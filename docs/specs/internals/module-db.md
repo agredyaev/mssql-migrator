@@ -9,18 +9,19 @@ Describe **SQL Server catalog inspection**: build queries from `fs.Layout`, exec
 ## Scope
 
 - `internal/db/inspector_impl.go` — inspector implementation, scope caching, OpenJSON queries
-- `internal/db/inspector.go` — `Inspector` interface (`Inspect`, `LoadTableColumns`)
-- `internal/db/sql/` — embedded OpenJSON query text (`schemas_openjson.sql`, `objects_openjson.sql`, `columns_openjson.sql`)
+- `internal/db/inspector.go` — `Inspector` interface (`Inspect`, `InspectWithScope`, `LoadTableColumns`)
+- `internal/db/inspect_scope.go` — `InspectScope` (full / hot refs / stable objects)
+- `internal/db/sql/` — catalog inspect via `buildCatalogStateSQL` (`catalog_*.sql` fragments, one round-trip); column load via `columns_openjson.sql`; scope uses `types.MarshalObjectScopeJSON` **(schema, kind, object)** triples
 - `internal/db/inspector_test.go`, `internal/db/inspector_bench_test.go`, fuzz tests
 
 ## System context
 
-`engine` constructs `db.NewInspector()` and calls `Inspect(ctx, conn, layout)` during `runPlan`. Results feed `diff.Compute`. When a migrate plan is **blocked**, `engine` calls `LoadTableColumns` before `scaffold.Ensure`.
+`engine` constructs `db.NewInspector()` and calls `InspectWithScope(ctx, conn, layout, scope)` during `runPlan` (scope from `engine.BuildInspectScope` after checksums load). `Inspect` is equivalent to `FullInspect: true`. Results feed `diff.Compute`. When a migrate plan is **blocked**, `engine` calls `LoadTableColumns` before `scaffold.Ensure`.
 
 ## Interfaces and boundaries
 
 - Constructor: `db.NewInspector()` (returns `Inspector`).
-- `Inspect`: schemas + objects only; `State.TableColumns` is empty.
+- `Inspect` / `InspectWithScope`: schemas + objects only; `State.TableColumns` is empty. Scoped path merges **stable** objects from audit/file checksum match without catalog SQL; **hot** refs use kind-filtered `buildCatalogStateSQL` (or empty-DB fast path).
 - `LoadTableColumns`: column metadata for tables in layout scope (OpenJSON query).
 - Inputs: `driver.Conn`, `fs.Layout`
 - Outputs: `*db.State`, `error`
@@ -29,12 +30,16 @@ Describe **SQL Server catalog inspection**: build queries from `fs.Layout`, exec
 ## Assumptions and constraints
 
 - **SQL Server 2016+** with **OPENJSON** (compatibility level 130+). Chunked `IN` fallback paths were removed.
-- Constraint: invalidate shared inspector cache after apply via `InvalidateInspectorCache(conn)` from `internal/apply`.
+- Constraint: invalidate shared inspector cache and **persistent catalog cache** (`azdo_deploy_meta.catalog_*`) after apply via `InvalidateInspectorCache(conn)` from `internal/apply`.
+- Persistent catalog cache (phase 3): [`catalog_cache.go`](../../db/catalog_cache.go); disabled with `RMIG_CATALOG_CACHE=0`.
 
 ## Nominal flow
 
-1. Derive scope from layout maps; cache key = connection generation + scope digest (`scopeKey` / SHA-256 hex).
-2. `Inspect`: one OpenJSON query for schemas (if needed), one for objects (if needed).
+1. Derive scope from layout maps (or hot-ref subset when scoped); cache key = connection generation + scope digest (`scopeKey` / SHA-256 hex; scoped slots include hot-ref hash).
+2. `Inspect` / `InspectWithScope`:
+   - **No layout objects:** `queryExistingLayoutSchemas` only (one OpenJSON query).
+   - **Empty DB fast path:** `catalog_scoped_hit.sql` only; if no hit, return empty `Objects` / `Schemas` (one round-trip).
+   - **Otherwise:** `buildCatalogStateSQL` (kind-filtered CTEs, one round-trip for schemas + objects).
 3. `LoadTableColumns` (optional): one OpenJSON query for `sys.columns` filtered to layout tables.
 
 ## Off-nominal behavior and failure containment

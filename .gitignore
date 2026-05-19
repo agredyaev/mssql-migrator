@@ -23,6 +23,9 @@ _old_*
 new_arch.txt
 review.md
 *.prof
+ops/perf/artifacts/*.json
+ops/perf/artifacts/*.prof
+ops/perf/artifacts/*.trace
 .temp/
 .DS_Store
 *.log

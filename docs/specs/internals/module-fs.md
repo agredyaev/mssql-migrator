@@ -9,7 +9,9 @@ Describe **repository discovery**: directory walk, `Layout` construction, per-fi
 ## Scope
 
 - `internal/fs/scanner.go` — `Scanner`, `Scan`, `preloadChecksums`, `preloadGitInfo`, transition parsing
-- `internal/fs/layout.go` — `Layout`, `Object`, `CachedFile`, path indexes, `LayoutHash`
+- `internal/fs/layout.go` — `Layout`, `Object`, `CachedFile` (heap via `Object.File`), path indexes, `LayoutHash`
+- `internal/fs/arena.go` — string interning for layout metadata (phase 4)
+- `internal/fs/store.go` — `ObjectStore` SoA index (`objectRow`, key map)
 - `internal/fs/normalize.go` — SQL normalization and hashing helpers
 - Tests and benchmarks: `internal/fs/*_test.go`, `internal/fs/*_bench_test.go`
 
@@ -33,7 +35,7 @@ Describe **repository discovery**: directory walk, `Layout` construction, per-fi
 
 1. `Scan` walks configured tree, populates `Layout` slices and maps.
 2. Optional preload phases reduce hot-path work in `diff.Compute` (checksums, Git metadata).
-3. `Layout` may rebuild path indexes lazily or after mutations (`RebuildPathIndexes`).
+3. `RebuildPathIndexes` refreshes path maps, interns duplicate strings, and builds `ObjectStore`.
 
 ## Off-nominal behavior and failure containment
 
