@@ -4,43 +4,47 @@ Lifecycle: `Current`.
 
 ## Purpose
 
-Describe **SQL Server catalog inspection**: build queries from `fs.Layout`, execute through `driver.Conn`, return `db.State` and column metadata used by planning and scaffold.
+Describe **SQL Server catalog inspection**: build queries from `fs.Layout`, execute through `driver.Conn`, return `db.State` used by planning. Table column metadata is loaded **on demand** for scaffold only.
 
 ## Scope
 
-- `internal/db/inspector_impl.go` — inspector implementation, caching, `OPENJSON` vs chunked `IN` fallback
-- `internal/db/sql/` — embedded query text (`.sql` files)
+- `internal/db/inspector_impl.go` — inspector implementation, scope caching, OpenJSON queries
+- `internal/db/inspector.go` — `Inspector` interface (`Inspect`, `LoadTableColumns`)
+- `internal/db/sql/` — embedded OpenJSON query text (`schemas_openjson.sql`, `objects_openjson.sql`, `columns_openjson.sql`)
 - `internal/db/inspector_test.go`, `internal/db/inspector_bench_test.go`, fuzz tests
 
 ## System context
 
-`engine` constructs `db.NewInspector()` and calls `Inspect(ctx, conn, layout)`. Results feed `diff.Compute` and `scaffold.Ensure` (table columns).
+`engine` constructs `db.NewInspector()` and calls `Inspect(ctx, conn, layout)` during `runPlan`. Results feed `diff.Compute`. When a migrate plan is **blocked**, `engine` calls `LoadTableColumns` before `scaffold.Ensure`.
 
 ## Interfaces and boundaries
 
-- Constructor: `db.NewInspector()` (returns concrete type used as `engine.Inspector`).
+- Constructor: `db.NewInspector()` (returns `Inspector`).
+- `Inspect`: schemas + objects only; `State.TableColumns` is empty.
+- `LoadTableColumns`: column metadata for tables in layout scope (OpenJSON query).
 - Inputs: `driver.Conn`, `fs.Layout`
-- Outputs: `*db.State` (schemas, objects, columns, live checksums as needed by queries), `error`
+- Outputs: `*db.State`, `error`
 - Must not import `internal/apply`.
 
 ## Assumptions and constraints
 
-- Assumption: compatibility level probe (`sys.databases`) determines `OPENJSON` eligibility.
-- Constraint: parameter batching respects `driver.DefaultMaxParameters` and `internal/types` chunk helpers on fallback paths.
+- **SQL Server 2016+** with **OPENJSON** (compatibility level 130+). Chunked `IN` fallback paths were removed.
+- Constraint: invalidate shared inspector cache after apply via `InvalidateInspectorCache(conn)` from `internal/apply`.
 
 ## Nominal flow
 
-1. Derive scope (schema/object names) from layout maps.
-2. Run cached or fresh queries per scope digest (`scopeKey` / SHA-256 hex key — see code).
-3. Merge results into `db.State`.
+1. Derive scope from layout maps; cache key = connection generation + scope digest (`scopeKey` / SHA-256 hex).
+2. `Inspect`: one OpenJSON query for schemas (if needed), one for objects (if needed).
+3. `LoadTableColumns` (optional): one OpenJSON query for `sys.columns` filtered to layout tables.
 
 ## Off-nominal behavior and failure containment
 
-- Query errors return to engine; `Inspect` caching stores failures per scope until invalidated (see `sync.Once` usage in implementation).
+- Query errors return to engine; `Inspect` caching stores failures per scope until invalidated (`sync.Once` per cache entry).
 
 ## Verification and validation
 
 - `make check`
+- Integration: `internal/db/inspector_integration_test.go` (tag `integration`)
 - Fuzz tests in `internal/db` where present
 
 ## Operations and recovery
@@ -54,5 +58,6 @@ Describe **SQL Server catalog inspection**: build queries from `fs.Layout`, exec
 ## References
 
 - `internal/driver/conn.go`
-- `internal/types/chunk.go`
+- `internal/types/chunk.go` (used by callers, not inspector SQL path)
 - `docs/specs/internals/module-driver.md`
+- `docs/prod-gate.md` — measured plan-phase timings

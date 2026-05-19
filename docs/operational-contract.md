@@ -38,10 +38,13 @@ Developers work on a branch, run **`make check`**, then integrate or release a b
 - Values are loaded from the env file (if readable) and overridden by **`os.LookupEnv`** for keys not present in the file (`buildConfig` in `internal/app/config.go`).
 - **Hard validation in `validateConfig`:** `RM_DB_SERVER`, `RM_DB_DATABASE`, **`RM_SQL_ROOT`**, and **`RM_SQL_BASE`** must all be non-empty before a command runs.
 - Other variables are passed through to `types.Config` when set (for example **`RM_PLAN_FILE`** → `PlanFile`, **`RM_REPAIR_SCRIPT`** → `RepairTarget`); those two are **not** read by `internal/engine` yet but are loaded for forward compatibility.
+- **`RM_SKIP_GIT=1`:** skip git metadata preload during scan and omit git fields from plans.
+- **`RM_REPORT_SYNC=1`:** fsync `.plan.json` / `.report.json` after write (default: flush only).
 
 ### Reports
 
-- When **`RM_REPORT_DIR`** is set, `internal/report/report.go` writes **`.plan.json`** and **`.report.json`** into that directory (see `writeJSON` calls). There is no additional `--report-dir` flag; the directory comes from **`RM_REPORT_DIR`** only.
+- When **`RM_REPORT_DIR`** is set, `internal/report/report.go` writes **compact JSON** **`.plan.json`** and **`.report.json`** into that directory. Optional **`RM_REPORT_SYNC=1`** enables `fsync` after write.
+- **`audit.EnsureTables`** runs once in `internal/app/app.go` after database connect (before engine commands).
 
 ### Outputs
 
@@ -76,6 +79,7 @@ Developers work on a branch, run **`make check`**, then integrate or release a b
 - `make check`
 - `rmig version` / `make release-build && ./bin/rmig version`
 - Optional: `make test-int` for SQL Server integration (`Makefile`, `internal/app/integration_test.go`)
+- Optional: `make test-prod-gate` for incremental plan go/no-go (`docs/prod-gate.md`)
 
 ## Operations and recovery
 

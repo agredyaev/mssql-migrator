@@ -46,7 +46,7 @@ Build with Go 1.22+ (module `reporting-db-migrations`). Configure database and r
 ## Verification and validation
 
 - Primary gate: `make check`
-- SQL Server integration: `make test-int` (requires Docker MSSQL per `Makefile` / `docker compose`)
+- SQL Server integration: `make test-int` (requires Docker MSSQL per `Makefile` / `docker compose`); optional **phase / DB-boundary timings:** `make test-int-phase`; **prod incremental go/no-go:** `make test-prod-gate` (see [`docs/prod-gate.md`](docs/prod-gate.md))
 - Documentation gate: `make doc-check` (`ops/quality/scripts/` per `docs/specs/nasa-document-spec.md`)
 
 ## Operations and recovery
