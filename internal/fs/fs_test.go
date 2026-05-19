@@ -202,7 +202,7 @@ func TestScanAttachesObjectByteCacheStatHints(t *testing.T) {
 		}
 		n++
 		if !o.objectStatForByteCacheValid {
-			t.Errorf("object %q: expected byte-cache stat hint after Scan", o.AbsPath)
+			t.Errorf("object %q: expected byte-cache stat hint after Scan", o.File.AbsPath)
 		}
 	}
 	if n == 0 {
@@ -243,8 +243,8 @@ func TestRebuildPathIndexesRetainOrderSortedByAbsPath(t *testing.T) {
 	_ = os.WriteFile(aPath, []byte("a"), 0o644)
 	layout := Layout{
 		Objects: []*Object{
-			{Path: "db/s/views/z.sql", CachedFile: CachedFile{AbsPath: zPath}},
-			{Path: "db/s/views/a.sql", CachedFile: CachedFile{AbsPath: aPath}},
+			{Path: "db/s/views/z.sql", File: &CachedFile{AbsPath: zPath}},
+			{Path: "db/s/views/a.sql", File: &CachedFile{AbsPath: aPath}},
 		},
 	}
 	layout.RebuildPathIndexes()
@@ -252,8 +252,8 @@ func TestRebuildPathIndexesRetainOrderSortedByAbsPath(t *testing.T) {
 		t.Fatalf("retainObjectOrder len=%d", len(layout.retainObjectOrder))
 	}
 	i0, i1 := layout.retainObjectOrder[0], layout.retainObjectOrder[1]
-	if layout.Objects[i0].AbsPath != aPath || layout.Objects[i1].AbsPath != zPath {
-		t.Fatalf("wrong sort order: got %q then %q", layout.Objects[i0].AbsPath, layout.Objects[i1].AbsPath)
+	if layout.Objects[i0].cachedFile().AbsPath != aPath || layout.Objects[i1].cachedFile().AbsPath != zPath {
+		t.Fatalf("wrong sort order: got %q then %q", layout.Objects[i0].cachedFile().AbsPath, layout.Objects[i1].cachedFile().AbsPath)
 	}
 }
 
@@ -264,7 +264,7 @@ func TestChecksumRetainsContentBytesForObjects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	obj := &Object{CachedFile: CachedFile{AbsPath: path}}
+	obj := &Object{File: &CachedFile{AbsPath: path}}
 	if _, err := obj.Checksum(); err != nil {
 		t.Fatalf("checksum: %v", err)
 	}
@@ -441,7 +441,7 @@ func TestRebuildPathIndexesAfterAppendObject(t *testing.T) {
 		Kind:                 "views",
 		ObjectName:           "late",
 		NormalizedKey:        "reporting/views/late",
-		CachedFile:           CachedFile{AbsPath: newAbs},
+		File:                 &CachedFile{AbsPath: newAbs},
 	})
 	layout.RebuildPathIndexes()
 	if got := layout.ObjectsByPath()[newPath]; got == nil || got.ObjectName != "late" {
@@ -535,7 +535,7 @@ func TestPreloadGitInfoCachesBatchedGitLogAcrossScans(t *testing.T) {
 	layout1 := Layout{
 		Objects: []*Object{{
 			Path: "db/sch/views/monthly.sql",
-			CachedFile: CachedFile{
+			File: &CachedFile{
 				AbsPath:   objPath,
 				gitInfoFn: scanner.GitInfo,
 			},
@@ -544,7 +544,7 @@ func TestPreloadGitInfoCachesBatchedGitLogAcrossScans(t *testing.T) {
 	layout2 := Layout{
 		Objects: []*Object{{
 			Path: "db/sch/views/monthly.sql",
-			CachedFile: CachedFile{
+			File: &CachedFile{
 				AbsPath:   objPath,
 				gitInfoFn: scanner.GitInfo,
 			},
@@ -585,10 +585,10 @@ func TestPreloadGitInfoInvalidatesCacheWhenRepoStateChanges(t *testing.T) {
 	}
 
 	layout1 := Layout{
-		Objects: []*Object{{Path: "db/sch/views/monthly.sql", CachedFile: CachedFile{AbsPath: objPath, gitInfoFn: scanner.GitInfo}}},
+		Objects: []*Object{{Path: "db/sch/views/monthly.sql", File: &CachedFile{AbsPath: objPath, gitInfoFn: scanner.GitInfo}}},
 	}
 	layout2 := Layout{
-		Objects: []*Object{{Path: "db/sch/views/monthly.sql", CachedFile: CachedFile{AbsPath: objPath, gitInfoFn: scanner.GitInfo}}},
+		Objects: []*Object{{Path: "db/sch/views/monthly.sql", File: &CachedFile{AbsPath: objPath, gitInfoFn: scanner.GitInfo}}},
 	}
 
 	scanner.preloadGitInfo(root, &layout1)
@@ -638,7 +638,7 @@ func TestPreloadGitInfoSkipsFallbackOutsideGitRepo(t *testing.T) {
 	layout := Layout{
 		Objects: []*Object{{
 			Path: "db/sch/views/monthly.sql",
-			CachedFile: CachedFile{
+			File: &CachedFile{
 				AbsPath:   filepath.Join(root, "db", "sch", "views", "monthly.sql"),
 				gitInfoFn: scanner.GitInfo,
 			},
@@ -689,8 +689,8 @@ func TestPreloadChecksumsCachesAllFiles(t *testing.T) {
 
 	layout := Layout{
 		Objects: []*Object{
-			{CachedFile: CachedFile{AbsPath: filepath.Join(root, "db", "sch", "views", "v1.sql")}},
-			{CachedFile: CachedFile{AbsPath: filepath.Join(root, "db", "sch", "views", "v2.sql")}},
+			{File: &CachedFile{AbsPath: filepath.Join(root, "db", "sch", "views", "v1.sql")}},
+			{File: &CachedFile{AbsPath: filepath.Join(root, "db", "sch", "views", "v2.sql")}},
 		},
 	}
 	NewScanner().preloadChecksums(&layout)

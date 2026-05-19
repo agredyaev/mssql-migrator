@@ -30,6 +30,10 @@ type Layout struct {
 	Transitions []*TransitionScript
 	Checks      []*CheckScript
 
+	// stringArena and objectStore are built by RebuildPathIndexes (phase 4).
+	stringArena *stringArena
+	objectStore *ObjectStore
+
 	// objectsByPath and transitionsByPath are derived from Objects / Transitions.
 	// Scanner.Scan ends with RebuildPathIndexes so Apply avoids rebuilding maps.
 	// If you mutate Objects or Transitions after the first index build, call
@@ -112,13 +116,28 @@ func (c *CachedFile) Checksum() ([32]byte, error) {
 	return checksumOnceForFile(c, false, nil)
 }
 
+func (o *Object) cachedFile() *CachedFile {
+	if o.File == nil {
+		o.File = &CachedFile{}
+	}
+	return o.File
+}
+
 func (o *Object) Checksum() ([32]byte, error) {
 	var hint *scanPathState
 	if o.objectStatForByteCacheValid {
 		hint = &o.objectStatForByteCache
 	}
-	return checksumOnceForFile(&o.CachedFile, true, hint)
+	return checksumOnceForFile(o.cachedFile(), true, hint)
 }
+
+func (o *Object) GitHash() (string, error)   { return o.cachedFile().GitHash() }
+func (o *Object) GitAuthor() (string, error) { return o.cachedFile().GitAuthor() }
+func (o *Object) GitDate() (string, error)   { return o.cachedFile().GitDate() }
+func (o *Object) Content() (string, error)   { return o.cachedFile().Content() }
+func (o *Object) AbsPath() string            { return o.cachedFile().AbsPath }
+
+func (o *Object) IsChecksumCached() bool { return o.cachedFile().IsChecksumCached() }
 
 func checksumOnceForFile(c *CachedFile, retainContentBytes bool, objectStatHint *scanPathState) ([32]byte, error) {
 	c.checksumOnce.Do(func() {
@@ -236,9 +255,9 @@ type Object struct {
 	// ParentNormalizedKey is types.NormalizedKey(SchemaName, "tables", ParentName)
 	// when Kind=="triggers" and ParentName is non-empty; set in Scanner.newObject.
 	// Empty when not applicable. Used to avoid recomputing the parent map key in diff.
-	ParentNormalizedKey string
-	NormalizedKey       string
-	CachedFile
+	ParentNormalizedKey         string
+	NormalizedKey               string
+	File                        *CachedFile // heap-allocated; was embedded CachedFile (phase 4)
 	objectStatForByteCache      scanPathState
 	NoTransaction               bool
 	objectStatForByteCacheValid bool
@@ -253,18 +272,59 @@ type TransitionScript struct {
 	Ordinal       string
 	Commit        string
 	Slug          string
-	CachedFile
+	File          *CachedFile
 	NoTransaction bool
 	Scaffold      bool
 }
 
+func (t *TransitionScript) cachedFile() *CachedFile {
+	if t.File == nil {
+		t.File = &CachedFile{}
+	}
+	return t.File
+}
+
+func (t *TransitionScript) Checksum() ([32]byte, error) {
+	return checksumOnceForFile(t.cachedFile(), false, nil)
+}
+
+func (t *TransitionScript) IsChecksumCached() bool { return t.cachedFile().IsChecksumCached() }
+
+func (t *TransitionScript) Content() (string, error)   { return t.cachedFile().Content() }
+func (t *TransitionScript) GitHash() (string, error)   { return t.cachedFile().GitHash() }
+func (t *TransitionScript) GitAuthor() (string, error) { return t.cachedFile().GitAuthor() }
+func (t *TransitionScript) GitDate() (string, error)   { return t.cachedFile().GitDate() }
+
 type CheckScript struct {
-	Path         string
-	DatabaseName string
-	SchemaName   string
-	Name         string
-	CachedFile
+	Path          string
+	DatabaseName  string
+	SchemaName    string
+	Name          string
+	File          *CachedFile
 	NoTransaction bool
+}
+
+func (c *CheckScript) cachedFile() *CachedFile {
+	if c.File == nil {
+		c.File = &CachedFile{}
+	}
+	return c.File
+}
+
+func (c *CheckScript) Checksum() ([32]byte, error) {
+	return checksumOnceForFile(c.cachedFile(), false, nil)
+}
+
+func (c *CheckScript) IsChecksumCached() bool { return c.cachedFile().IsChecksumCached() }
+
+func (c *CheckScript) Content() (string, error)   { return c.cachedFile().Content() }
+func (c *CheckScript) GitHash() (string, error)   { return c.cachedFile().GitHash() }
+func (c *CheckScript) GitAuthor() (string, error) { return c.cachedFile().GitAuthor() }
+func (c *CheckScript) GitDate() (string, error)   { return c.cachedFile().GitDate() }
+
+// NewFile returns a heap CachedFile for tests and literals.
+func NewFile(absPath string) *CachedFile {
+	return &CachedFile{AbsPath: absPath}
 }
 
 func NormalizeAndHash(input string) [32]byte {
@@ -327,6 +387,13 @@ func (l *Layout) RebuildPathIndexes() {
 	l.objectsByPath = buildObjectsByPath(l.Objects)
 	l.transitionsByPath = buildTransitionsByPath(l.Transitions)
 	l.rebuildContentRetainPathLists()
+	internLayoutStrings(l)
+	l.objectStore = buildObjectStore(l)
+}
+
+// ObjectStore returns the dense object index built by RebuildPathIndexes.
+func (l *Layout) ObjectStore() *ObjectStore {
+	return l.objectStore
 }
 
 func (l *Layout) rebuildContentRetainPathLists() {
@@ -341,7 +408,7 @@ func (l *Layout) rebuildContentRetainPathLists() {
 	}
 	sort.Slice(l.retainObjectOrder, func(a, b int) bool {
 		ia, ib := l.retainObjectOrder[a], l.retainObjectOrder[b]
-		return l.Objects[ia].AbsPath < l.Objects[ib].AbsPath
+		return l.Objects[ia].Path < l.Objects[ib].Path
 	})
 
 	l.nonObjectOrder = l.nonObjectOrder[:0]
@@ -366,9 +433,9 @@ func (l *Layout) rebuildContentRetainPathLists() {
 
 func (l *Layout) nonObjectAbsPath(s *layoutNonObjectSlot) string {
 	if s.transition {
-		return l.Transitions[s.i].AbsPath
+		return l.Transitions[s.i].cachedFile().AbsPath
 	}
-	return l.Checks[s.i].AbsPath
+	return l.Checks[s.i].cachedFile().AbsPath
 }
 
 func (l *Layout) ObjectsByPath() map[string]*Object {

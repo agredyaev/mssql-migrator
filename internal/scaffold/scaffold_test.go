@@ -189,7 +189,7 @@ func TestEnsureTransitionFiles_AutoAddColumn(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{{
-			CachedFile:    fs.CachedFile{AbsPath: sqlPath},
+			File:          &fs.CachedFile{AbsPath: sqlPath},
 			Path:          "r/tables/t1.sql",
 			NormalizedKey: "r/tables/t1",
 			Kind:          "tables",
@@ -264,7 +264,7 @@ func TestEnsureTransitionFiles_AutoAddColumn_FallsBackToScaffoldOnDrop(t *testin
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{{
-			CachedFile:    fs.CachedFile{AbsPath: sqlPath},
+			File:          &fs.CachedFile{AbsPath: sqlPath},
 			Path:          "r/tables/t1.sql",
 			NormalizedKey: "r/tables/t1",
 			Kind:          "tables",

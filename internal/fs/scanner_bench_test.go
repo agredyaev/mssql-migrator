@@ -173,7 +173,7 @@ func makeChecksumBenchmarkLayout(paths []string) Layout {
 			Kind:                 "views",
 			ObjectName:           name,
 			NormalizedKey:        fmt.Sprintf("reporting/views/%s", name),
-			CachedFile:           CachedFile{AbsPath: path},
+			File:                 &CachedFile{AbsPath: path},
 		})
 	}
 	return layout
@@ -228,7 +228,7 @@ func freshGitBenchLayout(repoRoot string, absPaths []string) Layout {
 			Kind:          "views",
 			ObjectName:    name,
 			NormalizedKey: fmt.Sprintf("sch/views/%s", name),
-			CachedFile:    CachedFile{AbsPath: abs, gitInfoFn: gitInfo},
+			File:          &CachedFile{AbsPath: abs, gitInfoFn: gitInfo},
 		})
 	}
 	return layout
