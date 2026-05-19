@@ -32,6 +32,8 @@ Schema and object scope come from the SQL tree rooted at **`RM_SQL_ROOT`** (see 
 - **Usage:** `rmig [--env <path>] [--json] <command>`
 - **`--env <path>`:** path to a dotenv-style file (key=value per line). If the flag is omitted, `internal/app/app.go` still attempts to load the default file named **`.env`** in the current working directory when present **for all commands except `version`**. The **`version`** command returns immediately after `parseFlags` and does **not** read `.env` or call `validateConfig`, even if `--env` is present.
 - **`--json`:** sets JSON structured logs (`cfg.JSONLogs`) for engine commands; for **`version`**, it selects a single JSON object on stdout with `version` and `commit` keys instead of the default one-line text. It does **not** select machine-readable plan output on stdout (there is no `plan --json` flag today).
+- **`RM_SKIP_GIT=1`:** skips git metadata preload during scan and omits git fields from plans (`internal/fs`, `internal/diff`).
+- **`RM_REPORT_SYNC=1`:** fsyncs `.plan.json` / `.report.json` after write (default: flush only).
 
 ### Version metadata (`internal/buildinfo`)
 
@@ -57,12 +59,12 @@ The engine implements **`plan`**, **`migrate`**, **`validate`**, **`baseline`**,
 
 - **`plan`:** `runPlan` → publish `EventDiffComputed` → `EventRunFinished` (success).
 - **`migrate`:** `runPlan`; if `plan.Blocked`, `scaffold.Ensure` then return `errors.ErrPlanBlocked`; else acquire session lock, `filterAppliedMigrations`, `applier.Execute`, then finish.
-- **`validate`:** `runPlan` (plan used for summary counts), publish validation events, finish.
+- **`validate`:** same planning pipeline as `plan` (not execution of `layout.Checks` SQL); publishes `ModulesRefreshed` from changed-object count.
 - **`baseline`** and **`repair-checksum`:** `executeLocked` — same lock + `applier.Execute` path with command name `baseline` or `repair` in bus payloads (see code for exact `RunFinished.Command` values).
 
 ## Assumptions and constraints
 
-- SQL Server is the only supported database; the concrete driver is `internal/driver/mssql`.
+- SQL Server is the only supported database; the concrete driver is `internal/driver/mssql`. Catalog inspect and audit checksum/history writes require **OPENJSON** (SQL Server 2016+ / compatibility level 130+).
 - `RM_DB_AUTH` follows `internal/types/config.go` (`sql` vs `integrated`).
 - Durations `RM_COMMAND_TIMEOUT`, `RM_SCRIPT_TIMEOUT`, `RM_LOCK_TIMEOUT` are parsed with `time.ParseDuration`; invalid values leave the corresponding `time.Duration` at zero (see `buildConfig`).
 - **`RM_PLAN_FILE`** and **`RM_REPAIR_SCRIPT`** are read into `types.Config.PlanFile` and `types.Config.RepairTarget` (`internal/app/config.go`). **`internal/engine`** and **`internal/apply`** do not consult these fields yet; they are reserved for a future approved-plan / repair-target gate.
@@ -71,7 +73,7 @@ The engine implements **`plan`**, **`migrate`**, **`validate`**, **`baseline`**,
 
 1. Operator sets `RM_*` in the process environment or in the file passed to `--env`.
 2. Operator runs `rmig --env /path/to/.env plan` (or another command).
-3. `engine.runPlan`: `audit.EnsureTables` (once) → `fs.Scanner.Scan` on `RM_SQL_ROOT` → `db.Inspect` → `audit.LoadChecksums` → `diff.Compute`.
+3. `app.Run` calls `audit.EnsureTables` once after connect. `engine.runPlan`: `fs.Scanner.Scan` on `RM_SQL_ROOT` → **`db.Inspect` (schemas + objects only; no table columns)** in parallel with **`audit.LoadChecksums`** → `diff.Compute`. Table columns load only when a blocked migrate needs scaffold (`db.Inspector.LoadTableColumns`).
 4. Subscribers react to bus events; if `RM_REPORT_DIR` is set, `.plan.json` / `.report.json` are updated as described above.
 5. `internal/log` writes human-readable lines to stderr (or JSON when `--json`).
 
@@ -86,6 +88,22 @@ The engine implements **`plan`**, **`migrate`**, **`validate`**, **`baseline`**,
 - `make check` (`Makefile`)
 - `rmig version` and `make release-build && ./bin/rmig version` (semver from `VERSION`, commit from `git` at link time)
 - SQL Server–backed tests: `make test-int` (`internal/app/integration_test.go`, build tag `integration`)
+- **Prod incremental go/no-go:** `make test-prod-gate` — [`docs/prod-gate.md`](prod-gate.md), [`internal/prodgate/`](../internal/prodgate/), baseline [`internal/app/testdata/prod_gate/plan_baseline_empty_db.json`](../internal/app/testdata/prod_gate/plan_baseline_empty_db.json)
+- **Phase timings + DB boundary (integration):** `make test-int-phase` — [`internal/app/phase_report_integration_test.go`](../internal/app/phase_report_integration_test.go) (`TestIntegration_PhaseReport_*`); optional `ARGS='-cpuprofile=… -trace=…'` (see Makefile `test-int-phase`).
+
+### Runtime profiling (integration)
+
+**Purpose:** Repeatable view of **where wall time goes** (scan, inspect, diff, apply) vs time spent inside **`driver.Conn` methods** (`Query*`, `ExecContext`, `Ping`) against SQL Server, without changing `rmig` business logic.
+
+**How it works:** Integration tests wrap the live connection with `timingConn` and log per-phase durations. **Limitation:** blocking in `Rows.Next()` after a query returns is **not** included in those totals; use **`-cpuprofile`** and **`-trace`** on the same `go test` run for fetch/decode and scheduler gaps.
+
+**How to run:** `make db-up` (or equivalent), then `make test-int-phase`, or `make test-int ARGS='-run TestIntegration_PhaseReport_PlanPipeline -v -cpuprofile=/tmp/rmig.cpu.prof -trace=/tmp/rmig.trace'`; then `go tool pprof -top /tmp/rmig.cpu.prof` and `go tool trace /tmp/rmig.trace`.
+
+**Validated by:** `go test -tags=integration ./internal/app/ -run TestIntegration_PhaseReport -count=1` with `RMIG_RUN_SQLSERVER_INTEGRATION=1` and the same `RM_*` assumptions as `make test-int` (see [`Makefile`](Makefile)).
+
+**Dependencies:** Docker SQL Server per [`docker-compose.yml`](docker-compose.yml); `.temp/sql` tree for scan input (same as other `TestIntegration_*` tests).
+
+**Does not cover:** profiling the standalone `rmig` CLI process (test harness only); no CI perf thresholds; not a substitute for SQL Server tuning (indexes, waits).
 
 ## Operations and recovery
 
