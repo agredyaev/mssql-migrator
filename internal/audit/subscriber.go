@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	"reporting-db-migrations/internal/bus"
+	"reporting-db-migrations/internal/db"
 	"reporting-db-migrations/internal/driver"
 	"reporting-db-migrations/internal/types"
 )
@@ -22,6 +24,7 @@ type Subscriber struct {
 	bootstrapOnce sync.Once
 	pending       []historyRecord
 	pendingMu     sync.Mutex
+	flushObserver func(time.Duration)
 }
 
 func NewSubscriber(b bus.EventBus, conn driver.Conn) *Subscriber {
@@ -34,6 +37,11 @@ func NewSubscriber(b bus.EventBus, conn driver.Conn) *Subscriber {
 
 func (s *Subscriber) SetErrorHandler(fn func(msg string)) {
 	s.notifier.SetErrorHandler(fn)
+}
+
+// SetFlushObserver is optional; called after deferred history flush on EventRunFinished.
+func (s *Subscriber) SetFlushObserver(fn func(time.Duration)) {
+	s.flushObserver = fn
 }
 
 func (s *Subscriber) BootstrapError() error {
@@ -90,10 +98,18 @@ func (s *Subscriber) flushPending(ctx context.Context) {
 	if len(records) == 0 {
 		return
 	}
+	start := time.Now()
 	if err := s.boot(ctx); err != nil {
 		return
 	}
+	if err := EnsureHistoryIndex(ctx, s.conn); err != nil {
+		s.notifier.Notify(fmt.Sprintf("audit history index: %s", err.Error()))
+		return
+	}
 	s.insertHistoryBatch(ctx, records)
+	if s.flushObserver != nil {
+		s.flushObserver(time.Since(start))
+	}
 }
 
 func (s *Subscriber) boot(ctx context.Context) error {
@@ -127,6 +143,9 @@ func (s *Subscriber) insertHistoryBatch(ctx context.Context, records []historyRe
 	}
 	storeLatestChecksumsFromHistory(s.conn, records)
 	bumpChecksumsCacheGeneration(s.conn)
+	if db.CatalogCacheEnabled() {
+		db.InvalidateCatalogCacheForConn(ctx, s.conn)
+	}
 }
 
 var historyJSONPool = sync.Pool{
