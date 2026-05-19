@@ -38,13 +38,18 @@ Developers work on a branch, run **`make check`**, then integrate or release a b
 - Values are loaded from the env file (if readable) and overridden by **`os.LookupEnv`** for keys not present in the file (`buildConfig` in `internal/app/config.go`).
 - **Hard validation in `validateConfig`:** `RM_DB_SERVER`, `RM_DB_DATABASE`, **`RM_SQL_ROOT`**, and **`RM_SQL_BASE`** must all be non-empty before a command runs.
 - Other variables are passed through to `types.Config` when set (for example **`RM_PLAN_FILE`** → `PlanFile`, **`RM_REPAIR_SCRIPT`** → `RepairTarget`); those two are **not** read by `internal/engine` yet but are loaded for forward compatibility.
-- **`RM_SKIP_GIT=1`:** skip git metadata preload during scan and omit git fields from plans.
+- **`RM_SKIP_GIT=1`:** skip git metadata preload during scan and omit git fields from plans; forces **full** SQL catalog inspect (no git delta).
 - **`RM_REPORT_SYNC=1`:** fsync `.plan.json` / `.report.json` after write (default: flush only).
+- **`RMIG_INSPECT_FULL=1`:** force full SQL catalog inspect (debug / cold benchmarks).
+- **`RMIG_CATALOG_CACHE=0`:** disable persistent catalog cache in `azdo_deploy_meta` (integration tests that count SQL round-trips).
+- **`RMIG_CATALOG_SPOTCHECK`:** optional integer — random sample of stable (non-delta) objects re-checked in SQL catalog per plan (default `0`).
+
+Git delta for scoped inspect is resolved automatically from the checkout; production pipelines must **not** require `RMIG_GATE_GIT_BASE` or `RMIG_GATE_CHANGED_FILES`. See [`docs/ci-checkout.md`](ci-checkout.md).
 
 ### Reports
 
-- When **`RM_REPORT_DIR`** is set, `internal/report/report.go` writes **compact JSON** **`.plan.json`** and **`.report.json`** into that directory. Optional **`RM_REPORT_SYNC=1`** enables `fsync` after write.
-- **`audit.EnsureTables`** runs once in `internal/app/app.go` after database connect (before engine commands).
+- When **`RM_REPORT_DIR`** is set, `internal/report/report.go` writes **compact JSON** **`.plan.json`** and **`.report.json`** into that directory on **`EventRunFinished`** (plan is stashed on `EventDiffComputed`). Optional **`RM_REPORT_SYNC=1`** enables `fsync` after write.
+- **`audit.EnsureTables`** runs inside `engine.runPlan` in parallel with `db.Inspect` (checksum load follows ensure in the same goroutine). History **index** is created on first audit flush (`EnsureHistoryIndex`), not on plan.
 
 ### Outputs
 
@@ -58,7 +63,7 @@ Developers work on a branch, run **`make check`**, then integrate or release a b
 - `go test ./...`, `go vet ./...`, and **`staticcheck`** are part of **`make check`**; the `staticcheck` binary must exist on the developer machine (`Makefile` uses `$(shell go env GOPATH)/bin/staticcheck`).
 - **`rmig version`** is implemented in **`internal/app`** with link-time metadata in **`internal/buildinfo`**; **`RM_TOOL_VERSION`** remains a separate operator-supplied value for reports (`internal/app/config.go`), not the CLI’s embedded version string.
 - Flags such as **`--sql-root`**, **`--sql-base`**, **`--plan-file`**, **`--confirm`**, and **`--timeout`** are **not** implemented in `internal/app/flags.go` today; use **`RM_SQL_ROOT`**, **`RM_SQL_BASE`**, and other `RM_*` keys instead. Optional artifact paths: **`RM_PLAN_FILE`** and **`RM_REPAIR_SCRIPT`** populate `types.Config` but are not enforced by engine logic yet. Timeout fields exist on `types.Config` and are populated from **`RM_COMMAND_TIMEOUT`**, **`RM_SCRIPT_TIMEOUT`**, **`RM_LOCK_TIMEOUT`** when parseable.
-- The repository does **not** ship a checked-in CI example YAML file under `docs/`; CI is out of scope here.
+- CI checkout requirements for git delta are documented in [`docs/ci-checkout.md`](ci-checkout.md); example pipeline YAML is not checked in.
 
 ## Nominal flow
 

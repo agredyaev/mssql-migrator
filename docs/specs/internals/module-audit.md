@@ -26,7 +26,7 @@ Describe **metadata persistence**: ensure migrator tables exist, load checksum h
 
 - Assumption: migrator schema matches embedded DDL in `EnsureTables`.
 - Constraint: `LoadChecksums` and history insert use **OpenJSON** SQL only (`load_checksums_openjson.sql`, `insert_history_openjson.sql`).
-- Constraint: checksum caches invalidate on history write (`bumpChecksumsCacheGeneration`).
+- Constraint: checksum caches invalidate on history write (`bumpChecksumsCacheGeneration`); catalog cache invalidates on history flush when `RMIG_CATALOG_CACHE` is enabled (`db.InvalidateCatalogCacheForConn`).
 
 ## Nominal flow
 

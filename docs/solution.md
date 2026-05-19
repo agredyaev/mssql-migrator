@@ -48,7 +48,7 @@ Supported keys are read from the env file first, then `os.LookupEnv` for any key
 
 When **`RM_REPORT_DIR`** is non-empty, the report subscriber writes under that directory:
 
-- **`.plan.json`** — on `EventDiffComputed` (payload contains `*types.MigrationPlan`).
+- **`.plan.json`** — deferred to `EventRunFinished` (plan stashed on `EventDiffComputed`; same run as `.report.json`).
 - **`.report.json`** — on `EventRunFinished` (payload contains `*types.RunFinished`).
 
 There is **no** separate `migration-plan.txt` / `migration-report.json` writer in the current tree; filenames are fixed as above.
@@ -73,7 +73,7 @@ The engine implements **`plan`**, **`migrate`**, **`validate`**, **`baseline`**,
 
 1. Operator sets `RM_*` in the process environment or in the file passed to `--env`.
 2. Operator runs `rmig --env /path/to/.env plan` (or another command).
-3. `app.Run` calls `audit.EnsureTables` once after connect. `engine.runPlan`: `fs.Scanner.Scan` on `RM_SQL_ROOT` → **`db.Inspect` (schemas + objects only; no table columns)** in parallel with **`audit.LoadChecksums`** → `diff.Compute`. Table columns load only when a blocked migrate needs scaffold (`db.Inspector.LoadTableColumns`).
+3. `engine.runPlan`: `fs.Scanner.Scan` → **`db.Inspect`** in parallel with **`audit.EnsureTables` + `LoadChecksums`** (ensure and checksums share one goroutine) → `diff.Compute`. Empty history skips OpenJSON checksum load; audit index is deferred until migrate flush. Table columns load only when a blocked migrate needs scaffold (`db.Inspector.LoadTableColumns`).
 4. Subscribers react to bus events; if `RM_REPORT_DIR` is set, `.plan.json` / `.report.json` are updated as described above.
 5. `internal/log` writes human-readable lines to stderr (or JSON when `--json`).
 
@@ -89,21 +89,90 @@ The engine implements **`plan`**, **`migrate`**, **`validate`**, **`baseline`**,
 - `rmig version` and `make release-build && ./bin/rmig version` (semver from `VERSION`, commit from `git` at link time)
 - SQL Server–backed tests: `make test-int` (`internal/app/integration_test.go`, build tag `integration`)
 - **Prod incremental go/no-go:** `make test-prod-gate` — [`docs/prod-gate.md`](prod-gate.md), [`internal/prodgate/`](../internal/prodgate/), baseline [`internal/app/testdata/prod_gate/plan_baseline_empty_db.json`](../internal/app/testdata/prod_gate/plan_baseline_empty_db.json)
-- **Phase timings + DB boundary (integration):** `make test-int-phase` — [`internal/app/phase_report_integration_test.go`](../internal/app/phase_report_integration_test.go) (`TestIntegration_PhaseReport_*`); optional `ARGS='-cpuprofile=… -trace=…'` (see Makefile `test-int-phase`).
+- **Phase timings (plan harness):** `make test-int-phase` — shared [`RunPlanPipeline`](../internal/app/plan_pipeline_integration.go) (`TestIntegration_PhaseReport_PlanPipeline`).
+- **Phase timings (full CLI, prod-like):** `make test-int-phase-cli` — `runWithLookup` + `engine.PhaseObserver` (`TestIntegration_PhaseReport_CLI_Plan` / `_Migrate`); optional `ARGS='-cpuprofile=… -trace=…'`.
 
 ### Runtime profiling (integration)
 
-**Purpose:** Repeatable view of **where wall time goes** (scan, inspect, diff, apply) vs time spent inside **`driver.Conn` methods** (`Query*`, `ExecContext`, `Ping`) against SQL Server, without changing `rmig` business logic.
+**Purpose:** Repeatable view of **where wall time goes** (connect, ensure, scan, inspect, checksums, diff, apply, report write, audit flush) vs time spent inside **`driver.Conn` methods** (`Query*`, `ExecContext`, `Ping`) against SQL Server.
 
-**How it works:** Integration tests wrap the live connection with `timingConn` and log per-phase durations. **Limitation:** blocking in `Rows.Next()` after a query returns is **not** included in those totals; use **`-cpuprofile`** and **`-trace`** on the same `go test` run for fetch/decode and scheduler gaps.
+**How it works:**
 
-**How to run:** `make db-up` (or equivalent), then `make test-int-phase`, or `make test-int ARGS='-run TestIntegration_PhaseReport_PlanPipeline -v -cpuprofile=/tmp/rmig.cpu.prof -trace=/tmp/rmig.trace'`; then `go tool pprof -top /tmp/rmig.cpu.prof` and `go tool trace /tmp/rmig.trace`.
+- **Harness:** `timingConn` + [`RunPlanPipeline`](../internal/app/plan_pipeline_integration.go) (parallel inspect ‖ checksums; matches `engine.runPlan`).
+- **Full CLI:** same `timingConn` around `mssql.Open`, `enableIntegrationPhaseTrace` wires `engine.PhaseObserver`, report flush observer, and audit flush observer during `app.Run`.
 
-**Validated by:** `go test -tags=integration ./internal/app/ -run TestIntegration_PhaseReport -count=1` with `RMIG_RUN_SQLSERVER_INTEGRATION=1` and the same `RM_*` assumptions as `make test-int` (see [`Makefile`](Makefile)).
+**Limitation:** `timingConn` attributes **Query return**, **Rows.Next/Scan** (`fetch_ms`), **Exec**, and **Ping** separately. On smoke fixtures `fetch_ms` is sub-ms; inspect cost is **SQL Server catalog query** wall time. CPU profiles are mostly idle; use phase JSON + `ops/perf/cli_phase.sh` for regression.
 
-**Dependencies:** Docker SQL Server per [`docker-compose.yml`](docker-compose.yml); `.temp/sql` tree for scan input (same as other `TestIntegration_*` tests).
+**Scan sub-phases** (when integration trace enabled): `scan_walk_ms`, `scan_git_ms`, `scan_checksums_ms` via `fs.Scanner.OnPhase` (`RM_SKIP_GIT=1` in CLI tests zeros git).
 
-**Does not cover:** profiling the standalone `rmig` CLI process (test harness only); no CI perf thresholds; not a substitute for SQL Server tuning (indexes, waits).
+**How to run:** `make db-up`, then `make test-int-phase-cli` (canonical) or `make test-int-phase`; analyze with `go tool pprof` / `go tool trace` when profiles are enabled. CLI profile mode also writes **memprofile:** `ops/perf/cli_phase.sh profile`.
+
+**Validated by:** `go test -tags=integration ./internal/app/ -run TestIntegration_PhaseReport -count=1` with `RMIG_RUN_SQLSERVER_INTEGRATION=1` (see [`Makefile`](Makefile)).
+
+### Footprint baseline (in-process, phase 0)
+
+**Purpose:** Committed reference for **struct sizes** (types ≥40 B) and **diff.Compute** bench (500 / 5000 objects) before DOD refactors.
+
+### Scoped inspect (phase 1)
+
+**Purpose:** Reduce catalog SQL on unchanged objects using **git delta** + **audit checksums**.
+
+| Component | Path |
+|-----------|------|
+| Git delta | [`internal/prodgate/changed_paths.go`](../internal/prodgate/changed_paths.go) — CI auto-detect; merge-base fallback |
+| Delta → keys | [`internal/prodgate/delta.go`](../internal/prodgate/delta.go), [`closure.go`](../internal/prodgate/closure.go) |
+| Scope build | [`internal/plan/scope.go`](../internal/plan/scope.go), [`internal/engine/inspect_scope.go`](../internal/engine/inspect_scope.go) |
+| Catalog | [`internal/db/inspector_impl.go`](../internal/db/inspector_impl.go) — `readStateScoped` |
+
+**Force full inspect:** `RM_SKIP_GIT=1` (scan + inspect), `RMIG_INSPECT_FULL=1`, or no `.git` at repo root.
+
+**Validated by:** `go test ./internal/prodgate/... ./internal/plan/...`; prod gate uses same delta resolver as plan pipeline ([`docs/prod-gate.md`](prod-gate.md)).
+
+### Persistent catalog cache (phase 3)
+
+**Purpose:** On warm databases, skip catalog OPENJSON when layout digest matches the last persisted snapshot in `azdo_deploy_meta.catalog_cache` / `catalog_meta`.
+
+| Piece | Path |
+|-------|------|
+| Tables | [`internal/audit/sql/bootstrap_tables.sql`](../internal/audit/sql/bootstrap_tables.sql) |
+| Load/save | [`internal/db/catalog_cache.go`](../internal/db/catalog_cache.go) |
+| Invalidate | `db.InvalidateInspectorCache` (apply) clears in-process + SQL cache |
+
+**Defaults:** cache **on**. Disable for SQL round-trip tests: `RMIG_CATALOG_CACHE=0`. Optional drift sampling: `RMIG_CATALOG_SPOTCHECK=N` re-checks `N` stable keys per plan.
+
+**Validated by:** `go test ./internal/db/...`; integration with Docker + warm `cli_phase.sh warm`.
+
+### DOD layout footprint (phase 4)
+
+**Purpose:** Shrink hot layout structs and deduplicate metadata strings before diff/inspect.
+
+| Change | Path |
+|--------|------|
+| `CachedFile` on heap (`Object.File *CachedFile`) | [`internal/fs/layout.go`](../internal/fs/layout.go) — `fs.Object` **408 B → 176 B** |
+| String interning at scan | [`internal/fs/arena.go`](../internal/fs/arena.go), `RebuildPathIndexes` |
+| Dense object index | [`internal/fs/store.go`](../internal/fs/store.go) — `ObjectStore`, `objectRow` |
+
+**Benchmarks (darwin/arm64, `make bench-footprint`):** compare [`ops/perf/artifacts/footprint_phase4_before.json`](../ops/perf/artifacts/footprint_phase4_before.json) vs committed [`footprint_baseline.json`](../internal/app/testdata/perf/footprint_baseline.json). `diff.Compute` alloc/op is dominated by `[]PlannedObject` output (~240 B × N); struct shrink improves scan/RSS, not yet plan slice alloc.
+
+**Commands:**
+
+```bash
+make bench-footprint
+make bench-footprint-profile
+make bench-footprint-update-baseline   # after intentional perf contract change
+```
+
+| Command | Output |
+|---------|--------|
+| `make bench-footprint` | `ops/perf/artifacts/footprint_bench.txt` + struct log |
+| `make bench-footprint-profile` | `footprint_5k.cpu.prof`, `footprint_5k.mem.prof` |
+| `make bench-footprint-update-baseline` | [`internal/app/testdata/perf/footprint_baseline.json`](../internal/app/testdata/perf/footprint_baseline.json) |
+
+**Package:** [`internal/perf/`](../internal/perf/). Regression: `TestFootprintBaselineMatch` in `go test ./...`; slow bench regression: `RMIG_FOOTPRINT_BENCH=1`. See [`ops/perf/README.md`](../ops/perf/README.md).
+
+**Dependencies:** Docker SQL Server per [`docker-compose.yml`](docker-compose.yml); `.temp/sql` smoke tree; `RM_SKIP_GIT=1` in CLI phase tests.
+
+**Does not cover:** CI perf thresholds; not a substitute for SQL Server tuning (indexes, waits).
 
 ## Operations and recovery
 

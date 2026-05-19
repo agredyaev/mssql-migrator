@@ -31,7 +31,7 @@ Describe the **orchestration engine**: scan repository layout, load DB state and
 ## Nominal flow (high level)
 
 1. Publish `EventRunStarted`.
-2. `runPlan`: scan → **parallel** `Inspect` + `LoadChecksums` → `diff.Compute` (audit tables ensured in `app.Run` before engine).
+2. `runPlan`: scan → **parallel** `EnsureTables` ‖ (`LoadChecksums` → `BuildInspectScope` → `InspectWithScope`) → `diff.Compute`. Git delta + audit checksums classify objects as hot (catalog SQL) or stable (synthetic `db.Object`). `RM_SKIP_GIT=1` or `RMIG_INSPECT_FULL=1` forces full inspect.
 3. `Migrate`: if blocked, `LoadTableColumns` + `scaffold.Ensure` then fail with `errors.ErrPlanBlocked`; else acquire lock, apply, release.
 4. `Validate`: same planning pipeline as `plan` (does not execute `layout.Checks` SQL); publishes changed-module count.
 5. `Baseline` / `RepairChecksum`: follow their respective paths in `engine.go`.
