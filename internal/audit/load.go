@@ -15,8 +15,16 @@ import (
 //go:embed sql/load_checksums_openjson.sql
 var loadChecksumsOpenJSONSQL string
 
-//go:embed sql/bootstrap.sql
-var bootstrapSQL string
+//go:embed sql/bootstrap_tables.sql
+var bootstrapTablesSQL string
+
+//go:embed sql/bootstrap_index.sql
+var bootstrapIndexSQL string
+
+//go:embed sql/history_empty_probe.sql
+var historyEmptyProbeSQL string
+
+var ensuredTablesConns sync.Map // conn stable key → struct{}
 
 //go:embed sql/load_migrations.sql
 var loadMigrationsSQL string
@@ -40,6 +48,9 @@ var loadChecksumsLatest = struct {
 	byConn: make(map[string]map[string]latestChecksumEntry),
 }
 
+// historyEmptyByConn caches whether azdo_deploy_meta.history has any rows (per connection).
+var historyEmptyByConn sync.Map // conn stable key → bool (true = empty)
+
 type checksumsCacheEntry struct {
 	result     map[string][32]byte
 	generation uint64
@@ -51,7 +62,20 @@ type latestChecksumEntry struct {
 }
 
 func EnsureTables(ctx context.Context, conn driver.Conn) error {
-	_, err := conn.ExecContext(ctx, bootstrapSQL)
+	connKey := driver.ConnStableKey(conn)
+	if _, ok := ensuredTablesConns.Load(connKey); ok {
+		return nil
+	}
+	if _, err := conn.ExecContext(ctx, bootstrapTablesSQL); err != nil {
+		return err
+	}
+	ensuredTablesConns.Store(connKey, struct{}{})
+	return nil
+}
+
+// EnsureHistoryIndex creates the history lookup index (deferred from plan bootstrap for faster cold plan).
+func EnsureHistoryIndex(ctx context.Context, conn driver.Conn) error {
+	_, err := conn.ExecContext(ctx, bootstrapIndexSQL)
 	return err
 }
 
@@ -64,6 +88,11 @@ func LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[st
 	}
 	if result, ok := lookupLatestChecksums(conn, keys); ok {
 		return result, nil
+	}
+	if empty, err := historyTableIsEmpty(ctx, conn); err != nil {
+		return nil, err
+	} else if empty {
+		return emptyChecksumsMap(keys), nil
 	}
 	if cached, ok := lookupChecksumsCache(conn, keys); ok {
 		return cached, nil
@@ -134,6 +163,40 @@ func bumpChecksumsCacheGeneration(conn driver.Conn) {
 	loadChecksumsCache.mu.Lock()
 	loadChecksumsCache.generation[connKey]++
 	loadChecksumsCache.mu.Unlock()
+	historyEmptyByConn.Delete(connKey)
+}
+
+func historyTableIsEmpty(ctx context.Context, conn driver.Conn) (bool, error) {
+	connKey := driver.ConnStableKey(conn)
+	if v, ok := historyEmptyByConn.Load(connKey); ok {
+		return v.(bool), nil
+	}
+	rows, err := conn.QueryStringsContext(ctx, historyEmptyProbeSQL, nil)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return true, rows.Err()
+	}
+	var hasRows bool
+	if err := rows.Scan(&hasRows); err != nil {
+		return false, err
+	}
+	empty := !hasRows
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	historyEmptyByConn.Store(connKey, empty)
+	return empty, nil
+}
+
+func emptyChecksumsMap(keys []string) map[string][32]byte {
+	out := make(map[string][32]byte, len(keys))
+	for _, k := range keys {
+		out[k] = [32]byte{}
+	}
+	return out
 }
 
 func checksumsCacheKey(conn driver.Conn, keys []string) string {
