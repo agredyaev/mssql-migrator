@@ -20,11 +20,15 @@ import (
 
 const TransitionScaffoldDirective = "-- rmig: transition-scaffold"
 
+// ScanPhaseObserver receives sub-phase wall times during Scan (walk, git preload, checksum preload).
+type ScanPhaseObserver func(phase string, d time.Duration)
+
 type Scanner struct {
 	GitInfo          func(AbsPath string) (hash, author, date string, err error)
 	GitLog           func(root string) ([]byte, error)
 	ReadDir          func(name string) ([]os.DirEntry, error)
 	SkipGit          bool
+	OnPhase          ScanPhaseObserver
 	gitPreloadByRoot map[string]gitPreloadCache
 	layoutByRoot     map[string]layoutCacheEntry
 	mu               sync.Mutex
@@ -123,10 +127,12 @@ func (s *Scanner) Scan(ctx context.Context, root string) (Layout, error) {
 
 	resolvedGitDir, hasGitRepo := resolveGitDir(root)
 	if layout, ok := s.loadCachedLayout(root, resolvedGitDir); ok {
+		s.observeScanPhase("scan_walk", 0)
 		s.finalizeLayout(root, hasGitRepo, &layout, true, true)
 		return layout, nil
 	}
 
+	walkStart := time.Now()
 	layout := Layout{RootPath: root}
 	cacheState := newLayoutCacheBuilder()
 	cacheState.recordDir(root)
@@ -194,9 +200,16 @@ func (s *Scanner) Scan(ctx context.Context, root string) (Layout, error) {
 		return layout.Transitions[i].Ordinal < layout.Transitions[j].Ordinal
 	})
 
+	s.observeScanPhase("scan_walk", time.Since(walkStart))
 	fileStates := s.finalizeLayout(root, hasGitRepo, &layout, false, false)
 	s.storeLayoutCache(root, resolvedGitDir, cacheState, layout, fileStates, root)
 	return layout, nil
+}
+
+func (s *Scanner) observeScanPhase(phase string, d time.Duration) {
+	if s.OnPhase != nil {
+		s.OnPhase(phase, d)
+	}
 }
 
 func (s *Scanner) finalizeLayout(root string, hasGitRepo bool, layout *Layout, checksumsReady, gitReady bool) map[string]layoutFileCacheState {
@@ -205,10 +218,14 @@ func (s *Scanner) finalizeLayout(root string, hasGitRepo bool, layout *Layout, c
 	}
 	layout.RebuildPathIndexes()
 	if !gitReady && !s.SkipGit {
+		start := time.Now()
 		s.preloadGitInfo(root, layout)
+		s.observeScanPhase("scan_git", time.Since(start))
 	}
 	if !checksumsReady {
+		start := time.Now()
 		s.preloadChecksums(layout)
+		s.observeScanPhase("scan_checksums", time.Since(start))
 		fs := buildLayoutFileCacheState(*layout)
 		attachObjectByteCacheStatHints(layout, fs)
 		return fs
@@ -288,7 +305,7 @@ func (s *Scanner) scanTableDir(layout *Layout, cacheState *layoutCacheBuilder, d
 			if ok {
 				layout.Transitions = append(layout.Transitions, ts)
 				if cacheState != nil {
-					cacheState.recordTransition(ts.AbsPath)
+					cacheState.recordTransition(ts.cachedFile().AbsPath)
 				}
 			}
 		}
@@ -323,7 +340,7 @@ func (s *Scanner) newObject(dbName, schemaName, kind, parentName, fileName, dirP
 		ParentName:           parentName,
 		NormalizedKey:        types.NormalizedKey(schemaName, kind, name),
 		NoTransaction:        types.IsModuleKind(kind),
-		CachedFile:           CachedFile{AbsPath: fullPath, gitInfoFn: s.GitInfo},
+		File:                 &CachedFile{AbsPath: fullPath, gitInfoFn: s.GitInfo},
 	}
 	if kind == "triggers" && parentName != "" {
 		obj.ParentNormalizedKey = types.NormalizedKey(schemaName, "tables", parentName)
@@ -340,7 +357,7 @@ func (s *Scanner) newCheck(dbName, schemaName, fileName, dirPath string) *CheckS
 		SchemaName:    schemaName,
 		Name:          name,
 		NoTransaction: true,
-		CachedFile:    CachedFile{AbsPath: fullPath, gitInfoFn: s.GitInfo},
+		File:          &CachedFile{AbsPath: fullPath, gitInfoFn: s.GitInfo},
 	}
 }
 
@@ -401,7 +418,7 @@ func (s *Scanner) parseTransitionFile(dbName, schemaName, tableName, fileName, d
 		Ordinal:       matches[1],
 		Commit:        matches[2],
 		Slug:          matches[3],
-		CachedFile:    CachedFile{AbsPath: fullPath, gitInfoFn: s.GitInfo},
+		File:          &CachedFile{AbsPath: fullPath, gitInfoFn: s.GitInfo},
 	}
 
 	if hasTransitionScaffoldDirective(fullPath) {
@@ -504,13 +521,13 @@ func (s *Scanner) preloadGitInfo(root string, layout *Layout) {
 	}
 	entries := make([]entry, 0, len(layout.Objects)+len(layout.Transitions)+len(layout.Checks))
 	for i := range layout.Objects {
-		entries = append(entries, entry{cf: &layout.Objects[i].CachedFile, path: layout.Objects[i].AbsPath})
+		entries = append(entries, entry{cf: layout.Objects[i].cachedFile(), path: layout.Objects[i].cachedFile().AbsPath})
 	}
 	for i := range layout.Transitions {
-		entries = append(entries, entry{cf: &layout.Transitions[i].CachedFile, path: layout.Transitions[i].AbsPath})
+		entries = append(entries, entry{cf: layout.Transitions[i].cachedFile(), path: layout.Transitions[i].cachedFile().AbsPath})
 	}
 	for i := range layout.Checks {
-		entries = append(entries, entry{cf: &layout.Checks[i].CachedFile, path: layout.Checks[i].AbsPath})
+		entries = append(entries, entry{cf: layout.Checks[i].cachedFile(), path: layout.Checks[i].cachedFile().AbsPath})
 	}
 
 	if len(entries) == 0 {
@@ -686,26 +703,26 @@ func buildPreloadGitTargets(layout *Layout) map[string]*CachedFile {
 	// without a second gitMap + apply pass.
 	targets := make(map[string]*CachedFile, mapHint)
 	for i := range layout.Objects {
-		targets[filepath.ToSlash(layout.Objects[i].Path)] = &layout.Objects[i].CachedFile
+		targets[filepath.ToSlash(layout.Objects[i].Path)] = layout.Objects[i].cachedFile()
 	}
 	for i := range layout.Transitions {
-		targets[filepath.ToSlash(layout.Transitions[i].Path)] = &layout.Transitions[i].CachedFile
+		targets[filepath.ToSlash(layout.Transitions[i].Path)] = layout.Transitions[i].cachedFile()
 	}
 	for i := range layout.Checks {
-		targets[filepath.ToSlash(layout.Checks[i].Path)] = &layout.Checks[i].CachedFile
+		targets[filepath.ToSlash(layout.Checks[i].Path)] = layout.Checks[i].cachedFile()
 	}
 	return targets
 }
 
 func disableLayoutGitInfo(layout *Layout) {
 	for i := range layout.Objects {
-		layout.Objects[i].gitInfoFn = nil
+		layout.Objects[i].cachedFile().gitInfoFn = nil
 	}
 	for i := range layout.Transitions {
-		layout.Transitions[i].gitInfoFn = nil
+		layout.Transitions[i].cachedFile().gitInfoFn = nil
 	}
 	for i := range layout.Checks {
-		layout.Checks[i].gitInfoFn = nil
+		layout.Checks[i].cachedFile().gitInfoFn = nil
 	}
 }
 
@@ -741,7 +758,7 @@ func preloadChecksumWithCache(o *Object) {
 	if o == nil {
 		return
 	}
-	cf := &o.CachedFile
+	cf := o.cachedFile()
 	if sum, ok := lookupSharedChecksum(cf.AbsPath); ok {
 		cf.preloadChecksum(sum)
 		return
@@ -789,7 +806,7 @@ func attachObjectByteCacheStatHints(layout *Layout, fileStates map[string]layout
 		if o == nil {
 			continue
 		}
-		st, ok := fileStates[o.AbsPath]
+		st, ok := fileStates[o.cachedFile().AbsPath]
 		if !ok {
 			o.objectStatForByteCacheValid = false
 			continue
@@ -1017,8 +1034,8 @@ func cloneLayoutMetadata(src Layout, gitInfoFn func(string) (string, string, str
 				ParentNormalizedKey:  obj.ParentNormalizedKey,
 				NormalizedKey:        obj.NormalizedKey,
 				NoTransaction:        obj.NoTransaction,
-				CachedFile: CachedFile{
-					AbsPath:   obj.AbsPath,
+				File: &CachedFile{
+					AbsPath:   obj.cachedFile().AbsPath,
 					gitInfoFn: gitInfoFn,
 				},
 			}
@@ -1042,8 +1059,8 @@ func cloneLayoutMetadata(src Layout, gitInfoFn func(string) (string, string, str
 				Slug:          ts.Slug,
 				NoTransaction: ts.NoTransaction,
 				Scaffold:      ts.Scaffold,
-				CachedFile: CachedFile{
-					AbsPath:   ts.AbsPath,
+				File: &CachedFile{
+					AbsPath:   ts.cachedFile().AbsPath,
 					gitInfoFn: gitInfoFn,
 				},
 			}
@@ -1062,8 +1079,8 @@ func cloneLayoutMetadata(src Layout, gitInfoFn func(string) (string, string, str
 				SchemaName:    check.SchemaName,
 				Name:          check.Name,
 				NoTransaction: check.NoTransaction,
-				CachedFile: CachedFile{
-					AbsPath:   check.AbsPath,
+				File: &CachedFile{
+					AbsPath:   check.cachedFile().AbsPath,
 					gitInfoFn: gitInfoFn,
 				},
 			}
@@ -1080,19 +1097,19 @@ func buildLayoutFileCacheState(layout Layout) map[string]layoutFileCacheState {
 		if obj == nil {
 			continue
 		}
-		addLayoutFileCacheState(states, &obj.CachedFile)
+		addLayoutFileCacheState(states, obj.cachedFile())
 	}
 	for _, ts := range layout.Transitions {
 		if ts == nil {
 			continue
 		}
-		addLayoutFileCacheState(states, &ts.CachedFile)
+		addLayoutFileCacheState(states, ts.cachedFile())
 	}
 	for _, check := range layout.Checks {
 		if check == nil {
 			continue
 		}
-		addLayoutFileCacheState(states, &check.CachedFile)
+		addLayoutFileCacheState(states, check.cachedFile())
 	}
 	return states
 }
@@ -1118,13 +1135,13 @@ func addLayoutFileCacheState(states map[string]layoutFileCacheState, cf *CachedF
 
 func applyLayoutFileCache(layout *Layout, fileStates map[string]layoutFileCacheState) {
 	for _, obj := range layout.Objects {
-		applyCachedChecksum(&obj.CachedFile, fileStates)
+		applyCachedChecksum(obj.cachedFile(), fileStates)
 	}
 	for _, ts := range layout.Transitions {
-		applyCachedChecksum(&ts.CachedFile, fileStates)
+		applyCachedChecksum(ts.cachedFile(), fileStates)
 	}
 	for _, check := range layout.Checks {
-		applyCachedChecksum(&check.CachedFile, fileStates)
+		applyCachedChecksum(check.cachedFile(), fileStates)
 	}
 }
 

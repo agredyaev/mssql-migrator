@@ -37,7 +37,7 @@ func benchColdViewLayout(b *testing.B, n int) fs.Layout {
 			Kind:                 "views",
 			ObjectName:           base,
 			NormalizedKey:        types.NormalizedKey("sch", "views", base),
-			CachedFile:           fs.CachedFile{AbsPath: abs},
+			File:                 &fs.CachedFile{AbsPath: abs},
 		})
 	}
 	return fs.Layout{Objects: objs}

@@ -441,7 +441,7 @@ func makeTempObject(t *testing.T, key, kind, content string) *fs.Object {
 	}
 	return &fs.Object{
 		Path:          relPath,
-		CachedFile:    fs.CachedFile{AbsPath: absPath},
+		File:          &fs.CachedFile{AbsPath: absPath},
 		NormalizedKey: key,
 		Kind:          kind,
 	}
