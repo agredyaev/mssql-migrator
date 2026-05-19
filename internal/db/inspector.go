@@ -9,6 +9,9 @@ import (
 
 type Inspector interface {
 	Inspect(ctx context.Context, conn driver.Conn, scope fs.Layout) (*State, error)
+	// LoadTableColumns fetches column metadata for tables in scope. Call only when
+	// needed (e.g. blocked migrate scaffold); Inspect does not load columns.
+	LoadTableColumns(ctx context.Context, conn driver.Conn, scope fs.Layout) (map[string][]TableColumn, error)
 }
 
 type State struct {

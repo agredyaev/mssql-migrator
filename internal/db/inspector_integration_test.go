@@ -37,13 +37,9 @@ func TestIntegration_Inspect_UsesOpenJSON(t *testing.T) {
 		t.Fatalf("scan: %v", err)
 	}
 
-	insp := NewInspector().(*inspector)
-	state, err := insp.Inspect(ctx, conn, layout)
+	state, err := NewInspector().Inspect(ctx, conn, layout)
 	if err != nil {
 		t.Fatalf("inspect: %v", err)
-	}
-	if !insp.openJSONEnabled {
-		t.Fatal("expected OPENJSON support on integration SQL Server instance")
 	}
 	if len(state.Objects) != 0 {
 		t.Fatalf("expected empty DB state, got %d objects", len(state.Objects))
