@@ -334,6 +334,14 @@ func (e *Executor) executeNonTx(ctx context.Context, conn driver.Conn, stmt *bat
 func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, plan types.MigrationPlan, transIndex map[string]*fs.TransitionScript, result *ApplyResult, b bus.EventBus) {
 	hasFailed := b.HasHandlers(types.EventObjectFailed)
 	hasApplied := b.HasHandlers(types.EventObjectApplied)
+	var appliedEvents []*types.ObjectEvent
+	var failedEvents []*types.FailureEvent
+	if hasApplied {
+		appliedEvents = make([]*types.ObjectEvent, 0, 4)
+	}
+	if hasFailed {
+		failedEvents = make([]*types.FailureEvent, 0, 4)
+	}
 	for _, obj := range plan.Objects {
 		if obj.PlannedAction != types.ActionReprocessChanged || len(obj.TransitionPaths) == 0 {
 			continue
@@ -349,7 +357,7 @@ func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, pla
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", tp, err.Error()))
 				if hasFailed {
 					ms := newMigrationStmt(obj, tp, [32]byte{}, "", "", "")
-					b.Publish(ctx, types.EventObjectFailed, newFailureEvent(&ms, err.Error()))
+					failedEvents = append(failedEvents, newFailureEvent(&ms, err.Error()))
 				}
 				continue
 			}
@@ -368,16 +376,22 @@ func (e *Executor) executeTransitions(ctx context.Context, conn driver.Conn, pla
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", tp, err.Error()))
 				if hasFailed {
 					ms := newMigrationStmt(obj, tp, cs, gitHash, gitAuthor, gitDate)
-					b.Publish(ctx, types.EventObjectFailed, newFailureEvent(&ms, err.Error()))
+					failedEvents = append(failedEvents, newFailureEvent(&ms, err.Error()))
 				}
 				continue
 			}
 			result.Applied++
 			if hasApplied {
 				ms := newMigrationStmt(obj, tp, cs, gitHash, gitAuthor, gitDate)
-				b.Publish(ctx, types.EventObjectApplied, newObjectEvent(&ms))
+				appliedEvents = append(appliedEvents, newObjectEvent(&ms))
 			}
 		}
+	}
+	if len(appliedEvents) > 0 {
+		b.Publish(ctx, types.EventObjectApplied, appliedEvents)
+	}
+	if len(failedEvents) > 0 {
+		b.Publish(ctx, types.EventObjectFailed, failedEvents)
 	}
 }
 
