@@ -98,6 +98,10 @@ func (s stubInspector) Inspect(ctx context.Context, conn driver.Conn, scope fs.L
 	return s.state, s.err
 }
 
+func (s stubInspector) InspectWithScope(ctx context.Context, conn driver.Conn, layout fs.Layout, _ db.InspectScope) (*db.State, error) {
+	return s.Inspect(ctx, conn, layout)
+}
+
 func (s stubInspector) LoadTableColumns(ctx context.Context, conn driver.Conn, scope fs.Layout) (map[string][]db.TableColumn, error) {
 	if s.state != nil && s.state.TableColumns != nil {
 		return s.state.TableColumns, s.err
