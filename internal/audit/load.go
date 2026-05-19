@@ -12,9 +12,6 @@ import (
 	"reporting-db-migrations/internal/types"
 )
 
-//go:embed sql/load_checksums.sql
-var loadChecksumsSQL string
-
 //go:embed sql/load_checksums_openjson.sql
 var loadChecksumsOpenJSONSQL string
 
@@ -26,8 +23,6 @@ var loadMigrationsSQL string
 
 //go:embed sql/load_all_migrations.sql
 var loadAllMigrationsSQL string
-
-var loadChecksumsOpenJSONSupport sync.Map
 
 var loadChecksumsCache = struct {
 	generation map[string]uint64
@@ -73,44 +68,9 @@ func LoadChecksums(ctx context.Context, conn driver.Conn, keys []string) (map[st
 	if cached, ok := lookupChecksumsCache(conn, keys); ok {
 		return cached, nil
 	}
-	if useOpenJSONForChecksums(conn) {
-		result, err := loadChecksumsOpenJSON(ctx, conn, keys)
-		if err == nil {
-			storeChecksumsCache(conn, keys, result)
-			storeLatestChecksums(conn, keys, result)
-			return result, nil
-		}
-		if openJSONStateKnown(conn) {
-			return nil, err
-		}
-		setOpenJSONSupport(conn, false)
-	}
-	result := make(map[string][32]byte, len(keys))
-	chunks := types.ChunkKeys(keys, driver.DefaultMaxParameters)
-	for _, chunk := range chunks {
-		query, args := types.BuildINQuery(loadChecksumsSQL, "{{keys}}", chunk, 1)
-		rows, err := conn.QueryStringsContext(ctx, query, args)
-		if err != nil {
-			return nil, err
-		}
-		for rows.Next() {
-			var key, checksum string
-			if err := rows.Scan(&key, &checksum); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			sum, err := parseHistoryChecksum(key, checksum)
-			if err != nil {
-				rows.Close()
-				return nil, err
-			}
-			result[key] = sum
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		rows.Close()
+	result, err := loadChecksumsOpenJSON(ctx, conn, keys)
+	if err != nil {
+		return nil, err
 	}
 	storeChecksumsCache(conn, keys, result)
 	storeLatestChecksums(conn, keys, result)
@@ -139,25 +99,7 @@ func loadChecksumsOpenJSON(ctx context.Context, conn driver.Conn, keys []string)
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	setOpenJSONSupport(conn, true)
 	return result, nil
-}
-
-func useOpenJSONForChecksums(conn driver.Conn) bool {
-	key := driver.ConnStableKey(conn)
-	if v, ok := loadChecksumsOpenJSONSupport.Load(key); ok {
-		return v.(bool)
-	}
-	return strings.Contains(driver.ConnTypeNameLower(conn), "mssql")
-}
-
-func openJSONStateKnown(conn driver.Conn) bool {
-	_, ok := loadChecksumsOpenJSONSupport.Load(driver.ConnStableKey(conn))
-	return ok
-}
-
-func setOpenJSONSupport(conn driver.Conn, enabled bool) {
-	loadChecksumsOpenJSONSupport.Store(driver.ConnStableKey(conn), enabled)
 }
 
 func lookupChecksumsCache(conn driver.Conn, keys []string) (map[string][32]byte, bool) {
