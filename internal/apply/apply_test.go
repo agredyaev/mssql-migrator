@@ -106,7 +106,7 @@ func TestExecute_CreateObject(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{{
-			CachedFile:    fs.CachedFile{AbsPath: sqlPath},
+			File:          &fs.CachedFile{AbsPath: sqlPath},
 			Path:          "r/views/v1.sql",
 			NormalizedKey: "r/views/v1",
 			Kind:          "views",
@@ -178,7 +178,7 @@ func TestExecute_UpdateModule(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{{
-			CachedFile:    fs.CachedFile{AbsPath: sqlPath},
+			File:          &fs.CachedFile{AbsPath: sqlPath},
 			Path:          "r/views/v1.sql",
 			NormalizedKey: "r/views/v1",
 			Kind:          "views",
@@ -302,8 +302,8 @@ func TestExecuteNonTxPublishesAppliedBatch(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{
-			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r", "procedures", "p1.sql")}, Path: "r/procedures/p1.sql", NormalizedKey: "r/procedures/p1", Kind: "procedures", SchemaName: "r", ObjectName: "p1"},
-			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r", "procedures", "p2.sql")}, Path: "r/procedures/p2.sql", NormalizedKey: "r/procedures/p2", Kind: "procedures", SchemaName: "r", ObjectName: "p2"},
+			{File: &fs.CachedFile{AbsPath: filepath.Join(baseDir, "r", "procedures", "p1.sql")}, Path: "r/procedures/p1.sql", NormalizedKey: "r/procedures/p1", Kind: "procedures", SchemaName: "r", ObjectName: "p1"},
+			{File: &fs.CachedFile{AbsPath: filepath.Join(baseDir, "r", "procedures", "p2.sql")}, Path: "r/procedures/p2.sql", NormalizedKey: "r/procedures/p2", Kind: "procedures", SchemaName: "r", ObjectName: "p2"},
 		},
 	}
 	plan := types.MigrationPlan{
@@ -359,9 +359,9 @@ func TestExecute_NonTxObjectsExecutedIndividually(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{
-			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v1.sql")}, Path: "r/views/v1.sql", NormalizedKey: "r/views/v1", Kind: "views"},
-			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v2.sql")}, Path: "r/views/v2.sql", NormalizedKey: "r/views/v2", Kind: "views"},
-			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/procedures/p1.sql")}, Path: "r/procedures/p1.sql", NormalizedKey: "r/procedures/p1", Kind: "procedures"},
+			{File: &fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v1.sql")}, Path: "r/views/v1.sql", NormalizedKey: "r/views/v1", Kind: "views"},
+			{File: &fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v2.sql")}, Path: "r/views/v2.sql", NormalizedKey: "r/views/v2", Kind: "views"},
+			{File: &fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/procedures/p1.sql")}, Path: "r/procedures/p1.sql", NormalizedKey: "r/procedures/p1", Kind: "procedures"},
 		},
 	}
 	plan := types.MigrationPlan{
@@ -403,8 +403,8 @@ func TestExecute_NonTxFailDoesNotAffectOthers(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{
-			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v1.sql")}, Path: "r/views/v1.sql", NormalizedKey: "r/views/v1", Kind: "views"},
-			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v2.sql")}, Path: "r/views/v2.sql", NormalizedKey: "r/views/v2", Kind: "views"},
+			{File: &fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v1.sql")}, Path: "r/views/v1.sql", NormalizedKey: "r/views/v1", Kind: "views"},
+			{File: &fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v2.sql")}, Path: "r/views/v2.sql", NormalizedKey: "r/views/v2", Kind: "views"},
 		},
 	}
 	plan := types.MigrationPlan{
@@ -447,8 +447,8 @@ func TestExecute_TxBatchWrappedInTransaction(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{
-			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t1.sql")}, Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
-			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t2.sql")}, Path: "r/tables/t2.sql", NormalizedKey: "r/tables/t2", Kind: "tables"},
+			{File: &fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t1.sql")}, Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
+			{File: &fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t2.sql")}, Path: "r/tables/t2.sql", NormalizedKey: "r/tables/t2", Kind: "tables"},
 		},
 	}
 	plan := types.MigrationPlan{
@@ -496,8 +496,8 @@ func TestExecute_TxBatchFailsRetriesIndividuallyWrapped(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{
-			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t1.sql")}, Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
-			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t2.sql")}, Path: "r/tables/t2.sql", NormalizedKey: "r/tables/t2", Kind: "tables"},
+			{File: &fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t1.sql")}, Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
+			{File: &fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t2.sql")}, Path: "r/tables/t2.sql", NormalizedKey: "r/tables/t2", Kind: "tables"},
 		},
 	}
 	plan := types.MigrationPlan{
@@ -550,7 +550,7 @@ func TestExecute_TxBatchFailsRollsback(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{
-			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t1.sql")}, Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
+			{File: &fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t1.sql")}, Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
 		},
 	}
 	plan := types.MigrationPlan{
@@ -591,7 +591,7 @@ func TestExecute_TransitionWrappedInTransaction(t *testing.T) {
 
 	layout := fs.Layout{
 		Transitions: []*fs.TransitionScript{{
-			CachedFile:    fs.CachedFile{AbsPath: transPath},
+			File:          &fs.CachedFile{AbsPath: transPath},
 			Path:          "r/tables/_migrations/t1/001_abc1234_add_col.sql",
 			SchemaName:    "r",
 			TableName:     "t1",
@@ -643,7 +643,7 @@ func TestExecute_TransitionFailRollsback(t *testing.T) {
 
 	layout := fs.Layout{
 		Transitions: []*fs.TransitionScript{{
-			CachedFile:    fs.CachedFile{AbsPath: transPath},
+			File:          &fs.CachedFile{AbsPath: transPath},
 			Path:          "r/tables/_migrations/t1/001_abc1234_add_col.sql",
 			SchemaName:    "r",
 			TableName:     "t1",
@@ -696,7 +696,7 @@ func TestExecute_ReprocessChangedEmptyTransitions_Skipped(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{{
-			CachedFile:    fs.CachedFile{AbsPath: sqlPath},
+			File:          &fs.CachedFile{AbsPath: sqlPath},
 			Path:          "r/tables/t1.sql",
 			NormalizedKey: "r/tables/t1",
 			Kind:          "tables",
@@ -747,8 +747,8 @@ func TestExecute_MixedTxAndNonTx(t *testing.T) {
 
 	layout := fs.Layout{
 		Objects: []*fs.Object{
-			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t1.sql")}, Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
-			{CachedFile: fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v1.sql")}, Path: "r/views/v1.sql", NormalizedKey: "r/views/v1", Kind: "views"},
+			{File: &fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/tables/t1.sql")}, Path: "r/tables/t1.sql", NormalizedKey: "r/tables/t1", Kind: "tables"},
+			{File: &fs.CachedFile{AbsPath: filepath.Join(baseDir, "r/views/v1.sql")}, Path: "r/views/v1.sql", NormalizedKey: "r/views/v1", Kind: "views"},
 		},
 	}
 	plan := types.MigrationPlan{
