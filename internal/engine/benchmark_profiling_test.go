@@ -12,6 +12,7 @@ import (
 	"reporting-db-migrations/internal/db"
 	"reporting-db-migrations/internal/diff"
 	"reporting-db-migrations/internal/fs"
+	"reporting-db-migrations/internal/types"
 )
 
 // BenchmarkDiffCompute_* (without SkipHeavy) — create-heavy: see benchmarkDiffComputeCreateHeavy.
@@ -28,7 +29,7 @@ func BenchmarkDiffCompute_SkipHeavy_5000Objects(b *testing.B) { benchmarkDiffCom
 // benchmarkDiffComputeCreateHeavy uses an empty DB state and empty checksums so every
 // layout object is planned as ActionCreateObject (worst-case planner branch for object count).
 func benchmarkDiffComputeCreateHeavy(b *testing.B, n int) {
-	comp := diff.NewComputer()
+	comp := diff.NewComputer(types.Config{})
 	dir := b.TempDir()
 	layout := makeRealLayout(b, dir, n)
 
@@ -51,7 +52,7 @@ func benchmarkDiffComputeCreateHeavy(b *testing.B, n int) {
 // benchmarkDiffComputeSkipHeavy fills state and checksums from the scanned layout so every
 // object is ActionSkipUnchanged (isolates planner overhead without setGitInfo on the hot path).
 func benchmarkDiffComputeSkipHeavy(b *testing.B, n int) {
-	comp := diff.NewComputer()
+	comp := diff.NewComputer(types.Config{})
 	dir := b.TempDir()
 	layout := makeRealLayout(b, dir, n)
 

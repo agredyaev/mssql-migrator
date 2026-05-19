@@ -24,6 +24,7 @@ type Scanner struct {
 	GitInfo          func(AbsPath string) (hash, author, date string, err error)
 	GitLog           func(root string) ([]byte, error)
 	ReadDir          func(name string) ([]os.DirEntry, error)
+	SkipGit          bool
 	gitPreloadByRoot map[string]gitPreloadCache
 	layoutByRoot     map[string]layoutCacheEntry
 	mu               sync.Mutex
@@ -203,7 +204,7 @@ func (s *Scanner) finalizeLayout(root string, hasGitRepo bool, layout *Layout, c
 		disableLayoutGitInfo(layout)
 	}
 	layout.RebuildPathIndexes()
-	if !gitReady {
+	if !gitReady && !s.SkipGit {
 		s.preloadGitInfo(root, layout)
 	}
 	if !checksumsReady {

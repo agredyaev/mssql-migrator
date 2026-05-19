@@ -135,7 +135,7 @@ func TestIntegration_Plan_EmptyDB(t *testing.T) {
 		t.Fatalf("load checksums: %v", err)
 	}
 
-	computer := diff.NewComputer()
+	computer := diff.NewComputer(cfg)
 	plan, err := computer.Compute(ctx, layout, state, checksums)
 	if err != nil {
 		t.Fatalf("compute: %v", err)
@@ -207,7 +207,7 @@ func TestIntegration_Apply_AllObjects(t *testing.T) {
 		t.Fatalf("load checksums: %v", err)
 	}
 
-	computer := diff.NewComputer()
+	computer := diff.NewComputer(cfg)
 	plan, err := computer.Compute(ctx, layout, state, checksums)
 	if err != nil {
 		t.Fatalf("compute: %v", err)
@@ -306,7 +306,7 @@ func TestIntegration_Plan_AfterApply(t *testing.T) {
 		t.Fatalf("load checksums: %v", err)
 	}
 
-	computer := diff.NewComputer()
+	computer := diff.NewComputer(cfg)
 	plan, err := computer.Compute(ctx, layout, state, checksums)
 	if err != nil {
 		t.Fatalf("compute: %v", err)
@@ -351,7 +351,7 @@ func applyAllObjects(t *testing.T, ctx context.Context, conn driver.Conn, cfg ty
 		t.Fatalf("load checksums: %v", err)
 	}
 
-	computer := diff.NewComputer()
+	computer := diff.NewComputer(cfg)
 	plan, err := computer.Compute(ctx, layout, state, checksums)
 	if err != nil {
 		t.Fatalf("compute: %v", err)
@@ -465,7 +465,7 @@ func newTestEngine(b bus.EventBus, conn driver.Conn, cfg types.Config) *engine.E
 		fs.NewScanner(),
 		db.NewInspector(),
 		testLoaderAdapter{},
-		diff.NewComputer(),
+		diff.NewComputer(cfg),
 		scaffold.New(),
 		&testApplierAdapter{exec: apply.New()},
 		lock.New(),
