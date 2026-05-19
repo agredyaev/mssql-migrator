@@ -32,6 +32,11 @@ func TestDiffComputed_WritesPlanJSON(t *testing.T) {
 	}
 
 	b.Publish(context.Background(), types.EventDiffComputed, &types.DiffResult{Plan: plan})
+	b.Publish(context.Background(), types.EventRunFinished, &types.RunFinished{
+		Command:  "plan",
+		Result:   "success",
+		ExitCode: 0,
+	})
 
 	planPath := filepath.Join(baseDir, ".plan.json")
 	data, err := os.ReadFile(planPath)
