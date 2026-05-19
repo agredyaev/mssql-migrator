@@ -97,7 +97,7 @@ func benchCollectStatementsFixture(b *testing.B, dir string, n int) (fs.Layout, 
 			Kind:                 "tables",
 			ObjectName:           name,
 			NormalizedKey:        types.NormalizedKey("r", "tables", name),
-			CachedFile:           fs.CachedFile{AbsPath: abs},
+			File:                 &fs.CachedFile{AbsPath: abs},
 		})
 		planned = append(planned, types.PlannedObject{
 			ObjectRef: types.ObjectRef{
