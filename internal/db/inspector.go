@@ -9,6 +9,8 @@ import (
 
 type Inspector interface {
 	Inspect(ctx context.Context, conn driver.Conn, scope fs.Layout) (*State, error)
+	// InspectWithScope inspects only HotRefs when FullInspect is false; merges StableObjects.
+	InspectWithScope(ctx context.Context, conn driver.Conn, layout fs.Layout, iscope InspectScope) (*State, error)
 	// LoadTableColumns fetches column metadata for tables in scope. Call only when
 	// needed (e.g. blocked migrate scaffold); Inspect does not load columns.
 	LoadTableColumns(ctx context.Context, conn driver.Conn, scope fs.Layout) (map[string][]TableColumn, error)

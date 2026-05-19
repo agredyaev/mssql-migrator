@@ -221,6 +221,22 @@ func TestInspectSharedCacheInvalidatesAfterGenerationBump(t *testing.T) {
 	}
 }
 
+func TestInspectFastEmptyCatalog(t *testing.T) {
+	layout := openJSONTestLayout()
+	conn := openJSONMockConnEmptyDB()
+
+	state, err := NewInspector().Inspect(context.Background(), conn, layout)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if got := conn.QueryCount.Load(); got != 1 {
+		t.Fatalf("expected scoped hit probe only on empty DB fast path, got %d", got)
+	}
+	if len(state.Objects) != 0 {
+		t.Fatalf("expected no objects on empty DB fast path, got %d", len(state.Objects))
+	}
+}
+
 func TestInspectUsesOpenJSONQueriesWithoutColumns(t *testing.T) {
 	layout := openJSONTestLayout()
 	conn := openJSONMockConnFull()
@@ -230,13 +246,20 @@ func TestInspectUsesOpenJSONQueriesWithoutColumns(t *testing.T) {
 		t.Fatalf("Inspect: %v", err)
 	}
 	if got := conn.QueryCount.Load(); got != 2 {
-		t.Fatalf("expected 2 queries (schemas + objects), got %d", got)
+		t.Fatalf("expected scoped hit + catalog queries, got %d", got)
 	}
-	if !strings.Contains(conn.Queries[0].Query, "OPENJSON(@p1)") {
-		t.Fatalf("expected schemas query to use OPENJSON, got %q", conn.Queries[0].Query)
+	var catalogQuery string
+	for _, q := range conn.Queries {
+		if strings.Contains(q.Query, "inspector_scope AS") {
+			catalogQuery = q.Query
+			break
+		}
 	}
-	if !strings.Contains(conn.Queries[1].Query, "OPENJSON(@p2)") {
-		t.Fatalf("expected objects query to use OPENJSON, got %q", conn.Queries[1].Query)
+	if catalogQuery == "" {
+		t.Fatalf("expected unified catalog query in %#v", conn.Queries)
+	}
+	if strings.Contains(catalogQuery, "index_rows") {
+		t.Fatalf("tables-only layout should not include index_rows CTE, got %q", catalogQuery)
 	}
 	if _, ok := state.Objects["r/tables/t1"]; !ok {
 		t.Fatalf("expected object r/tables/t1 in state, got %v", state.Objects)
@@ -304,9 +327,21 @@ func openJSONTestLayout() fs.Layout {
 func openJSONMockConnFull() *testutil.MockConn {
 	return &testutil.MockConn{
 		RowsByPrefix: map[string]*testutil.MockRows{
-			"WITH inspector_schema_filter AS (":        testutil.NewMockRows([][]any{{"r"}}),
-			"WITH inspector_object_schema_filter AS (": testutil.NewMockRows([][]any{{"r", "tables", "t1", ""}}),
-			"WITH inspector_column_schema_filter AS (": testutil.NewMockRows([][]any{{"r", "t1", "id", "int", 4, 10, 0, false}}),
+			"SELECT TOP (1) CAST(1 AS int) AS hit": testutil.NewMockRows([][]any{{1}}),
+			"WITH layout_schema_filter AS (":       testutil.NewMockRows(nil),
+			"WITH inspector_scope AS (": testutil.NewMockRows([][]any{
+				{"schema", "r", "", "", ""},
+				{"object", "r", "tables", "t1", ""},
+			}),
+			"WITH inspector_column_scope AS (": testutil.NewMockRows([][]any{{"r", "t1", "id", "int", 4, 10, 0, false}}),
+		},
+	}
+}
+
+func openJSONMockConnEmptyDB() *testutil.MockConn {
+	return &testutil.MockConn{
+		RowsByPrefix: map[string]*testutil.MockRows{
+			"SELECT TOP (1) CAST(1 AS int) AS hit": testutil.NewMockRows(nil),
 		},
 	}
 }
@@ -314,7 +349,7 @@ func openJSONMockConnFull() *testutil.MockConn {
 func openJSONMockConnForSchemaOnly() *testutil.MockConn {
 	return &testutil.MockConn{
 		RowsByPrefix: map[string]*testutil.MockRows{
-			"WITH inspector_schema_filter AS (": testutil.NewMockRows([][]any{{"r"}}),
+			"WITH inspector_scope AS (": testutil.NewMockRows([][]any{{"schema", "r", "", "", ""}}),
 		},
 	}
 }
