@@ -45,7 +45,7 @@ func benchLayoutForPathIndex(b *testing.B, n int) Layout {
 			Kind:                 "views",
 			ObjectName:           name,
 			NormalizedKey:        types.NormalizedKey("r", "views", name),
-			CachedFile:           CachedFile{AbsPath: abs},
+			File:                 &CachedFile{AbsPath: abs},
 		})
 	}
 	return Layout{RootPath: dir, Objects: objs}
@@ -88,9 +88,9 @@ func benchCopyObjectForChecksumLoop(template *Object) *Object {
 		NoTransaction:               template.NoTransaction,
 		objectStatForByteCache:      template.objectStatForByteCache,
 		objectStatForByteCacheValid: template.objectStatForByteCacheValid,
-		CachedFile: CachedFile{
-			AbsPath:   template.AbsPath,
-			gitInfoFn: template.gitInfoFn,
+		File: &CachedFile{
+			AbsPath:   template.cachedFile().AbsPath,
+			gitInfoFn: template.cachedFile().gitInfoFn,
 		},
 	}
 }
@@ -152,7 +152,7 @@ func BenchmarkCachedFileChecksumThenContent_ColdObject(b *testing.B) {
 	b.Run("retainBytes", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			o := &Object{CachedFile: CachedFile{AbsPath: path}}
+			o := &Object{File: &CachedFile{AbsPath: path}}
 			if _, err := o.Checksum(); err != nil {
 				b.Fatal(err)
 			}
