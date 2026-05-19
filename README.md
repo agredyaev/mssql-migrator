@@ -9,7 +9,7 @@ Lifecycle: `Current`.
 ## Scope
 
 - CLI entry: `cmd/rmig/main.go` → `internal/app.Run`
-- Engine: `internal/engine/engine.go` (orchestrates plan / migrate / validate / baseline / repair-checksum)
+- Engine: `internal/engine/engine.go` (orchestrates plan / migrate / validate / baseline / repair-checksum; `version` is handled in `internal/app` only)
 - Configuration: `internal/app/config.go`, `internal/types/config.go` (`RM_*` environment variables)
 - Driver: `internal/driver`, `internal/driver/mssql`
 - **Internal module specifications:** `docs/specs/internals/README.md`
@@ -17,7 +17,7 @@ Lifecycle: `Current`.
 
 ## System context
 
-Build with Go 1.22+ (module `reporting-db-migrations`). Configure database and repo paths through environment variables (typically via a dotenv file; see `--env` in `internal/app/flags.go`). Commands: `plan`, `migrate`, `validate`, `baseline`, `repair-checksum`.
+Build with Go 1.22+ (module `reporting-db-migrations`). Configure database and repo paths through environment variables (typically via a dotenv file; see `--env` in `internal/app/flags.go`). Commands: `plan`, `migrate`, `validate`, `baseline`, `repair-checksum`, **`version`** (prints semver and commit to stdout; does not read `.env` or connect to the database).
 
 ## Interfaces and boundaries
 
@@ -33,8 +33,8 @@ Build with Go 1.22+ (module `reporting-db-migrations`). Configure database and r
 ## Nominal flow
 
 1. `make check` — `go build ./...`, `go test ./...`, `go vet`, `staticcheck`, `gofmt` check (see `Makefile`).
-2. Local binary: `go build -o rmig ./cmd/rmig`, or optimized release build: `make release-build` → `bin/rmig` (`CGO_ENABLED=0`, `-trimpath`, `-buildvcs=false`, `-ldflags="-s -w"` per `Makefile`; background in the guide’s [compiler optimizations](https://psavelis.github.io/golang-performance-optimization/optimization/compiler/) chapter, especially [build optimization](https://psavelis.github.io/golang-performance-optimization/optimization/compiler/build-optimization.html)).
-3. Run `rmig --env /path/to/.env plan` (or another command); see usage text in `internal/app/flags.go`.
+2. Local binary: `go build -o rmig ./cmd/rmig`, or optimized release build: `make release-build` → `bin/rmig` (`CGO_ENABLED=0`, `-trimpath`, `-buildvcs=false`, `-ldflags` with `-s -w` plus `-X` for **`internal/buildinfo.Version`** from root **`VERSION`** and **`internal/buildinfo.Commit`** from `git rev-parse --short HEAD`; see `Makefile`). Background in the guide’s [compiler optimizations](https://psavelis.github.io/golang-performance-optimization/optimization/compiler/) chapter, especially [build optimization](https://psavelis.github.io/golang-performance-optimization/optimization/compiler/build-optimization.html).
+3. Run `rmig --env /path/to/.env plan` (or another command); run `rmig version` to print the embedded semver and commit without configuration. See usage text in `internal/app/flags.go`.
 
 ## Off-nominal behavior and failure containment
 
