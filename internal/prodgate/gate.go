@@ -8,14 +8,27 @@ import (
 	"time"
 )
 
-// PhaseTimings holds optional wall durations for prod gate reporting.
+// PhaseTimings holds optional wall durations for plan/CLI profiling (milliseconds).
 type PhaseTimings struct {
-	ConnectMS  int64 `json:"connect_ms"`
-	ScanMS     int64 `json:"scan_ms"`
-	InspectMS  int64 `json:"inspect_ms"`
-	AuditMS    int64 `json:"audit_ms"`
-	DiffMS     int64 `json:"diff_ms"`
-	PlanWallMS int64 `json:"plan_wall_ms"`
+	ConnectMS       int64 `json:"connect_ms,omitempty"`
+	ScanMS          int64 `json:"scan_ms,omitempty"`
+	ScanWalkMS      int64 `json:"scan_walk_ms,omitempty"`
+	ScanGitMS       int64 `json:"scan_git_ms,omitempty"`
+	ScanChecksumsMS int64 `json:"scan_checksums_ms,omitempty"`
+	FetchMS         int64 `json:"fetch_ms,omitempty"`
+	InspectMS       int64 `json:"inspect_ms,omitempty"`
+	ChecksumsMS     int64 `json:"checksums_ms,omitempty"`
+	EnsureMS        int64 `json:"ensure_ms,omitempty"`
+	ParallelWallMS  int64 `json:"parallel_wall_ms,omitempty"`
+	// AuditMS is ensure_ms + checksums_ms (legacy gate SLO field; not parallel overlap).
+	AuditMS       int64 `json:"audit_ms,omitempty"`
+	DiffMS        int64 `json:"diff_ms,omitempty"`
+	PlanWallMS    int64 `json:"plan_wall_ms,omitempty"`
+	CLIWallMS     int64 `json:"cli_wall_ms,omitempty"`
+	EngineMS      int64 `json:"engine_ms,omitempty"`
+	ReportWriteMS int64 `json:"report_write_ms,omitempty"`
+	ApplyMS       int64 `json:"apply_ms,omitempty"`
+	AuditFlushMS  int64 `json:"audit_flush_ms,omitempty"`
 }
 
 // GateInput bundles snapshot comparison and optional SLO checks.
