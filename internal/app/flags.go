@@ -82,5 +82,5 @@ Commands:
 
 Flags:
   --env <path>      Path to .env file (default: .env)
-  --json            Enable JSON log output
+  --json            JSON logs on stderr for engine commands; with version, JSON object on stdout
   -h, --help        Show this help`
