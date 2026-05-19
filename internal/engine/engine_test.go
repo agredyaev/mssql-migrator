@@ -98,6 +98,13 @@ func (s stubInspector) Inspect(ctx context.Context, conn driver.Conn, scope fs.L
 	return s.state, s.err
 }
 
+func (s stubInspector) LoadTableColumns(ctx context.Context, conn driver.Conn, scope fs.Layout) (map[string][]db.TableColumn, error) {
+	if s.state != nil && s.state.TableColumns != nil {
+		return s.state.TableColumns, s.err
+	}
+	return map[string][]db.TableColumn{}, s.err
+}
+
 type stubLoader struct {
 	checksums            map[string][32]byte
 	err                  error

@@ -21,19 +21,17 @@ type BootstrapChecker interface {
 }
 
 type Engine struct {
-	diff          Computer
-	bus           bus.EventBus
-	conn          driver.Conn
-	fs            Scanner
-	db            Inspector
-	load          Loader
-	scaffold      Scaffolder
-	applier       Applier
-	locker        lock.Locker
-	bootstrapErr  error
-	bc            BootstrapChecker
-	cfg           types.Config
-	bootstrapOnce sync.Once
+	diff     Computer
+	bus      bus.EventBus
+	conn     driver.Conn
+	fs       Scanner
+	db       Inspector
+	load     Loader
+	scaffold Scaffolder
+	applier  Applier
+	locker   lock.Locker
+	bc       BootstrapChecker
+	cfg      types.Config
 }
 
 type Scanner interface {
@@ -42,6 +40,7 @@ type Scanner interface {
 
 type Inspector interface {
 	Inspect(ctx context.Context, conn driver.Conn, scope fs.Layout) (*db.State, error)
+	LoadTableColumns(ctx context.Context, conn driver.Conn, scope fs.Layout) (map[string][]db.TableColumn, error)
 }
 
 type Loader interface {
@@ -99,7 +98,7 @@ func (e *Engine) Plan(ctx context.Context) error {
 func (e *Engine) Migrate(ctx context.Context) error {
 	e.bus.Publish(ctx, types.EventRunStarted, &types.RunStarted{Command: "migrate"})
 
-	plan, layout, state, err := e.runPlan(ctx)
+	plan, layout, _, err := e.runPlan(ctx)
 	if err != nil {
 		e.publishRunFailed(ctx, "migrate", err)
 		return err
@@ -108,7 +107,12 @@ func (e *Engine) Migrate(ctx context.Context) error {
 	e.bus.Publish(ctx, types.EventDiffComputed, &types.DiffResult{Plan: plan})
 
 	if plan.Blocked {
-		if _, err := e.scaffold.Ensure(ctx, e.cfg, layout, plan, state.TableColumns); err != nil {
+		columns, err := e.db.LoadTableColumns(ctx, e.conn, layout)
+		if err != nil {
+			e.publishRunFailed(ctx, "migrate", err)
+			return err
+		}
+		if _, err := e.scaffold.Ensure(ctx, e.cfg, layout, plan, columns); err != nil {
 			e.publishRunFailed(ctx, "migrate", err)
 			return err
 		}
@@ -182,6 +186,9 @@ func (e *Engine) filterAppliedMigrations(ctx context.Context, plan *types.Migrat
 	return nil
 }
 
+// Validate runs the same planning pipeline as plan (scan, inspect without table
+// columns, checksum load, diff) and reports changed module count. It does not
+// execute layout.Checks SQL scripts; use a dedicated checks runner if needed.
 func (e *Engine) Validate(ctx context.Context) error {
 	e.bus.Publish(ctx, types.EventRunStarted, &types.RunStarted{Command: "validate"})
 	e.bus.Publish(ctx, types.EventValidationStart, &types.ValidationEvent{})
@@ -242,26 +249,34 @@ func (e *Engine) executeLocked(ctx context.Context, command string) error {
 }
 
 func (e *Engine) runPlan(ctx context.Context) (*types.MigrationPlan, fs.Layout, *db.State, error) {
-	e.bootstrapOnce.Do(func() {
-		e.bootstrapErr = e.load.EnsureTables(ctx, e.conn)
-	})
-	if e.bootstrapErr != nil {
-		return nil, fs.Layout{}, nil, e.bootstrapErr
-	}
-
 	layout, err := e.fs.Scan(ctx, e.cfg.SQLRoot)
 	if err != nil {
 		return nil, fs.Layout{}, nil, err
 	}
 
-	state, err := e.db.Inspect(ctx, e.conn, layout)
-	if err != nil {
-		return nil, fs.Layout{}, nil, err
+	keys := layout.NormalizedKeys()
+	var (
+		state     *db.State
+		checksums map[string][32]byte
+		inspErr   error
+		loadErr   error
+	)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		state, inspErr = e.db.Inspect(ctx, e.conn, layout)
+	}()
+	go func() {
+		defer wg.Done()
+		checksums, loadErr = e.load.LoadChecksums(ctx, e.conn, keys)
+	}()
+	wg.Wait()
+	if inspErr != nil {
+		return nil, fs.Layout{}, nil, inspErr
 	}
-
-	checksums, err := e.load.LoadChecksums(ctx, e.conn, layout.NormalizedKeys())
-	if err != nil {
-		return nil, fs.Layout{}, nil, err
+	if loadErr != nil {
+		return nil, fs.Layout{}, nil, loadErr
 	}
 
 	plan, err := e.diff.Compute(ctx, layout, state, checksums)

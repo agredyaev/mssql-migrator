@@ -101,6 +101,12 @@ func buildConfig(flags cliFlags, env map[string]string, lookup envLookupFn) type
 			cfg.LockTimeout = d
 		}
 	}
+	if v := lookupStr("RM_SKIP_GIT"); v != "" {
+		cfg.SkipGit, _ = strconv.ParseBool(v)
+	}
+	if v := lookupStr("RM_REPORT_SYNC"); v != "" {
+		cfg.ReportSync, _ = strconv.ParseBool(v)
+	}
 
 	cfg.JSONLogs = flags.JSON
 

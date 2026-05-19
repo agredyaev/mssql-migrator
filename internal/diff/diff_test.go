@@ -12,7 +12,7 @@ import (
 )
 
 func TestComputeEmptyLayout(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	layout := fs.Layout{}
 	state := &db.State{
 		Schemas:      map[string]struct{}{},
@@ -37,7 +37,7 @@ func TestComputeEmptyLayout(t *testing.T) {
 }
 
 func TestComputeNewObject_ActionCreateObject(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	obj := makeTempObject(t, "r/views/v1", "views", "CREATE VIEW r.v1 AS SELECT 1 AS x")
 	obj.SchemaName = "r"
 	obj.ObjectName = "v1"
@@ -89,7 +89,7 @@ func TestIsMatch_NoAllocation(t *testing.T) {
 }
 
 func TestComputeUnchangedObject_ActionSkip(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	obj := makeTempObject(t, "r/views/v1", "views", "CREATE VIEW r.v1 AS SELECT 1 AS x")
 	checksum, err := obj.Checksum()
 	if err != nil {
@@ -120,7 +120,7 @@ func TestComputeUnchangedObject_ActionSkip(t *testing.T) {
 }
 
 func TestComputeAdoptExisting(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	obj := makeTempObject(t, "r/views/v1", "views", "CREATE VIEW r.v1 AS SELECT 1 AS x")
 	layout := fs.Layout{
 		Objects: []*fs.Object{obj},
@@ -145,7 +145,7 @@ func TestComputeAdoptExisting(t *testing.T) {
 }
 
 func TestComputeChecksumMismatch_Reprocess(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	obj := makeTempObject(t, "r/types/t1", "types", "CREATE TYPE r.t1 AS TABLE (a INT)")
 	layout := fs.Layout{Objects: []*fs.Object{obj}}
 	state := &db.State{
@@ -168,7 +168,7 @@ func TestComputeChecksumMismatch_Reprocess(t *testing.T) {
 }
 
 func TestComputeTableChangedWithoutTransition_Blocked(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	obj := makeTempObject(t, "r/tables/t1", "tables", "CREATE TABLE r.t1 (id INT)")
 	layout := fs.Layout{Objects: []*fs.Object{obj}}
 	state := &db.State{
@@ -197,7 +197,7 @@ func TestComputeTableChangedWithoutTransition_Blocked(t *testing.T) {
 }
 
 func TestComputeTableChangedWithTransition_NotBlocked(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	obj := makeTempObject(t, "r/tables/t1", "tables", "CREATE TABLE r.t1 (id INT)")
 	layout := fs.Layout{
 		Objects: []*fs.Object{obj},
@@ -234,7 +234,7 @@ func TestComputeTableChangedWithTransition_NotBlocked(t *testing.T) {
 }
 
 func TestComputeViewChanged_UpdateModule(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	obj := makeTempObject(t, "r/views/v1", "views", "CREATE VIEW r.v1 AS SELECT 2 AS x")
 	layout := fs.Layout{Objects: []*fs.Object{obj}}
 	state := &db.State{
@@ -254,7 +254,7 @@ func TestComputeViewChanged_UpdateModule(t *testing.T) {
 }
 
 func TestComputeNilState_AllCreate(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	obj := makeTempObject(t, "r/views/v1", "views", "CREATE VIEW r.v1 AS SELECT 1 AS x")
 	layout := fs.Layout{
 		Objects: []*fs.Object{obj},
@@ -273,7 +273,7 @@ func TestComputeNilState_AllCreate(t *testing.T) {
 }
 
 func TestComputeTableScaffoldOnly_Blocked(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	obj := makeTempObject(t, "r/tables/t1", "tables", "CREATE TABLE r.t1 (id INT)")
 	layout := fs.Layout{
 		Objects: []*fs.Object{obj},
@@ -304,7 +304,7 @@ func TestComputeTableScaffoldOnly_Blocked(t *testing.T) {
 }
 
 func TestComputeTriggerMissingParent_Blocked(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	obj := makeTempObject(t, "r/triggers/trg1", "triggers", "CREATE TRIGGER r.trg1 ON r.t1 AFTER INSERT AS SELECT 1")
 	obj.SchemaName = "r"
 	obj.ParentName = "missing_parent"
@@ -330,7 +330,7 @@ func TestComputeTriggerMissingParent_Blocked(t *testing.T) {
 }
 
 func TestComputeTriggerParentStable_UpdateModule(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	obj := makeTempObject(t, "r/triggers/trg1", "triggers", "CREATE TRIGGER r.trg1 ON r.t1 AFTER INSERT AS SELECT 1")
 	obj.SchemaName = "r"
 	obj.ParentName = "t1"
@@ -357,7 +357,7 @@ func TestComputeTriggerParentStable_UpdateModule(t *testing.T) {
 }
 
 func TestComputeBlockedHasReason(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	obj := makeTempObject(t, "r/tables/t1", "tables", "CREATE TABLE r.t1 (id INT)")
 	layout := fs.Layout{Objects: []*fs.Object{obj}}
 	state := &db.State{
@@ -380,7 +380,7 @@ func TestComputeBlockedHasReason(t *testing.T) {
 }
 
 func TestComputeMultipleObjectsSummary(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	obj1 := makeTempObject(t, "r/tables/t1", "tables", "CREATE TABLE r.t1 (id INT)")
 	obj2 := makeTempObject(t, "r/views/v1", "views", "CREATE VIEW r.v1 AS SELECT 1 AS x")
 	cs1, _ := obj1.Checksum()
@@ -456,7 +456,7 @@ func syncTriggerParentNormalizedKey(o *fs.Object) {
 }
 
 func TestCompute_OrphanedDBObject_NotInLayout(t *testing.T) {
-	computer := NewComputer()
+	computer := NewComputer(types.Config{})
 	layout := fs.Layout{
 		Schemas: []fs.Schema{{Name: "r", NormalizedName: "r"}},
 		Objects: []*fs.Object{},

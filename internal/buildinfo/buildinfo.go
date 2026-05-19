@@ -59,7 +59,7 @@ func shortRev(s string) string {
 
 func vcsRevisionFromBuildInfo() string {
 	bi, ok := debug.ReadBuildInfo()
-	if !ok || bi == nil {
+	if !ok {
 		return ""
 	}
 	for _, s := range bi.Settings {

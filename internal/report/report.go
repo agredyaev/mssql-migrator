@@ -16,12 +16,14 @@ type Subscriber struct {
 	bus      bus.EventBus
 	notifier types.ErrorNotifier
 	baseDir  string
+	syncDisk bool
 }
 
 func NewSubscriber(b bus.EventBus, cfg types.Config) *Subscriber {
 	s := &Subscriber{
-		bus:     b,
-		baseDir: cfg.ReportDir,
+		bus:      b,
+		baseDir:  cfg.ReportDir,
+		syncDisk: cfg.ReportSync,
 	}
 	b.Subscribe(types.EventDiffComputed, s.onDiffComputed)
 	b.Subscribe(types.EventRunFinished, s.onRunFinished)
@@ -43,7 +45,6 @@ func (s *Subscriber) writeJSON(filename string, v any) {
 
 	bw := bufio.NewWriter(f)
 	enc := json.NewEncoder(bw)
-	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
 		s.notifier.Notify(fmt.Sprintf("report marshal: %s", err.Error()))
 		return
@@ -52,8 +53,10 @@ func (s *Subscriber) writeJSON(filename string, v any) {
 		s.notifier.Notify(fmt.Sprintf("report flush %s: %s", path, err.Error()))
 		return
 	}
-	if err := f.Sync(); err != nil {
-		s.notifier.Notify(fmt.Sprintf("report sync %s: %s", path, err.Error()))
+	if s.syncDisk {
+		if err := f.Sync(); err != nil {
+			s.notifier.Notify(fmt.Sprintf("report sync %s: %s", path, err.Error()))
+		}
 	}
 }
 

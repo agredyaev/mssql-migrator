@@ -52,6 +52,6 @@ func BenchmarkWarmupAll_500ColdObjects(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		warmupAll(layout)
+		warmupAll(layout, false)
 	}
 }

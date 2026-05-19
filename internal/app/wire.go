@@ -43,14 +43,16 @@ func attachSubscribers(b bus.EventBus, conn driver.Conn, cfg types.Config, logge
 }
 
 func wireEngine(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.Logger) *engine.Engine {
+	scanner := fs.NewScanner()
+	scanner.SkipGit = cfg.SkipGit
 	return engine.New(
 		cfg,
 		b,
 		conn,
-		fs.NewScanner(),
+		scanner,
 		db.NewInspector(),
 		loaderAdapter{},
-		diff.NewComputer(),
+		diff.NewComputer(cfg),
 		scaffold.New(),
 		apply.New(),
 		lock.New(),

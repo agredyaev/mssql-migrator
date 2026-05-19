@@ -463,7 +463,7 @@ func scanAndCompute(t *testing.T, ctx context.Context, conn driver.Conn, sqlRoot
 		t.Fatalf("checksums: %v", err)
 	}
 
-	computer := diff.NewComputer()
+	computer := diff.NewComputer(types.Config{})
 	plan, err := computer.Compute(ctx, layout, state, checksums)
 	if err != nil {
 		t.Fatalf("compute: %v", err)
