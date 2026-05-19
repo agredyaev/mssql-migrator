@@ -1,0 +1,26 @@
+{
+  "note": "Reference timings for full CLI plan on Docker SQL Server 2019 + .temp/sql smoke tree (RM_SKIP_GIT=1). Regenerate: ops/perf/cli_phase.sh cold|warm",
+  "cold": {
+    "connect_ms": 65,
+    "scan_ms": 1,
+    "inspect_ms": 570,
+    "checksums_ms": 34,
+    "ensure_ms": 52,
+    "parallel_wall_ms": 570,
+    "fetch_ms": 0,
+    "cli_wall_ms": 635,
+    "engine_ms": 573,
+    "note": "Fast path: scoped hit only on empty DB; parallel inspect ‖ ensure+checksums"
+  },
+  "warm": {
+    "connect_ms": 80,
+    "scan_ms": 1,
+    "inspect_ms": 72,
+    "checksums_ms": 11,
+    "ensure_ms": 14,
+    "parallel_wall_ms": 72,
+    "fetch_ms": 0,
+    "cli_wall_ms": 168,
+    "engine_ms": 75
+  }
+}

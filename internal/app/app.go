@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"reporting-db-migrations/internal/audit"
 	"reporting-db-migrations/internal/buildinfo"
 	"reporting-db-migrations/internal/bus"
 	"reporting-db-migrations/internal/driver"
@@ -67,11 +66,6 @@ func runWithLookup(args []string, lookup envLookupFn, connect Connector) int {
 		return errors.ExitCode(err)
 	}
 	defer conn.Close()
-
-	if err := audit.EnsureTables(ctx, conn); err != nil {
-		fmt.Fprintf(os.Stderr, "rmig: audit bootstrap: %v\n", err)
-		return errors.ExitCode(err)
-	}
 
 	b := bus.New()
 	auditSub := attachSubscribers(b, conn, cfg, logger)

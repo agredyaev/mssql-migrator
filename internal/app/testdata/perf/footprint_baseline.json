@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "go_version": "go1.26.3",
+  "goos": "darwin",
+  "goarch": "arm64",
+  "threshold_bytes": 40,
+  "struct_sizes": [
+    {
+      "package": "types",
+      "type": "MigrationPlan",
+      "bytes": 496
+    },
+    {
+      "package": "fs",
+      "type": "CachedFile",
+      "bytes": 240
+    },
+    {
+      "package": "types",
+      "type": "PlannedObject",
+      "bytes": 240
+    },
+    {
+      "package": "fs",
+      "type": "Layout",
+      "bytes": 192
+    },
+    {
+      "package": "fs",
+      "type": "Object",
+      "bytes": 176
+    },
+    {
+      "package": "fs",
+      "type": "TransitionScript",
+      "bytes": 144
+    },
+    {
+      "package": "db",
+      "type": "TableColumn",
+      "bytes": 80
+    },
+    {
+      "package": "fs",
+      "type": "CheckScript",
+      "bytes": 80
+    },
+    {
+      "package": "types",
+      "type": "ObjectRef",
+      "bytes": 80
+    },
+    {
+      "package": "types",
+      "type": "PlanSummary",
+      "bytes": 72
+    },
+    {
+      "package": "db",
+      "type": "Object",
+      "bytes": 64
+    },
+    {
+      "package": "fs",
+      "type": "ObjectStore",
+      "bytes": 64
+    },
+    {
+      "package": "fs",
+      "type": "Schema",
+      "bytes": 48
+    },
+    {
+      "package": "types",
+      "type": "GitInfo",
+      "bytes": 48
+    },
+    {
+      "package": "types",
+      "type": "PlannedSchema",
+      "bytes": 40
+    }
+  ],
+  "benchmarks": [
+    {
+      "name": "BenchmarkDiffCompute_SkipHeavy_500Objects",
+      "ns_per_op": 71363,
+      "allocs_per_op": 3,
+      "bytes_per_op": 107248
+    },
+    {
+      "name": "BenchmarkDiffCompute_SkipHeavy_5000Objects",
+      "ns_per_op": 938266,
+      "allocs_per_op": 3,
+      "bytes_per_op": 1057520
+    }
+  ]
+}

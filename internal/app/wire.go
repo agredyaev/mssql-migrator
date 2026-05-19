@@ -35,9 +35,15 @@ func (loaderAdapter) LoadAllAppliedMigrations(ctx context.Context, conn driver.C
 func attachSubscribers(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.Logger) *audit.Subscriber {
 	auditSub := audit.NewSubscriber(b, conn)
 	auditSub.SetErrorHandler(func(msg string) { logger.Warn("audit", msg) })
+	if fn := integrationFlushObserver(); fn != nil {
+		auditSub.SetFlushObserver(fn)
+	}
 
 	reportSub := report.NewSubscriber(b, cfg)
 	reportSub.SetErrorHandler(func(msg string) { logger.Warn("report", msg) })
+	if fn := integrationReportObserver(); fn != nil {
+		reportSub.SetWriteObserver(fn)
+	}
 
 	return auditSub
 }
@@ -45,7 +51,10 @@ func attachSubscribers(b bus.EventBus, conn driver.Conn, cfg types.Config, logge
 func wireEngine(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.Logger) *engine.Engine {
 	scanner := fs.NewScanner()
 	scanner.SkipGit = cfg.SkipGit
-	return engine.New(
+	if hook := integrationScanPhaseHook(); hook != nil {
+		scanner.OnPhase = hook
+	}
+	eng := engine.New(
 		cfg,
 		b,
 		conn,
@@ -57,4 +66,6 @@ func wireEngine(b bus.EventBus, conn driver.Conn, cfg types.Config, logger *log.
 		apply.New(),
 		lock.New(),
 	)
+	applyIntegrationHooks(eng)
+	return eng
 }
