@@ -5,9 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"strconv"
-	"strings"
 	"sync"
-	"time"
 
 	"reporting-db-migrations/internal/bus"
 	"reporting-db-migrations/internal/driver"
@@ -22,14 +20,15 @@ type Subscriber struct {
 	bootstrapErr  error
 	notifier      types.ErrorNotifier
 	bootstrapOnce sync.Once
+	pending       []historyRecord
+	pendingMu     sync.Mutex
 }
-
-var insertHistoryOpenJSONSupport sync.Map
 
 func NewSubscriber(b bus.EventBus, conn driver.Conn) *Subscriber {
 	s := &Subscriber{conn: conn}
 	b.Subscribe(types.EventObjectApplied, s.onObjectApplied)
 	b.Subscribe(types.EventObjectFailed, s.onObjectFailed)
+	b.Subscribe(types.EventRunFinished, s.onRunFinished)
 	return s
 }
 
@@ -41,10 +40,7 @@ func (s *Subscriber) BootstrapError() error {
 	return s.bootstrapErr
 }
 
-func (s *Subscriber) onObjectApplied(ctx context.Context, payload any) {
-	if err := s.boot(ctx); err != nil {
-		return
-	}
+func (s *Subscriber) onObjectApplied(_ context.Context, payload any) {
 	events, ok := bus.ParseObjectAppliedPayload(payload)
 	if !ok {
 		s.notifier.Notify("audit: unexpected payload type for EventObjectApplied")
@@ -57,13 +53,10 @@ func (s *Subscriber) onObjectApplied(ctx context.Context, payload any) {
 	for i := range events {
 		records[i] = historyRecord{ev: events[i], event: "applied"}
 	}
-	s.insertHistoryBatch(ctx, records)
+	s.enqueue(records)
 }
 
-func (s *Subscriber) onObjectFailed(ctx context.Context, payload any) {
-	if err := s.boot(ctx); err != nil {
-		return
-	}
+func (s *Subscriber) onObjectFailed(_ context.Context, payload any) {
 	failures, ok := bus.ParseObjectFailedPayload(payload)
 	if !ok {
 		s.notifier.Notify("audit: unexpected payload type for EventObjectFailed")
@@ -75,6 +68,30 @@ func (s *Subscriber) onObjectFailed(ctx context.Context, payload any) {
 	records := make([]historyRecord, len(failures))
 	for i := range failures {
 		records[i] = historyRecord{ev: &failures[i].ObjectEvent, event: "failed", errText: failures[i].Error}
+	}
+	s.enqueue(records)
+}
+
+func (s *Subscriber) onRunFinished(ctx context.Context, _ any) {
+	s.flushPending(ctx)
+}
+
+func (s *Subscriber) enqueue(records []historyRecord) {
+	s.pendingMu.Lock()
+	s.pending = append(s.pending, records...)
+	s.pendingMu.Unlock()
+}
+
+func (s *Subscriber) flushPending(ctx context.Context) {
+	s.pendingMu.Lock()
+	records := s.pending
+	s.pending = nil
+	s.pendingMu.Unlock()
+	if len(records) == 0 {
+		return
+	}
+	if err := s.boot(ctx); err != nil {
+		return
 	}
 	s.insertHistoryBatch(ctx, records)
 }
@@ -99,99 +116,17 @@ func (s *Subscriber) insertHistoryBatch(ctx context.Context, records []historyRe
 	if len(records) == 0 {
 		return
 	}
-	if useOpenJSONForHistoryInsert(s.conn) {
-		ok, err := s.insertHistoryBatchOpenJSON(ctx, records)
-		if ok {
-			bumpChecksumsCacheGeneration(s.conn)
-			return
-		}
-		if err != nil {
-			s.notifier.Notify(fmt.Sprintf("audit insert_history: %s", err.Error()))
-			return
-		}
-	}
-	const colsPerRow = 8
-	maxRows := driver.DefaultMaxParameters / colsPerRow
-	if maxRows <= 0 {
-		maxRows = 1
-	}
-	for start := 0; start < len(records); start += maxRows {
-		end := start + maxRows
-		if end > len(records) {
-			end = len(records)
-		}
-		chunk := records[start:end]
-		query, args := s.buildInsertHistoryBatchQuery(chunk)
-		if _, err := s.conn.ExecContext(ctx, query, args...); err != nil {
-			s.notifier.Notify(fmt.Sprintf("audit insert_history: %s", err.Error()))
-			continue
-		}
-		storeLatestChecksumsFromHistory(s.conn, chunk)
-		bumpChecksumsCacheGeneration(s.conn)
-	}
-}
-
-func (s *Subscriber) insertHistoryBatchOpenJSON(ctx context.Context, records []historyRecord) (bool, error) {
 	payload, err := marshalHistoryRecordsJSON(records)
 	if err != nil {
-		return false, err
+		s.notifier.Notify(fmt.Sprintf("audit insert_history: %s", err.Error()))
+		return
 	}
-	_, err = s.conn.ExecContext(ctx, insertHistoryOpenJSONSQL, payload)
-	if err == nil {
-		storeLatestChecksumsFromHistory(s.conn, records)
-		setOpenJSONHistoryInsertSupport(s.conn, true)
-		return true, nil
+	if _, err := s.conn.ExecContext(ctx, insertHistoryOpenJSONSQL, payload); err != nil {
+		s.notifier.Notify(fmt.Sprintf("audit insert_history: %s", err.Error()))
+		return
 	}
-	if shouldFallbackOpenJSONHistoryInsert(s.conn, err) {
-		setOpenJSONHistoryInsertSupport(s.conn, false)
-		return false, nil
-	}
-	return false, err
-}
-
-func (s *Subscriber) buildInsertHistoryBatchQuery(records []historyRecord) (string, []any) {
-	const prefix = "INSERT INTO azdo_deploy_meta.history (normalized_key, kind, checksum, git_hash, git_author, git_date, event, error_text, created_at)\nVALUES "
-	const rowSQLLen = len("(@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, SYSUTCDATETIME())")
-	var b strings.Builder
-	b.Grow(len(prefix) + len(records)*(rowSQLLen+2))
-	b.WriteString(prefix)
-
-	args := make([]any, 0, len(records)*8)
-	param := 1
-	var scratch [20]byte
-	for i, rec := range records {
-		if i > 0 {
-			b.WriteString(",\n")
-		}
-		gitDate, err := parseGitDate(rec.ev.GitDate)
-		if err != nil {
-			s.notifier.Notify(fmt.Sprintf("audit insert_history: bad git date: %s", err.Error()))
-			gitDate = sqlDefaultDate
-		}
-		b.WriteByte('(')
-		for col := 0; col < 8; col++ {
-			if col > 0 {
-				b.WriteString(", ")
-			}
-			b.WriteString("@p")
-			n := strconv.AppendInt(scratch[:0], int64(param), 10)
-			b.Write(n)
-			param++
-		}
-		b.WriteString(", SYSUTCDATETIME())")
-
-		args = append(args,
-			rec.ev.NormalizedKey,
-			rec.ev.RecordKind,
-			rec.ev.Checksum,
-			rec.ev.GitHash,
-			rec.ev.GitAuthor,
-			gitDate,
-			rec.event,
-			rec.errText,
-		)
-	}
-	return b.String(), args
+	storeLatestChecksumsFromHistory(s.conn, records)
+	bumpChecksumsCacheGeneration(s.conn)
 }
 
 var historyJSONPool = sync.Pool{
@@ -248,37 +183,4 @@ func appendJSONStringField(dst []byte, key, value string, withComma bool) []byte
 	dst = append(dst, '"', ':')
 	dst = strconv.AppendQuote(dst, value)
 	return dst
-}
-
-func useOpenJSONForHistoryInsert(conn driver.Conn) bool {
-	key := driver.ConnStableKey(conn)
-	if v, ok := insertHistoryOpenJSONSupport.Load(key); ok {
-		return v.(bool)
-	}
-	return strings.Contains(driver.ConnTypeNameLower(conn), "mssql")
-}
-
-func setOpenJSONHistoryInsertSupport(conn driver.Conn, enabled bool) {
-	insertHistoryOpenJSONSupport.Store(driver.ConnStableKey(conn), enabled)
-}
-
-func shouldFallbackOpenJSONHistoryInsert(conn driver.Conn, err error) bool {
-	if _, known := insertHistoryOpenJSONSupport.Load(driver.ConnStableKey(conn)); known {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "openjson") || strings.Contains(msg, "compatibility level")
-}
-
-var sqlDefaultDate = time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
-
-func parseGitDate(s string) (time.Time, error) {
-	if s == "" {
-		return sqlDefaultDate, nil
-	}
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return t, nil
 }

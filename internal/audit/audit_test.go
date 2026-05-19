@@ -30,7 +30,6 @@ func TestLoadChecksumsEmptyKeys(t *testing.T) {
 
 func TestLoadChecksumsConnectionError(t *testing.T) {
 	conn := &testutil.MockConn{QueryErr: errors.New("dead")}
-	setOpenJSONSupport(conn, false)
 	_, err := LoadChecksums(context.Background(), conn, []string{"k1"})
 	if err == nil {
 		t.Fatal("expected error")
@@ -44,10 +43,9 @@ func TestLoadChecksumsReturnsResults(t *testing.T) {
 	}
 	conn := &testutil.MockConn{
 		RowsByPrefix: map[string]*testutil.MockRows{
-			"SELECT": testutil.NewMockRows([][]any{{"k1", hex.EncodeToString(want[:])}}),
+			"WITH checksum_keys": testutil.NewMockRows([][]any{{"k1", hex.EncodeToString(want[:])}}),
 		},
 	}
-	setOpenJSONSupport(conn, false)
 	result, err := LoadChecksums(context.Background(), conn, []string{"k1"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -65,11 +63,14 @@ func TestLoadChecksumsChunking(t *testing.T) {
 	for i := range keys {
 		keys[i] = "k"
 	}
-	conn := &testutil.MockConn{}
-	setOpenJSONSupport(conn, false)
+	conn := &testutil.MockConn{
+		RowsByPrefix: map[string]*testutil.MockRows{
+			"WITH checksum_keys": testutil.NewMockRows(nil),
+		},
+	}
 	LoadChecksums(context.Background(), conn, keys)
-	if conn.QueryCount.Load() < 2 {
-		t.Errorf("expected at least 2 queries for 2500 keys, got %d", conn.QueryCount.Load())
+	if conn.QueryCount.Load() != 1 {
+		t.Errorf("expected 1 OPENJSON query for 2500 keys, got %d", conn.QueryCount.Load())
 	}
 }
 
@@ -92,36 +93,6 @@ func TestLoadChecksumsUsesOpenJSONWhenSupported(t *testing.T) {
 	}
 	if got := conn.queries[0].args[0]; got != `["k1"]` {
 		t.Fatalf("JSON arg = %q, want [\"k1\"]", got)
-	}
-}
-
-func TestLoadChecksumsFallsBackAfterOpenJSONError(t *testing.T) {
-	conn := &mssqlChecksumQueryConn{checksumQueryConn: checksumQueryConn{
-		failOpenJSON: true,
-		fallbackRows: testutil.NewMockRows([][]any{{"k1", strings.Repeat("cd", 32)}}),
-	}}
-	if _, err := LoadChecksums(context.Background(), conn, []string{"k1"}); err != nil {
-		t.Fatalf("first LoadChecksums: %v", err)
-	}
-	if len(conn.queries) != 2 {
-		t.Fatalf("expected OPENJSON try + fallback query, got %d", len(conn.queries))
-	}
-	if !strings.Contains(conn.queries[0].query, "OPENJSON(@p1)") {
-		t.Fatalf("first query should be OPENJSON, got %q", conn.queries[0].query)
-	}
-	if strings.Contains(conn.queries[1].query, "OPENJSON(") {
-		t.Fatalf("second query should be fallback IN path, got %q", conn.queries[1].query)
-	}
-
-	before := len(conn.queries)
-	if _, err := LoadChecksums(context.Background(), conn, []string{"k1"}); err != nil {
-		t.Fatalf("second LoadChecksums: %v", err)
-	}
-	if got := len(conn.queries) - before; got != 0 {
-		t.Fatalf("expected cached fallback result to issue 0 more queries, got %d", got)
-	}
-	if len(conn.queries) != before {
-		t.Fatalf("expected no new query after cached fallback, got %d total", len(conn.queries))
 	}
 }
 
@@ -161,6 +132,7 @@ func TestLoadChecksumsUsesLatestAuditWriteCache(t *testing.T) {
 			RecordKind: "object",
 		},
 	})
+	publishAuditFlush(b)
 
 	before := conn.QueryCount.Load()
 	result, err := LoadChecksums(context.Background(), conn, []string{"r/tables/t1"})
@@ -176,7 +148,7 @@ func TestLoadChecksumsUsesLatestAuditWriteCache(t *testing.T) {
 }
 
 func TestSubscriberOnObjectApplied_ExecutesSQL(t *testing.T) {
-	conn := &testutil.MockConn{}
+	conn := &mssqlAuditExecConn{}
 	b := bus.New()
 	NewSubscriber(b, conn)
 
@@ -186,26 +158,23 @@ func TestSubscriberOnObjectApplied_ExecutesSQL(t *testing.T) {
 		GitInfo:    types.GitInfo{GitHash: "deadbeef", GitAuthor: "dev", GitDate: "2024-01-01T00:00:00Z"},
 		RecordKind: "object",
 	})
+	publishAuditFlush(b)
 
-	if conn.ExecCount.Load() != 2 {
-		t.Errorf("expected 2 execs (bootstrap + insert), got %d", conn.ExecCount.Load())
-		return
+	if len(conn.execs) != 2 {
+		t.Fatalf("expected bootstrap + OPENJSON insert, got %d execs", len(conn.execs))
 	}
-	last := conn.Queries[len(conn.Queries)-1]
-	if last.Args[0] != "r/tables/t1" {
-		t.Errorf("normalized_key = %v, want r/tables/t1", last.Args[0])
+	var payload []map[string]any
+	if err := json.Unmarshal([]byte(conn.execs[1].args[0].(string)), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
 	}
-	if last.Args[2] != "abc123" {
-		t.Errorf("checksum = %v, want abc123", last.Args[2])
+	if payload[0]["normalized_key"] != "r/tables/t1" {
+		t.Errorf("normalized_key = %v, want r/tables/t1", payload[0]["normalized_key"])
 	}
-	if last.Args[3] != "deadbeef" {
-		t.Errorf("git_hash = %v, want deadbeef", last.Args[3])
+	if payload[0]["checksum"] != "abc123" {
+		t.Errorf("checksum = %v, want abc123", payload[0]["checksum"])
 	}
-	if last.Args[4] != "dev" {
-		t.Errorf("git_author = %v, want dev", last.Args[4])
-	}
-	if last.Args[6] != "applied" {
-		t.Errorf("event = %v, want applied", last.Args[6])
+	if payload[0]["event"] != "applied" {
+		t.Errorf("event = %v, want applied", payload[0]["event"])
 	}
 }
 
@@ -260,7 +229,7 @@ func (c *checksumQueryConn) Ping(context.Context) error { return nil }
 func (c *checksumQueryConn) Close() error               { return nil }
 
 func TestSubscriberOnObjectFailed_ExecutesSQL(t *testing.T) {
-	conn := &testutil.MockConn{}
+	conn := &mssqlAuditExecConn{}
 	b := bus.New()
 	NewSubscriber(b, conn)
 
@@ -271,22 +240,25 @@ func TestSubscriberOnObjectFailed_ExecutesSQL(t *testing.T) {
 		},
 		Error: "syntax error",
 	})
+	publishAuditFlush(b)
 
-	if conn.ExecCount.Load() != 2 {
-		t.Errorf("expected 2 execs (bootstrap + insert), got %d", conn.ExecCount.Load())
-		return
+	if len(conn.execs) != 2 {
+		t.Fatalf("expected bootstrap + OPENJSON insert, got %d execs", len(conn.execs))
 	}
-	last := conn.Queries[len(conn.Queries)-1]
-	if last.Args[6] != "failed" {
-		t.Errorf("event = %v, want failed", last.Args[6])
+	var payload []map[string]any
+	if err := json.Unmarshal([]byte(conn.execs[1].args[0].(string)), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
 	}
-	if last.Args[7] != "syntax error" {
-		t.Errorf("error_text = %v, want syntax error", last.Args[7])
+	if payload[0]["event"] != "failed" {
+		t.Errorf("event = %v, want failed", payload[0]["event"])
+	}
+	if payload[0]["error_text"] != "syntax error" {
+		t.Errorf("error_text = %v, want syntax error", payload[0]["error_text"])
 	}
 }
 
 func TestSubscriberOnObjectAppliedBatch_ExecutesSingleInsert(t *testing.T) {
-	conn := &testutil.MockConn{}
+	conn := &mssqlAuditExecConn{}
 	b := bus.New()
 	NewSubscriber(b, conn)
 
@@ -304,22 +276,17 @@ func TestSubscriberOnObjectAppliedBatch_ExecutesSingleInsert(t *testing.T) {
 			RecordKind: "object",
 		},
 	})
+	publishAuditFlush(b)
 
-	if conn.ExecCount.Load() != 2 {
-		t.Fatalf("expected 2 execs (bootstrap + batch insert), got %d", conn.ExecCount.Load())
+	if len(conn.execs) != 2 {
+		t.Fatalf("expected bootstrap + batch insert, got %d execs", len(conn.execs))
 	}
-	last := conn.Queries[len(conn.Queries)-1]
-	if got := len(last.Args); got != 16 {
-		t.Fatalf("args len = %d, want 16", got)
+	var payload []map[string]any
+	if err := json.Unmarshal([]byte(conn.execs[1].args[0].(string)), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
 	}
-	if last.Args[0] != "r/tables/t1" || last.Args[8] != "r/views/v1" {
-		t.Fatalf("unexpected normalized keys in args: %v", last.Args)
-	}
-	if !strings.Contains(last.Query, "(@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, SYSUTCDATETIME())") {
-		t.Fatalf("expected first VALUES row in query, got %q", last.Query)
-	}
-	if !strings.Contains(last.Query, "(@p9, @p10, @p11, @p12, @p13, @p14, @p15, @p16, SYSUTCDATETIME())") {
-		t.Fatalf("expected second VALUES row in query, got %q", last.Query)
+	if len(payload) != 2 {
+		t.Fatalf("payload len = %d, want 2", len(payload))
 	}
 }
 
@@ -342,6 +309,7 @@ func TestSubscriberOnObjectAppliedBatch_UsesOpenJSONInsertForMSSQL(t *testing.T)
 			RecordKind: "object",
 		},
 	})
+	publishAuditFlush(b)
 
 	if len(conn.execs) != 2 {
 		t.Fatalf("expected bootstrap + OPENJSON insert, got %d execs", len(conn.execs))
@@ -362,34 +330,6 @@ func TestSubscriberOnObjectAppliedBatch_UsesOpenJSONInsertForMSSQL(t *testing.T)
 	}
 	if got := payload[0]["normalized_key"]; got != "r/tables/t1" {
 		t.Fatalf("first normalized_key = %v, want r/tables/t1", got)
-	}
-}
-
-func TestSubscriberOnObjectAppliedBatch_FallsBackFromOpenJSONInsert(t *testing.T) {
-	conn := &mssqlAuditExecConn{failOpenJSON: true}
-	b := bus.New()
-	NewSubscriber(b, conn)
-
-	b.Publish(context.Background(), types.EventObjectApplied, []*types.ObjectEvent{
-		{
-			ObjectRef:  types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables", ObjectName: "t1"},
-			Checksum:   "abc123",
-			GitInfo:    types.GitInfo{GitHash: "deadbeef", GitAuthor: "dev", GitDate: "2024-01-01T00:00:00Z"},
-			RecordKind: "object",
-		},
-	})
-
-	if len(conn.execs) != 3 {
-		t.Fatalf("expected bootstrap + OPENJSON attempt + fallback insert, got %d execs", len(conn.execs))
-	}
-	if !strings.Contains(conn.execs[1].query, "FROM OPENJSON(@p1)") {
-		t.Fatalf("expected second exec to be OPENJSON insert, got %q", conn.execs[1].query)
-	}
-	if strings.Contains(conn.execs[2].query, "OPENJSON(") {
-		t.Fatalf("expected fallback exec to use legacy VALUES query, got %q", conn.execs[2].query)
-	}
-	if len(conn.execs[2].args) != 8 {
-		t.Fatalf("expected legacy fallback to use 8 args, got %d", len(conn.execs[2].args))
 	}
 }
 
@@ -428,6 +368,7 @@ func TestSubscriberBootstrapCalledOnce(t *testing.T) {
 		ObjectRef:  types.ObjectRef{NormalizedKey: "r/tables/t1", Kind: "tables"},
 		RecordKind: "object",
 	})
+	publishAuditFlush(b)
 
 	bootstrapCount := 0
 	for _, q := range conn.Queries {
@@ -519,3 +460,7 @@ func (c *mssqlAuditExecConn) ExecContext(_ context.Context, query string, args .
 
 func (c *mssqlAuditExecConn) Ping(context.Context) error { return nil }
 func (c *mssqlAuditExecConn) Close() error               { return nil }
+
+func publishAuditFlush(b bus.EventBus) {
+	b.Publish(context.Background(), types.EventRunFinished, &types.RunFinished{Command: "test", Result: "success"})
+}
