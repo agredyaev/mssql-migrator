@@ -1,8 +1,10 @@
 package app
 
 import (
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"reporting-db-migrations/internal/types"
@@ -20,6 +22,7 @@ func TestParseFlags_Commands(t *testing.T) {
 		{name: "validate", args: []string{"validate"}, wantCmd: "validate"},
 		{name: "baseline", args: []string{"baseline"}, wantCmd: "baseline"},
 		{name: "repair-checksum", args: []string{"repair-checksum"}, wantCmd: "repair-checksum"},
+		{name: "version", args: []string{"version"}, wantCmd: "version"},
 		{name: "unknown command", args: []string{"unknown"}, wantErr: true},
 		{name: "no args", args: []string{}, wantErr: true},
 		{name: "extra arg after command", args: []string{"plan", "extra"}, wantErr: true},
@@ -419,6 +422,78 @@ func TestRunWithLookup_UnknownCommand(t *testing.T) {
 	code := runWithLookup([]string{"rmig", "unknown"}, nil, nil)
 	if code != types.ExitInvalidInput {
 		t.Errorf("exit code = %d, want %d (ExitInvalidInput)", code, types.ExitInvalidInput)
+	}
+}
+
+func TestRunWithLookup_Version(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	code := runWithLookup([]string{"rmig", "version"}, nil, nil)
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = old
+	out, err := io.ReadAll(r)
+	r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	s := strings.TrimSpace(string(out))
+	if !strings.HasPrefix(s, "rmig ") {
+		t.Fatalf("stdout = %q, want prefix \"rmig \"", s)
+	}
+}
+
+func TestRunWithLookup_VersionJSON(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	code := runWithLookup([]string{"rmig", "--json", "version"}, nil, nil)
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = old
+	out, err := io.ReadAll(r)
+	r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if !strings.Contains(string(out), `"version"`) || !strings.Contains(string(out), `"commit"`) {
+		t.Fatalf("stdout = %q, want JSON with version and commit", string(out))
+	}
+}
+
+func TestRunWithLookup_VersionSkipsEnvFile(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	code := runWithLookup([]string{"rmig", "--env", "/nonexistent/.env", "version"}, nil, nil)
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = old
+	if _, err := io.ReadAll(r); err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (version must not read .env)", code)
 	}
 }
 

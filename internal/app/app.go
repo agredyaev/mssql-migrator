@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"reporting-db-migrations/internal/buildinfo"
 	"reporting-db-migrations/internal/bus"
 	"reporting-db-migrations/internal/driver"
 	"reporting-db-migrations/internal/errors"
@@ -25,6 +26,18 @@ func runWithLookup(args []string, lookup envLookupFn, connect Connector) int {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "rmig: %v\n", err)
 		return types.ExitInvalidInput
+	}
+
+	if flags.Command == "version" {
+		if flags.JSON {
+			if err := buildinfo.WriteJSON(os.Stdout); err != nil {
+				fmt.Fprintf(os.Stderr, "rmig: version: %v\n", err)
+				return types.ExitInvalidInput
+			}
+			return 0
+		}
+		fmt.Fprintln(os.Stdout, buildinfo.Summary())
+		return 0
 	}
 
 	envFile := flags.EnvFile
