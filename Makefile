@@ -10,6 +10,13 @@ STATICCHECK = $(shell go env GOPATH)/bin/staticcheck
 # Note: -extldflags=-static is omitted by default (often problematic on macOS / libc DNS).
 RELEASE_BIN = bin/rmig
 
+# Semver for release binaries (root VERSION); commit from git for -ldflags.
+RELEASE_VERSION := $(shell cat VERSION 2>/dev/null | tr -d '\n' || echo 0.0.0-dev)
+RELEASE_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+RELEASE_LDFLAGS = -s -w \
+	-X reporting-db-migrations/internal/buildinfo.Version=$(RELEASE_VERSION) \
+	-X reporting-db-migrations/internal/buildinfo.Commit=$(RELEASE_COMMIT)
+
 all: check
 
 build:
@@ -18,7 +25,7 @@ build:
 # Optimized CLI binary; compiles the full module graph for ./cmd/rmig.
 release-build:
 	@mkdir -p $(dir $(RELEASE_BIN))
-	CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w" -o $(RELEASE_BIN) ./cmd/rmig
+	CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="$(RELEASE_LDFLAGS)" -o $(RELEASE_BIN) ./cmd/rmig
 
 test:
 	go test ./...
