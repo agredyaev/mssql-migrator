@@ -4,48 +4,50 @@ Lifecycle: `Current`.
 
 ## Purpose
 
-Describe **metadata persistence**: ensure migrator tables exist, load checksum history and applied migrations, and subscribe to apply events to insert audit rows.
+Describe **metadata persistence**: ensure migrator tables exist, load checksum history and applied migrations, and record apply outcomes to history after each run.
 
 ## Scope
 
-- `internal/audit/load.go` — `EnsureTables`, `LoadChecksums`, `LoadAllAppliedMigrations`
-- `internal/audit/subscriber.go` — `Subscriber`, `NewSubscriber`, batch inserts (`//go:embed sql/...`)
-- `internal/audit/sql/` — embedded DML/DDL (`.sql` files)
+- `internal/audit/load.go` — `EnsureTables`, `LoadChecksums` (OpenJSON only), `LoadAllAppliedMigrations`
+- `internal/audit/subscriber.go` — `Subscriber`, batched history insert on `EventRunFinished`
+- `internal/audit/sql/` — embedded DDL/DML (`.sql` files)
 
 ## System context
 
-`internal/app/wire.go` uses `loaderAdapter` to expose audit loaders to `engine`. `audit.NewSubscriber` attaches to the same `bus.EventBus` as apply for `EventObjectApplied` / `EventObjectFailed`.
+`internal/app/app.go` calls `audit.EnsureTables` once after connect. `internal/app/wire.go` uses `loaderAdapter` for `engine` loaders. `audit.NewSubscriber` buffers `EventObjectApplied` / `EventObjectFailed` and **flushes** to SQL on `EventRunFinished` (decouples apply hot path from audit I/O).
 
 ## Interfaces and boundaries
 
-- Inputs: `driver.Conn`, `context.Context`, event payloads from `internal/bus`
-- Outputs: SQL side effects in `[__migrator]` tables (exact names in SQL files)
+- Inputs: `driver.Conn`, `context.Context`, bus event payloads
+- Outputs: SQL side effects in `azdo_deploy_meta` tables (see embed SQL)
 - Downstream: none (leaf for persistence); upstream: `engine`, `apply`
 
 ## Assumptions and constraints
 
 - Assumption: migrator schema matches embedded DDL in `EnsureTables`.
-- Constraint: batch insert path uses `insert_history_openjson.sql` embed (see `subscriber.go`).
+- Constraint: `LoadChecksums` and history insert use **OpenJSON** SQL only (`load_checksums_openjson.sql`, `insert_history_openjson.sql`).
+- Constraint: checksum caches invalidate on history write (`bumpChecksumsCacheGeneration`).
 
 ## Nominal flow
 
-1. Subscriber `Bootstrap` / `boot` ensures tables once per subscriber lifetime.
-2. Loader functions read history for planning.
-3. On apply events, subscriber writes batched history rows.
+1. `EnsureTables` at app startup (and subscriber `boot` on first flush if needed).
+2. `LoadChecksums` during `runPlan` (may run in parallel with `db.Inspect`).
+3. Apply publishes object events; subscriber **enqueues** records.
+4. On `EventRunFinished`, subscriber writes one OpenJSON batch insert.
 
 ## Off-nominal behavior and failure containment
 
 - Bootstrap errors are surfaced via `BootstrapChecker` to engine (`SetBootstrapChecker` in `app.go`).
-- Subscriber notifies optional `ErrorNotifier` on unexpected payloads (warn path).
+- Subscriber notifies optional `ErrorNotifier` on unexpected payloads or insert errors (warn path).
 
 ## Verification and validation
 
-- `make check`
-- Integration tests touching audit when run with SQL Server
+- `make check` (`internal/audit/audit_test.go`)
+- Integration tests with SQL Server when `RMIG_RUN_SQLSERVER_INTEGRATION=1`
 
 ## Operations and recovery
 
-- Schema migrations for `[__migrator]` require coordinated changes to embed SQL, Go scanners, and tests.
+- Schema migrations for `azdo_deploy_meta` require coordinated changes to embed SQL, Go scanners, and tests.
 
 ## Open issues and non-goals
 

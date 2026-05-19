@@ -31,9 +31,10 @@ Describe the **orchestration engine**: scan repository layout, load DB state and
 ## Nominal flow (high level)
 
 1. Publish `EventRunStarted`.
-2. `runPlan`: scan → inspect → load checksums → `diff.Compute` → optional transition filter → publish `EventDiffComputed` on success paths.
-3. `Migrate`: if blocked, scaffold then fail with `errors.ErrPlanBlocked`; else acquire lock, apply, release.
-4. `Validate` / `Baseline` / `RepairChecksum`: follow their respective paths in `engine.go` (same file; read for exact ordering).
+2. `runPlan`: scan → **parallel** `Inspect` + `LoadChecksums` → `diff.Compute` (audit tables ensured in `app.Run` before engine).
+3. `Migrate`: if blocked, `LoadTableColumns` + `scaffold.Ensure` then fail with `errors.ErrPlanBlocked`; else acquire lock, apply, release.
+4. `Validate`: same planning pipeline as `plan` (does not execute `layout.Checks` SQL); publishes changed-module count.
+5. `Baseline` / `RepairChecksum`: follow their respective paths in `engine.go`.
 
 ## Off-nominal behavior and failure containment
 
