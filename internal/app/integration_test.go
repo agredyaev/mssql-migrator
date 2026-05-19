@@ -103,6 +103,7 @@ func TestIntegration_Plan_EmptyDB(t *testing.T) {
 	cfg := configFromEnv()
 	sqlRoot := filepath.Join("..", "..", ".temp", "sql")
 	cfg.SQLRoot = sqlRoot
+	cfg.SkipGit = true
 
 	ctx := context.Background()
 
@@ -114,32 +115,15 @@ func TestIntegration_Plan_EmptyDB(t *testing.T) {
 	}
 	defer conn.Close()
 
-	scanner := fs.NewScanner()
-	layout, err := scanner.Scan(ctx, sqlRoot)
-	if err != nil {
-		t.Fatalf("scan: %v", err)
-	}
-
-	inspector := db.NewInspector()
-	state, err := inspector.Inspect(ctx, conn, layout)
-	if err != nil {
-		t.Fatalf("inspect: %v", err)
-	}
-
 	if err := audit.EnsureTables(ctx, conn); err != nil {
 		t.Fatalf("ensure audit tables: %v", err)
 	}
 
-	checksums, err := audit.LoadChecksums(ctx, conn, layout.NormalizedKeys())
+	plan, layout, _, err := RunPlanPipeline(ctx, cfg, conn, sqlRoot, PlanPipelineOptions{EnsureAudit: false})
 	if err != nil {
-		t.Fatalf("load checksums: %v", err)
+		t.Fatalf("plan pipeline: %v", err)
 	}
-
-	computer := diff.NewComputer(cfg)
-	plan, err := computer.Compute(ctx, layout, state, checksums)
-	if err != nil {
-		t.Fatalf("compute: %v", err)
-	}
+	_ = layout
 
 	t.Logf("plan: %d objects, blocked=%v, creates=%d, skips=%d, schemas=%d",
 		len(plan.Objects), plan.Blocked,

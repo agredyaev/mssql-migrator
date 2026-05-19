@@ -77,8 +77,10 @@ func emptyDBConn(t *testing.T) *testutil.MockConn {
 	t.Helper()
 	return &testutil.MockConn{
 		RowsByPrefix: map[string]*testutil.MockRows{
-			"WITH inspector_schema_filter AS (": testutil.NewMockRows([][]any{{"smoke"}}),
-			"WITH checksum_keys AS (":           testutil.NewMockRows(nil),
+			"SELECT TOP (1) CAST(1 AS int) AS hit": testutil.NewMockRows([][]any{{1}}),
+			"WITH layout_schema_filter AS (":       testutil.NewMockRows(nil),
+			"WITH inspector_scope AS (":            testutil.NewMockRows([][]any{{"schema", "smoke", "", "", ""}}),
+			"WITH checksum_keys AS (":              testutil.NewMockRows(nil),
 		},
 	}
 }
@@ -177,7 +179,8 @@ func TestE2E_Migrate_Success(t *testing.T) {
 
 	lookup := envLookup("localhost", "testdb", sqlRoot, reportDir)
 	conn := lockOKConn(t)
-	conn.RowsByPrefix["WITH inspector_object_schema_filter AS ("] = testutil.NewMockRows(nil)
+	conn.RowsByPrefix["SELECT TOP (1) CAST(1 AS int) AS hit"] = testutil.NewMockRows([][]any{{1}})
+	conn.RowsByPrefix["WITH inspector_scope AS ("] = testutil.NewMockRows([][]any{{"object", "smoke", "tables", "data_table", ""}})
 	code := runWithLookup([]string{"rmig", "migrate"}, lookup, mockConnector(conn))
 
 	if code != 0 {
@@ -266,9 +269,14 @@ func TestE2E_Migrate_BlockedPlan(t *testing.T) {
 
 	conn := &testutil.MockConn{
 		RowsByPrefix: map[string]*testutil.MockRows{
-			"WITH inspector_schema_filter AS (":        testutil.NewMockRows([][]any{{"smoke"}}),
-			"WITH inspector_object_schema_filter AS (": testutil.NewMockRows([][]any{{"smoke", "tables", "data_table", ""}}),
-			"WITH inspector_column_schema_filter AS (": testutil.NewMockRows([][]any{
+			"SELECT TOP (1) CAST(1 AS int) AS hit": testutil.NewMockRows([][]any{{1}}),
+			"SELECT CASE":                          testutil.NewMockRows([][]any{{true}}),
+			"WITH layout_schema_filter AS (":       testutil.NewMockRows(nil),
+			"WITH inspector_scope AS (": testutil.NewMockRows([][]any{
+				{"schema", "smoke", "", "", ""},
+				{"object", "smoke", "tables", "data_table", ""},
+			}),
+			"WITH inspector_column_scope AS (": testutil.NewMockRows([][]any{
 				{"smoke", "data_table", "id", "int", -1, 10, 0, false},
 				{"smoke", "data_table", "new_col", "nvarchar", 200, 0, 0, true},
 			}),
