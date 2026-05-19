@@ -15,14 +15,11 @@ import (
 	"reporting-db-migrations/internal/types"
 )
 
-//go:embed sql/schemas_openjson.sql
-var schemaOpenJSONSQL string
-
-//go:embed sql/objects_openjson.sql
-var objectOpenJSONSQL string
-
 //go:embed sql/columns_openjson.sql
 var columnOpenJSONSQL string
+
+//go:embed sql/catalog_scoped_hit.sql
+var catalogScopedHitSQL string
 
 type cachedScope struct {
 	err   error
@@ -51,8 +48,12 @@ func NewInspector() Inspector {
 }
 
 func (d *inspector) Inspect(ctx context.Context, conn driver.Conn, scope fs.Layout) (*State, error) {
-	canonical := scopeKey(scope)
-	slotKey := scopeKeySHA256Hex(canonical)
+	return d.InspectWithScope(ctx, conn, scope, InspectScope{FullInspect: true})
+}
+
+func (d *inspector) InspectWithScope(ctx context.Context, conn driver.Conn, layout fs.Layout, iscope InspectScope) (*State, error) {
+	canonical := scopeKey(layout)
+	slotKey := inspectCacheSlotKey(canonical, iscope)
 	cacheKey := sharedScopeCacheKey(conn, slotKey)
 
 	d.mu.Lock()
@@ -63,11 +64,31 @@ func (d *inspector) Inspect(ctx context.Context, conn driver.Conn, scope fs.Layo
 	}
 	d.mu.Unlock()
 
+	scopeCopy := iscope
 	cs.once.Do(func() {
-		cs.state, cs.err = d.readState(ctx, conn, scope)
+		cs.state, cs.err = d.readState(ctx, conn, layout, scopeCopy)
 	})
 
 	return cs.state, cs.err
+}
+
+func inspectCacheSlotKey(canonical string, iscope InspectScope) string {
+	if iscope.FullInspect {
+		return scopeKeySHA256Hex(canonical)
+	}
+	var b strings.Builder
+	b.Grow(len(canonical) + 64)
+	b.WriteString(canonical)
+	b.WriteString("|scoped|")
+	for _, ref := range iscope.HotRefs {
+		b.WriteByte('\x00')
+		b.WriteString(ref.Schema)
+		b.WriteByte('\x00')
+		b.WriteString(ref.Kind)
+		b.WriteByte('\x00')
+		b.WriteString(ref.Object)
+	}
+	return scopeKeySHA256Hex(b.String())
 }
 
 func (d *inspector) LoadTableColumns(ctx context.Context, conn driver.Conn, scope fs.Layout) (map[string][]TableColumn, error) {
@@ -75,11 +96,11 @@ func (d *inspector) LoadTableColumns(ctx context.Context, conn driver.Conn, scop
 	if len(schemaNames) == 0 {
 		return map[string][]TableColumn{}, nil
 	}
-	tableNames := scopeObjectNames(scope, "tables")
-	if len(tableNames) == 0 {
+	tableRefs := scopeObjectRefs(scope, "tables")
+	if len(tableRefs) == 0 {
 		return map[string][]TableColumn{}, nil
 	}
-	return d.queryColumnsOpenJSON(ctx, conn, schemaNames, tableNames)
+	return d.queryColumnsOpenJSON(ctx, conn, tableRefs)
 }
 
 func InvalidateInspectorCache(conn driver.Conn) {
@@ -87,10 +108,35 @@ func InvalidateInspectorCache(conn driver.Conn) {
 	sharedInspectorCache.mu.Lock()
 	sharedInspectorCache.generation[connKey]++
 	sharedInspectorCache.mu.Unlock()
+	if CatalogCacheEnabled() {
+		invalidateCatalogCache(context.Background(), conn)
+	}
 }
 
-func (d *inspector) readState(ctx context.Context, conn driver.Conn, scope fs.Layout) (*State, error) {
-	schemaNames := scopeSchemaNames(scope)
+func (d *inspector) readState(ctx context.Context, conn driver.Conn, layout fs.Layout, iscope InspectScope) (*State, error) {
+	if state, ok, err := tryLoadCatalogCache(ctx, conn, layout, iscope); err != nil {
+		return nil, err
+	} else if ok {
+		return state, nil
+	}
+	var (
+		state *State
+		err   error
+	)
+	if iscope.FullInspect {
+		state, err = d.readStateFull(ctx, conn, layout)
+	} else {
+		state, err = d.readStateScoped(ctx, conn, layout, iscope)
+	}
+	if err != nil {
+		return nil, err
+	}
+	_ = saveCatalogCache(ctx, conn, layout, state)
+	return state, nil
+}
+
+func (d *inspector) readStateFull(ctx context.Context, conn driver.Conn, layout fs.Layout) (*State, error) {
+	schemaNames := scopeSchemaNames(layout)
 	if len(schemaNames) == 0 {
 		return &State{
 			Schemas:      map[string]struct{}{},
@@ -99,17 +145,64 @@ func (d *inspector) readState(ctx context.Context, conn driver.Conn, scope fs.La
 		}, nil
 	}
 
-	schemas, err := d.querySchemasOpenJSON(ctx, conn, schemaNames)
-	if err != nil {
-		return nil, err
-	}
-
-	objectNames := scopeObjectNames(scope, "")
-	objects := map[string]Object{}
-	if len(objectNames) > 0 {
-		objects, err = d.queryObjectsOpenJSON(ctx, conn, schemaNames, objectNames)
+	objectRefs := scopeObjectRefs(layout, "")
+	if len(objectRefs) == 0 {
+		existing, err := d.queryExistingLayoutSchemas(ctx, conn, schemaNames)
 		if err != nil {
 			return nil, err
+		}
+		return &State{
+			Schemas:      existing,
+			Objects:      map[string]Object{},
+			TableColumns: map[string][]TableColumn{},
+		}, nil
+	}
+	if state, ok, err := d.tryFastEmptyCatalog(ctx, conn, schemaNames, objectRefs); err != nil {
+		return nil, err
+	} else if ok {
+		return state, nil
+	}
+	kinds := catalogKindsForLayout(layout)
+	return d.queryCatalogStateOpenJSON(ctx, conn, objectRefs, schemaNames, kinds)
+}
+
+func (d *inspector) readStateScoped(ctx context.Context, conn driver.Conn, layout fs.Layout, iscope InspectScope) (*State, error) {
+	schemaNames := scopeSchemaNames(layout)
+	schemas := map[string]struct{}{}
+	if len(schemaNames) > 0 {
+		existing, err := d.queryExistingLayoutSchemas(ctx, conn, schemaNames)
+		if err != nil {
+			return nil, err
+		}
+		schemas = existing
+	}
+
+	objects := make(map[string]Object, len(iscope.StableObjects)+len(iscope.HotRefs))
+	for k, obj := range iscope.StableObjects {
+		objects[k] = obj
+	}
+
+	hotRefs := iscope.HotRefs
+	if len(hotRefs) > 0 {
+		if _, ok, err := d.tryFastEmptyCatalog(ctx, conn, schemaNames, hotRefs); err != nil {
+			return nil, err
+		} else if ok {
+			return &State{
+				Schemas:      schemas,
+				Objects:      objects,
+				TableColumns: map[string][]TableColumn{},
+			}, nil
+		}
+		kinds := catalogKindsForRefs(hotRefs)
+		hotState, err := d.queryCatalogStateOpenJSON(ctx, conn, hotRefs, schemaNames, kinds)
+		if err != nil {
+			return nil, err
+		}
+		for k, obj := range hotState.Objects {
+			objects[k] = obj
+		}
+		for k := range hotState.Schemas {
+			schemas[k] = struct{}{}
 		}
 	}
 
@@ -120,14 +213,62 @@ func (d *inspector) readState(ctx context.Context, conn driver.Conn, scope fs.La
 	}, nil
 }
 
-func (d *inspector) querySchemasOpenJSON(ctx context.Context, conn driver.Conn, schemaNames []string) (map[string]struct{}, error) {
-	arg := types.MarshalStringSliceJSON(schemaNames)
-	rows, err := conn.QueryStringsContext(ctx, schemaOpenJSONSQL, []string{arg})
+func catalogKindsForRefs(refs []types.ObjectScopeRef) catalogKinds {
+	var k catalogKinds
+	for _, ref := range refs {
+		switch ref.Kind {
+		case "types":
+			k.types = true
+		case "indexes":
+			k.indexes = true
+		default:
+			k.sysObjects = true
+		}
+	}
+	return k
+}
+
+func (d *inspector) tryFastEmptyCatalog(
+	ctx context.Context,
+	conn driver.Conn,
+	schemaNames []string,
+	refs []types.ObjectScopeRef,
+) (*State, bool, error) {
+	refArg := types.MarshalObjectScopeJSON(refs)
+	rows, err := conn.QueryStringsContext(ctx, catalogScopedHitSQL, []string{refArg})
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	hasHit := rows.Next()
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	if hasHit {
+		return nil, false, nil
+	}
+	_ = schemaNames // fast path: no scoped objects → empty schema map (see queryExistingLayoutSchemas for schema-only layouts)
+	return &State{
+		Schemas:      map[string]struct{}{},
+		Objects:      map[string]Object{},
+		TableColumns: map[string][]TableColumn{},
+	}, true, nil
+}
+
+func (d *inspector) queryExistingLayoutSchemas(ctx context.Context, conn driver.Conn, schemaNames []string) (map[string]struct{}, error) {
+	query := `WITH layout_schema_filter AS (
+    SELECT DISTINCT LOWER(CONVERT(nvarchar(128), [value])) AS schema_name
+    FROM OPENJSON(@p1)
+)
+SELECT LOWER(s.name) AS schema_name
+FROM sys.schemas s
+INNER JOIN layout_schema_filter lf ON lf.schema_name = LOWER(s.name)`
+	schemaArg := types.MarshalStringSliceJSON(schemaNames)
+	rows, err := conn.QueryStringsContext(ctx, query, []string{schemaArg})
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
 	result := make(map[string]struct{}, len(schemaNames))
 	for rows.Next() {
 		var name string
@@ -136,51 +277,64 @@ func (d *inspector) querySchemasOpenJSON(ctx context.Context, conn driver.Conn, 
 		}
 		result[name] = struct{}{}
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return result, nil
+	return result, rows.Err()
 }
 
-func (d *inspector) queryObjectsOpenJSON(ctx context.Context, conn driver.Conn, schemaNames, objectNames []string) (map[string]Object, error) {
+func (d *inspector) queryCatalogStateOpenJSON(
+	ctx context.Context,
+	conn driver.Conn,
+	refs []types.ObjectScopeRef,
+	schemaNames []string,
+	kinds catalogKinds,
+) (*State, error) {
+	query := buildCatalogStateSQL(kinds)
+	refArg := types.MarshalObjectScopeJSON(refs)
 	schemaArg := types.MarshalStringSliceJSON(schemaNames)
-	objectArg := types.MarshalStringSliceJSON(objectNames)
-	rows, err := conn.QueryStringsContext(ctx, objectOpenJSONSQL, []string{schemaArg, objectArg})
+	rows, err := conn.QueryStringSlicesContext(ctx, query, []string{refArg}, []string{schemaArg})
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	result := make(map[string]Object, len(objectNames))
+	schemas := make(map[string]struct{}, len(schemaNames))
+	objects := make(map[string]Object, len(refs))
 	for rows.Next() {
-		var schemaName, kind, objectName, parentName string
-		if err := rows.Scan(&schemaName, &kind, &objectName, &parentName); err != nil {
+		var rowKind, schemaName, kind, objectName, parentName string
+		if err := rows.Scan(&rowKind, &schemaName, &kind, &objectName, &parentName); err != nil {
 			return nil, err
 		}
-		key := types.NormalizedKey(schemaName, kind, objectName)
-		result[key] = Object{
-			SchemaName: schemaName,
-			Kind:       kind,
-			ObjectName: objectName,
-			ParentName: parentName,
+		switch rowKind {
+		case "schema":
+			schemas[schemaName] = struct{}{}
+		case "object":
+			key := types.NormalizedKey(schemaName, kind, objectName)
+			objects[key] = Object{
+				SchemaName: schemaName,
+				Kind:       kind,
+				ObjectName: objectName,
+				ParentName: parentName,
+			}
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return result, nil
+	return &State{
+		Schemas:      schemas,
+		Objects:      objects,
+		TableColumns: map[string][]TableColumn{},
+	}, nil
 }
 
-func (d *inspector) queryColumnsOpenJSON(ctx context.Context, conn driver.Conn, schemaNames, tableNames []string) (map[string][]TableColumn, error) {
-	schemaArg := types.MarshalStringSliceJSON(schemaNames)
-	tableArg := types.MarshalStringSliceJSON(tableNames)
-	rows, err := conn.QueryStringsContext(ctx, columnOpenJSONSQL, []string{schemaArg, tableArg})
+func (d *inspector) queryColumnsOpenJSON(ctx context.Context, conn driver.Conn, refs []types.ObjectScopeRef) (map[string][]TableColumn, error) {
+	arg := types.MarshalObjectScopeJSON(refs)
+	rows, err := conn.QueryStringsContext(ctx, columnOpenJSONSQL, []string{arg})
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	result := make(map[string][]TableColumn, len(tableNames))
+	result := make(map[string][]TableColumn, len(refs))
 	for rows.Next() {
 		var schemaName, tableName, colName, typeName string
 		var length, precision, scale int
@@ -217,17 +371,22 @@ func scopeSchemaNames(scope fs.Layout) []string {
 	return names
 }
 
-func scopeObjectNames(scope fs.Layout, kind string) []string {
+func scopeObjectRefs(scope fs.Layout, kind string) []types.ObjectScopeRef {
 	seen := map[string]struct{}{}
+	out := make([]types.ObjectScopeRef, 0, len(scope.Objects))
 	for _, obj := range scope.Objects {
 		if kind != "" && obj.Kind != kind {
 			continue
 		}
-		seen[obj.ObjectName] = struct{}{}
-	}
-	out := make([]string, 0, len(seen))
-	for name := range seen {
-		out = append(out, name)
+		if _, ok := seen[obj.NormalizedKey]; ok {
+			continue
+		}
+		seen[obj.NormalizedKey] = struct{}{}
+		out = append(out, types.ObjectScopeRef{
+			Schema: obj.SchemaName,
+			Kind:   obj.Kind,
+			Object: obj.ObjectName,
+		})
 	}
 	return out
 }
