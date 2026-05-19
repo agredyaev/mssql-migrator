@@ -1,0 +1,16 @@
+goos: darwin
+goarch: arm64
+pkg: reporting-db-migrations/internal/perf
+cpu: Apple M2
+BenchmarkDiffCompute_SkipHeavy_500Objects-8    	   25111	     47215 ns/op	  107248 B/op	       3 allocs/op
+BenchmarkDiffCompute_SkipHeavy_500Objects-8    	   25122	     48405 ns/op	  107248 B/op	       3 allocs/op
+BenchmarkDiffCompute_SkipHeavy_500Objects-8    	   21648	     59511 ns/op	  107248 B/op	       3 allocs/op
+BenchmarkDiffCompute_SkipHeavy_500Objects-8    	   20420	     64643 ns/op	  107248 B/op	       3 allocs/op
+BenchmarkDiffCompute_SkipHeavy_500Objects-8    	   17348	     66498 ns/op	  107248 B/op	       3 allocs/op
+BenchmarkDiffCompute_SkipHeavy_5000Objects-8   	    1266	    856357 ns/op	 1057520 B/op	       3 allocs/op
+BenchmarkDiffCompute_SkipHeavy_5000Objects-8   	    1662	    783150 ns/op	 1057520 B/op	       3 allocs/op
+BenchmarkDiffCompute_SkipHeavy_5000Objects-8   	    1238	   1024721 ns/op	 1057520 B/op	       3 allocs/op
+BenchmarkDiffCompute_SkipHeavy_5000Objects-8   	    1375	    849803 ns/op	 1057520 B/op	       3 allocs/op
+BenchmarkDiffCompute_SkipHeavy_5000Objects-8   	    1209	    839597 ns/op	 1057520 B/op	       3 allocs/op
+PASS
+ok  	reporting-db-migrations/internal/perf	106.677s

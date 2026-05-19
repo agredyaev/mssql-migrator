@@ -1,0 +1,105 @@
+# rmig profile summary — 2026-05-19T19:04:21Z
+# Regenerate: make bench-footprint-profile && ops/perf/cli_phase.sh profile
+
+== in-process diff 5k (footprint) ==
+--- CPU (~/project/mssql-reporting-migrator/ops/perf/artifacts/footprint_5k.cpu.prof) ---
+File: perf.test
+Type: cpu
+Time: 2026-05-19 21:03:53 CEST
+Duration: 27.30s, Total samples = 21.44s (78.53%)
+Showing nodes accounting for 19.74s, 92.07% of 21.44s total
+Dropped 205 nodes (cum <= 0.11s)
+Showing top 20 nodes out of 165
+      flat  flat%   sum%        cum   cum%
+    13.41s 62.55% 62.55%     13.41s 62.55%  syscall.rawsyscalln
+     1.37s  6.39% 68.94%      1.37s  6.39%  runtime.madvise
+     0.85s  3.96% 72.90%      0.85s  3.96%  runtime.memclrNoHeapPointers
+     0.56s  2.61% 75.51%      0.56s  2.61%  runtime.memmove
+     0.51s  2.38% 77.89%      0.98s  4.57%  reporting-db-migrations/internal/diff.(*Computer).Compute
+     0.49s  2.29% 80.18%      0.86s  4.01%  runtime.pcvalue
+     0.48s  2.24% 82.42%      1.22s  5.69%  runtime.setprofilebucket
+     0.42s  1.96% 84.38%      0.42s  1.96%  runtime.pthread_cond_signal
+     0.35s  1.63% 86.01%      0.35s  1.63%  runtime.pthread_cond_wait
+     0.33s  1.54% 87.55%      0.33s  1.54%  runtime.(*mspan).specialFindSplicePoint (inline)
+     0.22s  1.03% 88.57%      0.22s  1.03%  runtime.usleep
+     0.17s  0.79% 89.37%      0.21s  0.98%  runtime.step
+     0.13s  0.61% 89.97%      0.15s   0.7%  runtime.findfunc
+     0.10s  0.47% 90.44%      1.30s  6.06%  runtime.tracebackPCs
+     0.09s  0.42% 90.86%      0.55s  2.57%  runtime.(*unwinder).resolveInternal
+     0.08s  0.37% 91.23%      0.17s  0.79%  runtime.mapaccess2_faststr
+     0.05s  0.23% 91.46%      0.11s  0.51%  fmt.(*pp).doPrintf
+     0.05s  0.23% 91.70%      1.91s  8.91%  reporting-db-migrations/internal/fs.(*Object).Checksum
+     0.05s  0.23% 91.93%      0.43s  2.01%  runtime.addspecial
+     0.03s  0.14% 92.07%      0.66s  3.08%  runtime.(*unwinder).next
+
+--- heap alloc_space (~/project/mssql-reporting-migrator/ops/perf/artifacts/footprint_5k.mem.prof) ---
+File: perf.test
+Type: alloc_space
+Time: 2026-05-19 21:04:21 CEST
+Showing nodes accounting for 3170078.48kB, 98.03% of 3233875.71kB total
+Dropped 341 nodes (cum <= 16169.38kB)
+Showing top 20 nodes out of 23
+      flat  flat%   sum%        cum   cum%
+1941540.62kB 60.04% 60.04% 1941540.62kB 60.04%  reporting-db-migrations/internal/diff.(*Computer).Compute
+549488.36kB 16.99% 77.03% 549488.36kB 16.99%  io.ReadAll
+368814.26kB 11.40% 88.43% 368814.26kB 11.40%  internal/bytealg.MakeNoZero
+247250.70kB  7.65% 96.08% 676480.38kB 20.92%  reporting-db-migrations/internal/perf.makeBenchFS
+59520.47kB  1.84% 97.92% 423439.28kB 13.09%  reporting-db-migrations/internal/perf.makeBenchSQL
+ 3458.77kB  0.11% 98.03% 2658728.16kB 82.21%  reporting-db-migrations/internal/perf.benchmarkDiffComputeSkipHeavy
+    2.95kB 9.1e-05% 98.03% 569557.57kB 17.61%  reporting-db-migrations/internal/fs.(*Scanner).preloadChecksums.func1
+    2.11kB 6.5e-05% 98.03% 37239.58kB  1.15%  reporting-db-migrations/internal/fs.(*Scanner).Scan
+    0.23kB 7.2e-06% 98.03% 2661037.55kB 82.29%  testing.(*B).runN
+         0     0% 98.03% 562616.16kB 17.40%  reporting-db-migrations/internal/fs.(*Object).Checksum
+         0     0% 98.03% 21143.41kB  0.65%  reporting-db-migrations/internal/fs.(*Scanner).finalizeLayout
+         0     0% 98.03% 562616.16kB 17.40%  reporting-db-migrations/internal/fs.checksumOnceForFile
+         0     0% 98.03% 562616.16kB 17.40%  reporting-db-migrations/internal/fs.checksumOnceForFile.func1
+         0     0% 98.03% 569554.62kB 17.61%  reporting-db-migrations/internal/fs.preloadChecksumWithCache
+         0     0% 98.03% 555450.27kB 17.18%  reporting-db-migrations/internal/fs.readFileBytesAndStat
+         0     0% 98.03% 2658728.16kB 82.21%  reporting-db-migrations/internal/perf.BenchmarkDiffCompute_SkipHeavy_5000Objects
+         0     0% 98.03% 713720.43kB 22.07%  reporting-db-migrations/internal/perf.makeBenchLayout
+         0     0% 98.03% 368814.26kB 11.40%  strings.(*Builder).Grow
+         0     0% 98.03% 368814.26kB 11.40%  strings.(*Builder).grow
+         0     0% 98.03% 562616.82kB 17.40%  sync.(*Once).Do (inline)
+
+== full CLI plan cold (SQL integration) ==
+--- CPU (~/project/mssql-reporting-migrator/ops/perf/artifacts/cli_plan.cpu.prof) ---
+File: app.test
+Type: cpu
+Time: 2026-05-19 15:47:56 CEST
+Duration: 3.83s, Total samples = 10ms ( 0.26%)
+Showing nodes accounting for 10ms, 100% of 10ms total
+      flat  flat%   sum%        cum   cum%
+      10ms   100%   100%       10ms   100%  runtime.pthread_cond_signal
+         0     0%   100%       10ms   100%  runtime.entersyscallWakeSysmon
+         0     0%   100%       10ms   100%  runtime.notewakeup
+         0     0%   100%       10ms   100%  runtime.semawakeup
+         0     0%   100%       10ms   100%  runtime.systemstack
+
+--- heap alloc_space (~/project/mssql-reporting-migrator/ops/perf/artifacts/cli_plan.mem.prof) ---
+File: app.test
+Type: alloc_space
+Time: 2026-05-19 15:48:00 CEST
+Showing nodes accounting for 6737.98kB, 100% of 6737.98kB total
+Showing top 20 nodes out of 65
+      flat  flat%   sum%        cum   cum%
+ 2057.28kB 30.53% 30.53%  2057.28kB 30.53%  runtime.mallocgc
+ 1184.27kB 17.58% 48.11%  1184.27kB 17.58%  runtime/pprof.StartCPUProfile
+  902.59kB 13.40% 61.50%  1447.25kB 21.48%  compress/flate.NewWriter (inline)
+  544.67kB  8.08% 69.59%   544.67kB  8.08%  compress/flate.(*compressor).init
+  512.88kB  7.61% 77.20%   512.88kB  7.61%  crypto/tls.(*hybridKeyExchange).keyShares
+  512.22kB  7.60% 84.80%   512.22kB  7.60%  github.com/microsoft/go-mssqldb.processSingleResponse
+  512.08kB  7.60% 92.40%   512.08kB  7.60%  compress/gzip.NewWriterLevel
+     512kB  7.60%   100%      512kB  7.60%  os.newFile
+         0     0%   100%  1447.25kB 21.48%  compress/gzip.(*Writer).Write
+         0     0%   100%   512.88kB  7.61%  crypto/tls.(*Conn).Handshake (inline)
+         0     0%   100%   512.88kB  7.61%  crypto/tls.(*Conn).HandshakeContext (inline)
+         0     0%   100%   512.88kB  7.61%  crypto/tls.(*Conn).clientHandshake
+         0     0%   100%   512.88kB  7.61%  crypto/tls.(*Conn).handshakeContext
+         0     0%   100%   512.88kB  7.61%  crypto/tls.(*Conn).makeClientHello
+         0     0%   100%   512.88kB  7.61%  database/sql.(*DB).QueryContext
+         0     0%   100%   512.88kB  7.61%  database/sql.(*DB).QueryContext.func1
+         0     0%   100%   512.88kB  7.61%  database/sql.(*DB).conn
+         0     0%   100%   512.88kB  7.61%  database/sql.(*DB).query
+         0     0%   100%   512.88kB  7.61%  database/sql.(*DB).retry
+         0     0%   100%   512.88kB  7.61%  database/sql.dsnConnector.Connect
+
