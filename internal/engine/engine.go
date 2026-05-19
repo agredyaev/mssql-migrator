@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"reporting-db-migrations/internal/apply"
 	"reporting-db-migrations/internal/bus"
@@ -20,18 +21,23 @@ type BootstrapChecker interface {
 	BootstrapError() error
 }
 
+// PhaseObserver receives wall durations for engine sub-phases (scan, inspect, checksums, diff, …).
+// Used by integration profiling; nil is a no-op.
+type PhaseObserver func(phase string, d time.Duration)
+
 type Engine struct {
-	diff     Computer
-	bus      bus.EventBus
-	conn     driver.Conn
-	fs       Scanner
-	db       Inspector
-	load     Loader
-	scaffold Scaffolder
-	applier  Applier
-	locker   lock.Locker
-	bc       BootstrapChecker
-	cfg      types.Config
+	diff          Computer
+	bus           bus.EventBus
+	conn          driver.Conn
+	fs            Scanner
+	db            Inspector
+	load          Loader
+	scaffold      Scaffolder
+	applier       Applier
+	locker        lock.Locker
+	bc            BootstrapChecker
+	cfg           types.Config
+	phaseObserver PhaseObserver
 }
 
 type Scanner interface {
@@ -40,6 +46,7 @@ type Scanner interface {
 
 type Inspector interface {
 	Inspect(ctx context.Context, conn driver.Conn, scope fs.Layout) (*db.State, error)
+	InspectWithScope(ctx context.Context, conn driver.Conn, layout fs.Layout, iscope db.InspectScope) (*db.State, error)
 	LoadTableColumns(ctx context.Context, conn driver.Conn, scope fs.Layout) (map[string][]db.TableColumn, error)
 }
 
@@ -80,7 +87,25 @@ func (e *Engine) SetBootstrapChecker(bc BootstrapChecker) {
 	e.bc = bc
 }
 
+func (e *Engine) SetPhaseObserver(o PhaseObserver) {
+	e.phaseObserver = o
+}
+
+func (e *Engine) observePhase(phase string, d time.Duration) {
+	if e.phaseObserver != nil {
+		e.phaseObserver(phase, d)
+	}
+}
+
+// RunPlan executes scan → parallel inspect/checksums → diff without publishing bus events.
+func (e *Engine) RunPlan(ctx context.Context) (*types.MigrationPlan, fs.Layout, *db.State, error) {
+	return e.runPlan(ctx)
+}
+
 func (e *Engine) Plan(ctx context.Context) error {
+	start := time.Now()
+	defer func() { e.observePhase("engine", time.Since(start)) }()
+
 	e.bus.Publish(ctx, types.EventRunStarted, &types.RunStarted{Command: "plan"})
 
 	plan, layout, _, err := e.runPlan(ctx)
@@ -96,6 +121,9 @@ func (e *Engine) Plan(ctx context.Context) error {
 }
 
 func (e *Engine) Migrate(ctx context.Context) error {
+	start := time.Now()
+	defer func() { e.observePhase("engine", time.Since(start)) }()
+
 	e.bus.Publish(ctx, types.EventRunStarted, &types.RunStarted{Command: "migrate"})
 
 	plan, layout, _, err := e.runPlan(ctx)
@@ -131,7 +159,9 @@ func (e *Engine) Migrate(ctx context.Context) error {
 		return err
 	}
 
+	applyStart := time.Now()
 	res, err := e.applier.Execute(ctx, e.conn, *plan, layout, e.bus)
+	e.observePhase("apply", time.Since(applyStart))
 	if err != nil {
 		e.publishRunFailed(ctx, "migrate", err)
 		return err
@@ -249,40 +279,69 @@ func (e *Engine) executeLocked(ctx context.Context, command string) error {
 }
 
 func (e *Engine) runPlan(ctx context.Context) (*types.MigrationPlan, fs.Layout, *db.State, error) {
+	start := time.Now()
 	layout, err := e.fs.Scan(ctx, e.cfg.SQLRoot)
 	if err != nil {
 		return nil, fs.Layout{}, nil, err
 	}
+	e.observePhase("scan", time.Since(start))
 
 	keys := layout.NormalizedKeys()
 	var (
-		state     *db.State
-		checksums map[string][32]byte
-		inspErr   error
-		loadErr   error
+		state      *db.State
+		checksums  map[string][32]byte
+		inspErr    error
+		loadErr    error
+		ensureErr  error
+		inspectDur time.Duration
+		loadDur    time.Duration
 	)
+	parallelStart := time.Now()
+	var ensureDur time.Duration
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		state, inspErr = e.db.Inspect(ctx, e.conn, layout)
+		t0 := time.Now()
+		if ensureErr = e.load.EnsureTables(ctx, e.conn); ensureErr != nil {
+			return
+		}
+		ensureDur = time.Since(t0)
 	}()
 	go func() {
 		defer wg.Done()
+		t1 := time.Now()
 		checksums, loadErr = e.load.LoadChecksums(ctx, e.conn, keys)
+		loadDur = time.Since(t1)
+		if loadErr != nil {
+			return
+		}
+		iscope := e.buildInspectScope(layout, checksums)
+		t2 := time.Now()
+		state, inspErr = e.db.InspectWithScope(ctx, e.conn, layout, iscope)
+		inspectDur = time.Since(t2)
 	}()
 	wg.Wait()
+	e.observePhase("ensure", ensureDur)
+	e.observePhase("inspect", inspectDur)
+	e.observePhase("checksums", loadDur)
+	e.observePhase("parallel_wall", time.Since(parallelStart))
 	if inspErr != nil {
 		return nil, fs.Layout{}, nil, inspErr
+	}
+	if ensureErr != nil {
+		return nil, fs.Layout{}, nil, ensureErr
 	}
 	if loadErr != nil {
 		return nil, fs.Layout{}, nil, loadErr
 	}
 
+	start = time.Now()
 	plan, err := e.diff.Compute(ctx, layout, state, checksums)
 	if err != nil {
 		return nil, fs.Layout{}, nil, err
 	}
+	e.observePhase("diff", time.Since(start))
 
 	return plan, layout, state, nil
 }
