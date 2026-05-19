@@ -67,10 +67,9 @@ func BenchmarkInspectorInspect_HotCache_500Objects(b *testing.B) {
 func newInspectorBenchConn() *testutil.MockConn {
 	return &testutil.MockConn{
 		RowsByPrefix: map[string]*testutil.MockRows{
-			"SELECT CASE":                              testutil.NewMockRows([][]any{{1}}),
-			"WITH inspector_schema_filter AS (":        testutil.NewMockRows(nil),
-			"WITH inspector_object_schema_filter AS (": testutil.NewMockRows(nil),
-			"WITH inspector_column_schema_filter AS (": testutil.NewMockRows(nil),
+			"SELECT TOP (1) CAST(1 AS int) AS hit": testutil.NewMockRows([][]any{{1}}),
+			"WITH inspector_scope AS (":            testutil.NewMockRows(nil),
+			"WITH inspector_column_scope AS (":     testutil.NewMockRows(nil),
 		},
 	}
 }
