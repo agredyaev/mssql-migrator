@@ -9,6 +9,7 @@ Describe the **implemented** `rmig` solution: how the CLI loads configuration, h
 ## Scope
 
 - CLI entry and wiring: `cmd/rmig/main.go`, `internal/app/app.go`, `internal/app/flags.go`, `internal/app/config.go`, `internal/app/wire.go`
+- Version string for **`rmig version`:** `internal/buildinfo/buildinfo.go`, repository root **`VERSION`**, `Makefile` `release-build`
 - Orchestration: `internal/engine/engine.go`
 - Repository scan and layout: `internal/fs/scanner.go`, `internal/fs/layout.go`
 - Planning: `internal/diff/diff.go`
@@ -20,7 +21,7 @@ Describe the **implemented** `rmig` solution: how the CLI loads configuration, h
 
 ## System context
 
-`rmig` is a Go binary built from `cmd/rmig`. `main` passes a `driver.Conn` factory into `internal/app.Run`, which parses CLI flags, loads a dotenv-style file, builds `types.Config`, connects to SQL Server, wires `bus.EventBus`, audit/report subscribers, and `engine.Engine`, then runs one command: `plan`, `migrate`, `validate`, `baseline`, or `repair-checksum`.
+`rmig` is a Go binary built from `cmd/rmig`. `main` passes a `driver.Conn` factory into `internal/app.Run`, which parses CLI flags, then either handles **`version`** immediately (no env file, no connect) or loads a dotenv-style file, builds `types.Config`, connects to SQL Server, wires `bus.EventBus`, audit/report subscribers, and `engine.Engine`, then runs one command: `plan`, `migrate`, `validate`, `baseline`, or `repair-checksum`.
 
 Schema and object scope come from the SQL tree rooted at **`RM_SQL_ROOT`** (see `(*engine.Engine).runPlan`, which calls `Scanner.Scan(ctx, cfg.SQLRoot)`).
 
@@ -29,12 +30,17 @@ Schema and object scope come from the SQL tree rooted at **`RM_SQL_ROOT`** (see 
 ### CLI (`internal/app/flags.go`)
 
 - **Usage:** `rmig [--env <path>] [--json] <command>`
-- **`--env <path>`:** path to a dotenv-style file (key=value per line). If the flag is omitted, `internal/app/app.go` still attempts to load the default file named **`.env`** in the current working directory when present.
-- **`--json`:** sets JSON structured logs (`cfg.JSONLogs`); it does **not** select machine-readable plan output on stdout (there is no `plan --json` flag today).
+- **`--env <path>`:** path to a dotenv-style file (key=value per line). If the flag is omitted, `internal/app/app.go` still attempts to load the default file named **`.env`** in the current working directory when present **for all commands except `version`**. The **`version`** command returns immediately after `parseFlags` and does **not** read `.env` or call `validateConfig`, even if `--env` is present.
+- **`--json`:** sets JSON structured logs (`cfg.JSONLogs`) for engine commands; for **`version`**, it selects a single JSON object on stdout with `version` and `commit` keys instead of the default one-line text. It does **not** select machine-readable plan output on stdout (there is no `plan --json` flag today).
+
+### Version metadata (`internal/buildinfo`)
+
+- **`rmig version`** prints **`rmig <semver> <short-commit>`** to stdout (defaults `0.0.0-dev` / `unknown` when built with plain `go build` without `-X`). If `Commit` was not set at link time, `internal/buildinfo` may shorten **`vcs.revision`** from `runtime/debug.ReadBuildInfo` when the binary was built with VCS metadata.
+- **`make release-build`** sets **`internal/buildinfo.Version`** from the repository root **`VERSION`** file and **`internal/buildinfo.Commit`** from `git rev-parse --short HEAD` via `-ldflags -X` (see `Makefile`).
 
 ### Configuration (`internal/app/config.go`)
 
-Supported keys are read from the env file first, then `os.LookupEnv` for any key not set in the file (see `buildConfig`). **`validateConfig` requires `RM_DB_SERVER`, `RM_DB_DATABASE`, `RM_SQL_ROOT`, and `RM_SQL_BASE`** before a command runs. Other variables (`RM_GIT_COMMIT`, `RM_REPORT_DIR`, …) are optional at validation time unless a subsystem needs them at runtime.
+Supported keys are read from the env file first, then `os.LookupEnv` for any key not set in the file (see `buildConfig`). **`validateConfig` requires `RM_DB_SERVER`, `RM_DB_DATABASE`, `RM_SQL_ROOT`, and `RM_SQL_BASE`** before a non-`version` command runs. Other variables (`RM_GIT_COMMIT`, `RM_REPORT_DIR`, …) are optional at validation time unless a subsystem needs them at runtime.
 
 ### Reports (`internal/report/report.go`)
 
@@ -46,6 +52,8 @@ When **`RM_REPORT_DIR`** is non-empty, the report subscriber writes under that d
 There is **no** separate `migration-plan.txt` / `migration-report.json` writer in the current tree; filenames are fixed as above.
 
 ### Commands (`internal/engine/engine.go`)
+
+The engine implements **`plan`**, **`migrate`**, **`validate`**, **`baseline`**, and **`repair-checksum`**. The **`version`** command is implemented only in **`internal/app/app.go`** (early return; no engine).
 
 - **`plan`:** `runPlan` → publish `EventDiffComputed` → `EventRunFinished` (success).
 - **`migrate`:** `runPlan`; if `plan.Blocked`, `scaffold.Ensure` then return `errors.ErrPlanBlocked`; else acquire session lock, `filterAppliedMigrations`, `applier.Execute`, then finish.
@@ -76,6 +84,7 @@ There is **no** separate `migration-plan.txt` / `migration-report.json` writer i
 ## Verification and validation
 
 - `make check` (`Makefile`)
+- `rmig version` and `make release-build && ./bin/rmig version` (semver from `VERSION`, commit from `git` at link time)
 - SQL Server–backed tests: `make test-int` (`internal/app/integration_test.go`, build tag `integration`)
 
 ## Operations and recovery
@@ -84,7 +93,7 @@ There is **no** separate `migration-plan.txt` / `migration-report.json` writer i
 
 ## Open issues and non-goals
 
-- Open issues: there is **no** `rmig version` subcommand in `cmd/rmig/main.go` today; embedding version requires extending `main` / flags.
+- Open issues: none related to `rmig version` (implemented in `internal/app/app.go` with metadata in `internal/buildinfo`).
 - Non-goals: this document does not describe CI/CD outside this repository.
 
 ## References
