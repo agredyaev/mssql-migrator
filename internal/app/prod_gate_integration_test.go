@@ -7,93 +7,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
-	"reporting-db-migrations/internal/audit"
-	"reporting-db-migrations/internal/db"
-	"reporting-db-migrations/internal/diff"
 	"reporting-db-migrations/internal/driver/mssql"
-	"reporting-db-migrations/internal/fs"
 	"reporting-db-migrations/internal/prodgate"
-	"reporting-db-migrations/internal/types"
 )
-
-type planPipelineResult struct {
-	Plan    *types.MigrationPlan
-	Layout  fs.Layout
-	Timings prodgate.PhaseTimings
-}
-
-func runPlanPipelineForGate(t *testing.T, ctx context.Context, cfg types.Config, sqlRoot string, tc *timingConn) planPipelineResult {
-	t.Helper()
-	var timings prodgate.PhaseTimings
-	startAll := time.Now()
-
-	start := time.Now()
-	scanner := fs.NewScanner()
-	layout, err := scanner.Scan(ctx, sqlRoot)
-	if err != nil {
-		t.Fatalf("scan: %v", err)
-	}
-	timings.ScanMS = prodgate.DurMS(time.Since(start))
-
-	start = time.Now()
-	if err := audit.EnsureTables(ctx, tc); err != nil {
-		t.Fatalf("ensure audit tables: %v", err)
-	}
-	ensureDur := time.Since(start)
-
-	keys := layout.NormalizedKeys()
-	var (
-		state      *db.State
-		checksums  map[string][32]byte
-		inspErr    error
-		loadErr    error
-		inspectDur time.Duration
-		loadDur    time.Duration
-	)
-	start = time.Now()
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		t0 := time.Now()
-		inspector := db.NewInspector()
-		state, inspErr = inspector.Inspect(ctx, tc, layout)
-		inspectDur = time.Since(t0)
-	}()
-	go func() {
-		defer wg.Done()
-		t0 := time.Now()
-		var err error
-		checksums, err = audit.LoadChecksums(ctx, tc, keys)
-		loadErr = err
-		loadDur = time.Since(t0)
-	}()
-	wg.Wait()
-	_ = time.Since(start) // parallel wall; plan_wall uses startAll
-	if inspErr != nil {
-		t.Fatalf("inspect: %v", inspErr)
-	}
-	if loadErr != nil {
-		t.Fatalf("load checksums: %v", loadErr)
-	}
-	timings.InspectMS = prodgate.DurMS(inspectDur)
-	timings.AuditMS = prodgate.DurMS(ensureDur + loadDur)
-
-	start = time.Now()
-	computer := diff.NewComputer(cfg)
-	plan, err := computer.Compute(ctx, layout, state, checksums)
-	if err != nil {
-		t.Fatalf("compute: %v", err)
-	}
-	timings.DiffMS = prodgate.DurMS(time.Since(start))
-	timings.PlanWallMS = prodgate.DurMS(time.Since(startAll))
-
-	return planPipelineResult{Plan: plan, Layout: layout, Timings: timings}
-}
 
 func prodGateBaselinePath() string {
 	return filepath.Join("testdata", "prod_gate", "plan_baseline_empty_db.json")
@@ -106,8 +25,9 @@ func prodGateBaselinePath() string {
 //   - RMIG_RUN_SQLSERVER_INTEGRATION=1 (required)
 //   - RMIG_GATE_SKIP_DB_RESET=1 — do not drop/recreate DB (closer to prod)
 //   - RMIG_GATE_UPDATE_BASELINE=1 — rewrite testdata baseline (maintainers only)
-//   - RMIG_GATE_CHANGED_FILES — comma-separated paths limiting allowed diffs
-//   - RMIG_GATE_GIT_BASE — e.g. origin/main; used when CHANGED_FILES unset
+//   - RMIG_GATE_CHANGED_FILES — comma-separated paths (test override; prod uses auto git delta)
+//   - RMIG_GATE_GIT_BASE — optional git base ref (test override)
+//   - RMIG_INSPECT_FULL=1 — force full catalog inspect
 //   - RMIG_GATE_MAX_PLAN_WALL_MS — optional plan-phase wall SLO
 //   - RMIG_GATE_REPORT — write GateResult JSON to this path
 func TestProdGate_IncrementalPlan(t *testing.T) {
@@ -139,10 +59,13 @@ func TestProdGate_IncrementalPlan(t *testing.T) {
 	tc := newTimingConn(raw)
 	defer func() { _ = tc.Close() }()
 
-	pipe := runPlanPipelineForGate(t, ctx, cfg, sqlRoot, tc)
-	pipe.Timings.ConnectMS = connectMS
+	plan, layout, timings, err := RunPlanPipeline(ctx, cfg, tc, sqlRoot, PlanPipelineOptions{EnsureAudit: true})
+	if err != nil {
+		t.Fatalf("plan pipeline: %v", err)
+	}
+	timings.ConnectMS = connectMS
 
-	current := prodgate.SnapshotFromPlan(pipe.Plan)
+	current := prodgate.SnapshotFromPlan(plan)
 	baselinePath := prodGateBaselinePath()
 
 	if os.Getenv("RMIG_GATE_UPDATE_BASELINE") == "1" {
@@ -160,17 +83,14 @@ func TestProdGate_IncrementalPlan(t *testing.T) {
 		t.Fatalf("read baseline %s: %v (run with RMIG_GATE_UPDATE_BASELINE=1 to create)", baselinePath, err)
 	}
 
-	changedPaths := prodgate.ChangedPathsFromEnv()
-	if len(changedPaths) == 0 {
-		if gitBase := os.Getenv("RMIG_GATE_GIT_BASE"); gitBase != "" {
-			repoRoot := filepath.Join("..", "..")
-			changedPaths, err = prodgate.ChangedPathsFromGit(repoRoot, gitBase)
-			if err != nil {
-				t.Fatalf("git delta paths: %v", err)
-			}
-		}
+	pathsResult, err := prodgate.ResolveChangedPaths(sqlRoot)
+	if err != nil {
+		t.Fatalf("resolve changed paths: %v", err)
 	}
-	deltaKeys := prodgate.KeysForChangedPaths(pipe.Layout, changedPaths)
+	changedPaths := pathsResult.Paths
+	deltaKeys := prodgate.KeysForChangedPaths(layout, changedPaths)
+	deltaKeys = prodgate.ExpandDeltaClosure(layout, deltaKeys)
+	t.Logf("delta source: %s (full_inspect=%v)", pathsResult.Source, pathsResult.FullInspect)
 	if len(changedPaths) > 0 {
 		t.Logf("delta: %d changed path(s) -> %d object key(s)", len(changedPaths), len(deltaKeys))
 		for _, p := range changedPaths {
@@ -185,7 +105,7 @@ func TestProdGate_IncrementalPlan(t *testing.T) {
 		Current:          current,
 		DeltaKeys:        deltaKeys,
 		StrictUnexpected: true,
-		Timings:          pipe.Timings,
+		Timings:          timings,
 		MaxPlanWallMS:    prodgate.MaxPlanWallMSFromEnv(),
 	})
 
@@ -200,9 +120,9 @@ func TestProdGate_IncrementalPlan(t *testing.T) {
 	}
 
 	tc.logSummary(t)
-	t.Logf("phase timings (plan pipeline): connect=%dms scan=%dms inspect=%dms audit=%dms diff=%dms plan_wall=%dms",
-		pipe.Timings.ConnectMS, pipe.Timings.ScanMS, pipe.Timings.InspectMS,
-		pipe.Timings.AuditMS, pipe.Timings.DiffMS, pipe.Timings.PlanWallMS)
+	t.Logf("phase timings (plan pipeline): connect=%dms scan=%dms inspect=%dms checksums=%dms ensure=%dms parallel_wall=%dms audit=%dms diff=%dms plan_wall=%dms",
+		timings.ConnectMS, timings.ScanMS, timings.InspectMS, timings.ChecksumsMS, timings.EnsureMS,
+		timings.ParallelWallMS, timings.AuditMS, timings.DiffMS, timings.PlanWallMS)
 
 	if !result.Go {
 		for _, msg := range result.Messages {
