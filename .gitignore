@@ -24,3 +24,6 @@ new_arch.txt
 review.md
 *.prof
 .temp/
+.DS_Store
+*.log
+phase-report-run.log
