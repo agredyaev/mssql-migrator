@@ -6,7 +6,7 @@ import (
 )
 
 var validCommands = map[string]struct{}{
-	"plan": {}, "migrate": {}, "validate": {}, "baseline": {}, "repair-checksum": {},
+	"plan": {}, "migrate": {}, "validate": {}, "baseline": {}, "repair-checksum": {}, "version": {},
 }
 
 func commandsList() string {
@@ -78,6 +78,7 @@ Commands:
   validate          Validate all checks
   baseline          Mark all objects as adopted (baseline)
   repair-checksum   Repair checksum mismatches
+  version           Print semver and short commit (no database; ignores --env)
 
 Flags:
   --env <path>      Path to .env file (default: .env)
