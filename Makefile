@@ -1,4 +1,4 @@
-.PHONY: all build test vet lint fmt check doc-check release-build db-up db-down db-init test-int test-int-v
+.PHONY: all build test vet lint fmt check doc-check release-build db-up db-down db-init test-int test-int-phase test-prod-gate test-prod-gate-update-baseline test-int-v
 
 STATICCHECK = $(shell go env GOPATH)/bin/staticcheck
 
@@ -77,6 +77,37 @@ test-int:
 	RM_DB_ENCRYPT=false \
 	RM_DB_TRUST_SERVER_CERTIFICATE=true \
 	go test -tags=integration ./internal/app/ -run TestIntegration -v -count=1 $(ARGS)
+
+# Phase timings + driver.Conn boundary (Query/Exec/Ping); optional profiles, e.g.
+#   make test-int-phase ARGS='-cpuprofile=/tmp/rmig.cpu.prof -memprofile=/tmp/rmig.mem.prof -trace=/tmp/rmig.trace'
+test-int-phase:
+	RMIG_RUN_SQLSERVER_INTEGRATION=1 \
+	RM_DB_SERVER=localhost \
+	RM_DB_PORT=1433 \
+	RM_DB_DATABASE=rmig_test \
+	RM_DB_USER=sa \
+	RM_DB_PASSWORD='yourStrong(!)Password' \
+	RM_DB_ENCRYPT=false \
+	RM_DB_TRUST_SERVER_CERTIFICATE=true \
+	go test -tags=integration ./internal/app/ -run TestIntegration_PhaseReport -v -count=1 $(ARGS)
+
+# Incremental prod go/no-go: plan snapshot vs baseline, delta from git/env (see docs/prod-gate.md).
+test-prod-gate:
+	@chmod +x ops/perf/prod_gate.sh
+	ops/perf/prod_gate.sh $(ARGS)
+
+# Rewrite internal/app/testdata/prod_gate/plan_baseline_empty_db.json after intentional plan changes.
+test-prod-gate-update-baseline:
+	RMIG_RUN_SQLSERVER_INTEGRATION=1 \
+	RMIG_GATE_UPDATE_BASELINE=1 \
+	RM_DB_SERVER=localhost \
+	RM_DB_PORT=1433 \
+	RM_DB_DATABASE=rmig_test \
+	RM_DB_USER=sa \
+	RM_DB_PASSWORD='yourStrong(!)Password' \
+	RM_DB_ENCRYPT=false \
+	RM_DB_TRUST_SERVER_CERTIFICATE=true \
+	go test -tags=integration ./internal/app/ -run TestProdGate_IncrementalPlan -v -count=1
 
 test-int-v: ARGS="-count=1"
 test-int-v: test-int
