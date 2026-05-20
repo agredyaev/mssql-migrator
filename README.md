@@ -4,24 +4,26 @@ Lifecycle: `Current`.
 
 ## Purpose
 
-`rmig` is a Go CLI that plans and applies **MSSQL** schema migrations from a **repo-driven SQL layout**. This `README.md` is the repository landing page; durable contracts live under `docs/`.
+`rmig` plans and applies **MSSQL** schema migrations from a **repo-driven SQL layout**. **Production operators use the Rust CLI** (`rust/crates/cli/`). The Go implementation under `internal/` remains as a reference and parity baseline. Durable contracts live under `docs/`.
 
 ## Scope
 
-- CLI entry: `cmd/rmig/main.go` → `internal/app.Run`
-- Engine: `internal/engine/engine.go` (orchestrates plan / migrate / validate / baseline / repair-checksum; `version` is handled in `internal/app` only)
-- Configuration: `internal/app/config.go`, `internal/types/config.go` (`RM_*` environment variables)
-- Driver: `internal/driver`, `internal/driver/mssql`
-- **Internal module specifications:** `docs/specs/internals/README.md`
-- Product docs: `docs/solution.md`, `docs/operational-contract.md`, `docs/runbook.md`
+- **Production CLI:** `rust/crates/cli/src/main.rs` → `migrator_core::engine::run_command`
+- **Production core:** `rust/crates/core/src/` — see `docs/specs/rust/README.md`
+- Reference Go CLI: `cmd/rmig/main.go` → `internal/app.Run` — see `docs/specs/internals/README.md`
+- Configuration: `RM_*` environment variables (`rust/crates/core/src/config/`, `internal/app/config.go`)
+- Driver: `rust/crates/core/src/driver/`, `internal/driver/mssql`
+- Product docs: `docs/solution.md`, `docs/operational-contract.md`, `docs/runbook.md`, `docs/rust-port-plan.md`
 
 ## System context
 
-Build with Go 1.22+ (module `reporting-db-migrations`). Configure database and repo paths through environment variables (typically via a dotenv file; see `--env` in `internal/app/flags.go`). Commands: `plan`, `migrate`, `validate`, `baseline`, `repair-checksum`, **`version`** (prints semver and commit to stdout; does not read `.env` or connect to the database).
+Build Rust with stable toolchain (`rust/` workspace). Configure database and repo paths through `RM_*` environment variables (typically via a dotenv file). Commands: `plan`, `migrate`, `validate`, `baseline`, `repair-checksum`, `version`.
+
+Go 1.22+ remains available for reference tests and parity harness (`make check`, `make go-rust-e2e`).
 
 ## Interfaces and boundaries
 
-- Inputs: required **`RM_DB_SERVER`**, **`RM_DB_DATABASE`**, **`RM_SQL_ROOT`**, **`RM_SQL_BASE`**; optional `RM_REPORT_DIR`, `RM_PLAN_FILE`, `RM_REPAIR_SCRIPT`, git metadata `RM_GIT_*`, and other keys parsed in `internal/app/config.go`
+- Inputs: required **`RM_DB_SERVER`**, **`RM_DB_DATABASE`**, **`RM_SQL_ROOT`**, **`RM_SQL_BASE`**; optional `RM_REPORT_DIR`, `RMIG_SESSION`, `RMIG_CATALOG_CACHE`, git metadata `RM_GIT_*`
 - Outputs: logs to stderr, optional reports when `RM_REPORT_DIR` is set, SQL Server metadata updates owned by the tool
 - Boundaries: SQL scripts live in Git; connectivity and server-side behavior belong to the operator’s environment
 
@@ -32,26 +34,29 @@ Build with Go 1.22+ (module `reporting-db-migrations`). Configure database and r
 
 ## Nominal flow
 
-1. `make check` — `go build ./...`, `go test ./...`, `go vet`, `staticcheck`, `gofmt` check (see `Makefile`).
-2. Local binary: `go build -o rmig ./cmd/rmig`, or optimized release build: `make release-build` → `bin/rmig` (`CGO_ENABLED=0`, `-trimpath`, `-buildvcs=false`, `-ldflags` with `-s -w` plus `-X` for **`internal/buildinfo.Version`** from root **`VERSION`** and **`internal/buildinfo.Commit`** from `git rev-parse --short HEAD`; see `Makefile`). Background in the guide’s [compiler optimizations](https://psavelis.github.io/golang-performance-optimization/optimization/compiler/) chapter, especially [build optimization](https://psavelis.github.io/golang-performance-optimization/optimization/compiler/build-optimization.html).
-3. Run `rmig --env /path/to/.env plan` (or another command); run `rmig version` to print the embedded semver and commit without configuration. See usage text in `internal/app/flags.go`.
+1. `make rust-check` — Rust format, clippy, unit tests (see `Makefile`).
+2. Build: `cd rust && cargo build --release -p migrator-cli` or `make release-build`.
+3. Run `rmig --env /path/to/.env plan` (Rust binary from `rust/target/release/rmig`).
+4. Integration: `make rust-slo`, `make rust-prod-gate`, `make rust-workflow-fast` (see `ops/perf/README.md`).
+5. Reference Go checks: `make check`, `make test-prod-gate` (parity baseline).
 
 ## Off-nominal behavior and failure containment
 
-- Failure mode: `make check` fails (tests, vet, `staticcheck`, or `gofmt` drift).
+- Failure mode: `make rust-check` or integration gate fails.
   Containment: fix before merging; do not treat the tree as green.
 - Failure mode: `rmig` exits non-zero after connect (planning, apply, or metadata error).
   Containment: use stderr and optional `RM_REPORT_DIR` artifacts; follow `docs/runbook.md`.
 
 ## Verification and validation
 
-- Primary gate: `make check`
-- SQL Server integration: `make test-int` (requires Docker MSSQL per `Makefile` / `docker compose`); optional **phase / DB-boundary timings:** `make test-int-phase`; **prod incremental go/no-go:** `make test-prod-gate` (see [`docs/prod-gate.md`](docs/prod-gate.md))
+- Primary Rust gate: `make rust-check`
+- SQL Server integration: `make db-up` then `make rust-slo`, `make rust-prod-gate`, `make rust-workflow-fast`
 - Documentation gate: `make doc-check` (`ops/quality/scripts/` per `docs/specs/nasa-document-spec.md`)
+- Reference Go gate: `make check`, `make test-prod-gate`
 
 ## Operations and recovery
 
-- Routine operation: run `make check` before every merge to `main`; run `make doc-check` when changing durable docs under `docs/` or `README.md`.
+- Routine operation: run `make rust-check` before every merge; run `make doc-check` when changing durable docs under `docs/` or `README.md`.
 - Recovery: for production incidents, use `docs/runbook.md` with logs and `.plan.json` / `.report.json` when `RM_REPORT_DIR` is set.
 
 ## Open issues and non-goals
@@ -61,8 +66,10 @@ Build with Go 1.22+ (module `reporting-db-migrations`). Configure database and r
 
 ## References
 
-- `docs/specs/internals/README.md` — NASA-style specs per `internal/` package
-- `docs/solution.md` — product-level solution aligned with `internal/app` and `internal/engine`
+- `docs/specs/rust/README.md` — NASA-style specs per Rust `migrator-core` module
+- `docs/specs/internals/README.md` — Go reference package specs
+- `docs/solution.md` — product-level solution
+- `docs/rust-port-plan.md` — Rust SLO, milestones, Makefile targets
 - `docs/specs/documentation-spec.md`, `docs/specs/nasa-document-spec.md` — authoring rules
 - `ops/quality/scripts/README.md` — documentation validation scripts
 
