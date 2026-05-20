@@ -4,7 +4,7 @@ Lifecycle: `Current`.
 
 ## Purpose
 
-This directory holds **NASA-style** specifications (`docs/specs/nasa-document-spec.md`, `docs/specs/documentation-spec.md`) for each Go package under `internal/`. It exists so maintainers can see boundaries, inputs, and verification without reading the whole tree.
+This directory holds **NASA-style** specifications for Go packages under `internal/`. Go is a **reference implementation** for parity tests; production operators use Rust (`docs/specs/rust/README.md`).
 
 ## Scope
 

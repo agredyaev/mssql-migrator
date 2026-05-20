@@ -4,15 +4,17 @@ Lifecycle: `Current`.
 
 ## Purpose
 
-Define how operators and release pipelines decide **go/no-go** for `rmig` using **incremental plan analysis**: only SQL tree **changes** (delta) may differ from a committed baseline plan snapshot; unexpected diffs outside the delta fail the gate. This complements **full CLI** phase profiling (`make test-int-phase-cli`) and harness timings (`make test-int-phase`) with a **business-logic** check suitable for production promotion.
+Define how operators and release pipelines decide **go/no-go** for `rmig` using **incremental plan analysis**: only SQL tree **changes** (delta) may differ from a committed baseline plan snapshot; unexpected diffs outside the delta fail the gate. Production gate runner: **`make rust-prod-gate`** (`rust/crates/core/tests/prod_gate_integration.rs`). Go harness remains for parity reference (`make test-prod-gate`).
 
 ## Scope
 
-- Gate logic: [`internal/prodgate/`](../internal/prodgate/) (`snapshot.go`, `delta.go`, `compare.go`, `gate.go`)
-- Integration test: [`internal/app/prod_gate_integration_test.go`](../internal/app/prod_gate_integration_test.go) (`TestProdGate_IncrementalPlan`)
+- Gate logic (Rust): [`rust/crates/core/src/gate/`](../rust/crates/core/src/gate/) — see `docs/specs/rust/module-gate.md`
+- Gate logic (Go reference): [`internal/prodgate/`](../internal/prodgate/)
+- Integration test (Rust): [`rust/crates/core/tests/prod_gate_integration.rs`](../rust/crates/core/tests/prod_gate_integration.rs)
+- Integration test (Go reference): [`internal/app/prod_gate_integration_test.go`](../internal/app/prod_gate_integration_test.go) (`TestProdGate_IncrementalPlan`)
 - Baseline artifact: [`internal/app/testdata/prod_gate/plan_baseline_empty_db.json`](../internal/app/testdata/prod_gate/plan_baseline_empty_db.json)
 - Runner script: [`ops/perf/prod_gate.sh`](../ops/perf/prod_gate.sh)
-- Makefile targets: `test-prod-gate`, `test-prod-gate-update-baseline`, `db-up` / `db-init`
+- Makefile targets: `rust-prod-gate`, `test-prod-gate` (Go reference), `test-prod-gate-update-baseline`, `db-up` / `db-init`
 
 ## System context
 
@@ -52,9 +54,20 @@ Database **drop/create** (`ensureTestDatabase`) is optional and **excluded** fro
 | `inspect_ms` | Wall time of `InspectWithScope` after checksums (schemas + objects; **no** table columns) |
 | `checksums_ms` | Wall time of `LoadChecksums` (same goroutine as inspect; runs before scope build) |
 | `ensure_ms` | `audit.EnsureTables` when run inside the harness |
-| `parallel_wall_ms` | Wall time of the inspect ‖ checksums join |
+| `parallel_wall_ms` | Wall time of the inspect ‖ checksums join (Rust: [`plan_batch.rs`](../rust/crates/core/src/db/plan_batch.rs) through catalog save boundary) |
 | `audit_ms` | `ensure_ms` + `checksums_ms` (summed; **not** parallel overlap) |
 | `plan_wall_ms` | Scan through diff end-to-end |
+
+### Rust plan DB SLO (`parallel_wall_ms`)
+
+Integration gate: [`rust/crates/core/tests/workflow_integration.rs`](../rust/crates/core/tests/workflow_integration.rs) asserts `parallel_wall_ms ≤ RMIG_PLAN_DB_MAX_PAR_MS` (default **500**) after each workflow phase (L1 hits exempt).
+
+| Variable | Default | Role |
+|----------|---------|------|
+| `RMIG_PLAN_DB_MAX_PAR_MS` | 500 | Hard ceiling for plan DB parallel wall |
+| `RMIG_PLAN_DB_TRACE=1` | off | Append per-phase trace to `ops/perf/artifacts/rust_plan_db_trace.json` |
+
+Runner: `make rust-plan-db-perf` ([`ops/perf/rust_plan_db_perf.sh`](../ops/perf/rust_plan_db_perf.sh)). See [`ops/perf/README.md`](../ops/perf/README.md) for path → RT table and measured workflow timings on Docker SQL 2019 + `.temp/sql`.
 
 ## Plan-phase performance reference
 

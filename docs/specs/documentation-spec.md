@@ -111,6 +111,11 @@ When adding a new component, image, deploy path, or architecture decision, ensur
 
 - Canonical specifications for `internal/*` packages: `docs/specs/internals/README.md` and the `module-*.md` files in the same directory.
 
+## Rust migrator (`migrator-core`)
+
+- Canonical specifications for `rust/crates/core/src/`: `docs/specs/rust/README.md` and the `module-*.md` files in the same directory.
+- Production operator CLI: `rust/crates/cli/` (see `docs/specs/rust/module-cli.md`).
+
 ## Change Synchronization Rule
 
 - Material changes to implementation paths must include at least one durable
