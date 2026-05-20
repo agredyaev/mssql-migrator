@@ -72,7 +72,7 @@ func TestIntegration_DBInspect_EmptyDB(t *testing.T) {
 
 	ctx := context.Background()
 
-	ensureTestDatabase(t, ctx)
+	resetTestDatabase(t, ctx)
 
 	conn, err := mssql.Open(ctx, cfg)
 	if err != nil {
@@ -107,7 +107,7 @@ func TestIntegration_Plan_EmptyDB(t *testing.T) {
 
 	ctx := context.Background()
 
-	ensureTestDatabase(t, ctx)
+	resetTestDatabase(t, ctx)
 
 	conn, err := mssql.Open(ctx, cfg)
 	if err != nil {
@@ -155,7 +155,7 @@ func TestIntegration_Apply_AllObjects(t *testing.T) {
 
 	ctx := context.Background()
 
-	ensureTestDatabase(t, ctx)
+	resetTestDatabase(t, ctx)
 
 	conn, err := mssql.Open(ctx, cfg)
 	if err != nil {
@@ -250,7 +250,7 @@ func TestIntegration_Plan_AfterApply(t *testing.T) {
 
 	ctx := context.Background()
 
-	ensureTestDatabase(t, ctx)
+	resetTestDatabase(t, ctx)
 
 	conn, err := mssql.Open(ctx, cfg)
 	if err != nil {
@@ -370,33 +370,6 @@ func configFromEnv() types.Config {
 		SQLRoot:                envOrDefault("RM_SQL_ROOT", "sql"),
 		SQLBase:                envOrDefault("RM_SQL_BASE", "sql"),
 		LogLevel:               envOrDefault("RM_LOG_LEVEL", "debug"),
-	}
-}
-
-func ensureTestDatabase(t *testing.T, ctx context.Context) {
-	t.Helper()
-	cfg := configFromEnv()
-	dbName := cfg.Database
-
-	// Connect to master to recreate the test database
-	masterCfg := cfg
-	masterCfg.Database = "master"
-	conn, err := mssql.Open(ctx, masterCfg)
-	if err != nil {
-		t.Fatalf("connect to master: %v", err)
-	}
-	defer conn.Close()
-
-	_, err = conn.ExecContext(ctx, `
-		IF DB_ID('`+dbName+`') IS NOT NULL
-		BEGIN
-			ALTER DATABASE [`+dbName+`] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-			DROP DATABASE [`+dbName+`];
-		END
-		CREATE DATABASE [`+dbName+`]
-	`, nil)
-	if err != nil {
-		t.Fatalf("drop/create database %s: %v", dbName, err)
 	}
 }
 
