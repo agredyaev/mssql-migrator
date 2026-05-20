@@ -1,0 +1,35 @@
+warning: function `table_heavy_workspace` is never used
+  --> crates/core/benches/bench_support.rs:98:8
+   |
+98 | pub fn table_heavy_workspace(
+   |        ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `scan_fixture_workspace` is never used
+   --> crates/core/benches/bench_support.rs:212:8
+    |
+212 | pub fn scan_fixture_workspace(root: &Path, n: usize) -> Workspace {
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `temp_scan_root` is never used
+   --> crates/core/benches/bench_support.rs:223:8
+    |
+223 | pub fn temp_scan_root(prefix: &str) -> PathBuf {
+    |        ^^^^^^^^^^^^^^
+
+warning: `migrator-core` (bench "plan_diff") generated 3 warnings
+    Finished `bench` profile [optimized + debuginfo] target(s) in 0.14s
+     Running benches/plan_diff.rs (target/release/deps/plan_diff-8e929d55cab42acd)
+Gnuplot not found, using plotters backend
+Benchmarking plan_diff_skip_heavy_5000
+Benchmarking plan_diff_skip_heavy_5000: Warming up for 3.0000 s
+
+Warning: Unable to complete 100 samples in 5.0s. You may wish to increase target time to 7.1s, enable flat sampling, or reduce sample count to 50.
+Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 7.1042 s (5050 iterations)
+Benchmarking plan_diff_skip_heavy_5000: Analyzing
+plan_diff_skip_heavy_5000
+                        time:   [1.0707 ms 1.1387 ms 1.2159 ms]
+                        change: [-51.458% -48.949% -46.267%] (p = 0.00 < 0.05)
+                        Performance has improved.
+

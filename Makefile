@@ -1,4 +1,4 @@
-.PHONY: all build test vet lint fmt check doc-check release-build db-up db-down db-init test-int test-int-phase test-int-phase-cli test-int-phase-cli-warm test-cli-phase-cold test-cli-phase-warm test-prod-gate test-prod-gate-update-baseline bench-footprint bench-footprint-profile bench-footprint-update-baseline profile-summary test-int-v
+.PHONY: all build test vet lint fmt check doc-check release-build db-up db-down db-init test-int test-int-phase test-int-phase-cli test-int-phase-cli-warm test-cli-phase-cold test-cli-phase-warm test-prod-gate test-prod-gate-update-baseline go-rust-e2e go-rust-e2e-all check-e2e go-rust-io-debug rust-check rust-e2e rust-prod-gate rust-slo rust-plan-db-perf rust-workflow-fast bench-footprint bench-footprint-profile bench-footprint-update-baseline profile-summary test-int-v
 
 STATICCHECK = $(shell go env GOPATH)/bin/staticcheck
 
@@ -57,10 +57,7 @@ db-up:
 			-Q "SELECT 1" >/dev/null 2>&1 && break; \
 		sleep 3; \
 	done
-	@echo "Creating test database..."
-	-docker compose exec -T mssql /opt/mssql-tools18/bin/sqlcmd \
-		-S localhost -U sa -P 'yourStrong(!)Password' -C \
-		-Q "IF DB_ID('rmig_test') IS NULL CREATE DATABASE rmig_test"
+	@echo "Catalog databases are created on first rmig run (from directories under RM_SQL_ROOT)."
 
 db-down:
 	docker compose down -v
@@ -154,3 +151,55 @@ test-prod-gate-update-baseline:
 
 test-int-v: ARGS="-count=1"
 test-int-v: test-int
+
+# Go↔Rust plan snapshot parity on .temp/sql (see ops/perf/go_rust_e2e.sh).
+go-rust-e2e: db-up
+	@chmod +x ops/perf/go_rust_e2e.sh
+	ops/perf/go_rust_e2e.sh $(ARGS)
+
+# Full Go↔Rust e2e matrix (plan + apply + gate + blocked).
+go-rust-e2e-all: db-up
+	@chmod +x ops/perf/go_rust_e2e_all.sh
+	ops/perf/go_rust_e2e_all.sh $(ARGS)
+
+check-e2e: db-up
+	@$(MAKE) go-rust-e2e-all
+	@$(MAKE) go-rust-io-debug
+	@$(MAKE) rust-workflow-fast
+	@$(MAKE) rust-slo
+	@$(MAKE) rust-prod-gate
+	@echo "check-e2e: ALL PASS"
+
+go-rust-io-debug: db-up
+	@chmod +x ops/perf/go_rust_io_debug.sh
+	ops/perf/go_rust_io_debug.sh $(ARGS)
+
+rust-check:
+	@chmod +x scripts/check-rust-arch.sh scripts/check-rust-release-deps.sh
+	scripts/check-rust-arch.sh
+	scripts/check-rust-release-deps.sh
+	cd rust && cargo fmt --all -- --check
+	cd rust && RUSTFLAGS="-D warnings" cargo clippy -p migrator-core -p rmig -p rmigd --all-targets -- -D warnings
+	cd rust && RUSTFLAGS="-D warnings" cargo test -p migrator-core --lib --tests
+	@echo "rust-check: PASS (integration SQL tests: make rust-e2e)"
+
+rust-prod-gate: db-up
+	@chmod +x ops/perf/rust_prod_gate.sh
+	ops/perf/rust_prod_gate.sh $(ARGS)
+
+rust-slo: db-up
+	@chmod +x ops/perf/rust_cli_phase.sh
+	RMIG_USE_RMIGD=1 ops/perf/rust_cli_phase.sh cold $(ARGS)
+
+rust-plan-db-perf: db-up
+	@chmod +x ops/perf/rust_plan_db_perf.sh
+	ops/perf/rust_plan_db_perf.sh $(ARGS)
+
+rust-workflow-fast: db-up
+	@chmod +x ops/perf/rust_workflow_fast.sh
+	ops/perf/rust_workflow_fast.sh $(ARGS)
+
+# Rust-only SQL Server e2e: cold apply + full git workflow (no Go).
+rust-e2e: db-up
+	@chmod +x ops/perf/rust_e2e.sh
+	ops/perf/rust_e2e.sh $(ARGS)

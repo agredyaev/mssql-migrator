@@ -1,0 +1,31 @@
+# Rust dhat allocation summary
+# total allocated (tb sum): 10.86 MB (10861890 B)
+# loop iterations: 20
+# setup (one-time): 10.14 MB
+# warm (first compute_diff / plan resize): 720.1 KB
+# loop (warmed compute_diff x20): 0 B (0 B/iter)
+
+## Phase totals
+Phase                 Bytes    Share
+setup              10.14 MB    93.4%
+warm               720.1 KB     6.6%
+loop                    0 B     0.0%
+
+## Top categories (loop phase only)
+Category                                    Total       B/iter   Share  CASE-*
+(no loop-phase allocations detected)
+
+## Top rmig frames (loop phase)
+Frame                                                                           Bytes   Share
+
+## Top rmig frames (deepest in stack, all phases)
+Frame                                                                           Bytes   Share
+plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:43:40)                  10.14 MB   93.4%
+plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:45:5)                   720.1 KB    6.6%
+plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:47:5)                       64 B    0.0%
+
+## Top leaf alloc frames (flat)
+Frame                                                                           Bytes
+plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:43:40)                  10.14 MB
+plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:45:5)                   720.1 KB
+plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:47:5)                       64 B
