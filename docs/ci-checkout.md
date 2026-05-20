@@ -53,6 +53,11 @@ If git resolution fails, the tool falls back to **full catalog inspect** (safe, 
 | `RM_SKIP_GIT=1` | No git metadata in scan; full catalog inspect |
 | `RMIG_INSPECT_FULL=1` | Full catalog inspect despite git |
 
+## Assumptions and constraints
+
+- Assumptions: CI exposes base/target SHAs or full git history; `RM_SQL_ROOT` lies inside the checked-out repository.
+- Constraints: shallow clones without base ref force full inspect (slower, safe).
+
 ## Nominal flow
 
 ```yaml
@@ -72,10 +77,19 @@ No `export RMIG_GATE_GIT_BASE=...` step.
 - **Running on `main` after merge:** delta often empty → scoped inspect uses stable keys + history; strict gate compares full snapshot to baseline.
 - **No `.git` in workspace:** full inspect (`source=no-git`).
 
-## Verification
+## Verification and validation
 
 - Unit: `go test ./internal/prodgate/ -run TestResolveChangedPaths`
 - Integration: `make test-prod-gate` on a PR branch or temp git fixture
+
+## Operations and recovery
+
+- Pipeline authors set `fetch-depth: 0` (or equivalent) once per job; no per-run rmig env for delta.
+- If delta resolution fails in CI logs, verify checkout depth and base SHA env vars.
+
+## Open issues and non-goals
+
+- Non-goals: this document does not define provider-specific YAML for every CI product.
 
 ## References
 
