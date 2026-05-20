@@ -1,0 +1,29 @@
+   Compiling migrator-core v0.1.0 (/Users/fingerbib/project/mssql-reporting-migrator/rust/crates/core)
+warning: function `table_heavy_workspace` is never used
+  --> crates/core/benches/bench_support.rs:92:8
+   |
+92 | pub fn table_heavy_workspace(
+   |        ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `scan_fixture_workspace` is never used
+   --> crates/core/benches/bench_support.rs:200:8
+    |
+200 | pub fn scan_fixture_workspace(root: &Path, n: usize) -> Workspace {
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `temp_scan_root` is never used
+   --> crates/core/benches/bench_support.rs:211:8
+    |
+211 | pub fn temp_scan_root(prefix: &str) -> PathBuf {
+    |        ^^^^^^^^^^^^^^
+
+warning: `migrator-core` (bench "plan_diff_dhat") generated 3 warnings
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 16.26s
+     Running benches/plan_diff_dhat.rs (target/profiling/deps/plan_diff_dhat-16f97f1049dbd2e7)
+dhat: plan_diff_skip_heavy_5000 x20 complete
+dhat: Total:     10,861,890 bytes in 100,068 blocks
+dhat: At t-gmax: 7,206,746 bytes in 75,035 blocks
+dhat: At t-end:  112 bytes in 2 blocks
+dhat: The data has been saved to dhat-heap.json, and is viewable with dhat/dh_view.html

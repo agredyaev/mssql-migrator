@@ -30,3 +30,6 @@ ops/perf/artifacts/*.trace
 .DS_Store
 *.log
 phase-report-run.log
+
+# Rust build output
+rust/target/
