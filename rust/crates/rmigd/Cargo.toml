@@ -1,0 +1,13 @@
+[package]
+name = "rmigd"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "rmigd"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+migrator-core = { path = "../core", features = ["session-daemon"] }
+tokio = { workspace = true }

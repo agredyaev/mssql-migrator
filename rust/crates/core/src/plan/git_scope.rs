@@ -1,0 +1,23 @@
+use std::collections::HashSet;
+
+use crate::domain::Workspace;
+use crate::gate::{expand_delta_closure, keys_for_changed_paths};
+
+use super::scope::{build_scope_json, InspectScope};
+
+/// Git delta scope for scoped-hit probe before checksums are available (Go fast path parity).
+pub fn git_hot_scope_json(ws: &Workspace, changed_paths: &[String]) -> String {
+    let delta = expand_delta_closure(ws, keys_for_changed_paths(ws, changed_paths));
+    let hot_keys: HashSet<String> = ws
+        .object_entries
+        .iter()
+        .filter(|o| delta.contains(o.key.as_str()))
+        .map(|o| o.key.as_str().to_string())
+        .collect();
+    build_scope_json(&InspectScope {
+        full_inspect: false,
+        hot_keys,
+        stable_objects: Default::default(),
+        allow_l1_skip: false,
+    })
+}

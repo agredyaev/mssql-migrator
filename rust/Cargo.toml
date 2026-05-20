@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = ["crates/cli", "crates/core", "crates/rmigd"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "tracing"] }
+tokio-util = { version = "0.7.18", features = ["compat"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "registry"] }
+pprof = { version = "0.15", features = ["flamegraph", "criterion"] }
+criterion = { version = "0.8", features = ["html_reports"] }
+
+# Symbols for release flamegraphs (`cargo flamegraph`, samply, etc.)
+[profile.release]
+debug = true
+
+# Integration tests: optimized, no debuginfo (lower RSS than release+debug=true).
+[profile.release-fast]
+inherits = "release"
+debug = false
+
+[profile.profiling]
+inherits = "release"
+debug = true
