@@ -33,3 +33,6 @@ phase-report-run.log
 
 # Rust build output
 rust/target/
+
+# Rust runtime cache (catalog snapshots)
+rust/.rmig/
