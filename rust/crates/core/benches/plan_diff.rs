@@ -1,13 +1,15 @@
 //! In-process plan diff 5k (skip-heavy), CPU flamegraph via Criterion + pprof.
 
+#[path = "bench_pprof.rs"]
+mod bench_pprof;
 mod bench_support;
 
 use std::hint::black_box;
 
+use bench_pprof::RmigPprofProfiler;
 use criterion::{criterion_group, criterion_main, Criterion};
 use migrator_core::export::MigrationPlan;
 use migrator_core::plan::compute_diff_into;
-use pprof::criterion::{Output, PProfProfiler};
 
 fn bench_plan_diff_skip_heavy_5000(c: &mut Criterion) {
     let (mut ws, catalog, checksums) = bench_support::skip_heavy_workspace(5000);
@@ -29,7 +31,7 @@ fn bench_plan_diff_skip_heavy_5000(c: &mut Criterion) {
 
 criterion_group! {
     name = benches;
-    config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+    config = Criterion::default().with_profiler(RmigPprofProfiler::new(1000));
     targets = bench_plan_diff_skip_heavy_5000
 }
 criterion_main!(benches);
