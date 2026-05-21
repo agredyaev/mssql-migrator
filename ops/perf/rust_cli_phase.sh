@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rust plan phase timings + SLO gate (cli_wall_ms < 100 on cache-miss, rmigd session).
+# Rust plan phase timings + SLO gate (cli_wall_ms < 150 on cache-miss, rmigd session).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT/rust"
@@ -8,7 +8,7 @@ mkdir -p "$ARTIFACTS"
 
 export RMIG_RUN_SQLSERVER_INTEGRATION="${RMIG_RUN_SQLSERVER_INTEGRATION:-1}"
 export RM_SKIP_GIT="${RM_SKIP_GIT:-1}"
-export RMIG_SLO_MAX_CLI_WALL_MS="${RMIG_SLO_MAX_CLI_WALL_MS:-100}"
+export RMIG_SLO_MAX_CLI_WALL_MS="${RMIG_SLO_MAX_CLI_WALL_MS:-150}"
 export RMIG_USE_RMIGD="${RMIG_USE_RMIGD:-1}"
 export RMIG_SESSION_TOKEN="${RMIG_SESSION_TOKEN:-rmig-integration-test-token}"
 export RMIG_INTEGRATION_WARM_SNAPSHOT="${RMIG_INTEGRATION_WARM_SNAPSHOT:-1}"

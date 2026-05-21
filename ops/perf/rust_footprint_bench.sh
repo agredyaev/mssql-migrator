@@ -17,13 +17,13 @@ case "$MODE" in
     cargo test -p migrator-core --test rust_footprint_baseline footprint_baseline_match -q
     ;;
   profile)
-    cargo bench -p migrator-core --bench plan_diff -- --profile-time=2 "$@"
-    FG="$(find target/criterion -name 'flamegraph.svg' -path '*plan_diff_skip_heavy_5000*' 2>/dev/null | head -1 || true)"
+    cargo bench -p migrator-core --bench plan_diff -- --profile-time=5 "$@"
+    FG="$(find target/criterion -name 'flamegraph.svg' 2>/dev/null | head -1 || true)"
     if [ -n "$FG" ]; then
       cp -f "$FG" "$ARTIFACTS/rust_plan_diff_5k_flamegraph.svg"
-      echo "CPU flamegraph: $ARTIFACTS/rust_plan_diff_5k_flamegraph.svg"
+      echo "CPU flamegraph: $ARTIFACTS/rust_plan_diff_5k_flamegraph.svg (source: $FG)"
     else
-      echo "warning: flamegraph.svg not found under target/criterion (run with pprof feature)" >&2
+      echo "warning: flamegraph.svg not found under target/criterion (RmigPprofProfiler / --profile-time)" >&2
     fi
     "$ROOT/ops/perf/profile_summary.sh" 2>/dev/null || true
     ;;
