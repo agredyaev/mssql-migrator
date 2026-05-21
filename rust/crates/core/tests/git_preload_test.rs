@@ -46,12 +46,13 @@ async fn scan_preloads_git_metadata() {
         .await
         .expect("scan");
     let script = ws
-        .scripts
-        .get(&migrator_core::domain::ScriptKey::from_path("db/sch/views/monthly.sql"))
+        .script_by_key(&migrator_core::domain::ScriptKey::from_path(
+            "db/sch/views/monthly.sql",
+        ))
         .expect("script");
-    assert_eq!(script.git_hash.len(), 40);
-    assert!(!script.git_author.is_empty());
-    assert!(!script.git_date.is_empty());
+    assert_eq!(script.git_hash().as_ref().len(), 40);
+    assert!(!script.git_author().is_empty());
+    assert!(!script.git_date().is_empty());
 }
 
 #[tokio::test]
@@ -67,6 +68,6 @@ async fn scan_skips_git_when_requested() {
     scan::populate(&mut ws, root.to_str().unwrap(), true)
         .await
         .expect("scan");
-    let script = ws.scripts.values().next().expect("script");
-    assert!(script.git_hash.is_empty());
+    let script = ws.scripts_iter().next().expect("script");
+    assert!(script.git_hash().is_empty());
 }

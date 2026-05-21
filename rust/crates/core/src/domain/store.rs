@@ -11,11 +11,11 @@ pub struct ObjectRow {
     pub flags: u8,
 }
 
+/// Legacy wrapper for tests / sizeof reporting (rows + index split in [`super::Workspace`]).
 #[derive(Clone, Debug, Default)]
 pub struct ObjectStore {
-    rows: Vec<ObjectRow>,
-    keys: Vec<ObjectKey>,
-    key_index: HashMap<ObjectKey, u32>,
+    pub rows: Vec<ObjectRow>,
+    pub key_index: HashMap<ObjectKey, u32>,
 }
 
 impl ObjectStore {
@@ -27,16 +27,8 @@ impl ObjectStore {
         self.rows.is_empty()
     }
 
-    pub fn key(&self, i: usize) -> &ObjectKey {
-        &self.keys[i]
-    }
-
     pub fn row(&self, i: usize) -> &ObjectRow {
         &self.rows[i]
-    }
-
-    pub fn keys(&self) -> &[ObjectKey] {
-        &self.keys
     }
 
     pub fn key_index(&self, key: &ObjectKey) -> u32 {
@@ -46,30 +38,53 @@ impl ObjectStore {
 
 pub fn finalize_sorted_entries(
     mut entries: Vec<ObjectEntry>,
-) -> (ObjectStore, Vec<ObjectEntry>) {
+) -> (
+    Vec<ObjectRow>,
+    HashMap<ObjectKey, u32>,
+    HashMap<u64, u32>,
+    Vec<ObjectEntry>,
+    Vec<ObjectKey>,
+) {
     let n = entries.len();
     if n == 0 {
-        return (ObjectStore::default(), entries);
+        return (Vec::new(), HashMap::new(), HashMap::new(), entries, Vec::new());
     }
-    entries.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
+    entries.sort_by(|a, b| {
+        a.staging_key
+            .as_ref()
+            .map(|k| k.as_str())
+            .cmp(&b.staging_key.as_ref().map(|k| k.as_str()))
+    });
+    let mut schema_ids: HashMap<String, u16> = HashMap::new();
     let mut rows = Vec::with_capacity(n);
-    let mut keys = Vec::with_capacity(n);
     let mut key_index = HashMap::with_capacity(n);
+    let mut fp_index = HashMap::with_capacity(n);
+    let mut object_keys = Vec::with_capacity(n);
     for (i, obj) in entries.iter().enumerate() {
+        let key = obj
+            .staging_key
+            .as_ref()
+            .expect("staging_key set before finalize");
+        let schema = key.schema_part();
+        let schema_id = if schema.is_empty() {
+            0
+        } else {
+            let next = (schema_ids.len() + 1) as u16;
+            *schema_ids.entry(schema.to_string()).or_insert(next)
+        };
         rows.push(ObjectRow {
-            schema_id: 0,
-            kind_code: kind_code(obj.kind.as_ref()),
+            schema_id,
+            kind_code: kind_code(key.kind_part()),
             flags: 0,
         });
-        keys.push(obj.key.clone());
-        key_index.insert(obj.key.clone(), (i + 1) as u32);
+        let key = obj
+            .staging_key
+            .clone()
+            .expect("staging_key set before finalize");
+        object_keys.push(key.clone());
+        let row_id = (i + 1) as u32;
+        fp_index.insert(key.fingerprint(), row_id);
+        key_index.insert(key, row_id);
     }
-    (
-        ObjectStore {
-            rows,
-            keys,
-            key_index,
-        },
-        entries,
-    )
+    (rows, key_index, fp_index, entries, object_keys)
 }

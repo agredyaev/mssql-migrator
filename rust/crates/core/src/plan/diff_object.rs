@@ -1,68 +1,55 @@
-use crate::domain::{Action, SharedStr, Workspace};
+use std::collections::HashMap;
+
+use crate::domain::{Action, Workspace};
+use crate::export::{plan_git_off_from_script, PlanGitOff, PlanRow};
+
+use super::diff_fill_skip::skip_fill_unchanged;
 
 pub(crate) struct ObjectDecision {
     pub action: Action,
-    pub tpaths: Vec<SharedStr>,
     pub with_git: bool,
     pub exists: bool,
 }
 
-pub(crate) fn fill_planned_at(
+pub(crate) fn fill_plan_row(
     ws: &Workspace,
     i: usize,
-    out: &mut crate::export::PlannedObject,
+    row: &mut PlanRow,
+    plan_git: &mut HashMap<u32, PlanGitOff>,
+    plan_transitions: &mut HashMap<u32, Vec<crate::domain::StrOff>>,
     decision: ObjectDecision,
 ) {
+    if skip_fill_unchanged(ws, i, row, &decision) {
+        return;
+    }
     let obj = ws.entry(i);
-    out.normalized_key = obj.key.shared();
-    out.object_path = obj.script.shared();
-    out.schema_name = obj.schema.clone();
-    out.kind = obj.kind.clone();
-    out.object_name = obj.name.clone();
-    out.database_name = obj.database_name.clone();
-    out.parent_name = obj.parent_name.clone();
-    out.planned_action = decision.action;
-    out.exists = decision.exists;
-    out.checksum = obj.checksum;
-    out.git = if decision.with_git {
-        git_from_script(ws, &obj.script)
+    let idx = i as u32;
+    row.set_planned_action(decision.action);
+    row.set_exists(decision.exists);
+    row.checksum = obj.checksum;
+
+    if decision.with_git {
+        if let Some(git) = plan_git_off_from_script(ws, obj.script_id) {
+            plan_git.insert(idx, git);
+        } else {
+            plan_git.remove(&idx);
+        }
     } else {
-        None
-    };
+        plan_git.remove(&idx);
+    }
+
     if decision.action == Action::ReprocessChanged {
         if let Some(p) = ws
             .transition_path_cache
             .as_ref()
-            .and_then(|m| m.get(&obj.key))
+            .and_then(|m| m.get(&ws.row_id_at(i)))
         {
-            if out.transition_paths.len() == p.len() {
-                for (slot, path) in out.transition_paths.iter_mut().zip(p.iter()) {
-                    *slot = path.clone();
-                }
-            } else {
-                out.transition_paths.clone_from(p);
-            }
+            plan_transitions.insert(idx, p.clone());
         } else {
-            out.transition_paths.clear();
+            plan_transitions.remove(&idx);
         }
-    } else if decision.tpaths.is_empty() {
-        out.transition_paths.clear();
     } else {
-        out.transition_paths = decision.tpaths;
+        plan_transitions.remove(&idx);
     }
 }
 
-pub(crate) fn git_from_script(
-    ws: &Workspace,
-    key: &crate::domain::ScriptKey,
-) -> Option<crate::export::PlannedGit> {
-    let s = ws.scripts.get(key)?;
-    if s.git_hash.is_empty() && s.git_author.is_empty() && s.git_date.is_empty() {
-        return None;
-    }
-    Some(crate::export::PlannedGit {
-        hash: s.git_hash.clone(),
-        author: s.git_author.clone(),
-        date: s.git_date.clone(),
-    })
-}

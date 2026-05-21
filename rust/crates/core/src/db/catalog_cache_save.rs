@@ -85,24 +85,22 @@ pub async fn save_workspace_snapshot(
         return Ok(());
     }
     let mut state = CatalogState::default();
-    ws.for_each_entry(|obj| {
-        state
-            .schemas
-            .insert(obj.schema.as_ref().to_lowercase());
+    for i in 0..ws.object_count() {
+        let obj = ws.entry(i);
+        let row_id = ws.row_id_at(i);
+        state.schemas.insert(obj.schema_part(ws).to_lowercase());
         state.objects.insert(
-            obj.key.clone(),
+            ws.entry_key(i).clone(),
             catalog_object_parts(
-                obj.schema.clone(),
-                obj.kind.clone(),
-                obj.name.clone(),
-                if obj.parent_name.is_empty() {
-                    None
-                } else {
-                    Some(obj.parent_name.clone())
-                },
+                obj.schema_shared(ws),
+                obj.kind_shared(ws),
+                obj.name_shared(ws),
+                obj.parent_ref_for_row(ws, row_id)
+                    .filter(|p| p.parent_row_id > 0)
+                    .map(|_| obj.parent_name(ws, row_id)),
             ),
         );
-    });
+    }
     save_batched(conn, layout_digest, ws, &state).await
 }
 
@@ -121,14 +119,16 @@ fn marshal_rows(state: &CatalogState, want: usize) -> Result<Option<String>> {
             p: o.parent.as_ref().map(|s| s.as_ref()).unwrap_or(""),
         })
         .collect();
-    Ok(Some(serde_json::to_string(&rows).map_err(|e| crate::error::Error::Other(e.into()))?))
+    Ok(Some(
+        serde_json::to_string(&rows).map_err(|e| crate::error::Error::Other(e.into()))?,
+    ))
 }
 
 fn filter_for_layout(ws: &Workspace, state: &CatalogState) -> CatalogState {
     let mut out = CatalogState::default();
     ws.for_each_entry(|obj| {
-        if let Some(o) = state.objects.get(&obj.key) {
-            out.objects.insert(obj.key.clone(), o.clone());
+        if let Some(o) = state.objects.get(&obj.key(ws)) {
+            out.objects.insert(obj.key(ws), o.clone());
         }
     });
     out

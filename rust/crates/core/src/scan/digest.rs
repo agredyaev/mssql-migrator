@@ -3,7 +3,7 @@ use sha2::{Digest, Sha256};
 use crate::domain::Workspace;
 
 pub fn layout_digest(ws: &Workspace) -> [u8; 32] {
-    let mut keys: Vec<_> = ws.scripts.keys().map(|k| k.as_str()).collect();
+    let mut keys: Vec<_> = ws.scripts_iter().map(|s| s.path_str()).collect();
     keys.sort();
     let mut h = Sha256::new();
     for k in keys {

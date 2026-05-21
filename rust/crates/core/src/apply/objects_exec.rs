@@ -1,5 +1,7 @@
 use crate::audit;
-use crate::domain::{is_transactional_kind, ObjectKey, ScriptKey, Workspace};
+use crate::domain::{
+    is_transactional_kind, path_lookup_candidates, ObjectKey, ScriptKey, Workspace,
+};
 use crate::driver::TimingConn;
 use crate::error::Result;
 use crate::export::PlannedObject;
@@ -65,16 +67,17 @@ pub fn push_applied(result: &mut ApplyResult, obj: &PlannedObject) {
 
 pub fn read_script(ws: &Workspace, obj: &PlannedObject) -> Option<String> {
     let script = find_script(ws, obj)?;
-    std::fs::read_to_string(script.abs_path.as_ref()).ok()
+    std::fs::read_to_string(script.abs_path().as_ref()).ok()
 }
 
-fn find_script<'a>(ws: &'a Workspace, obj: &PlannedObject) -> Option<&'a crate::domain::Script> {
-    let path_key = ScriptKey::from_path(obj.object_path.as_ref());
-    if let Some(script) = ws.scripts.get(&path_key) {
-        return Some(script);
+fn find_script<'a>(ws: &'a Workspace, obj: &PlannedObject) -> Option<crate::domain::ScriptRef<'a>> {
+    for path in path_lookup_candidates(obj.database_name.as_ref(), obj.object_path.as_ref()) {
+        if let Some(script) = ws.script_by_key(&ScriptKey::from_path(&path)) {
+            return Some(script);
+        }
     }
-    ws.scripts.values().find(|s| {
-        ObjectKey::parse(s.key.as_str())
+    ws.scripts_iter().find(|s| {
+        ObjectKey::parse(s.path_str())
             .map(|k| k.as_str() == obj.normalized_key.as_ref())
             .unwrap_or(false)
     })

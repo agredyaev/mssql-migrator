@@ -1,6 +1,6 @@
 //! In-process plan DB snapshot for integration/SLO (reuse after L1 invalidate).
 
-use std::sync::OnceLock;
+use std::sync::Mutex;
 
 use super::state::CatalogState;
 use crate::db::state::ChecksumMap;
@@ -12,13 +12,13 @@ struct Snapshot {
     catalog: CatalogState,
 }
 
-static SNAP: OnceLock<Snapshot> = OnceLock::new();
+static SNAP: Mutex<Option<Snapshot>> = Mutex::new(None);
 
 pub fn store(digest: [u8; 32], checksums: ChecksumMap, catalog: CatalogState) {
     if !reuse_enabled() {
         return;
     }
-    let _ = SNAP.set(Snapshot {
+    *SNAP.lock().expect("warm snapshot lock") = Some(Snapshot {
         digest,
         checksums,
         catalog,
@@ -26,14 +26,19 @@ pub fn store(digest: [u8; 32], checksums: ChecksumMap, catalog: CatalogState) {
 }
 
 pub fn reuse(digest: &[u8; 32]) -> Option<(ChecksumMap, CatalogState)> {
-    let s = SNAP.get()?;
     if !reuse_enabled() {
         return None;
     }
+    let s = SNAP.lock().expect("warm snapshot lock").clone()?;
     if s.digest != *digest {
         return None;
     }
-    Some((s.checksums.clone(), s.catalog.clone()))
+    Some((s.checksums, s.catalog))
+}
+
+/// Drop cached plan DB state (e.g. after migrate apply when catalog changed).
+pub fn clear() {
+    *SNAP.lock().expect("warm snapshot lock") = None;
 }
 
 fn reuse_enabled() -> bool {

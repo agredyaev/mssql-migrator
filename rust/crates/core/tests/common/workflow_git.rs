@@ -33,20 +33,14 @@ impl GitRestore {
 
     pub fn write_and_commit(&self, rel_from_sql: &str, content: &str, message: &str) -> Result<()> {
         std::fs::write(sql_path(rel_from_sql), content).map_err(migrator_core::error::Error::Io)?;
-        git_cmd(
-            &self.repo,
-            &["add", &format!("sql/{rel_from_sql}")],
-        )?;
+        git_cmd(&self.repo, &["add", &format!("sql/{rel_from_sql}")])?;
         git_cmd(&self.repo, &["commit", "-m", message])?;
         invalidate_caches();
         Ok(())
     }
 
     pub fn add_tree_and_commit(&self, rel_from_sql: &str, message: &str) -> Result<()> {
-        git_cmd(
-            &self.repo,
-            &["add", "-A", &format!("sql/{rel_from_sql}")],
-        )?;
+        git_cmd(&self.repo, &["add", "-A", &format!("sql/{rel_from_sql}")])?;
         git_cmd(&self.repo, &["commit", "-m", message])?;
         invalidate_caches();
         Ok(())
@@ -61,13 +55,13 @@ impl Drop for GitRestore {
 }
 
 fn invalidate_caches() {
-    let cfg = integration_config::workflow_config();
+    let cfg = workflow_config::workflow_config();
     let fp = format!("{}_{}", cfg.server, cfg.database);
     invalidate_audit_cache(&fp);
 }
 
 fn cleanup_smoke_scaffold() {
-    let sql_root = PathBuf::from(&integration_config::workflow_config().sql_root);
+    let sql_root = PathBuf::from(&workflow_config::workflow_config().sql_root);
     let dir = sql_root.join("dactests/smoke/tables/_migrations/smoke_table");
     if let Ok(entries) = std::fs::read_dir(&dir) {
         for e in entries.flatten() {

@@ -46,15 +46,15 @@ async fn run(args: Vec<String>) -> migrator_core::Result<i32> {
             }
             if command == Command::Plan && json {
                 if let Some(plan) = &out.plan {
-                    write_plan_stdout(plan)?;
+                    write_plan_stdout(plan, None)?;
                 }
             }
-            write_reports(&cfg, &cmd, out.plan.as_ref(), out.exit_code)?;
+            write_reports(&cfg, &cmd, out.plan.as_ref(), None, out.exit_code)?;
             Ok(out.exit_code)
         }
         Err(e) => {
             let code = e.exit_code();
-            let _ = write_reports(&cfg, &cmd, None, code);
+            let _ = write_reports(&cfg, &cmd, None, None, code);
             Err(e)
         }
     }

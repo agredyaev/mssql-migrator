@@ -63,7 +63,9 @@ impl ProxyClient {
     async fn call(&mut self, req: Request) -> Result<Response> {
         let mut line = serde_json::to_string(&req).map_err(|e| Error::Other(e.into()))?;
         if line.len() > MAX_SESSION_LINE_BYTES {
-            return Err(Error::InvalidInput("rmigd request exceeds size limit".into()));
+            return Err(Error::InvalidInput(
+                "rmigd request exceeds size limit".into(),
+            ));
         }
         line.push('\n');
         self.writer
@@ -76,7 +78,9 @@ impl ProxyClient {
             .await
             .map_err(|e| Error::Other(e.into()))?;
         if resp_line.len() > MAX_SESSION_LINE_BYTES {
-            return Err(Error::InvalidInput("rmigd response exceeds size limit".into()));
+            return Err(Error::InvalidInput(
+                "rmigd response exceeds size limit".into(),
+            ));
         }
         serde_json::from_str(&resp_line).map_err(|e| Error::Other(e.into()))
     }

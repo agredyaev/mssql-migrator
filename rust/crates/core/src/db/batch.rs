@@ -19,9 +19,7 @@ pub fn plan_db_batch_sql(
         b.push('\n');
     }
     if let Some(count) = relaxed_cache_count {
-        b.push_str(
-            &sql::catalog::CACHE_LOAD_RELAXED.replace("@p1", &count.to_string()),
-        );
+        b.push_str(&sql::catalog::CACHE_LOAD_RELAXED.replace("@p1", &count.to_string()));
         b.push('\n');
     }
     if checksums {

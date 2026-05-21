@@ -50,10 +50,7 @@ pub async fn run_daemon(socket: &Path, env_path: &Path) -> anyhow::Result<()> {
     }
 }
 
-async fn serve(
-    stream: tokio::net::UnixStream,
-    client: Arc<Mutex<RawClient>>,
-) -> Result<()> {
+async fn serve(stream: tokio::net::UnixStream, client: Arc<Mutex<RawClient>>) -> Result<()> {
     let (read_half, mut write_half) = stream.into_split();
     let mut reader = BufReader::new(read_half);
     let need_token = token_required();
@@ -61,10 +58,7 @@ async fn serve(
 
     loop {
         let mut line = String::new();
-        let n = reader
-            .read_line(&mut line)
-            .await
-            .map_err(Error::Io)?;
+        let n = reader.read_line(&mut line).await.map_err(Error::Io)?;
         if n == 0 {
             break;
         }
@@ -124,6 +118,9 @@ async fn write_response(
         return Err(Error::InvalidInput("response exceeds size limit".into()));
     }
     out.push('\n');
-    write_half.write_all(out.as_bytes()).await.map_err(Error::Io)?;
+    write_half
+        .write_all(out.as_bytes())
+        .await
+        .map_err(Error::Io)?;
     Ok(())
 }

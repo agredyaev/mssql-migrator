@@ -7,10 +7,7 @@ use crate::error::Result;
 
 use super::protocol::{Request, Response};
 
-pub async fn handle(
-    client: &Arc<Mutex<RawClient>>,
-    req: Request,
-) -> Response {
+pub async fn handle(client: &Arc<Mutex<RawClient>>, req: Request) -> Response {
     match req {
         Request::Auth { .. } => Response::err("auth must be handled before rpc dispatch"),
         Request::Ping => match ping(client).await {
@@ -57,10 +54,8 @@ async fn query(
 ) -> Result<Vec<RowData>> {
     let mut c = client.lock().await;
     let refs: Vec<&str> = params.iter().map(|s| s.as_str()).collect();
-    let param_refs: Vec<&dyn tiberius::ToSql> = refs
-        .iter()
-        .map(|s| s as &dyn tiberius::ToSql)
-        .collect();
+    let param_refs: Vec<&dyn tiberius::ToSql> =
+        refs.iter().map(|s| s as &dyn tiberius::ToSql).collect();
     let rows = crate::driver::mssql::query_tiberius(&mut c, sql, &param_refs).await?;
     Ok(rows.iter().map(from_tiberius).collect())
 }

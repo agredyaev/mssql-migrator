@@ -15,12 +15,12 @@ pub async fn load_table_columns(
     let refs: Vec<_> = ws
         .object_entries
         .iter()
-        .filter(|o| o.kind.as_ref() == "tables")
+        .filter(|o| o.kind_part(ws) == "tables")
         .map(|o| {
             json!({
-                "schema": o.schema.to_lowercase(),
+                "schema": o.schema_part(ws).to_lowercase(),
                 "kind": "tables",
-                "object": o.name.to_lowercase(),
+                "object": o.name_part(ws).to_lowercase(),
             })
         })
         .collect();
@@ -28,7 +28,9 @@ pub async fn load_table_columns(
         return Ok(HashMap::new());
     }
     let arg = serde_json::to_string(&refs).unwrap_or_else(|_| "[]".into());
-    let rows = conn.query(sql::catalog::COLUMNS_OPENJSON, &[arg.as_str()]).await?;
+    let rows = conn
+        .query(sql::catalog::COLUMNS_OPENJSON, &[arg.as_str()])
+        .await?;
     Ok(rows_into_map(rows))
 }
 

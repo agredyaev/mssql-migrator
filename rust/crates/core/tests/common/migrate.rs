@@ -29,18 +29,15 @@ pub async fn run_apply_smoke(cfg: &Config) -> Result<ApplySmokeOut> {
     let _ = l1.invalidate_all(&fp);
 
     let io_arc = Arc::new(Mutex::new(IoProfile::default()));
-    let mut conn = TimingConn::new(
-        DbClient::Direct(connect(cfg).await?.client),
-        io_arc,
-        0,
-    );
+    let mut conn = TimingConn::new(DbClient::Direct(connect(cfg).await?.client), io_arc, 0);
     let db_fp = db_fingerprint(&cfg.server, &cfg.database);
     ensure_tables(&mut conn, &db_fp).await?;
 
     let db = migrator_core::db::run_plan_db_phase(cfg, &mut conn, &ws).await?;
-    let (plan, _) = migrator_core::plan::compute_diff(&mut ws, &db.catalog, &db.checksums)?;
+    let (mut plan, _) = migrator_core::plan::compute_diff(&mut ws, &db.catalog, &db.checksums)?;
+    plan.ensure_objects_materialized(&ws);
 
-    let apply = execute_plan(cfg, &mut conn, &ws, &plan).await?;
+    let apply = execute_plan(cfg, &mut conn, &ws, &mut plan).await?;
     let audit_object_rows = count_audit_object_rows(&mut conn).await?;
 
     Ok(ApplySmokeOut {
@@ -58,8 +55,5 @@ async fn count_audit_object_rows(conn: &mut TimingConn) -> Result<i32> {
             &[],
         )
         .await?;
-    Ok(rows
-        .first()
-        .and_then(|r| r.get_i32(0))
-        .unwrap_or(0))
+    Ok(rows.first().and_then(|r| r.get_i32(0)).unwrap_or(0))
 }

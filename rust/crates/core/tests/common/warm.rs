@@ -23,7 +23,7 @@ pub async fn warm_db_once() {
             let l1 = migrator_core::cache::l1::L1Cache::new(&cfg.l1_cache_dir);
             let _ = l1.invalidate_all(&l1_fingerprint(cfg));
             let mut warm = cfg.clone();
-            warm.inspect_full = true;
+            warm.inspect_full = false;
             run_command(Command::Plan, &warm)
                 .await
                 .expect("integration warm_db_once plan");

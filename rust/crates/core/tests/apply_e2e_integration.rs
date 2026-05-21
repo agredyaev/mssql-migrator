@@ -81,7 +81,5 @@ async fn apply_e2e_cold_migrate_creates_objects_and_audit() {
         "warm plan should skip/adopt smoke objects, got {unchanged}"
     );
 
-    eprintln!(
-        "apply_e2e_cold OK: audit_object_rows={audit} warm_skip_or_adopt={unchanged}"
-    );
+    eprintln!("apply_e2e_cold OK: audit_object_rows={audit} warm_skip_or_adopt={unchanged}");
 }
