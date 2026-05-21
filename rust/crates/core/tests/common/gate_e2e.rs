@@ -4,13 +4,13 @@ use std::path::Path;
 
 use migrator_core::config::Config;
 use migrator_core::domain::Workspace;
+use migrator_core::error::Result;
 use migrator_core::export::MigrationPlan;
 use migrator_core::gate::{
     evaluate_gate, max_plan_wall_ms_from_env, read_snapshot_json, E2EGateReport, GateInput,
     PlanSnapshot,
 };
 use migrator_core::scan;
-use migrator_core::error::Result;
 use migrator_core::timings::PhaseTimings;
 
 pub async fn build_gate_report(
@@ -21,8 +21,8 @@ pub async fn build_gate_report(
 ) -> Result<E2EGateReport> {
     let current = PlanSnapshot::from_plan(plan);
 
-    let baseline_data = std::fs::read_to_string(baseline_path)
-        .map_err(|e| migrator_core::error::Error::Io(e))?;
+    let baseline_data =
+        std::fs::read_to_string(baseline_path).map_err(migrator_core::error::Error::Io)?;
     let baseline = read_snapshot_json(&baseline_data)
         .map_err(|e| migrator_core::error::Error::Other(e.into()))?;
 

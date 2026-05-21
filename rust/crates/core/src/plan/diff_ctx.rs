@@ -1,4 +1,4 @@
-use crate::db::state::{CatalogState, ChecksumMap};
+use crate::db::state::CatalogState;
 use crate::export::MigrationPlan;
 
 #[derive(Debug, Default)]
@@ -12,7 +12,6 @@ pub(crate) struct DiffCounters {
 
 pub(crate) struct DecideCtx<'a> {
     pub catalog: &'a CatalogState,
-    pub checksums: &'a ChecksumMap,
     pub plan: &'a mut MigrationPlan,
     pub counters: &'a mut DiffCounters,
 }

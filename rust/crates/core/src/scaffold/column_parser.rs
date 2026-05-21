@@ -16,7 +16,10 @@ pub fn parse_table_columns(sql: &str) -> Vec<ParsedColumn> {
         .collect()
 }
 
-pub fn new_columns(file_cols: &[ParsedColumn], db_names: &std::collections::HashMap<String, bool>) -> Vec<ParsedColumn> {
+pub fn new_columns(
+    file_cols: &[ParsedColumn],
+    db_names: &std::collections::HashMap<String, bool>,
+) -> Vec<ParsedColumn> {
     file_cols
         .iter()
         .filter(|c| !db_names.contains_key(&c.name))
@@ -24,8 +27,12 @@ pub fn new_columns(file_cols: &[ParsedColumn], db_names: &std::collections::Hash
         .collect()
 }
 
-pub fn has_dropped_columns(file_cols: &[ParsedColumn], db_names: &std::collections::HashMap<String, bool>) -> bool {
-    let file_set: std::collections::HashSet<_> = file_cols.iter().map(|c| c.name.as_str()).collect();
+pub fn has_dropped_columns(
+    file_cols: &[ParsedColumn],
+    db_names: &std::collections::HashMap<String, bool>,
+) -> bool {
+    let file_set: std::collections::HashSet<_> =
+        file_cols.iter().map(|c| c.name.as_str()).collect();
     db_names.keys().any(|n| !file_set.contains(n.as_str()))
 }
 
@@ -88,7 +95,10 @@ fn parse_column_def(def: &str) -> Option<ParsedColumn> {
 
 fn parse_name_rest(def: &str) -> Option<(String, String)> {
     if let Some((n, r)) = def.split_once(']') {
-        return Some((n.trim_start_matches('[').trim().to_lowercase(), r.trim().to_string()));
+        return Some((
+            n.trim_start_matches('[').trim().to_lowercase(),
+            r.trim().to_string(),
+        ));
     }
     let mut parts = def.split_whitespace();
     let n = parts.next()?.to_lowercase();

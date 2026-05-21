@@ -5,6 +5,14 @@ use serde::{Deserialize, Serialize};
 
 use super::shared::{share, SharedStr};
 
+#[path = "key_from.rs"]
+mod key_from;
+
+fn key_part(s: &str, index: usize) -> &str {
+    let mut parts = s.split('/');
+    parts.nth(index).unwrap_or("")
+}
+
 #[derive(Clone, Debug, Eq, Serialize, Deserialize)]
 pub struct ObjectKey(SharedStr);
 
@@ -45,7 +53,6 @@ impl ObjectKey {
         )))
     }
 
-    /// Normalized key from DB/cache wire (`schema/kind/name`, already lowercased).
     pub fn from_normalized(s: &str) -> Self {
         Self(share(s))
     }
@@ -64,6 +71,35 @@ impl ObjectKey {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// [`crate::db::ChecksumMap`] key (byte fingerprint, no `as_str`).
+    pub fn fingerprint(&self) -> u64 {
+        self.0.fingerprint()
+    }
+
+    pub fn schema_part(&self) -> &str {
+        key_part(self.as_str(), 0)
+    }
+
+    pub fn kind_part(&self) -> &str {
+        key_part(self.as_str(), 1)
+    }
+
+    pub fn name_part(&self) -> &str {
+        key_part(self.as_str(), 2)
+    }
+
+    pub fn schema_shared(&self) -> SharedStr {
+        SharedStr::subslice_of(&self.0, self.schema_part())
+    }
+
+    pub fn kind_shared(&self) -> SharedStr {
+        SharedStr::subslice_of(&self.0, self.kind_part())
+    }
+
+    pub fn name_shared(&self) -> SharedStr {
+        SharedStr::subslice_of(&self.0, self.name_part())
     }
 
     pub fn shared(&self) -> SharedStr {
@@ -88,40 +124,5 @@ impl ScriptKey {
 
     pub fn shared(&self) -> SharedStr {
         self.0.clone()
-    }
-}
-
-impl From<SharedStr> for ObjectKey {
-    fn from(s: SharedStr) -> Self {
-        Self(s)
-    }
-}
-
-impl From<SharedStr> for ScriptKey {
-    fn from(s: SharedStr) -> Self {
-        Self(s)
-    }
-}
-
-impl From<String> for ObjectKey {
-    fn from(s: String) -> Self {
-        Self(share(s))
-    }
-}
-
-impl From<String> for ScriptKey {
-    fn from(s: String) -> Self {
-        Self(share(s))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn normalized_key() {
-        let k = ObjectKey::new("Reporting", "Views", "Monthly");
-        assert_eq!(k.as_str(), "reporting/views/monthly");
     }
 }

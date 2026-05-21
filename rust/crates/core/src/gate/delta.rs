@@ -42,26 +42,34 @@ pub fn expand_delta_closure(ws: &Workspace, mut delta: HashSet<String>) -> HashS
     }
     loop {
         let mut added = 0usize;
-        ws.for_each_entry(|obj| {
-            if !delta.contains(obj.key.as_str()) {
-                return;
+        let n = ws.object_count();
+        for i in 0..n {
+            let obj = ws.entry(i);
+            if !delta.contains(obj.key_str(ws)) {
+                continue;
             }
-            if obj.kind.as_ref() == "triggers" {
-                if let Some(pk) = &obj.parent_key {
-                    if delta.insert(pk.as_str().to_string()) {
+            if obj.kind_part(ws) != "triggers" {
+                continue;
+            }
+            let row_id = ws.row_id_at(i);
+            if let Some(pref) = obj.parent_ref_for_row(ws, row_id) {
+                if pref.parent_row_id > 0 {
+                    let pk = ws.entry_key((pref.parent_row_id as usize) - 1).as_str();
+                    if delta.insert(pk.to_string()) {
                         added += 1;
                     }
                 }
             }
-        });
-        for table_key in ws.transitions_by_table.keys() {
-            if delta.contains(table_key.as_str()) {
+        }
+        for (&row_id, entries) in ws.transitions_by_row.iter() {
+            let table_key = ws.entry_key(row_id as usize - 1).as_str();
+            if delta.contains(table_key) {
                 continue;
             }
-            for (_, sk) in &ws.transitions_by_table[table_key] {
-                let path = ws.scripts.get(sk).map(|s| s.key.as_str()).unwrap_or("");
+            for e in entries {
+                let path = ws.script(e.script_id).path_str();
                 if delta.contains(path) {
-                    if delta.insert(table_key.as_str().to_string()) {
+                    if delta.insert(table_key.to_string()) {
                         added += 1;
                     }
                     break;

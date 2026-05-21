@@ -18,7 +18,9 @@ pub fn changed_paths_from_git(repo: &str, base_ref: &str) -> Option<Vec<String>>
 }
 
 pub fn merge_base_paths(sql_root: &str) -> Option<Vec<String>> {
-    let root = repo::find_repo_root(sql_root)?.to_string_lossy().into_owned();
+    let root = repo::find_repo_root(sql_root)?
+        .to_string_lossy()
+        .into_owned();
     for remote in ["origin/main", "origin/master", "main", "master"] {
         if let Some(paths) = diff_since_merge_base(&root, remote) {
             return Some(paths);
@@ -36,7 +38,11 @@ pub fn merge_base(repo: &str, head: &str, other: &str) -> Option<String> {
         return None;
     }
     let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if s.is_empty() { None } else { Some(s) }
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
 }
 
 fn diff_since_merge_base(repo: &str, remote: &str) -> Option<Vec<String>> {

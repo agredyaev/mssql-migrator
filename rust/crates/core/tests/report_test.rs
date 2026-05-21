@@ -7,14 +7,12 @@ use migrator_core::export::{write_reports, MigrationPlan, PlannedObject};
 #[test]
 fn writes_plan_and_report_json() {
     let dir = tempfile::tempdir().unwrap();
-    let cfg = Config {
-        report_dir: dir.path().to_string_lossy().into(),
-        ..Default::default()
-    };
-    let plan = MigrationPlan {
-        command: "plan".into(),
-        blocked: true,
-        objects: vec![PlannedObject {
+    let mut cfg = Config::default();
+    cfg.report_dir = dir.path().to_string_lossy().into();
+    let mut plan = MigrationPlan::default();
+    plan.command = "plan".into();
+    plan.blocked = true;
+    plan.objects = vec![PlannedObject {
             normalized_key: "r/tables/t1".into(),
             object_path: "r/tables/t1.sql".into(),
             schema_name: "r".into(),
@@ -27,10 +25,8 @@ fn writes_plan_and_report_json() {
             parent_name: Default::default(),
             git: None,
             transition_paths: Vec::new(),
-        }],
-        ..Default::default()
-    };
-    write_reports(&cfg, "plan", Some(&plan), 0).unwrap();
+        }];
+    write_reports(&cfg, "plan", Some(&plan), None, 0).unwrap();
     let plan_data = fs::read_to_string(dir.path().join(".plan.json")).unwrap();
     assert!(plan_data.contains("\"blocked\": true"));
     let report_data = fs::read_to_string(dir.path().join(".report.json")).unwrap();
@@ -43,14 +39,13 @@ fn writes_plan_and_report_json() {
 #[test]
 fn writes_failure_report_without_plan() {
     let dir = tempfile::tempdir().unwrap();
-    let cfg = Config {
-        report_dir: dir.path().to_string_lossy().into(),
-        ..Default::default()
-    };
-    write_reports(&cfg, "migrate", None, 5).unwrap();
+    let mut cfg = Config::default();
+    cfg.report_dir = dir.path().to_string_lossy().into();
+    write_reports(&cfg, "migrate", None, None, 5).unwrap();
     assert!(fs::metadata(dir.path().join(".plan.json")).is_err());
     let report: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(dir.path().join(".report.json")).unwrap()).unwrap();
+        serde_json::from_str(&fs::read_to_string(dir.path().join(".report.json")).unwrap())
+            .unwrap();
     assert_eq!(report["result"], "failure");
     assert_eq!(report["exitCode"], 5);
 }

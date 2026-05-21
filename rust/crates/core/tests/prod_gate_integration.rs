@@ -7,13 +7,13 @@ mod common;
 #[path = "common/gate.rs"]
 mod gate;
 
+use migrator_core::domain::Workspace;
 use migrator_core::engine::{run_command, Command};
 use migrator_core::gate::{
     evaluate_gate, max_plan_wall_ms_from_env, read_snapshot_json, resolve_changed_paths,
     write_snapshot_file, GateInput, PlanSnapshot,
 };
 use migrator_core::scan;
-use migrator_core::domain::Workspace;
 
 #[tokio::test]
 async fn prod_gate_incremental_plan() {

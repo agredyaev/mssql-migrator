@@ -1,5 +1,5 @@
 use crate::audit;
-use crate::domain::{Action, ScriptKey, Workspace};
+use crate::domain::{path_lookup_candidates, Action, ScriptKey, Workspace};
 use crate::driver::TimingConn;
 use crate::error::Result;
 use crate::export::{MigrationPlan, PlannedObject};
@@ -31,7 +31,7 @@ async fn apply_one_transition(
     path: &str,
     result: &mut ApplyResult,
 ) -> Result<()> {
-    let Some(body) = read_transition(ws, path) else {
+    let Some(body) = read_transition(ws, obj, path) else {
         result.push_error(format!("{path}: transition script not found"));
         return Ok(());
     };
@@ -41,7 +41,7 @@ async fn apply_one_transition(
         result.push_error(format!("{path}: {e}"));
         return Ok(());
     }
-    let cs = transition_checksum(ws, path).unwrap_or(obj.checksum);
+    let cs = transition_checksum(ws, obj, path).unwrap_or(obj.checksum);
     result.history.push(audit::record_applied(
         path,
         &obj.kind,
@@ -55,14 +55,20 @@ async fn apply_one_transition(
     Ok(())
 }
 
-fn read_transition(ws: &Workspace, path: &str) -> Option<String> {
-    let key = ScriptKey::from_path(path);
-    let script = ws.scripts.get(&key)?;
-    std::fs::read_to_string(script.abs_path.as_ref()).ok()
+fn read_transition(ws: &Workspace, obj: &PlannedObject, path: &str) -> Option<String> {
+    for key in path_lookup_candidates(obj.database_name.as_ref(), path) {
+        if let Some(script) = ws.script_by_key(&ScriptKey::from_path(&key)) {
+            return std::fs::read_to_string(script.abs_path().as_ref()).ok();
+        }
+    }
+    None
 }
 
-fn transition_checksum(ws: &Workspace, path: &str) -> Option<[u8; 32]> {
-    ws.scripts
-        .get(&ScriptKey::from_path(path))
-        .and_then(|s| s.checksum)
+fn transition_checksum(ws: &Workspace, obj: &PlannedObject, path: &str) -> Option<[u8; 32]> {
+    path_lookup_candidates(obj.database_name.as_ref(), path)
+        .into_iter()
+        .find_map(|key| {
+            ws.script_by_key(&ScriptKey::from_path(&key))
+                .and_then(|s| s.checksum().copied())
+        })
 }

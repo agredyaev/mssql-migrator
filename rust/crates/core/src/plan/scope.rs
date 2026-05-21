@@ -2,9 +2,9 @@ use serde_json::json;
 
 use std::collections::{HashMap, HashSet};
 
-use crate::db::state::ChecksumMap;
 use crate::db::state::CatalogObject;
-use crate::domain::Workspace;
+use crate::db::state::ChecksumMap;
+use crate::domain::{ObjectKey, ParentRef, Workspace};
 
 pub use super::scope_build::build_inspect_scope;
 
@@ -25,14 +25,18 @@ pub fn apply_catalog_if_needed(ws: &mut Workspace, catalog: &crate::db::CatalogS
     ws.mark_catalog_applied();
 }
 
-pub fn apply_checksums_if_needed(
-    ws: &mut Workspace,
-    checksums: &ChecksumMap,
-) {
+pub fn apply_checksums_if_needed(ws: &mut Workspace, checksums: &ChecksumMap) {
     if ws.checksums_applied() {
         return;
     }
-    apply_checksums(ws, checksums);
+    let n = ws.object_count();
+    ws.prior_by_row.resize(n, None);
+    for (fp, cs) in checksums.iter_digests() {
+        let row_id = ws.row_id_for_fingerprint(fp);
+        if row_id > 0 {
+            ws.prior_by_row[row_id as usize - 1] = Some(cs);
+        }
+    }
     ws.mark_checksums_applied();
 }
 
@@ -55,28 +59,36 @@ fn scope_key_parts(key: &str) -> Option<(String, String, String)> {
 }
 
 pub fn apply_catalog(ws: &mut Workspace, catalog: &crate::db::CatalogState) {
-    ws.for_each_entry_mut(|obj| {
-        obj.db.exists = catalog.exists_key(&obj.key);
-        if let Some(cat) = catalog.objects.get(&obj.key) {
+    let n = ws.object_count();
+    ws.catalog_row.resize(n, 0);
+    let mut catalog_fp: HashSet<u64> = HashSet::with_capacity(catalog.objects.len());
+    for key in catalog.objects.keys() {
+        catalog_fp.insert(key.fingerprint());
+    }
+    for i in 0..n {
+        let key = ws.entry_key(i).clone();
+        let row_id = ws.row_id_at(i);
+        let schema = key.schema_part();
+        let in_catalog = catalog_fp.contains(&key.fingerprint());
+        ws.entry_mut(i).db_exists = in_catalog;
+        if in_catalog {
+            ws.catalog_row[i] = 1;
+        }
+        if let Some(cat) = catalog.objects.get(&key) {
             if let Some(parent) = &cat.parent {
-                obj.parent_name = parent.clone();
-                obj.parent_key = Some(crate::domain::ObjectKey::new(
-                    obj.schema.as_ref(),
-                    "tables",
-                    parent.as_ref(),
-                ));
+                let parent_key = ObjectKey::new(schema, "tables", parent.as_ref());
+                let parent_row_id = ws.key_index(&parent_key);
+                ws.parent_by_row.insert(row_id, ParentRef { parent_row_id });
             }
         }
-    });
-}
-
-pub fn apply_checksums(
-    ws: &mut Workspace,
-    checksums: &ChecksumMap,
-) {
-    ws.for_each_entry_mut(|obj| {
-        if let Some(cs) = checksums.get(&obj.key) {
-            obj.history = Some(*cs);
-        }
-    });
+    }
+    if std::env::var("RMIG_DEBUG_APPLY_CATALOG").is_ok() {
+        let exists = ws.object_entries.iter().filter(|o| o.db_exists).count();
+        eprintln!(
+            "apply_catalog: catalog_objects={} rows={} db_exists={}",
+            catalog.objects.len(),
+            n,
+            exists
+        );
+    }
 }

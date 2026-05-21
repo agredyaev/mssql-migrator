@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::domain::{empty_str, share, SchemaEntry, Workspace};
+use crate::domain::{share, SchemaEntry, Workspace};
 use crate::error::Result;
 
 use super::parse_object;
@@ -12,18 +12,25 @@ pub fn ingest_object(
     abs: &Path,
     schemas: &mut HashMap<String, SchemaEntry>,
 ) -> Result<()> {
-    let Some((obj, script)) = parse_object::parse_object(rel, abs)? else {
+    let Some((mut obj, script)) = parse_object::parse_object(rel, abs)? else {
         return Ok(());
     };
     let db = share(rel.split('/').next().unwrap_or(""));
+    let schema_part = obj
+        .staging_key
+        .as_ref()
+        .expect("staging_key set by parse_object")
+        .schema_part();
     schemas
-        .entry(obj.schema.as_ref().to_string())
+        .entry(schema_part.to_string())
         .or_insert_with(|| SchemaEntry {
-            database: db,
-            name: obj.schema.clone(),
-            normalized: share(obj.schema.as_ref().to_lowercase()),
+            database: db.clone(),
+            name: share(schema_part),
+            normalized: share(schema_part.to_lowercase()),
         });
-    ws.scripts.insert(script.key.clone(), script);
+    let script_id = ws.insert_script(script);
+    obj.script_id = script_id;
+    obj.db_id = ws.intern_database(db);
     ws.push_object(obj);
     Ok(())
 }
@@ -34,22 +41,12 @@ pub fn push_transition(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> 
 
 pub fn push_check(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
     let sk = crate::domain::ScriptKey::from_path(rel);
-    ws.scripts.insert(
-        sk.clone(),
-        crate::domain::Script {
-            key: sk,
-            kind: crate::domain::ScriptKind::Check,
-            abs_path: share(abs.to_string_lossy().as_ref()),
-            schema: crate::domain::empty_str(),
-            object_kind: crate::domain::share("check"),
-            object_name: crate::domain::empty_str(),
-            checksum: None,
-            git_hash: empty_str(),
-            git_author: empty_str(),
-            git_date: empty_str(),
-            table_name: None,
-            scaffold: false,
-        },
-    );
+    ws.insert_script(crate::domain::Script {
+        key: sk,
+        kind: crate::domain::ScriptKind::Check,
+        abs_path: share(abs.to_string_lossy().as_ref()),
+        checksum: None,
+        scaffold: false,
+    });
     Ok(())
 }

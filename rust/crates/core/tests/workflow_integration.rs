@@ -71,7 +71,8 @@ async fn workflow_git_scenarios_single_session() {
     eprintln!("phase 1 baseline OK (+{}ms)", t0.elapsed().as_millis());
 
     let t0 = Instant::now();
-    let table_body = std::fs::read_to_string(workflow_git::sql_path(TABLE_SQL)).expect("read table");
+    let table_body =
+        std::fs::read_to_string(workflow_git::sql_path(TABLE_SQL)).expect("read table");
     let with_col = table_body.replacen(
         "created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()",
         "created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),\n    added_at DATETIME2 NULL",
@@ -80,13 +81,15 @@ async fn workflow_git_scenarios_single_session() {
     git.write_and_commit(TABLE_SQL, &with_col, "test: ddl add added_at")
         .expect("commit ddl");
 
-    let blocked = workflow_engine::migrate(cfg).await.expect("blocked migrate");
+    let blocked = workflow_engine::migrate(cfg)
+        .await
+        .expect("blocked migrate");
     workflow_engine::log_timings("2-ddl-blocked", &blocked.timings);
     workflow_engine::assert_plan_db_par_slo("2-ddl-blocked", &blocked.timings);
     assert_eq!(blocked.exit_code, EXIT_PLAN_BLOCKED);
 
-    let scaffold = state_ddl::read_scaffold_sql(std::path::Path::new(&cfg.sql_root))
-        .expect("scaffold file");
+    let scaffold =
+        state_ddl::read_scaffold_sql(std::path::Path::new(&cfg.sql_root)).expect("scaffold file");
     assert!(scaffold.contains("added_at") && scaffold.contains("ALTER TABLE"));
 
     assert!(
@@ -173,7 +176,10 @@ async fn workflow_git_scenarios_single_session() {
     match workflow_engine::migrate(cfg).await {
         Ok(out) => assert_ne!(out.exit_code, 0, "broken view must not succeed"),
         Err(migrator_core::error::Error::Sql(msg)) => {
-            assert!(msg.contains("SELEC") || msg.to_lowercase().contains("syntax"), "{msg}");
+            assert!(
+                msg.contains("SELEC") || msg.to_lowercase().contains("syntax"),
+                "{msg}"
+            );
         }
         Err(e) => panic!("unexpected error: {e}"),
     }

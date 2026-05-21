@@ -1,17 +1,21 @@
 mod catalog;
+mod cold;
 mod env;
 mod validate;
 
 use std::fmt;
-use std::time::Duration;
+use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
 pub use catalog::{
     discover_catalog_databases, ensure_catalog_databases_exist, normalize_catalog_paths,
     resolve_single_database,
 };
+pub use cold::ConfigCold;
 pub use env::{build_config, load_env_file};
 pub use validate::validate_config;
 
+/// Hot run flags + layout paths (**C1**); connection block in [`ConfigCold`] behind `Arc`.
 #[derive(Clone)]
 pub struct Config {
     pub sql_root: String,
@@ -19,24 +23,26 @@ pub struct Config {
     pub report_dir: String,
     pub report_sync: bool,
     pub log_level: String,
-    pub server: String,
-    pub port: String,
     pub database: String,
-    pub db_auth: String,
-    pub user: String,
-    pub password: String,
-    pub encrypt: bool,
-    pub trust_server_certificate: bool,
-    pub command_timeout: Duration,
-    pub lock_timeout: Duration,
     pub skip_git: bool,
     pub json_logs: bool,
     pub inspect_full: bool,
     pub catalog_cache: bool,
-    pub session_socket: String,
-    pub session_token: String,
-    pub l1_cache_dir: String,
     pub slo_max_cli_wall_ms: i64,
+    pub(crate) cold: Arc<ConfigCold>,
+}
+
+impl Deref for Config {
+    type Target = ConfigCold;
+    fn deref(&self) -> &ConfigCold {
+        &self.cold
+    }
+}
+
+impl DerefMut for Config {
+    fn deref_mut(&mut self) -> &mut ConfigCold {
+        Arc::make_mut(&mut self.cold)
+    }
 }
 
 impl fmt::Debug for Config {
@@ -74,24 +80,21 @@ impl Default for Config {
             report_dir: String::new(),
             report_sync: false,
             log_level: "info".into(),
-            server: String::new(),
-            port: "1433".into(),
             database: String::new(),
-            db_auth: "sql".into(),
-            user: String::new(),
-            password: String::new(),
-            encrypt: false,
-            trust_server_certificate: true,
-            command_timeout: Duration::from_secs(30),
-            lock_timeout: Duration::from_secs(60),
             skip_git: false,
             json_logs: false,
             inspect_full: false,
             catalog_cache: true,
-            session_socket: String::new(),
-            session_token: String::new(),
-            l1_cache_dir: ".rmig/cache".into(),
-            slo_max_cli_wall_ms: 100,
+            slo_max_cli_wall_ms: 150,
+            cold: Arc::new(ConfigCold {
+                port: "1433".into(),
+                db_auth: "sql".into(),
+                trust_server_certificate: true,
+                command_timeout: std::time::Duration::from_secs(30),
+                lock_timeout: std::time::Duration::from_secs(60),
+                l1_cache_dir: ".rmig/cache".into(),
+                ..ConfigCold::default()
+            }),
         }
     }
 }

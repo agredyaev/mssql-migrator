@@ -42,14 +42,16 @@ pub fn compare_snapshots(
             if let Some(c) = current.objects.get(&key) {
                 if is_risky_action(&c.planned_action) {
                     res.go = false;
-                    res.messages.push(format!("risky action for {key}: {}", c.planned_action));
+                    res.messages
+                        .push(format!("risky action for {key}: {}", c.planned_action));
                 }
             }
             continue;
         }
         if opts.strict_unexpected {
             res.go = false;
-            res.unexpected.push(format!("unexpected plan change outside delta: {key}"));
+            res.unexpected
+                .push(format!("unexpected plan change outside delta: {key}"));
         }
     }
     if !res.go && res.messages.is_empty() {
@@ -139,10 +141,7 @@ pub fn parity_messages(expected: &PlanSnapshot, actual: &PlanSnapshot) -> Vec<St
                     ));
                 }
                 if e.exists != a.exists {
-                    msgs.push(format!(
-                        "{key} exists: go={} rust={}",
-                        e.exists, a.exists
-                    ));
+                    msgs.push(format!("{key} exists: go={} rust={}", e.exists, a.exists));
                 }
             }
             (None, None) => {}

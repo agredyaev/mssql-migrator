@@ -1,5 +1,7 @@
 use migrator_core::db::state::ChecksumMap;
-use migrator_core::domain::{ObjectEntry, ObjectKey, ScriptKey, Workspace};
+use migrator_core::domain::{
+    share, ObjectEntry, ObjectKey, ParentRef, Script, ScriptKey, ScriptKind, Workspace,
+};
 use migrator_core::gate::{expand_delta_closure, keys_for_changed_paths};
 use migrator_core::plan::scope::build_inspect_scope;
 
@@ -7,36 +9,26 @@ fn sample_ws() -> Workspace {
     let mut ws = Workspace::default();
     let parent = ObjectKey::new("smoke", "tables", "t1");
     let trig = ObjectKey::new("smoke", "triggers", "tr");
+    let parent_sid = ws.insert_script(Script {
+        key: ScriptKey::from_path("db/smoke/tables/t1.sql"),
+        kind: ScriptKind::Object,
+        abs_path: share("db/smoke/tables/t1.sql"),
+        checksum: Some([1; 32]),
+        scaffold: false,
+    });
+    let trig_sid = ws.insert_script(Script {
+        key: ScriptKey::from_path("db/smoke/triggers/tr.sql"),
+        kind: ScriptKind::Object,
+        abs_path: share("db/smoke/triggers/tr.sql"),
+        checksum: Some([2; 32]),
+        scaffold: false,
+    });
+    let db_id = ws.intern_database(share("db"));
     ws.adopt_dense_entries(vec![
-        ObjectEntry {
-            key: parent.clone(),
-            script: ScriptKey::from_path("db/smoke/tables/t1.sql"),
-            history: None,
-            db: Default::default(),
-            plan: None,
-            checksum: [1; 32],
-            schema: "smoke".into(),
-            kind: "tables".into(),
-            name: "t1".into(),
-            database_name: "db".into(),
-            parent_name: Default::default(),
-            parent_key: None,
-        },
-        ObjectEntry {
-            key: trig,
-            script: ScriptKey::from_path("db/smoke/triggers/tr.sql"),
-            history: None,
-            db: Default::default(),
-            plan: None,
-            checksum: [2; 32],
-            schema: "smoke".into(),
-            kind: "triggers".into(),
-            name: "tr".into(),
-            database_name: "db".into(),
-            parent_name: "t1".into(),
-            parent_key: Some(parent),
-        },
+        ObjectEntry::with_staging_key(parent.clone(), parent_sid, [1; 32], false, db_id),
+        ObjectEntry::with_staging_key(trig.clone(), trig_sid, [2; 32], false, db_id),
     ]);
+    ws.insert_parent_row(2, ParentRef { parent_row_id: 1 });
     ws
 }
 
@@ -51,14 +43,9 @@ fn delta_closure_adds_trigger_parent() {
 #[test]
 fn scope_git_delta_marks_hot() {
     let ws = sample_ws();
-    let mut checksums: ChecksumMap = std::collections::HashMap::new();
-    checksums.insert(ObjectKey::from_normalized("smoke/tables/t1"), [1; 32]);
-    checksums.insert(ObjectKey::from_normalized("smoke/triggers/tr"), [2; 32]);
-    let scope = build_inspect_scope(
-        &ws,
-        &["db/smoke/triggers/tr.sql".into()],
-        false,
-        &checksums,
-    );
+    let mut checksums = ChecksumMap::new();
+    checksums.insert_normalized("smoke/tables/t1", [1; 32]);
+    checksums.insert_normalized("smoke/triggers/tr", [2; 32]);
+    let scope = build_inspect_scope(&ws, &["db/smoke/triggers/tr.sql".into()], false, &checksums);
     assert!(scope.hot_keys.contains("smoke/triggers/tr"));
 }

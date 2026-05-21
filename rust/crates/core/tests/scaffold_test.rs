@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use migrator_core::config::Config;
 use migrator_core::db::TableColumn;
 use migrator_core::domain::{
-    Action, ObjectEntry, ObjectKey, Script, ScriptKey, ScriptKind, Workspace,
+    share, Action, ObjectEntry, ObjectKey, Script, ScriptKey, ScriptKind, Workspace,
 };
 use migrator_core::export::{MigrationPlan, PlannedObject};
 use migrator_core::scaffold;
@@ -11,29 +11,25 @@ use migrator_core::scaffold;
 #[test]
 fn blocked_table_creates_scaffold_file() {
     let base = tempfile::tempdir().unwrap();
-    let cfg = Config {
-        sql_base: base.path().to_string_lossy().into(),
-        database: "dactests".into(),
-        ..Default::default()
-    };
-    let plan = MigrationPlan {
-        blocked: true,
-        objects: vec![PlannedObject {
-            normalized_key: "r/tables/t1".into(),
-            object_path: "r/tables/t1.sql".into(),
-            schema_name: "r".into(),
-            kind: "tables".into(),
-            object_name: "t1".into(),
-            planned_action: Action::ReprocessChangedBlocked,
-            exists: true,
-            checksum: [0; 32],
-            database_name: Default::default(),
-            parent_name: Default::default(),
-            git: None,
-            transition_paths: Vec::new(),
-        }],
-        ..Default::default()
-    };
+    let mut cfg = Config::default();
+    cfg.sql_base = base.path().to_string_lossy().into();
+    cfg.database = "dactests".into();
+    let mut plan = MigrationPlan::default();
+    plan.blocked = true;
+    plan.objects = vec![PlannedObject {
+        normalized_key: "r/tables/t1".into(),
+        object_path: "r/tables/t1.sql".into(),
+        schema_name: "r".into(),
+        kind: "tables".into(),
+        object_name: "t1".into(),
+        planned_action: Action::ReprocessChangedBlocked,
+        exists: true,
+        checksum: [0; 32],
+        database_name: share("dactests"),
+        parent_name: Default::default(),
+        git: None,
+        transition_paths: Vec::new(),
+    }];
     let mut cols = HashMap::new();
     cols.insert(
         "r/tables/t1".into(),
@@ -52,9 +48,7 @@ fn blocked_table_creates_scaffold_file() {
     );
     let created = scaffold::ensure(&cfg, &Workspace::default(), &plan, &cols).unwrap();
     assert!(created);
-    let dir = base
-        .path()
-        .join("dactests/r/tables/_migrations/t1");
+    let dir = base.path().join("dactests/r/tables/_migrations/t1");
     let content = std::fs::read_dir(&dir)
         .unwrap()
         .flatten()
@@ -68,11 +62,9 @@ fn blocked_table_creates_scaffold_file() {
 #[test]
 fn auto_add_column_when_file_has_new_col() {
     let base = tempfile::tempdir().unwrap();
-    let cfg = Config {
-        sql_base: base.path().to_string_lossy().into(),
-        database: "dactests".into(),
-        ..Default::default()
-    };
+    let mut cfg = Config::default();
+    cfg.sql_base = base.path().to_string_lossy().into();
+    cfg.database = "dactests".into();
     let sql_path = base.path().join("r/tables/t1.sql");
     std::fs::create_dir_all(sql_path.parent().unwrap()).unwrap();
     std::fs::write(
@@ -82,55 +74,37 @@ fn auto_add_column_when_file_has_new_col() {
     .unwrap();
     let sk = ScriptKey::from_path("r/tables/t1.sql");
     let mut ws = Workspace::default();
-    ws.scripts.insert(
-        sk.clone(),
-        Script {
-            key: sk.clone(),
-            kind: ScriptKind::Object,
-            abs_path: migrator_core::domain::share(sql_path.to_string_lossy().as_ref()),
-            schema: "r".into(),
-            object_kind: "tables".into(),
-            object_name: "t1".into(),
-            checksum: None,
-            git_hash: migrator_core::domain::empty_str(),
-            git_author: migrator_core::domain::empty_str(),
-            git_date: migrator_core::domain::empty_str(),
-            table_name: None,
-            scaffold: false,
-        },
-    );
-    ws.adopt_dense_entries(vec![ObjectEntry {
-        key: ObjectKey::new("r", "tables", "t1"),
-        script: sk,
-        history: None,
-        db: Default::default(),
-        plan: None,
-        checksum: [0; 32],
-        schema: "r".into(),
+    let script_id = ws.insert_script(Script {
+        key: sk.clone(),
+        kind: ScriptKind::Object,
+        abs_path: migrator_core::domain::share(sql_path.to_string_lossy().as_ref()),
+        checksum: None,
+        scaffold: false,
+    });
+    let db_id = ws.intern_database(share("dactests"));
+    ws.adopt_dense_entries(vec![ObjectEntry::with_staging_key(
+        ObjectKey::new("r", "tables", "t1"),
+        script_id,
+        [0; 32],
+        false,
+        db_id,
+    )]);
+    let mut plan = MigrationPlan::default();
+    plan.blocked = true;
+    plan.objects = vec![PlannedObject {
+        normalized_key: "r/tables/t1".into(),
+        object_path: "r/tables/t1.sql".into(),
+        schema_name: "r".into(),
         kind: "tables".into(),
-        name: "t1".into(),
-        database_name: Default::default(),
+        object_name: "t1".into(),
+        planned_action: Action::ReprocessChangedBlocked,
+        exists: true,
+        checksum: [0; 32],
+        database_name: share("dactests"),
         parent_name: Default::default(),
-        parent_key: None,
-    }]);
-    let plan = MigrationPlan {
-        blocked: true,
-        objects: vec![PlannedObject {
-            normalized_key: "r/tables/t1".into(),
-            object_path: "r/tables/t1.sql".into(),
-            schema_name: "r".into(),
-            kind: "tables".into(),
-            object_name: "t1".into(),
-            planned_action: Action::ReprocessChangedBlocked,
-            exists: true,
-            checksum: [0; 32],
-            database_name: Default::default(),
-            parent_name: Default::default(),
-            git: None,
-            transition_paths: Vec::new(),
-        }],
-        ..Default::default()
-    };
+        git: None,
+        transition_paths: Vec::new(),
+    }];
     let mut cols = HashMap::new();
     cols.insert(
         "r/tables/t1".into(),

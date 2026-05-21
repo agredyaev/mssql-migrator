@@ -4,9 +4,10 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use super::MigrationPlan;
 use super::plan_json::write_plan_json;
+use super::MigrationPlan;
 use crate::config::Config;
+use crate::domain::Workspace;
 use crate::error::{Error, Result};
 
 #[derive(Debug, Serialize)]
@@ -21,6 +22,7 @@ pub fn write_reports(
     cfg: &Config,
     command: &str,
     plan: Option<&MigrationPlan>,
+    ws: Option<&Workspace>,
     exit_code: i32,
 ) -> Result<()> {
     if cfg.report_dir.is_empty() {
@@ -31,7 +33,7 @@ pub fn write_reports(
     if let Some(plan) = plan {
         let path = dir.join(".plan.json");
         let mut f = File::create(&path)?;
-        write_plan_json(plan, &mut f)?;
+        write_plan_json(plan, ws, &mut f)?;
     }
     let result = if exit_code == 0 { "success" } else { "failure" };
     let report = RunFinished {

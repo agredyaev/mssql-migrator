@@ -22,12 +22,10 @@ pub fn migration_dir_checked(base: &Path, db: &str, schema: &str, table: &str) -
     let dir = migration_dir(base, db, schema, table);
     if base.exists() {
         let base_canon = base.canonicalize().map_err(Error::Io)?;
-        let dir_canon = dir
-            .canonicalize()
-            .or_else(|_| {
-                fs::create_dir_all(&dir).map_err(Error::Io)?;
-                dir.canonicalize().map_err(Error::Io)
-            })?;
+        let dir_canon = dir.canonicalize().or_else(|_| {
+            fs::create_dir_all(&dir).map_err(Error::Io)?;
+            dir.canonicalize().map_err(Error::Io)
+        })?;
         if !dir_canon.starts_with(&base_canon) {
             return Err(Error::InvalidInput(format!(
                 "migration path escapes sql_base: {}",
@@ -52,7 +50,9 @@ pub fn has_non_scaffold_sql(dir: &Path) -> bool {
             continue;
         };
         let line = data.split(|&b| b == b'\n').next().unwrap_or(&[]);
-        let line = std::str::from_utf8(line).unwrap_or("").trim_end_matches('\r');
+        let line = std::str::from_utf8(line)
+            .unwrap_or("")
+            .trim_end_matches('\r');
         if !line.starts_with(SCAFFOLD_MARK) {
             return true;
         }

@@ -97,7 +97,5 @@ pub(crate) fn missing_catalog_table(err: &Error) -> bool {
         return false;
     };
     let m = msg.to_lowercase();
-    m.contains("catalog_cache")
-        || m.contains("catalog_meta")
-        || m.contains("invalid object name")
+    m.contains("catalog_cache") || m.contains("catalog_meta") || m.contains("invalid object name")
 }

@@ -53,7 +53,10 @@ pub async fn prepare_blocked_table_change(cfg: &Config) -> Result<BlockedSetup> 
         head,
     };
 
-    git_cmd(&temp_repo, &["add", "sql/dactests/smoke/tables/smoke_table.sql"])?;
+    git_cmd(
+        &temp_repo,
+        &["add", "sql/dactests/smoke/tables/smoke_table.sql"],
+    )?;
     git_cmd(
         &temp_repo,
         &["commit", "-m", "test: e2e add added_at column"],

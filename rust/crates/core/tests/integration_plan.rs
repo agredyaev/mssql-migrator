@@ -8,8 +8,15 @@ mod warm;
 
 mod profile_guard;
 
+use migrator_core::config::{
+    build_config, discover_catalog_databases, ensure_catalog_databases_exist, load_env_file,
+    validate_config,
+};
 use migrator_core::engine::{run_command, Command};
 use profile_guard::PprofGuard;
+use tokio::sync::OnceCell;
+
+static DB_ENSURE: OnceCell<()> = OnceCell::const_new();
 
 /// Same env contract as `ops/perf/rust_cli_phase.sh` / `make rust-slo`.
 fn ensure_slo_harness_env() {
@@ -39,6 +46,20 @@ fn ensure_slo_harness_env() {
     }
 }
 
+async fn ensure_catalog_databases_ready() {
+    DB_ENSURE
+        .get_or_init(|| async {
+            let env = load_env_file(&common::repo_root().join(".env")).unwrap_or_default();
+            let mut cfg = build_config(&env, true);
+            validate_config(&mut cfg).expect("valid slo config");
+            let dbs = discover_catalog_databases(&cfg.sql_root).expect("discover catalog dbs");
+            ensure_catalog_databases_exist(&cfg, &dbs)
+                .await
+                .expect("ensure catalog databases");
+        })
+        .await;
+}
+
 #[tokio::test]
 async fn integration_plan_sqlserver_suite() {
     if !common::integration_enabled() {
@@ -46,6 +67,7 @@ async fn integration_plan_sqlserver_suite() {
         return;
     }
     ensure_slo_harness_env();
+    ensure_catalog_databases_ready().await;
     let cfg = common::config();
     warm::warm_db_once().await;
 
@@ -55,8 +77,13 @@ async fn integration_plan_sqlserver_suite() {
     // Cache-miss SLO: invalidate L1 only; SQL catalog stays warm from warm_db_once.
     let _ = l1.invalidate_all(&fp);
     let _prof = PprofGuard::new("plan_cache_miss_slo");
-    let out = run_command(Command::Plan, cfg).await.expect("plan cache miss");
-    eprintln!("cache_miss timings: {}", serde_json::to_string(&out.timings).unwrap());
+    let out = run_command(Command::Plan, cfg)
+        .await
+        .expect("plan cache miss");
+    eprintln!(
+        "cache_miss timings: {}",
+        serde_json::to_string(&out.timings).unwrap()
+    );
     assert!(
         out.timings.cli_wall_ms < cfg.slo_max_cli_wall_ms,
         "cli_wall {}ms >= SLO {}ms",
@@ -67,7 +94,10 @@ async fn integration_plan_sqlserver_suite() {
 
     // L1 hit: second plan should be fast without reconnecting to an empty DB.
     let out = run_command(Command::Plan, cfg).await.expect("plan l1 hit");
-    eprintln!("l1_hit timings: {}", serde_json::to_string(&out.timings).unwrap());
+    eprintln!(
+        "l1_hit timings: {}",
+        serde_json::to_string(&out.timings).unwrap()
+    );
     assert!(out.timings.l1_cache_hit);
     assert!(
         out.timings.cli_wall_ms < cfg.slo_max_cli_wall_ms,

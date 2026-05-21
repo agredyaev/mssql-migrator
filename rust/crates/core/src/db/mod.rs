@@ -12,13 +12,12 @@ mod plan_batch;
 mod plan_db_trace;
 mod plan_snapshot;
 
+mod checksum_map;
 pub mod state;
 
+pub use checksum_map::{key_fingerprint, ChecksumMap};
 pub use plan_db_trace::{
     max_parallel_wall_ms, maybe_append_trace, trace_enabled, PlanDbPath, PlanDbTrace,
 };
 pub use plan_snapshot::run_plan_db_phase;
-pub use state::{
-    catalog_object, catalog_object_parts, intern_catalog_state, CatalogState, ChecksumMap,
-    TableColumn,
-};
+pub use state::{catalog_object, catalog_object_parts, intern_catalog_state, CatalogState, TableColumn};

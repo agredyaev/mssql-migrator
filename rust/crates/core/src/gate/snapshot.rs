@@ -28,7 +28,10 @@ impl PlanSnapshot {
     pub fn from_plan(plan: &MigrationPlan) -> Self {
         let mut objects = HashMap::new();
         for obj in &plan.objects {
-            objects.insert(obj.normalized_key.as_ref().to_string(), snapshot_object(obj));
+            objects.insert(
+                obj.normalized_key.as_ref().to_string(),
+                snapshot_object(obj),
+            );
         }
         Self {
             version: SNAPSHOT_VERSION.into(),

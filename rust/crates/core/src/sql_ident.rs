@@ -8,7 +8,9 @@ pub fn validate_path_component(name: &str) -> Result<()> {
         return Err(Error::InvalidInput("empty path component".into()));
     }
     if name == "." || name == ".." {
-        return Err(Error::InvalidInput(format!("invalid path component: {name:?}")));
+        return Err(Error::InvalidInput(format!(
+            "invalid path component: {name:?}"
+        )));
     }
     for c in name.chars() {
         if matches!(c, '/' | '\\' | '\0') {

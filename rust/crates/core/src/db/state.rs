@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::{share, ObjectKey, SharedStr};
 
-/// Prior checksum digests keyed by normalized object key (no duplicate `String` keys).
-pub type ChecksumMap = HashMap<ObjectKey, [u8; 32]>;
+pub use super::{key_fingerprint, ChecksumMap};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CatalogState {
@@ -35,18 +34,8 @@ pub struct TableColumn {
 }
 
 /// Build a catalog row from SQL inspect wire strings (deduped via `share`).
-pub fn catalog_object(
-    schema: &str,
-    kind: &str,
-    name: &str,
-    parent: Option<&str>,
-) -> CatalogObject {
-    catalog_object_parts(
-        share(schema),
-        share(kind),
-        share(name),
-        parent.map(share),
-    )
+pub fn catalog_object(schema: &str, kind: &str, name: &str, parent: Option<&str>) -> CatalogObject {
+    catalog_object_parts(share(schema), share(kind), share(name), parent.map(share))
 }
 
 /// Build a catalog row reusing layout `SharedStr` (no duplicate `share()` / Arc).

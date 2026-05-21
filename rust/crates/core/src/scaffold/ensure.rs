@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::config::Config;
-use crate::domain::{Action, ObjectKey, Workspace};
 use crate::db::TableColumn;
+use crate::domain::{Action, ObjectKey, Workspace};
 use crate::error::{Error, Result};
 use crate::export::MigrationPlan;
 
@@ -61,11 +61,12 @@ fn pick_content(
 ) -> (String, String) {
     let lookup_key = ObjectKey::from(obj.normalized_key.as_ref().to_string());
     if let Some(entry) = ws.object_by_key(&lookup_key) {
-        if let Some(script) = ws.scripts.get(&entry.script) {
-            if let Ok(data) = std::fs::read_to_string(script.abs_path.as_ref()) {
-                if let Some((content, name)) = auto::try_auto_migration(obj, &data, cols, commit, mig_dir) {
-                    return (name, content);
-                }
+        let script = ws.script(entry.script_id);
+        if let Ok(data) = std::fs::read_to_string(script.abs_path().as_ref()) {
+            if let Some((content, name)) =
+                auto::try_auto_migration(obj, &data, cols, commit, mig_dir)
+            {
+                return (name, content);
             }
         }
     }

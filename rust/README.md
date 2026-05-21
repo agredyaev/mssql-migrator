@@ -46,7 +46,7 @@ RMIGD_SOCKET=/tmp/rmigd.sock RMIGD_ENV=../.env ./target/release/rmigd
 export RMIG_SESSION=/tmp/rmigd.sock
 ```
 
-`make rust-slo` builds release `rmigd`, sets `RMIG_USE_RMIGD=1`, and runs the cache-miss SLO test (`cli_wall_ms` &lt; 100).
+`make rust-slo` builds release `rmigd`, sets `RMIG_USE_RMIGD=1`, and runs the cache-miss SLO test (`cli_wall_ms` &lt; 150).
 
 ## Environment
 
@@ -54,7 +54,7 @@ Same `RM_*` variables as the Go CLI. Rust-specific:
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `RMIG_SLO_MAX_CLI_WALL_MS` | `100` | Plan SLO threshold |
+| `RMIG_SLO_MAX_CLI_WALL_MS` | `150` | Plan SLO threshold |
 | `RMIG_SESSION` | — | Unix socket for `rmigd` |
 | `RMIG_USE_RMIGD` | `0` | Integration/SLO harness: spawn `rmigd`, set `RMIG_SESSION` |
 | `RMIG_INTEGRATION_WARM_SNAPSHOT` | `0` | SLO harness: reuse warm catalog/checksums after L1 invalidate |

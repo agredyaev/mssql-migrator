@@ -46,7 +46,8 @@ pub async fn flush_history(conn: &mut TimingConn, records: &[HistoryRecord]) -> 
     if records.is_empty() {
         return Ok(());
     }
-    let payload = serde_json::to_string(records).map_err(|e| crate::error::Error::Other(e.into()))?;
+    let payload =
+        serde_json::to_string(records).map_err(|e| crate::error::Error::Other(e.into()))?;
     conn.query(sql::audit::INSERT_HISTORY, &[payload.as_str()])
         .await?;
     Ok(())

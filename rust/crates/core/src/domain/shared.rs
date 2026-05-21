@@ -1,3 +1,9 @@
+//! `SharedStr` VIEW boundary (**A3** / **CASE-6**):
+//! - **Hot** (post `intern_workspace_strings`): arena [`SharedStrInner::Slice`] via `StrOff` + `Workspace::shared_at`.
+//! - **Staging** (scan ingest, JSON deserialize, tests): [`SharedStr::new`] / [`share`] → `Owned`.
+//! - **Export** ([`crate::export::materialize`]): wire [`PlannedObject`] builds `SharedStr` only at materialize.
+//! Do not call [`SharedStr::new`] in per-object diff/plan loops after finalize.
+
 use std::borrow::Borrow;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -6,7 +12,7 @@ use std::sync::{Arc, OnceLock};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug)]
-enum SharedStrInner {
+pub(crate) enum SharedStrInner {
     Empty,
     /// Kelley-style slice into one scan-finalize arena buffer (**CASE-6**).
     Slice {
@@ -19,9 +25,17 @@ enum SharedStrInner {
 }
 
 #[derive(Clone, Debug)]
-pub struct SharedStr(Arc<SharedStrInner>);
+pub struct SharedStr(pub(crate) Arc<SharedStrInner>);
+
+#[path = "shared_subslice.rs"]
+mod subslice;
 
 impl SharedStr {
+    /// Arena sub-slice of `base` for `part` (**CASE-6**); no new heap when `base` is arena Slice.
+    pub fn subslice_of(base: &Self, part: &str) -> Self {
+        subslice::subslice_of(base, part)
+    }
+
     pub fn new(s: impl AsRef<str>) -> Self {
         let s = s.as_ref();
         if s.is_empty() {
@@ -60,6 +74,22 @@ impl SharedStr {
     pub fn len(&self) -> usize {
         self.as_str().len()
     }
+
+    /// Stable map key from backing bytes (no UTF-8 validation on arena slices).
+    pub fn fingerprint(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        match &*self.0 {
+            SharedStrInner::Empty => b"".hash(&mut h),
+            SharedStrInner::Slice { buf, start, len } => {
+                let start = *start as usize;
+                let end = start + *len as usize;
+                buf[start..end].hash(&mut h);
+            }
+            SharedStrInner::Owned(s) => s.as_ref().hash(&mut h),
+        }
+        h.finish()
+    }
 }
 
 impl Default for SharedStr {
@@ -78,7 +108,15 @@ impl Eq for SharedStr {}
 
 impl Hash for SharedStr {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.as_str().hash(state);
+        match &*self.0 {
+            SharedStrInner::Empty => "".hash(state),
+            SharedStrInner::Slice { buf, start, len } => {
+                let start = *start as usize;
+                let end = start + *len as usize;
+                buf[start..end].hash(state);
+            }
+            SharedStrInner::Owned(s) => s.hash(state),
+        }
     }
 }
 

@@ -35,7 +35,11 @@ pub async fn run_command(cmd: Command, cfg: &Config) -> Result<RunOutput> {
     }
 
     let cli_start = Instant::now();
-    let databases = discover_catalog_databases(&cfg.sql_root)?;
+    let databases = if !cfg.database.is_empty() {
+        vec![cfg.database.clone()]
+    } else {
+        discover_catalog_databases(&cfg.sql_root)?
+    };
     ensure_catalog_databases_exist(cfg, &databases).await?;
 
     let t_scan = Instant::now();
@@ -43,8 +47,10 @@ pub async fn run_command(cmd: Command, cfg: &Config) -> Result<RunOutput> {
     let scan_ms = crate::scan::populate(&mut ws_full, &cfg.sql_root, cfg.skip_git).await?;
     let scan_elapsed = t_scan.elapsed();
 
-    let mut merged = PhaseTimings::default();
-    merged.scan_ms = scan_ms;
+    let mut merged = PhaseTimings {
+        scan_ms,
+        ..Default::default()
+    };
     let mut exit_code = 0i32;
     let mut last_plan: Option<MigrationPlan> = None;
     let multi = databases.len() > 1;
@@ -56,7 +62,8 @@ pub async fn run_command(cmd: Command, cfg: &Config) -> Result<RunOutput> {
         if ws.object_count() == 0 && multi {
             continue;
         }
-        let out = run_command_for_database(cmd, &cfg_db, ws, scan_elapsed, cli_start, multi).await?;
+        let out =
+            run_command_for_database(cmd, &cfg_db, ws, scan_elapsed, cli_start, multi).await?;
         exit_code = exit_code.max(out.exit_code);
         merge_timings(&mut merged, &out.timings);
         if out.plan.is_some() {
@@ -121,8 +128,19 @@ async fn run_command_for_database(
     plan.command = command_label(cmd).into();
     plan.planned_at = chrono::Utc::now().to_rfc3339();
     timings.diff_ms = diff_ms;
+    if plan.uses_slim_rows() {
+        plan.ensure_objects_materialized(&ws);
+    }
 
-    let exit_code = match super::apply_run::maybe_apply(cmd, &mut conn, cfg, &ws, &mut plan, &mut timings).await
+    let exit_code = match super::apply_run::maybe_apply(
+        cmd,
+        &mut conn,
+        cfg,
+        &ws,
+        &mut plan,
+        &mut timings,
+    )
+    .await
     {
         Err(Error::PlanBlocked) if cmd == Command::Migrate => crate::error::EXIT_PLAN_BLOCKED,
         Err(e) => return Err(e),
@@ -149,7 +167,9 @@ fn merge_timings(dst: &mut PhaseTimings, src: &PhaseTimings) {
     dst.apply_ms = dst.apply_ms.saturating_add(src.apply_ms);
     dst.parallel_wall_ms = dst.parallel_wall_ms.max(src.parallel_wall_ms);
     dst.plan_db_query_ms = dst.plan_db_query_ms.saturating_add(src.plan_db_query_ms);
-    dst.plan_db_query_calls = dst.plan_db_query_calls.saturating_add(src.plan_db_query_calls);
+    dst.plan_db_query_calls = dst
+        .plan_db_query_calls
+        .saturating_add(src.plan_db_query_calls);
     if !src.l1_cache_hit {
         dst.l1_cache_hit = false;
     }

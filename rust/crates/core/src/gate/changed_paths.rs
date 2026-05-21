@@ -57,7 +57,11 @@ pub fn resolve_changed_paths(sql_root: &str) -> ChangedPathsResult {
     }
 }
 
-fn git_paths_result(sql_root: &str, paths: Vec<String>, source: &'static str) -> ChangedPathsResult {
+fn git_paths_result(
+    sql_root: &str,
+    paths: Vec<String>,
+    source: &'static str,
+) -> ChangedPathsResult {
     ChangedPathsResult {
         paths: normalize_git_paths(sql_root, paths),
         full_inspect: false,
@@ -78,7 +82,11 @@ fn normalize_git_paths(sql_root: &str, paths: Vec<String>) -> Vec<String> {
             } else if let Some(stripped) = p.strip_prefix("sql/") {
                 p = stripped.to_string();
             }
-            if p.is_empty() { None } else { Some(p) }
+            if p.is_empty() {
+                None
+            } else {
+                Some(p)
+            }
         })
         .collect()
 }
@@ -103,7 +111,11 @@ fn changed_paths_from_env() -> Option<Vec<String>> {
     env::var("RMIG_GATE_CHANGED_FILES")
         .ok()
         .and_then(|raw| parse_csv_paths(&raw))
-        .or_else(|| env::var("RMIG_CHANGED_FILES").ok().and_then(|raw| parse_csv_paths(&raw)))
+        .or_else(|| {
+            env::var("RMIG_CHANGED_FILES")
+                .ok()
+                .and_then(|raw| parse_csv_paths(&raw))
+        })
 }
 
 fn parse_csv_paths(raw: &str) -> Option<Vec<String>> {

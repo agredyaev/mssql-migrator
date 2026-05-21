@@ -40,6 +40,9 @@ pub fn workflow_config() -> &'static Config {
         cfg.session_socket.clear();
         cfg.trust_server_certificate = true;
         cfg.catalog_cache = true;
+        if cfg.database.is_empty() {
+            cfg.database = "dactests".into();
+        }
         validate_config(&mut cfg).expect("valid workflow config");
         cfg
     })

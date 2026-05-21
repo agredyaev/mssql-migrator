@@ -24,7 +24,7 @@ pub enum KindCode {
 }
 
 impl KindCode {
-    pub fn from_str(kind: &str) -> Self {
+    pub fn parse_kind(kind: &str) -> Self {
         match kind {
             "types" => Self::Types,
             "sequences" => Self::Sequences,
@@ -45,7 +45,7 @@ impl KindCode {
 }
 
 pub fn kind_code(kind: &str) -> u8 {
-    KindCode::from_str(kind).as_u8()
+    KindCode::parse_kind(kind).as_u8()
 }
 
 pub fn is_module_kind_code(code: u8) -> bool {

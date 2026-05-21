@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum PlanDbPath {
     CacheHit,
+    WarmSnapshot,
     GitDelta,
     ColdFull,
     Incremental,
@@ -14,6 +15,7 @@ impl PlanDbPath {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::CacheHit => "cache_hit",
+            Self::WarmSnapshot => "warm_snapshot",
             Self::GitDelta => "git_delta",
             Self::ColdFull => "cold_full",
             Self::Incremental => "incremental",

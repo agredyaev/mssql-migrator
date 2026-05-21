@@ -24,7 +24,7 @@ pub async fn maybe_apply(
             if plan.blocked {
                 return super::blocked::handle_blocked_migrate(conn, cfg, ws, plan).await;
             }
-            filter::filter_applied(conn, plan).await?;
+            filter::filter_applied(conn, ws, plan).await?;
             run_apply(conn, cfg, ws, plan, timings).await
         }
         Command::Baseline | Command::RepairChecksum => {
@@ -40,7 +40,7 @@ async fn run_apply(
     conn: &mut TimingConn,
     cfg: &Config,
     ws: &Workspace,
-    plan: &MigrationPlan,
+    plan: &mut MigrationPlan,
     timings: &mut PhaseTimings,
 ) -> Result<()> {
     crate::lock::acquire(conn, cfg).await?;
@@ -53,6 +53,7 @@ async fn run_apply(
         apply.applied, apply.skipped, apply.failed
     );
     if apply.failed == 0 && apply.applied > 0 {
+        super::warm_store::clear_plan_db_snapshot();
         let _ = crate::db::save_workspace_snapshot(conn, &ws.layout_digest, ws).await;
     }
     Ok(())
