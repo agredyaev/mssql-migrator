@@ -35,4 +35,4 @@ phase-report-run.log
 rust/target/
 
 # Rust runtime cache (catalog snapshots)
-rust/.rmig/
+.rmig/
