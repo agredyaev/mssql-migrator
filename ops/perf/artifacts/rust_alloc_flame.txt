@@ -1,14 +1,14 @@
 # Rust dhat allocation summary
-# total allocated (tb sum): 10.86 MB (10861890 B)
+# total allocated (tb sum): 13.29 MB (13293414 B)
 # loop iterations: 20
-# setup (one-time): 10.14 MB
-# warm (first compute_diff / plan resize): 720.1 KB
+# setup (one-time): 12.79 MB
+# warm (first compute_diff / plan resize): 505.1 KB
 # loop (warmed compute_diff x20): 0 B (0 B/iter)
 
 ## Phase totals
 Phase                 Bytes    Share
-setup              10.14 MB    93.4%
-warm               720.1 KB     6.6%
+setup              12.79 MB    96.2%
+warm               505.1 KB     3.8%
 loop                    0 B     0.0%
 
 ## Top categories (loop phase only)
@@ -20,12 +20,12 @@ Frame                                                                           
 
 ## Top rmig frames (deepest in stack, all phases)
 Frame                                                                           Bytes   Share
-plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:43:40)                  10.14 MB   93.4%
-plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:45:5)                   720.1 KB    6.6%
-plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:47:5)                       64 B    0.0%
+plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:39:40)                  12.79 MB   96.2%
+plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:41:5)                   505.1 KB    3.8%
+plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:43:5)                       64 B    0.0%
 
 ## Top leaf alloc frames (flat)
 Frame                                                                           Bytes
-plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:43:40)                  10.14 MB
-plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:45:5)                   720.1 KB
-plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:47:5)                       64 B
+plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:39:40)                  12.79 MB
+plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:41:5)                   505.1 KB
+plan_diff_dhat::main (core/benches/plan_diff_dhat.rs:43:5)                       64 B
