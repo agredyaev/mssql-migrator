@@ -62,6 +62,16 @@ pub struct E2EBlockedReport {
 
 pub fn action_counts_from_plan(plan: &MigrationPlan) -> HashMap<String, i32> {
     let mut out = HashMap::new();
+    if !plan.rows.is_empty() {
+        for row in &plan.rows {
+            let action = serde_json::to_string(&row.planned_action())
+                .unwrap_or_default()
+                .trim_matches('"')
+                .to_string();
+            *out.entry(action).or_insert(0) += 1;
+        }
+        return out;
+    }
     for obj in &plan.objects {
         let action = serde_json::to_string(&obj.planned_action)
             .unwrap_or_default()
@@ -104,7 +114,10 @@ pub fn read_e2e_blocked_json(data: &str) -> Result<E2EBlockedReport, serde_json:
     serde_json::from_str(data)
 }
 
-pub fn write_e2e_report_file(path: &std::path::Path, rep: &E2EScenarioReport) -> std::io::Result<()> {
+pub fn write_e2e_report_file(
+    path: &std::path::Path,
+    rep: &E2EScenarioReport,
+) -> std::io::Result<()> {
     write_json_file(path, rep)
 }
 
@@ -116,7 +129,10 @@ pub fn write_e2e_gate_file(path: &std::path::Path, rep: &E2EGateReport) -> std::
     write_json_file(path, rep)
 }
 
-pub fn write_e2e_blocked_file(path: &std::path::Path, rep: &E2EBlockedReport) -> std::io::Result<()> {
+pub fn write_e2e_blocked_file(
+    path: &std::path::Path,
+    rep: &E2EBlockedReport,
+) -> std::io::Result<()> {
     write_json_file(path, rep)
 }
 
@@ -143,7 +159,10 @@ pub fn compare_e2e_reports(go: &E2EScenarioReport, rust: &E2EScenarioReport) -> 
             go.action_counts, rust.action_counts
         ));
     }
-    msgs.extend(super::compare::parity_messages(&go.snapshot, &rust.snapshot));
+    msgs.extend(super::compare::parity_messages(
+        &go.snapshot,
+        &rust.snapshot,
+    ));
     msgs.extend(compare_timings(&go.timings, &rust.timings));
     msgs
 }
@@ -151,13 +170,13 @@ pub fn compare_e2e_reports(go: &E2EScenarioReport, rust: &E2EScenarioReport) -> 
 pub fn compare_e2e_apply_reports(go: &E2EApplyReport, rust: &E2EApplyReport) -> Vec<String> {
     let mut msgs = Vec::new();
     if go.scenario != rust.scenario {
-        msgs.push(format!("scenario: go={} rust={}", go.scenario, rust.scenario));
+        msgs.push(format!(
+            "scenario: go={} rust={}",
+            go.scenario, rust.scenario
+        ));
     }
     if go.applied != rust.applied {
-        msgs.push(format!(
-            "applied: go={} rust={}",
-            go.applied, rust.applied
-        ));
+        msgs.push(format!("applied: go={} rust={}", go.applied, rust.applied));
     }
     if go.failed != rust.failed {
         msgs.push(format!("failed: go={} rust={}", go.failed, rust.failed));
@@ -177,19 +196,28 @@ pub fn compare_e2e_apply_reports(go: &E2EApplyReport, rust: &E2EApplyReport) -> 
 pub fn compare_e2e_gate_reports(go: &E2EGateReport, rust: &E2EGateReport) -> Vec<String> {
     let mut msgs = Vec::new();
     if go.scenario != rust.scenario {
-        msgs.push(format!("scenario: go={} rust={}", go.scenario, rust.scenario));
+        msgs.push(format!(
+            "scenario: go={} rust={}",
+            go.scenario, rust.scenario
+        ));
     }
     if go.gate_go != rust.gate_go {
         msgs.push(format!("gate_go: go={} rust={}", go.gate_go, rust.gate_go));
     }
-    msgs.extend(super::compare::parity_messages(&go.snapshot, &rust.snapshot));
+    msgs.extend(super::compare::parity_messages(
+        &go.snapshot,
+        &rust.snapshot,
+    ));
     msgs
 }
 
 pub fn compare_e2e_blocked_reports(go: &E2EBlockedReport, rust: &E2EBlockedReport) -> Vec<String> {
     let mut msgs = Vec::new();
     if go.scenario != rust.scenario {
-        msgs.push(format!("scenario: go={} rust={}", go.scenario, rust.scenario));
+        msgs.push(format!(
+            "scenario: go={} rust={}",
+            go.scenario, rust.scenario
+        ));
     }
     if go.exit_code != rust.exit_code {
         msgs.push(format!(
@@ -223,7 +251,11 @@ fn compare_timings(go: &PhaseTimings, rust: &PhaseTimings) -> Vec<String> {
         .unwrap_or(100);
 
     let phases: &[(&str, i64, i64)] = &[
-        ("parallel_wall_ms", go.parallel_wall_ms, rust.parallel_wall_ms),
+        (
+            "parallel_wall_ms",
+            go.parallel_wall_ms,
+            rust.parallel_wall_ms,
+        ),
         ("diff_ms", go.diff_ms, rust.diff_ms),
         ("plan_wall_ms", go.plan_wall_ms, rust.plan_wall_ms),
     ];

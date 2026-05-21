@@ -1,8 +1,8 @@
-use crate::domain::{Workspace, KIND_TABLES};
+use crate::domain::{Action, Workspace, KIND_TABLES};
 
 use super::diff_ctx::DecideCtx;
 use super::diff_object::ObjectDecision;
-use super::scenario::{apply_scenario, resolve_plan_scenario};
+use crate::plan::{apply_scenario, resolve_plan_scenario, ScenarioInput};
 
 pub(crate) fn decide_object_at(
     ws: &mut Workspace,
@@ -10,27 +10,54 @@ pub(crate) fn decide_object_at(
     kind_code: u8,
     ctx: &mut DecideCtx<'_>,
 ) -> ObjectDecision {
-    let key = ws.entry(i).key.clone();
-    let has_transition_paths = kind_code == KIND_TABLES
-        && ws
-            .transition_path_cache
-            .as_ref()
-            .and_then(|m| m.get(&key))
-            .is_some_and(|v| !v.is_empty());
-    let obj = ws.entry_mut(i);
-    let exists = obj.db.exists;
-    let prior = ctx.checksums.get(&key).copied();
-    let checksum = obj.checksum;
-    let scenario = resolve_plan_scenario(
+    let row_id = ws.row_id_at(i);
+    let has_transition_paths =
+        kind_code == KIND_TABLES && ws.row_has_transition_paths(i);
+    let exists = ws.entry(i).db_exists;
+    let prior = ctx.plan.prior_by_row[i];
+    let checksum = ws.entry(i).checksum;
+
+    if exists {
+        if let Some(p) = prior {
+            if p != [0; 32] && p == checksum {
+                ctx.counters.skip += 1;
+                return ObjectDecision {
+                    action: Action::SkipUnchanged,
+                    with_git: false,
+                    exists,
+                };
+            }
+        }
+        if prior.is_none() || prior == Some([0; 32]) {
+            ctx.counters.adopt += 1;
+            return ObjectDecision {
+                action: Action::AdoptExisting,
+                with_git: true,
+                exists,
+            };
+        }
+    } else {
+        ctx.counters.create += 1;
+        return ObjectDecision {
+            action: Action::CreateObject,
+            with_git: true,
+            exists,
+        };
+    }
+
+    let obj = ws.entry(i);
+    let scenario = resolve_plan_scenario(ScenarioInput {
         exists,
         prior,
         checksum,
         kind_code,
         obj,
-        ctx.catalog,
-        ctx.checksums,
+        ws,
+        catalog: ctx.catalog,
+        prior_digests: &ctx.plan.prior_by_row,
+        child_row_id: row_id,
         has_transition_paths,
-    );
+    });
     let c = &mut ctx.counters;
     match scenario.counter_kind() {
         super::scenario::CounterKind::Create => c.create += 1,
@@ -43,10 +70,9 @@ pub(crate) fn decide_object_at(
     if blocked_inc > 0 {
         ctx.plan.blocked = true;
     }
-    let action = apply_scenario(scenario, obj, &mut ctx.plan.blockers);
+    let action = apply_scenario(scenario, obj, ws, row_id, &mut ctx.plan.blockers);
     ObjectDecision {
         action,
-        tpaths: Vec::new(),
         with_git: scenario.with_git(),
         exists,
     }

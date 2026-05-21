@@ -2,7 +2,7 @@ use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
-use crate::domain::{empty_str, share, ObjectEntry, ObjectKey, Script, ScriptKey, ScriptKind};
+use crate::domain::{share, ObjectEntry, ObjectKey, Script, ScriptKey, ScriptKind, StrOff};
 use crate::error::Result;
 
 const KINDS: &[&str] = &[
@@ -35,36 +35,20 @@ pub fn parse_object(rel: &str, abs: &Path) -> Result<Option<(ObjectEntry, Script
     let key = ObjectKey::new(schema, kind, name);
     let cs = file_checksum(abs)?;
     let script_key = ScriptKey::from_path(rel);
-    let schema_s = share(schema);
-    let kind_s = share(kind);
-    let name_s = share(name);
     let script = Script {
-        key: script_key.clone(),
+        key: script_key,
         kind: ScriptKind::Object,
         abs_path: share(abs.to_string_lossy().as_ref()),
-        schema: schema_s.clone(),
-        object_kind: kind_s.clone(),
-        object_name: name_s.clone(),
         checksum: Some(cs),
-        git_hash: empty_str(),
-        git_author: empty_str(),
-        git_date: empty_str(),
-        table_name: None,
         scaffold: false,
     };
     let obj = ObjectEntry {
-        key: key.clone(),
-        script: script_key,
-        history: None,
-        db: Default::default(),
-        plan: None,
+        key_off: StrOff::EMPTY,
+        staging_key: Some(key),
+        script_id: 0,
         checksum: cs,
-        schema: schema_s,
-        kind: kind_s,
-        name: name_s,
-        database_name: database,
-        parent_name: empty_str(),
-        parent_key: None,
+        db_exists: false,
+        db_id: 0,
     };
     Ok(Some((obj, script)))
 }

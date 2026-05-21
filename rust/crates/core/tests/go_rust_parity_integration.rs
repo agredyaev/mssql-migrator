@@ -23,13 +23,10 @@ async fn go_rust_plan_matches_go_reference() {
 
     let go_data =
         std::fs::read_to_string(&go_path).unwrap_or_else(|e| panic!("read go snapshot: {e}"));
-    let go_snap: PlanSnapshot =
-        read_snapshot_json(&go_data).expect("parse go snapshot");
+    let go_snap: PlanSnapshot = read_snapshot_json(&go_data).expect("parse go snapshot");
 
     let cfg = common::config();
-    let out = run_command(Command::Plan, cfg)
-        .await
-        .expect("rust plan");
+    let out = run_command(Command::Plan, cfg).await.expect("rust plan");
     let plan = out.plan.expect("migration plan");
     let rust_snap = PlanSnapshot::from_plan(&plan);
 
@@ -37,11 +34,8 @@ async fn go_rust_plan_matches_go_reference() {
 
     if let Ok(out_path) = std::env::var("RMIG_E2E_RUST_SNAPSHOT") {
         if !out_path.is_empty() {
-            migrator_core::gate::write_snapshot_file(
-                std::path::Path::new(&out_path),
-                &rust_snap,
-            )
-            .expect("write rust snapshot");
+            migrator_core::gate::write_snapshot_file(std::path::Path::new(&out_path), &rust_snap)
+                .expect("write rust snapshot");
         }
     }
 

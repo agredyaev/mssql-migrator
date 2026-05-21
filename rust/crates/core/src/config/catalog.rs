@@ -3,8 +3,8 @@
 
 use std::path::Path;
 
-use crate::error::{Error, Result};
 use crate::driver::{connect, mssql};
+use crate::error::{Error, Result};
 
 use super::Config;
 
@@ -87,8 +87,7 @@ pub fn resolve_single_database(cfg: &mut Config) -> Result<()> {
     if !dbs.iter().any(|d| d == &cfg.database) {
         return Err(Error::Config(format!(
             "database {:?} not found under {} (catalog: {dbs:?})",
-            cfg.database,
-            cfg.sql_root
+            cfg.database, cfg.sql_root
         )));
     }
     Ok(())
@@ -104,9 +103,7 @@ pub async fn ensure_catalog_databases_exist(cfg: &Config, names: &[String]) -> R
     for db in names {
         let escaped = db.replace('\'', "''");
         let bracket = db.replace(']', "]]");
-        let sql = format!(
-            "IF DB_ID(N'{escaped}') IS NULL CREATE DATABASE [{bracket}]"
-        );
+        let sql = format!("IF DB_ID(N'{escaped}') IS NULL CREATE DATABASE [{bracket}]");
         mssql::exec(&mut conn.client, &sql).await?;
     }
     Ok(())

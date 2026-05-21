@@ -45,8 +45,8 @@ pub async fn run_batch(
     trace.bootstrap = need_bootstrap;
     let need_checksums = keys_json != "[]";
 
-    let clean_git_tree = git.paths.is_empty()
-        && matches!(git.source, "git-head" | "git-merge-base");
+    let clean_git_tree =
+        git.paths.is_empty() && matches!(git.source, "git-head" | "git-merge-base");
     let try_cache = cfg.catalog_cache
         && audit::tables_ensured(&db_fp)
         && git.paths.is_empty()
@@ -96,9 +96,7 @@ pub async fn run_batch(
                 },
             );
             if !sql.trim().is_empty() {
-                let sets = conn
-                    .query_all(&sql, &[keys_json, "[]", "[]"])
-                    .await?;
+                let sets = conn.query_all(&sql, &[keys_json, "[]", "[]"]).await?;
                 if need_bootstrap {
                     audit::mark_tables_ensured(&db_fp);
                 }
@@ -125,29 +123,19 @@ pub async fn run_batch(
 
         let scope = build_inspect_scope(ws, &git.paths, false, &checksums);
         let scope_json = build_scope_json(&scope);
-        let query_catalog =
-            should_query_catalog(false, &scope, &scope_json, &checksums).await?;
+        let query_catalog = should_query_catalog(false, &scope, &scope_json, &checksums).await?;
         trace.catalog_queried = query_catalog;
 
         let t_cat = Instant::now();
         let cache_covers_hot = partial_cache
-            && scope.hot_keys.iter().all(|k| {
-                loaded
-                    .objects
-                    .contains_key(&ObjectKey::from_normalized(k))
-            });
+            && scope
+                .hot_keys
+                .iter()
+                .all(|k| loaded.objects.contains_key(&ObjectKey::from_normalized(k)));
         if query_catalog && !cache_covers_hot {
             if partial_cache {
                 let kinds = kinds_for_scope(ws, &scope);
-                let sql = batch::plan_db_batch_sql(
-                    &kinds,
-                    false,
-                    false,
-                    false,
-                    true,
-                    true,
-                    None,
-                );
+                let sql = batch::plan_db_batch_sql(&kinds, false, false, false, true, true, None);
                 let sets = conn
                     .query_all(&sql, &["[]", &scope_json, &schemas_json])
                     .await?;
@@ -159,15 +147,7 @@ pub async fn run_batch(
             } else {
                 let hit_scope = git_hot_scope_json(ws, &git.paths);
                 let kinds = kinds_for_git_delta(ws, &git.paths);
-                let sql = batch::plan_db_batch_sql(
-                    &kinds,
-                    false,
-                    false,
-                    false,
-                    true,
-                    false,
-                    None,
-                );
+                let sql = batch::plan_db_batch_sql(&kinds, false, false, false, true, false, None);
                 let sets = conn
                     .query_all(&sql, &["[]", &hit_scope, &schemas_json])
                     .await?;
@@ -196,9 +176,7 @@ pub async fn run_batch(
                 None,
             );
             if !sql.trim().is_empty() {
-                let sets = conn
-                    .query_all(&sql, &[keys_json, "[]", "[]"])
-                    .await?;
+                let sets = conn.query_all(&sql, &[keys_json, "[]", "[]"]).await?;
                 if need_bootstrap {
                     audit::mark_tables_ensured(&db_fp);
                 }
@@ -222,8 +200,7 @@ pub async fn run_batch(
             let schemas_json = schemas_json(ws);
 
             let mut loaded = CatalogState::default();
-            let query_catalog =
-                should_query_catalog(full, &scope, &scope_json, &checksums).await?;
+            let query_catalog = should_query_catalog(full, &scope, &scope_json, &checksums).await?;
             trace.catalog_queried = query_catalog;
             if query_catalog {
                 let kinds = kinds_for_scope(ws, &scope);
@@ -261,11 +238,7 @@ pub async fn run_batch(
     Ok(PlanDbResult {
         checksums,
         catalog,
-        ensure_ms: if need_bootstrap {
-            checksums_ms / 2
-        } else {
-            0
-        },
+        ensure_ms: if need_bootstrap { checksums_ms / 2 } else { 0 },
         checksums_ms,
         inspect_ms,
         parallel_wall_ms: parallel_wall,
@@ -287,8 +260,8 @@ fn kinds_for_git_delta<'a>(ws: &'a Workspace, changed_paths: &[String]) -> Vec<&
     let delta = expand_delta_closure(ws, keys_for_changed_paths(ws, changed_paths));
     let mut kinds = Vec::new();
     for o in &ws.object_entries {
-        if delta.contains(o.key.as_str()) {
-            kinds.push(o.kind.as_ref());
+        if delta.contains(o.key_str(ws)) {
+            kinds.push(o.kind_part(ws));
         }
     }
     kinds
@@ -297,8 +270,8 @@ fn kinds_for_git_delta<'a>(ws: &'a Workspace, changed_paths: &[String]) -> Vec<&
 fn kinds_for_scope<'a>(ws: &'a Workspace, scope: &InspectScope) -> Vec<&'a str> {
     let mut kinds = Vec::new();
     for o in &ws.object_entries {
-        if scope.full_inspect || scope.hot_keys.contains(o.key.as_str()) {
-            kinds.push(o.kind.as_ref());
+        if scope.full_inspect || scope.hot_keys.contains(o.key_str(ws)) {
+            kinds.push(o.kind_part(ws));
         }
     }
     kinds
@@ -307,9 +280,7 @@ fn kinds_for_scope<'a>(ws: &'a Workspace, scope: &InspectScope) -> Vec<&'a str> 
 fn hot_keys_have_history(scope: &InspectScope, checksums: &ChecksumMap) -> bool {
     scope.hot_keys.iter().any(|k| {
         let key = ObjectKey::from_normalized(k);
-        checksums
-            .get(&key)
-            .is_some_and(|cs| cs != &[0; 32])
+        checksums.get_key(&key).is_some_and(|cs| cs != &[0; 32])
     })
 }
 
@@ -322,8 +293,8 @@ async fn should_query_catalog(
     if scope_json == "[]" {
         return Ok(false);
     }
-    if full && checksums.is_empty() {
-        return Ok(false);
+    if full {
+        return Ok(true);
     }
     if hot_keys_have_history(scope, checksums) {
         return Ok(true);

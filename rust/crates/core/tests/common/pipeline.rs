@@ -43,8 +43,11 @@ pub async fn run_plan_pipeline(cfg: &Config) -> Result<(MigrationPlan, PhaseTimi
     timings.l1_cache_hit = db.l1_hit;
     timings.finish_audit_ms();
 
-    let (plan, diff_ms) = migrator_core::plan::compute_diff(&mut ws, &db.catalog, &db.checksums)?;
+    let (mut plan, diff_ms) = migrator_core::plan::compute_diff(&mut ws, &db.catalog, &db.checksums)?;
     timings.diff_ms = diff_ms;
+    if plan.uses_slim_rows() {
+        plan.ensure_objects_materialized(&ws);
+    }
     timings.plan_wall_ms = timings::dur_ms(start_all.elapsed());
     timings.engine_ms = timings.plan_wall_ms.saturating_sub(timings.connect_ms);
 

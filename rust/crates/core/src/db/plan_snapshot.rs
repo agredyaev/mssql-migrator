@@ -43,6 +43,23 @@ pub async fn run_plan_db_phase(
         });
     }
 
+    if let Some((checksums, catalog)) = super::warm_snapshot::reuse(&ws.layout_digest) {
+        l1.save(&fp, &ws.layout_digest, &checksums, &catalog)?;
+        return Ok(PlanDbResult {
+            checksums,
+            catalog,
+            ensure_ms: 0,
+            checksums_ms: 0,
+            inspect_ms: 0,
+            parallel_wall_ms: 0,
+            l1_hit: false,
+            trace: PlanDbTrace {
+                path: Some(PlanDbPath::WarmSnapshot),
+                ..PlanDbTrace::default()
+            },
+        });
+    }
+
     let keys_json = serde_json::to_string(&ws.normalized_keys()).unwrap_or_else(|_| "[]".into());
 
     run_batch(cfg, conn, ws, &keys_json, &fp, &l1).await

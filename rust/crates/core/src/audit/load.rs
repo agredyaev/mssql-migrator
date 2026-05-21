@@ -1,8 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 
-use crate::db::state::ChecksumMap;
-use crate::domain::ObjectKey;
+use crate::db::ChecksumMap;
 use crate::driver::{DbClient, TimingConn};
 use crate::error::Result;
 use crate::sql;
@@ -39,11 +38,11 @@ pub fn mark_history_nonempty(db_fp: &str) {
 }
 
 pub fn checksum_map_from_rows(rows: &[crate::driver::RowData]) -> ChecksumMap {
-    let mut out = HashMap::new();
+    let mut out = ChecksumMap::new();
     for row in rows {
         let key = row.get_str(0).unwrap_or("");
         if let Some(arr) = parse_history_checksum(row, 1) {
-            out.insert(ObjectKey::from_normalized(key), arr);
+            out.insert_normalized(key, arr);
         }
     }
     out
@@ -91,10 +90,7 @@ async fn history_table_is_empty(conn: &mut TimingConn, db_fp: &str) -> Result<bo
         return Ok(empty);
     }
     let rows = conn.query(sql::audit::HISTORY_EMPTY, &[]).await?;
-    let has_rows = rows
-        .first()
-        .map(history_probe_has_rows)
-        .unwrap_or(false);
+    let has_rows = rows.first().map(history_probe_has_rows).unwrap_or(false);
     let empty = !has_rows;
     history_empty_cache()
         .lock()
@@ -120,21 +116,19 @@ pub async fn load_checksums(
     keys_json: &str,
 ) -> Result<ChecksumMap> {
     if keys_json == "[]" {
-        return Ok(HashMap::new());
+        return Ok(ChecksumMap::new());
     }
     if history_nonempty_cache().lock().unwrap().contains(db_fp) {
-        return Ok(load_checksums_query(conn, keys_json).await?);
+        return load_checksums_query(conn, keys_json).await;
     }
     if history_table_is_empty(conn, db_fp).await? {
-        return Ok(HashMap::new());
+        return Ok(ChecksumMap::new());
     }
     load_checksums_query(conn, keys_json).await
 }
 
 async fn load_checksums_query(conn: &mut TimingConn, keys_json: &str) -> Result<ChecksumMap> {
-    let rows = conn
-        .query(sql::audit::LOAD_CHECKSUMS, &[keys_json])
-        .await?;
+    let rows = conn.query(sql::audit::LOAD_CHECKSUMS, &[keys_json]).await?;
     Ok(checksum_map_from_rows(&rows))
 }
 
@@ -192,6 +186,9 @@ mod tests {
             "75fdafa30d217c791047a3d8bd5f36dd62548e04a5154e758355a51525b2f973".into(),
         ));
         let sum = parse_history_checksum(&row, 0).expect("hex checksum");
-        assert_eq!(hex::encode(sum), "75fdafa30d217c791047a3d8bd5f36dd62548e04a5154e758355a51525b2f973");
+        assert_eq!(
+            hex::encode(sum),
+            "75fdafa30d217c791047a3d8bd5f36dd62548e04a5154e758355a51525b2f973"
+        );
     }
 }

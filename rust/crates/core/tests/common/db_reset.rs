@@ -1,6 +1,8 @@
 //! DROP/CREATE test database (shared by Go↔Rust e2e and workflow).
 
-use migrator_core::audit::{self, invalidate_audit_cache, invalidate_audit_cache_all, mark_tables_ensured};
+use migrator_core::audit::{
+    self, invalidate_audit_cache, invalidate_audit_cache_all, mark_tables_ensured,
+};
 use migrator_core::cache::l1::L1Cache;
 use migrator_core::config::Config;
 use migrator_core::driver::{connect, mssql};

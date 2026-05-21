@@ -8,7 +8,9 @@ mod tx;
 
 pub use result::ApplyResult;
 
-use crate::audit::{self, ensure_history_index, ensure_tables, flush_history, invalidate_audit_cache};
+use crate::audit::{
+    self, ensure_history_index, ensure_tables, flush_history, invalidate_audit_cache,
+};
 use crate::config::Config;
 use crate::db;
 use crate::domain::Workspace;
@@ -20,11 +22,12 @@ pub async fn execute_plan(
     cfg: &Config,
     conn: &mut TimingConn,
     ws: &Workspace,
-    plan: &MigrationPlan,
+    plan: &mut MigrationPlan,
 ) -> Result<ApplyResult> {
     if plan.blocked {
         return Err(Error::PlanBlocked);
     }
+    plan.ensure_objects_materialized(ws);
     let mut result = ApplyResult::default();
     let db_fp = audit::db_fingerprint(&cfg.server, &cfg.database);
     ensure_tables(conn, &db_fp).await?;
@@ -37,7 +40,11 @@ pub async fn execute_plan(
     finish(cfg, conn, result).await
 }
 
-async fn finish(cfg: &Config, conn: &mut TimingConn, mut result: ApplyResult) -> Result<ApplyResult> {
+async fn finish(
+    cfg: &Config,
+    conn: &mut TimingConn,
+    mut result: ApplyResult,
+) -> Result<ApplyResult> {
     let db_fp = audit::db_fingerprint(&cfg.server, &cfg.database);
     if !result.history.is_empty() {
         ensure_history_index(conn).await?;

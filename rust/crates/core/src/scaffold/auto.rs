@@ -21,10 +21,8 @@ pub fn try_auto_migration(
     if file_cols.is_empty() {
         return None;
     }
-    let db_names: HashMap<String, bool> = db_columns
-        .iter()
-        .map(|c| (c.name.clone(), true))
-        .collect();
+    let db_names: HashMap<String, bool> =
+        db_columns.iter().map(|c| (c.name.clone(), true)).collect();
     let added = new_columns(&file_cols, &db_names);
     if added.is_empty() || has_dropped_columns(&file_cols, &db_names) {
         return None;
@@ -55,7 +53,9 @@ fn auto_add_sql(schema: &str, table: &str, added: &[ParsedColumn]) -> Result<Str
     let schema_id = bracket_ident(schema)?;
     let table_id = bracket_ident(table)?;
     let mut b = String::new();
-    b.push_str(&format!("-- Auto-generated migration for {schema_id}.{table_id}\n"));
+    b.push_str(&format!(
+        "-- Auto-generated migration for {schema_id}.{table_id}\n"
+    ));
     b.push_str(&format!("-- Added columns: {}\n", added.len()));
     b.push_str("-- Review this migration before running.\n\n");
     for col in added {
@@ -77,9 +77,10 @@ fn validate_type_literal(typ: &str) -> Result<()> {
             "invalid type literal length: {typ:?}"
         )));
     }
-    if !typ.chars().all(|c| {
-        c.is_ascii() && !matches!(c, ';' | '\n' | '\r' | '[' | ']' | '\'' | '"')
-    }) {
+    if !typ
+        .chars()
+        .all(|c| c.is_ascii() && !matches!(c, ';' | '\n' | '\r' | '[' | ']' | '\'' | '"'))
+    {
         return Err(crate::error::Error::InvalidInput(format!(
             "invalid type literal: {typ:?}"
         )));

@@ -18,11 +18,9 @@ fn build_catalog_from_header(header: &str, kinds: &[&str], skip_schema_rows: boo
         b.push_str(sql::catalog::SCHEMA_ROWS);
         b.push(')');
     }
-    let has_sys = kinds
-        .iter()
-        .any(|k| !matches!(*k, "types" | "indexes"));
-    let has_types = kinds.iter().any(|k| *k == "types");
-    let has_indexes = kinds.iter().any(|k| *k == "indexes");
+    let has_sys = kinds.iter().any(|k| !matches!(*k, "types" | "indexes"));
+    let has_types = kinds.contains(&"types");
+    let has_indexes = kinds.contains(&"indexes");
     if has_sys {
         b.push_str(", sys_object_rows AS (");
         b.push_str(sql::catalog::SYS_OBJECTS);
@@ -45,7 +43,9 @@ fn build_catalog_from_header(header: &str, kinds: &[&str], skip_schema_rows: boo
             b.push_str(name);
             first = false;
         } else {
-            b.push_str(" UNION ALL SELECT row_kind, schema_name, kind, object_name, parent_name FROM ");
+            b.push_str(
+                " UNION ALL SELECT row_kind, schema_name, kind, object_name, parent_name FROM ",
+            );
             b.push_str(name);
         }
     };
@@ -65,17 +65,13 @@ fn build_catalog_from_header(header: &str, kinds: &[&str], skip_schema_rows: boo
 }
 
 pub fn looks_like_catalog_rows(rows: &[crate::driver::RowData]) -> bool {
-    rows.first().is_some_and(|r| {
-        r.cells.len() >= 5
-            && matches!(r.get_str(0), Some("object" | "schema"))
-    })
+    rows.first()
+        .is_some_and(|r| r.cells.len() >= 5 && matches!(r.get_str(0), Some("object" | "schema")))
 }
 
 pub fn looks_like_cache_load_rows(rows: &[crate::driver::RowData]) -> bool {
-    rows.first().is_some_and(|r| {
-        r.cells.len() >= 5
-            && r.get_str(0).is_some_and(|k| k.contains('/'))
-    })
+    rows.first()
+        .is_some_and(|r| r.cells.len() >= 5 && r.get_str(0).is_some_and(|k| k.contains('/')))
 }
 
 /// Scoped hit for plan batch (scope=@p2 when checksums use @p1).
@@ -96,10 +92,9 @@ pub fn merge_rows(state: &mut CatalogState, rows: &[crate::driver::RowData]) -> 
         let name = row.get_str(3).unwrap_or("");
         let parent = row.get_str(4);
         let key = ObjectKey::new(schema, obj_kind, name);
-        state.objects.insert(
-            key,
-            catalog_object(schema, obj_kind, name, parent),
-        );
+        state
+            .objects
+            .insert(key, catalog_object(schema, obj_kind, name, parent));
     }
     Ok(())
 }

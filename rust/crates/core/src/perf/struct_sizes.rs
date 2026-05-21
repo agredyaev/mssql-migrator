@@ -2,9 +2,11 @@ use std::io;
 use std::mem::size_of;
 use std::path::Path;
 
-use crate::config::Config;
-use crate::domain::{ObjectEntry, ObjectKey, ObjectRow, ObjectStore, Script, ScriptKey, Workspace};
-use crate::export::{MigrationPlan, PlannedObject, PlanSummary};
+use crate::config::{Config, ConfigCold};
+use crate::domain::{
+    ObjectEntry, ObjectRow, ObjectStore, ScriptRow, Workspace, WorkspaceCold,
+};
+use crate::export::{MigrationPlan, PlanGitOff, PlanRow, PlanSummary, PlannedObject};
 use crate::gate::{PlanSnapshot, SnapshotObject};
 use crate::timings::PhaseTimings;
 
@@ -13,18 +15,20 @@ use super::baseline::{StructSizeEntry, THRESHOLD_BYTES};
 pub fn collect_struct_sizes() -> Vec<StructSizeEntry> {
     let raw = [
         entry("export", "MigrationPlan", size_of::<MigrationPlan>()),
+        entry("export", "PlanRow", size_of::<PlanRow>()),
         entry("export", "PlannedObject", size_of::<PlannedObject>()),
         entry("export", "PlanSummary", size_of::<PlanSummary>()),
         entry("domain", "Workspace", size_of::<Workspace>()),
+        entry("domain", "WorkspaceCold", size_of::<WorkspaceCold>()),
         entry("domain", "ObjectEntry", size_of::<ObjectEntry>()),
         entry("domain", "ObjectStore", size_of::<ObjectStore>()),
         entry("domain", "ObjectRow", size_of::<ObjectRow>()),
-        entry("domain", "Script", size_of::<Script>()),
-        entry("domain", "ObjectKey", size_of::<ObjectKey>()),
-        entry("domain", "ScriptKey", size_of::<ScriptKey>()),
+        entry("domain", "ScriptRow", size_of::<ScriptRow>()),
         entry("gate", "PlanSnapshot", size_of::<PlanSnapshot>()),
         entry("gate", "SnapshotObject", size_of::<SnapshotObject>()),
         entry("config", "Config", size_of::<Config>()),
+        entry("config", "ConfigCold", size_of::<ConfigCold>()),
+        entry("export", "PlanGitOff", size_of::<PlanGitOff>()),
         entry("timings", "PhaseTimings", size_of::<PhaseTimings>()),
     ];
     let mut out: Vec<_> = raw

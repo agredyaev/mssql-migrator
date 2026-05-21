@@ -11,8 +11,8 @@ pub fn git_hot_scope_json(ws: &Workspace, changed_paths: &[String]) -> String {
     let hot_keys: HashSet<String> = ws
         .object_entries
         .iter()
-        .filter(|o| delta.contains(o.key.as_str()))
-        .map(|o| o.key.as_str().to_string())
+        .filter(|o| delta.contains(o.key_str(ws)))
+        .map(|o| o.key_str(ws).to_string())
         .collect();
     build_scope_json(&InspectScope {
         full_inspect: false,

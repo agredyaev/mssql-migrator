@@ -6,10 +6,17 @@ use crate::driver::RowData;
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Request {
     /// First message when `RMIG_SESSION_TOKEN` is set on daemon and client.
-    Auth { token: String },
+    Auth {
+        token: String,
+    },
     Ping,
-    Exec { sql: String },
-    Query { sql: String, params: Vec<String> },
+    Exec {
+        sql: String,
+    },
+    Query {
+        sql: String,
+        params: Vec<String>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]

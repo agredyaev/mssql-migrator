@@ -21,6 +21,10 @@ pub async fn populate(ws: &mut Workspace, root: &str, skip_git: bool) -> Result<
     walk::scan_root(ws, root)?;
     if !skip_git {
         git_preload::preload(ws, root);
+    }
+    crate::domain::intern_workspace_strings(ws);
+    crate::plan::rebuild_path_caches(ws);
+    if !skip_git {
         crate::domain::intern_script_git_strings(ws);
     }
     ws.layout_digest = digest::layout_digest(ws);

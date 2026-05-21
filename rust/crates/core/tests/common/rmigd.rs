@@ -36,16 +36,31 @@ pub fn ensure_started() -> Option<String> {
         .env("RMIGD_SOCKET", &socket)
         .env("RMIG_SESSION_TOKEN", INTEGRATION_TOKEN)
         .env("RMIGD_ENV", root.join(".env"))
-        .env("RM_DB_SERVER", std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "127.0.0.1".into()))
-        .env("RM_DB_PORT", std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into()))
-        .env("RM_DB_USER", std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into()))
+        .env(
+            "RM_DB_SERVER",
+            std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "127.0.0.1".into()),
+        )
+        .env(
+            "RM_DB_PORT",
+            std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into()),
+        )
+        .env(
+            "RM_DB_USER",
+            std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into()),
+        )
         .env(
             "RM_DB_PASSWORD",
             std::env::var("RM_DB_PASSWORD").unwrap_or_else(|_| "yourStrong(!)Password".into()),
         )
         .env("RM_DB_TRUST_SERVER_CERTIFICATE", "true")
-        .env("RM_SQL_ROOT", std::env::var("RM_SQL_ROOT").unwrap_or_default())
-        .env("RM_SQL_BASE", std::env::var("RM_SQL_BASE").unwrap_or_default())
+        .env(
+            "RM_SQL_ROOT",
+            std::env::var("RM_SQL_ROOT").unwrap_or_default(),
+        )
+        .env(
+            "RM_SQL_BASE",
+            std::env::var("RM_SQL_BASE").unwrap_or_default(),
+        )
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())
         .spawn()

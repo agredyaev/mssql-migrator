@@ -25,32 +25,32 @@ pub fn build_inspect_scope(
     let total = ws.object_count();
     let mut hot: HashSet<String> = HashSet::new();
     let mut stable: HashMap<ObjectKey, CatalogObject> = HashMap::new();
-    ws.for_each_entry(|obj| {
-        let k = obj.key.as_str();
+    for i in 0..total {
+        let obj = ws.entry(i);
+        let key = ws.entry_key(i);
+        let k = key.as_str();
         if delta.contains(k) {
             hot.insert(k.to_string());
-            return;
+            continue;
         }
         let file_cs = obj.checksum;
-        let prior = checksums.get(&obj.key);
+        let prior = checksums.get_key(key);
         if prior.is_none() || prior == Some(&[0; 32]) || prior != Some(&file_cs) {
             hot.insert(k.to_string());
-            return;
+            continue;
         }
         stable.insert(
-            obj.key.clone(),
+            key.clone(),
             catalog_object_parts(
-                obj.schema.clone(),
-                obj.kind.clone(),
-                obj.name.clone(),
-                if obj.parent_name.is_empty() {
-                    None
-                } else {
-                    Some(obj.parent_name.clone())
-                },
+                obj.schema_shared(ws),
+                obj.kind_shared(ws),
+                obj.name_shared(ws),
+                obj.parent_ref_for_row(ws, ws.row_id_at(i))
+                    .filter(|p| p.parent_row_id > 0)
+                    .map(|_| obj.parent_name(ws, ws.row_id_at(i))),
             ),
         );
-    });
+    }
     promote_spot_check_keys(&mut hot, &mut stable, ws);
     if hot.len() == total {
         return InspectScope {
@@ -80,7 +80,7 @@ fn promote_spot_check_keys(
     }
     let digest = hex::encode(ws.layout_digest);
     let mut keys: Vec<_> = stable.keys().map(|k| k.as_str().to_string()).collect();
-    keys.sort_by(|a, b| spot_check_rank(a, &digest).cmp(&spot_check_rank(b, &digest)));
+    keys.sort_by_key(|a| spot_check_rank(a, &digest));
     let take = n.min(keys.len());
     for key in keys.into_iter().take(take) {
         stable.remove(&ObjectKey::from_normalized(&key));

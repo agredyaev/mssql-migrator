@@ -91,7 +91,7 @@ async fn run_plan_scenario(scenario: &str, go_data: &str) {
         .expect("rust plan pipeline");
     let rust_rep = build_e2e_report(scenario, &plan, &timings, &io);
 
-    write_rust_report(&rust_rep, |p, r| write_e2e_report_file(p, r));
+    write_rust_report(&rust_rep, write_e2e_report_file);
 
     let expected = expected_actions(scenario);
     if rust_rep.action_counts != expected && !expected.is_empty() {
@@ -105,7 +105,10 @@ async fn run_plan_scenario(scenario: &str, go_data: &str) {
     assert_no_diffs(scenario, &diffs);
     eprintln!(
         "Go↔Rust scenario {:?} OK: actions={:?} plan_wall go={}ms rust={}ms",
-        scenario, rust_rep.action_counts, go_rep.timings.plan_wall_ms, rust_rep.timings.plan_wall_ms,
+        scenario,
+        rust_rep.action_counts,
+        go_rep.timings.plan_wall_ms,
+        rust_rep.timings.plan_wall_ms,
     );
 }
 
@@ -127,7 +130,7 @@ async fn run_apply_scenario(go_data: &str) {
         errors: Vec::new(),
         audit_object_rows: out.audit_object_rows,
     };
-    write_rust_report(&rust_rep, |p, r| write_e2e_apply_file(p, r));
+    write_rust_report(&rust_rep, write_e2e_apply_file);
     let diffs = compare_e2e_apply_reports(&go_rep, &rust_rep);
     assert_no_diffs("apply_smoke_result", &diffs);
     eprintln!(
@@ -144,14 +147,15 @@ async fn run_gate_scenario(go_data: &str) {
             .await
             .expect("reset db for prod_gate_cold");
     }
-    let baseline = common::repo_root().join("internal/app/testdata/prod_gate/plan_baseline_empty_db.json");
+    let baseline =
+        common::repo_root().join("internal/app/testdata/prod_gate/plan_baseline_empty_db.json");
     let (plan, timings, _) = pipeline::run_plan_pipeline(cfg)
         .await
         .expect("rust plan pipeline for gate");
     let rust_rep = gate_e2e::build_gate_report(cfg, &plan, timings, &baseline)
         .await
         .expect("prod gate cold");
-    write_rust_report(&rust_rep, |p, r| write_e2e_gate_file(p, r));
+    write_rust_report(&rust_rep, write_e2e_gate_file);
     let diffs = compare_e2e_gate_reports(&go_rep, &rust_rep);
     assert_no_diffs("prod_gate_cold", &diffs);
     eprintln!("Go↔Rust prod_gate_cold OK: gate_go={}", rust_rep.gate_go);
@@ -170,7 +174,7 @@ async fn run_blocked_scenario(go_data: &str) {
     let rust_rep = blocked::run_blocked_table_plan(&blocked_cfg)
         .await
         .expect("blocked table plan");
-    write_rust_report(&rust_rep, |p, r| write_e2e_blocked_file(p, r));
+    write_rust_report(&rust_rep, write_e2e_blocked_file);
     let diffs = compare_e2e_blocked_reports(&go_rep, &rust_rep);
     assert_no_diffs("blocked_table_plan", &diffs);
     eprintln!(
@@ -198,5 +202,8 @@ fn assert_no_diffs(scenario: &str, diffs: &[String]) {
     for d in diffs {
         eprintln!("scenario parity: {d}");
     }
-    panic!("Go↔Rust scenario {scenario:?} mismatch ({} diffs)", diffs.len());
+    panic!(
+        "Go↔Rust scenario {scenario:?} mismatch ({} diffs)",
+        diffs.len()
+    );
 }

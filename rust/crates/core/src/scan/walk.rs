@@ -31,9 +31,7 @@ pub fn scan_root(ws: &mut Workspace, root: &str) -> Result<()> {
     }
     ws.schemas = schemas.into_values().collect();
     ws.schemas.sort_by(|a, b| a.name.cmp(&b.name));
-    crate::domain::intern_workspace_strings(ws);
     ws.finalize_object_layout();
-    crate::plan::rebuild_transition_path_cache(ws);
     Ok(())
 }
 
