@@ -72,6 +72,16 @@ If `RM_SQL_ROOT` contains multiple child directories with schema subfolders (e.g
 - `make rust-check`, `make rust-e2e`
 - `rust/crates/core/tests/plan_json_roundtrip_test.rs`, `exit_code_test.rs`
 
+## Operations and recovery
+
+- Routine: run `make rust-check` after changes to `config/`, `export/`, or `error.rs`.
+- Recovery: invalid `RM_SQL_ROOT` layout → fix catalog tree; re-run `validate_config` via CLI.
+
+## Open issues and non-goals
+
+- Non-goals: `RM_PLAN_FILE` / `RM_REPAIR_SCRIPT` are not engine-enforced (same as Go reference).
+- Open issues: `version` CLI output is a stub until release build metadata is wired.
+
 ## References
 
 - `docs/specs/rust/module-test-harness.md`

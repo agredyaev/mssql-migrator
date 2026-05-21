@@ -23,7 +23,7 @@ This document is the **canonical policy**. Measurement procedures live in [`perf
 
 The plan pipeline touches **N objects** per run. Hot code runs **O(N)** over the full SQL tree: checksum preload, diff decisions, and plan row materialization. Layout choices that scatter data (pointer graphs, map iteration, virtual dispatch) dominate cache misses and heap churn at large N.
 
-Go scan (phase 4) and Rust scan both use dense object indices via [`ObjectStore`](../internal/fs/store.go) / [`object_store`](../rust/crates/core/src/domain/store.rs) and a Kelley-style string arena ([`StringArena`](../rust/crates/core/src/domain/arena.rs), **CASE-6**). Plan DB maps use [`ObjectKey`](../rust/crates/core/src/domain/key.rs) keys ([`ChecksumMap`](../rust/crates/core/src/db/state.rs), `CatalogState.objects`) — no duplicate normalized `String` keys vs layout. `SchemaEntry` and `CatalogObject` use `SharedStr` arena slices after scan finalize / SQL catalog load (`intern_catalog_state`).
+Go scan (phase 4) and Rust scan both use dense object indices via [`ObjectStore`](../internal/fs/store.go) / [`Workspace::object_rows`](../rust/crates/core/src/domain/workspace/mod.rs) + [`WorkspaceCold::key_index`](../rust/crates/core/src/domain/workspace/cold.rs) and a Kelley-style string arena ([`StringArena`](../rust/crates/core/src/domain/arena.rs), **CASE-6**). Hot [`Workspace`](../rust/crates/core/src/domain/workspace/mod.rs) holds CASE-1 columns; cold maps/scripts/arena live in [`WorkspaceCold`](../rust/crates/core/src/domain/workspace/cold.rs) behind `Box` (**COLD** / **SLAB**). Plan DB maps: [`ChecksumMap`](../rust/crates/core/src/db/checksum_map.rs) uses `u64` byte fingerprints (lookup via `key_off` after finalize); `CatalogState.objects` uses [`ObjectKey`](../rust/crates/core/src/domain/key.rs) — no duplicate normalized `String` keys vs layout. `SchemaEntry` and `CatalogObject` use `SharedStr` arena slices after scan finalize / SQL catalog load (`intern_catalog_state`).
 
 ```mermaid
 flowchart TB
@@ -160,7 +160,7 @@ flowchart TD
 
 | Case ID | Situation (access pattern) | Kelley reference | rmig example (today / target) | Rules | Do / Don't |
 |---------|---------------------------|------------------|-------------------------------|-------|------------|
-| **CASE-1** | Dense **full-tree diff** — O(N), same metadata fields read for every layout object | *Monster* array: four pointer fields replaced by `u32` indices into one dense array; iterate by index, not pointer graph | **Rust (done):** [`object_store`](../rust/crates/core/src/domain/store.rs) + [`object_entries`](../rust/crates/core/src/domain/workspace.rs) + index loop in [`diff.rs`](../rust/crates/core/src/plan/diff.rs); scan ingest via [`push_object`](../rust/crates/core/src/domain/workspace.rs) → [`finalize_object_layout`](../rust/crates/core/src/domain/workspace.rs) (matches Go `layout.Objects` slice) | **DOD-1**, **DOD-2** | **Do:** stable row id, `[]objectRow`, index `0..N-1`. **Don't:** `HashMap` as primary diff layout or map iteration over all keys |
+| **CASE-1** | Dense **full-tree diff** — O(N), same metadata fields read for every layout object | *Monster* array: four pointer fields replaced by `u32` indices into one dense array; iterate by index, not pointer graph | **Rust (done):** hot [`object_rows`](../rust/crates/core/src/domain/workspace/mod.rs) + [`object_entries`](../rust/crates/core/src/domain/workspace/objects.rs) + [`object_keys`](../rust/crates/core/src/domain/workspace/mod.rs) + index loop in [`diff.rs`](../rust/crates/core/src/plan/diff.rs); scan ingest via `push_object` → `finalize_object_layout` (matches Go `layout.Objects` slice) | **DOD-1**, **DOD-2** | **Do:** stable row id, `[]ObjectRow`, index `0..N-1`. **Don't:** `HashMap` as primary diff layout or map iteration over all keys |
 | **CASE-2** | **Path/key lookup** — build index once, then random lookup by normalized key (delta, inspect) | Build lookup table once; hot loop resolves keys to indices, not repeated string walks | **Go:** `ObjectStore.keyIndex map[string]uint32` built at scan finalize in [`store.go`](../internal/fs/store.go). **Rust:** `resolve_changed_paths` / inspect scope — map at build, not walked for all N in diff | **DOD-A1** | **Do:** map only in finalize / rebuild. **Don't:** iterate map keys inside the per-object diff loop |
 | **CASE-3** | **Skip-heavy plans** — same outcome on ~98% of rows (`ActionSkipUnchanged`) | *Bool out-of-band:* separate alive/dead arrays instead of a `bool` on every struct when almost all rows share one value | **`PlanScenario`** `u8` enum — [`scenario.rs`](../rust/crates/core/src/plan/scenario.rs), Go [`scenario.go`](../internal/diff/scenario.go): `resolve` → tag → `apply` → `Action`. Tail: Go apply string compare | **DOD-A4**, **DOD-A3** | **Do:** encode skip/create/reprocess (and changed sub-scenarios) as small enum tag or lookup table. **Don't:** store redundant `exists` + branch-heavy flags on every row when a partition or tag suffices |
 | **CASE-4** | **Sparse per-table data** — transition scripts exist for a small subset of tables, not all N objects | *Strategy 4 (sparse hash):* hash map for monster *items* because ~90% of monsters carry none — map is cheaper than a column on every row | [`transitions_by_table`](../rust/crates/core/src/domain/workspace.rs) — lookup in `PlanScenario::TableReprocess` path only | **DOD-A2** | **Do:** side table + lookup by row id; document sparsity on smoke/prod-like fixture. **Don't:** full map iteration in diff or dynamic string keys without evidence (**DOD-X5**) |
@@ -182,7 +182,7 @@ flowchart TD
 | **Kelley analogue** | Monster struct with four pointers → store `u32` indices into one array; walk `0..monster_count-1` reading dense fields |
 | **Wrong (historical Rust)** | Iterate `Workspace.objects: HashMap<ObjectKey, ObjectEntry>`; duplicate storage in HashMap + dense vec at finalize — dhat ~7 MB/iter on diff, ~25 MB scan setup (**DOD-X2**) |
 | **Correct (Go / Rust today)** | Dense `[]objectRow` (6 B row + side `ObjectEntry` vec); scan appends to `object_entries`; diff loop uses row index; path resolved via **CASE-2** `key_index` only at lookup sites |
-| **Repo paths** | Go: [`internal/fs/store.go`](../internal/fs/store.go), [`internal/diff/diff.go`](../internal/diff/diff.go). Rust: [`workspace.rs`](../rust/crates/core/src/domain/workspace.rs), [`scan/parse.rs`](../rust/crates/core/src/scan/parse.rs) |
+| **Repo paths** | Go: [`internal/fs/store.go`](../internal/fs/store.go), [`internal/diff/diff.go`](../internal/diff/diff.go). Rust: [`workspace/`](../rust/crates/core/src/domain/workspace/), [`scan/parse.rs`](../rust/crates/core/src/scan/parse.rs) |
 
 #### CASE-4: Sparse table transitions
 
@@ -202,6 +202,33 @@ flowchart TD
 | **Kelley analogue** | *DOD-A3* — merge variant + flags into one small tag; dispatch with `switch`, not scattered booleans and strings |
 | **Today** | `PlanScenario` tag covers lifecycle + changed sub-cases; `resolve_plan_scenario` → `apply_scenario` → `Action`. Go apply still compares `PlannedAction` strings |
 | **Repo paths** | [`rust/crates/core/src/plan/scenario.rs`](../rust/crates/core/src/plan/scenario.rs), Go: [`internal/diff/scenario.go`](../internal/diff/scenario.go), [`internal/engine/engine.go`](../internal/engine/engine.go) |
+
+##### ObjectDecision vs PlanScenario (Rust diff pipeline)
+
+`PlanScenario` and `ObjectDecision` serve **different phases**. Do not merge them into one struct.
+
+| Type | Phase | Lifetime | Kelley role |
+|------|-------|----------|-------------|
+| **`PlanScenario`** | decide (`resolve_plan_scenario` → `apply_scenario`) | stack in [`diff_decide.rs`](../rust/crates/core/src/plan/diff_decide.rs) only | **CASE-3** combined tag (`u8`, `Copy`) |
+| **`ObjectDecision`** | fill (`fill_planned_at`) | ephemeral stack per loop iteration | **CASE-7** fill contract — not O(N) bulk storage |
+
+**Canonical `ObjectDecision` fields** ([`diff_object.rs`](../rust/crates/core/src/plan/diff_object.rs)):
+
+| Field | Purpose |
+|-------|---------|
+| `action: Action` | Wire outcome → `PlannedObject.planned_action` |
+| `exists: bool` | → `PlannedObject.exists` |
+| `with_git: bool` | **CASE-8** gate for optional git copy into plan row |
+
+**Do not add to `ObjectDecision`:**
+
+- `scenario: PlanScenario` — duplicate of decide tag; fill derives behavior from `Action` + side tables
+- `Vec<SharedStr>` / owned strings — heap on stack each iteration (**DOD-X6** / **CASE-6** violation)
+- New fields without a **CASE-*** id and dhat evidence in the same PR
+
+Warmed skip-heavy re-run uses **action-stable** compare in [`diff_fill_skip.rs`](../rust/crates/core/src/plan/diff_fill_skip.rs) (`planned_action`, `exists`, checksum, key) — not `PlanScenario` in the fill contract.
+
+Transition paths: **CASE-4** — read from `transition_path_cache` at fill time, not carried in `ObjectDecision`.
 
 #### CASE-5: Kind dispatch without polymorphism
 
@@ -283,6 +310,7 @@ Update committed baselines only with maintainer intent: `make bench-footprint-up
 
 ## References
 
+- [`docs/dod.md`](dod.md) — **execution roadmap** (minimum-size unload steps P1–W3, status tracker, anti-drift)
 - [`docs/perf-footprint-audit.md`](perf-footprint-audit.md) — measurement runbook and findings snapshot
 - [`docs/solution.md`](solution.md) — § DOD layout footprint (phase 4)
 - [`docs/specs/internals/module-fs.md`](specs/internals/module-fs.md) — `ObjectStore`, arena

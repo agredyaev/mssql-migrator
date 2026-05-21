@@ -70,6 +70,16 @@ RMIG_RUN_SQLSERVER_INTEGRATION=1 make rust-e2e
 RUSTFLAGS="-D warnings" cargo test -p migrator-core --test apply_e2e_integration --test workflow_integration
 ```
 
+## Operations and recovery
+
+- Routine: run `make rust-e2e` before merging harness changes; use `GitRestore::drop` to reset `.temp/` git fixture.
+- Recovery: stuck scaffold files under `dactests/smoke/tables/_migrations/` → `workflow_git` cleanup on test drop or manual delete.
+
+## Open issues and non-goals
+
+- Non-goals: this harness does not replace Go parity tests (`make go-rust-e2e-all`).
+- Open issues: pending SQL integration tests for catalog cache save and migration re-run (see `docs/rust-port-plan.md`).
+
 ## References
 
 - `docs/specs/rust/module-config-export.md`

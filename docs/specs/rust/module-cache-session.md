@@ -23,7 +23,7 @@ Describe **process-local L1 plan cache** and optional **rmigd session daemon** f
 
 ## System context
 
-Product SLO (`cli_wall_ms` < 100 ms) assumes warm path: L1 hit and/or `RMIG_SESSION` to `rmigd` avoiding connect + cold catalog. See `make rust-slo` and `ops/perf/rust_cli_phase.sh`.
+Product SLO (`cli_wall_ms` < 150 ms) assumes warm path: L1 hit and/or `RMIG_SESSION` to `rmigd` avoiding connect + cold catalog. See `make rust-slo` and `ops/perf/rust_cli_phase.sh`.
 
 ## Interfaces and boundaries
 
