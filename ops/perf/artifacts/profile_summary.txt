@@ -1,65 +1,65 @@
-# rmig profile summary — 2026-05-19T19:04:21Z
+# rmig profile summary — 2026-05-21T01:28:27Z
 # Regenerate: make bench-footprint-profile && ops/perf/cli_phase.sh profile
 
 == in-process diff 5k (footprint) ==
 --- CPU (~/project/mssql-reporting-migrator/ops/perf/artifacts/footprint_5k.cpu.prof) ---
 File: perf.test
 Type: cpu
-Time: 2026-05-19 21:03:53 CEST
-Duration: 27.30s, Total samples = 21.44s (78.53%)
-Showing nodes accounting for 19.74s, 92.07% of 21.44s total
-Dropped 205 nodes (cum <= 0.11s)
-Showing top 20 nodes out of 165
+Time: 2026-05-20 10:03:38 CEST
+Duration: 20.55s, Total samples = 17.10s (83.23%)
+Showing nodes accounting for 15.92s, 93.10% of 17.10s total
+Dropped 164 nodes (cum <= 0.09s)
+Showing top 20 nodes out of 164
       flat  flat%   sum%        cum   cum%
-    13.41s 62.55% 62.55%     13.41s 62.55%  syscall.rawsyscalln
-     1.37s  6.39% 68.94%      1.37s  6.39%  runtime.madvise
-     0.85s  3.96% 72.90%      0.85s  3.96%  runtime.memclrNoHeapPointers
-     0.56s  2.61% 75.51%      0.56s  2.61%  runtime.memmove
-     0.51s  2.38% 77.89%      0.98s  4.57%  reporting-db-migrations/internal/diff.(*Computer).Compute
-     0.49s  2.29% 80.18%      0.86s  4.01%  runtime.pcvalue
-     0.48s  2.24% 82.42%      1.22s  5.69%  runtime.setprofilebucket
-     0.42s  1.96% 84.38%      0.42s  1.96%  runtime.pthread_cond_signal
-     0.35s  1.63% 86.01%      0.35s  1.63%  runtime.pthread_cond_wait
-     0.33s  1.54% 87.55%      0.33s  1.54%  runtime.(*mspan).specialFindSplicePoint (inline)
-     0.22s  1.03% 88.57%      0.22s  1.03%  runtime.usleep
-     0.17s  0.79% 89.37%      0.21s  0.98%  runtime.step
-     0.13s  0.61% 89.97%      0.15s   0.7%  runtime.findfunc
-     0.10s  0.47% 90.44%      1.30s  6.06%  runtime.tracebackPCs
-     0.09s  0.42% 90.86%      0.55s  2.57%  runtime.(*unwinder).resolveInternal
-     0.08s  0.37% 91.23%      0.17s  0.79%  runtime.mapaccess2_faststr
-     0.05s  0.23% 91.46%      0.11s  0.51%  fmt.(*pp).doPrintf
-     0.05s  0.23% 91.70%      1.91s  8.91%  reporting-db-migrations/internal/fs.(*Object).Checksum
-     0.05s  0.23% 91.93%      0.43s  2.01%  runtime.addspecial
-     0.03s  0.14% 92.07%      0.66s  3.08%  runtime.(*unwinder).next
+     9.82s 57.43% 57.43%      9.82s 57.43%  syscall.rawsyscalln
+     1.14s  6.67% 64.09%      1.14s  6.67%  runtime.madvise
+     0.94s  5.50% 69.59%      0.94s  5.50%  runtime.memclrNoHeapPointers
+     0.71s  4.15% 73.74%      1.73s 10.12%  reporting-db-migrations/internal/diff.(*Computer).Compute
+     0.55s  3.22% 76.96%      0.55s  3.22%  runtime.memmove
+     0.40s  2.34% 79.30%      0.40s  2.34%  runtime.pthread_cond_signal
+     0.37s  2.16% 81.46%      0.84s  4.91%  runtime.setprofilebucket
+     0.36s  2.11% 83.57%      0.36s  2.11%  runtime.pthread_cond_wait
+     0.28s  1.64% 85.20%      0.52s  3.04%  runtime.mapaccess2_faststr
+     0.24s  1.40% 86.61%      0.24s  1.40%  runtime.(*spanInlineMarkBits).init
+     0.22s  1.29% 87.89%      0.22s  1.29%  runtime.usleep
+     0.18s  1.05% 88.95%      0.30s  1.75%  runtime.pcvalue
+     0.17s  0.99% 89.94%      0.17s  0.99%  runtime.(*mspan).specialFindSplicePoint (inline)
+     0.16s  0.94% 90.88%      0.16s  0.94%  runtime.memequal
+     0.10s  0.58% 91.46%      0.10s  0.58%  aeshashbody
+     0.07s  0.41% 91.87%      0.09s  0.53%  runtime.markrootSpans
+     0.06s  0.35% 92.22%      2.19s 12.81%  reporting-db-migrations/internal/fs.(*Object).Checksum
+     0.06s  0.35% 92.57%      0.14s  0.82%  reporting-db-migrations/internal/fs.normalizeSQLBytes
+     0.05s  0.29% 92.87%      0.47s  2.75%  runtime.lock2
+     0.04s  0.23% 93.10%      2.13s 12.46%  reporting-db-migrations/internal/fs.checksumOnceForFile
 
 --- heap alloc_space (~/project/mssql-reporting-migrator/ops/perf/artifacts/footprint_5k.mem.prof) ---
 File: perf.test
 Type: alloc_space
-Time: 2026-05-19 21:04:21 CEST
-Showing nodes accounting for 3170078.48kB, 98.03% of 3233875.71kB total
-Dropped 341 nodes (cum <= 16169.38kB)
-Showing top 20 nodes out of 23
+Time: 2026-05-20 10:03:59 CEST
+Showing nodes accounting for 8758766.03kB, 99.04% of 8844052.30kB total
+Dropped 342 nodes (cum <= 44220.26kB)
+Showing top 20 nodes out of 22
       flat  flat%   sum%        cum   cum%
-1941540.62kB 60.04% 60.04% 1941540.62kB 60.04%  reporting-db-migrations/internal/diff.(*Computer).Compute
-549488.36kB 16.99% 77.03% 549488.36kB 16.99%  io.ReadAll
-368814.26kB 11.40% 88.43% 368814.26kB 11.40%  internal/bytealg.MakeNoZero
-247250.70kB  7.65% 96.08% 676480.38kB 20.92%  reporting-db-migrations/internal/perf.makeBenchFS
-59520.47kB  1.84% 97.92% 423439.28kB 13.09%  reporting-db-migrations/internal/perf.makeBenchSQL
- 3458.77kB  0.11% 98.03% 2658728.16kB 82.21%  reporting-db-migrations/internal/perf.benchmarkDiffComputeSkipHeavy
-    2.95kB 9.1e-05% 98.03% 569557.57kB 17.61%  reporting-db-migrations/internal/fs.(*Scanner).preloadChecksums.func1
-    2.11kB 6.5e-05% 98.03% 37239.58kB  1.15%  reporting-db-migrations/internal/fs.(*Scanner).Scan
-    0.23kB 7.2e-06% 98.03% 2661037.55kB 82.29%  testing.(*B).runN
-         0     0% 98.03% 562616.16kB 17.40%  reporting-db-migrations/internal/fs.(*Object).Checksum
-         0     0% 98.03% 21143.41kB  0.65%  reporting-db-migrations/internal/fs.(*Scanner).finalizeLayout
-         0     0% 98.03% 562616.16kB 17.40%  reporting-db-migrations/internal/fs.checksumOnceForFile
-         0     0% 98.03% 562616.16kB 17.40%  reporting-db-migrations/internal/fs.checksumOnceForFile.func1
-         0     0% 98.03% 569554.62kB 17.61%  reporting-db-migrations/internal/fs.preloadChecksumWithCache
-         0     0% 98.03% 555450.27kB 17.18%  reporting-db-migrations/internal/fs.readFileBytesAndStat
-         0     0% 98.03% 2658728.16kB 82.21%  reporting-db-migrations/internal/perf.BenchmarkDiffCompute_SkipHeavy_5000Objects
-         0     0% 98.03% 713720.43kB 22.07%  reporting-db-migrations/internal/perf.makeBenchLayout
-         0     0% 98.03% 368814.26kB 11.40%  strings.(*Builder).Grow
-         0     0% 98.03% 368814.26kB 11.40%  strings.(*Builder).grow
-         0     0% 98.03% 562616.82kB 17.40%  sync.(*Once).Do (inline)
+7120703.52kB 80.51% 80.51% 7120703.52kB 80.51%  reporting-db-migrations/internal/diff.(*Computer).Compute
+  732651kB  8.28% 88.80%   732651kB  8.28%  io.ReadAll
+491765.38kB  5.56% 94.36% 491765.38kB  5.56%  internal/bytealg.MakeNoZero
+329667.45kB  3.73% 98.09% 901934.80kB 10.20%  reporting-db-migrations/internal/perf.makeBenchFS
+79360.45kB   0.9% 98.98% 564546.84kB  6.38%  reporting-db-migrations/internal/perf.makeBenchSQL
+ 4611.69kB 0.052% 99.04% 8076921.19kB 91.33%  reporting-db-migrations/internal/perf.benchmarkDiffComputeSkipHeavy
+    3.50kB 4e-05% 99.04% 760867.61kB  8.60%  reporting-db-migrations/internal/fs.(*Scanner).preloadChecksums.func1
+    2.81kB 3.2e-05% 99.04% 49659.38kB  0.56%  reporting-db-migrations/internal/fs.(*Scanner).Scan
+    0.23kB 2.7e-06% 99.04% 8079986.05kB 91.36%  testing.(*B).runN
+         0     0% 99.04% 750077.43kB  8.48%  reporting-db-migrations/internal/fs.(*Object).Checksum
+         0     0% 99.04% 750077.43kB  8.48%  reporting-db-migrations/internal/fs.checksumOnceForFile
+         0     0% 99.04% 750077.43kB  8.48%  reporting-db-migrations/internal/fs.checksumOnceForFile.func1
+         0     0% 99.04% 760864.11kB  8.60%  reporting-db-migrations/internal/fs.preloadChecksumWithCache
+         0     0% 99.04% 740600.22kB  8.37%  reporting-db-migrations/internal/fs.readFileBytesAndStat
+         0     0% 99.04% 8076921.19kB 91.33%  reporting-db-migrations/internal/perf.BenchmarkDiffCompute_SkipHeavy_5000Objects
+         0     0% 99.04% 951594.80kB 10.76%  reporting-db-migrations/internal/perf.makeBenchLayout
+         0     0% 99.04% 491765.38kB  5.56%  strings.(*Builder).Grow
+         0     0% 99.04% 491765.38kB  5.56%  strings.(*Builder).grow
+         0     0% 99.04% 750078.09kB  8.48%  sync.(*Once).Do (inline)
+         0     0% 99.04% 750078.09kB  8.48%  sync.(*Once).doSlow
 
 == full CLI plan cold (SQL integration) ==
 --- CPU (~/project/mssql-reporting-migrator/ops/perf/artifacts/cli_plan.cpu.prof) ---

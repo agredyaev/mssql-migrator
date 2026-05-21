@@ -1,28 +1,49 @@
-warning: function `skip_heavy_workspace` is never used
-  --> crates/core/benches/bench_support.rs:13:8
+warning: fields `schema` and `table` are never read
+  --> crates/core/src/scan/transition.rs:33:5
    |
-13 | pub fn skip_heavy_workspace(n: usize) -> (Workspace, CatalogState, HashMap<String, [u8; 32]>) {
-   |        ^^^^^^^^^^^^^^^^^^^^
+32 | struct TransitionMeta {
+   |        -------------- fields in this struct
+33 |     schema: String,
+   |     ^^^^^^
+34 |     table: String,
+   |     ^^^^^
    |
    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
 
-warning: function `scan_fixture_workspace` is never used
-   --> crates/core/benches/bench_support.rs:212:8
-    |
-212 | pub fn scan_fixture_workspace(root: &Path, n: usize) -> Workspace {
-    |        ^^^^^^^^^^^^^^^^^^^^^^
+warning: `migrator-core` (lib) generated 1 warning
+warning: unused import: `empty_str`
+ --> crates/core/benches/bench_table.rs:4:5
+  |
+4 |     empty_str, share, ObjectKey, Script, ScriptKind, ScriptKey, StringInterner, Workspace,
+  |     ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
 
-warning: function `temp_scan_root` is never used
-   --> crates/core/benches/bench_support.rs:223:8
-    |
-223 | pub fn temp_scan_root(prefix: &str) -> PathBuf {
-    |        ^^^^^^^^^^^^^^
+warning: unused imports: `scan_fixture_workspace` and `temp_scan_root`
+  --> crates/core/benches/bench_support.rs:14:22
+   |
+14 | pub use bench_scan::{scan_fixture_workspace, temp_scan_root};
+   |                      ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
 
-warning: `migrator-core` (bench "plan_diff_dhat_transitions") generated 3 warnings
-    Finished `profiling` profile [optimized + debuginfo] target(s) in 0.14s
-     Running benches/plan_diff_dhat_transitions.rs (target/profiling/deps/plan_diff_dhat_transitions-51fbcf088321a757)
+warning: unused import: `bench_skip::skip_heavy_workspace`
+  --> crates/core/benches/bench_support.rs:15:9
+   |
+15 | pub use bench_skip::skip_heavy_workspace;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: this lint expectation is unfulfilled
+ --> crates/core/benches/bench_support.rs:3:11
+  |
+3 | #![expect(dead_code)]
+  |           ^^^^^^^^^
+  |
+  = note: `#[warn(unfulfilled_lint_expectations)]` on by default
+
+warning: `migrator-core` (bench "plan_diff_dhat_transitions") generated 4 warnings (run `cargo fix --bench "plan_diff_dhat_transitions" -p migrator-core` to apply 3 suggestions)
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 0.12s
+     Running benches/plan_diff_dhat_transitions.rs (target/profiling/deps/plan_diff_dhat_transitions-13a8be317c18272f)
 dhat: plan_diff_table_heavy_500 x20 complete
-dhat: Total:     2,338,284 bytes in 12,857 blocks
-dhat: At t-gmax: 1,347,500 bytes in 9,521 blocks
-dhat: At t-end:  80 bytes in 2 blocks
+dhat: Total:     2,757,634 bytes in 30,438 blocks
+dhat: At t-gmax: 1,375,912 bytes in 15,990 blocks
+dhat: At t-end:  112 bytes in 2 blocks
 dhat: The data has been saved to dhat-heap.json, and is viewable with dhat/dh_view.html

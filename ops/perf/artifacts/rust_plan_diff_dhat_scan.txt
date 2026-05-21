@@ -1,29 +1,55 @@
-   Compiling migrator-core v0.1.0 (~/project/mssql-reporting-migrator/rust/crates/core)
-warning: function `skip_heavy_workspace` is never used
-  --> crates/core/benches/bench_support.rs:13:8
+warning: fields `schema` and `table` are never read
+  --> crates/core/src/scan/transition.rs:33:5
    |
-13 | pub fn skip_heavy_workspace(n: usize) -> (Workspace, CatalogState, ChecksumMap) {
-   |        ^^^^^^^^^^^^^^^^^^^^
+32 | struct TransitionMeta {
+   |        -------------- fields in this struct
+33 |     schema: String,
+   |     ^^^^^^
+34 |     table: String,
+   |     ^^^^^
    |
    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
 
-warning: function `table_heavy_workspace` is never used
-  --> crates/core/benches/bench_support.rs:92:8
+warning: `migrator-core` (lib) generated 1 warning
+warning: unused import: `empty_str`
+ --> crates/core/benches/bench_table.rs:4:5
+  |
+4 |     empty_str, share, ObjectKey, Script, ScriptKind, ScriptKey, StringInterner, Workspace,
+  |     ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `bench_skip::skip_heavy_workspace`
+  --> crates/core/benches/bench_support.rs:15:9
    |
-92 | pub fn table_heavy_workspace(
-   |        ^^^^^^^^^^^^^^^^^^^^^
+15 | pub use bench_skip::skip_heavy_workspace;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-warning: function `checksum_for` is never used
-   --> crates/core/benches/bench_support.rs:217:4
-    |
-217 | fn checksum_for(i: usize) -> [u8; 32] {
-    |    ^^^^^^^^^^^^
+warning: unused import: `bench_table::table_heavy_workspace`
+  --> crates/core/benches/bench_support.rs:16:9
+   |
+16 | pub use bench_table::table_heavy_workspace;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-warning: `migrator-core` (bench "plan_diff_dhat_scan") generated 3 warnings
-    Finished `profiling` profile [optimized + debuginfo] target(s) in 10.92s
-     Running benches/plan_diff_dhat_scan.rs (target/profiling/deps/plan_diff_dhat_scan-18473c9566680302)
+warning: unused import: `migrator_core::domain::share`
+ --> crates/core/benches/plan_diff_dhat_scan.rs:6:5
+  |
+6 | use migrator_core::domain::share;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: this lint expectation is unfulfilled
+ --> crates/core/benches/bench_support.rs:3:11
+  |
+3 | #![expect(dead_code)]
+  |           ^^^^^^^^^
+  |
+  = note: `#[warn(unfulfilled_lint_expectations)]` on by default
+
+warning: `migrator-core` (bench "plan_diff_dhat_scan") generated 5 warnings (run `cargo fix --bench "plan_diff_dhat_scan" -p migrator-core` to apply 4 suggestions)
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 0.14s
+     Running benches/plan_diff_dhat_scan.rs (target/profiling/deps/plan_diff_dhat_scan-fdf35f3f23da1fc9)
 dhat: scan_fixture_5000 x20 complete
-dhat: Total:     25,895,748 bytes in 245,128 blocks
-dhat: At t-gmax: 9,689,159 bytes in 110,017 blocks
+dhat: Total:     13,932,130 bytes in 160,156 blocks
+dhat: At t-gmax: 5,550,037 bytes in 50,030 blocks
 dhat: At t-end:  112 bytes in 2 blocks
 dhat: The data has been saved to dhat-heap.json, and is viewable with dhat/dh_view.html
