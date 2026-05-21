@@ -28,6 +28,7 @@ First phase of `engine::run_command`. Populates `domain::Workspace` (`object_ent
 ## Assumptions and constraints
 
 - Layout follows repo SQL tree conventions (see `docs/solution.md`).
+- Catalog wire paths (`objectPath`, `transitionPaths` in plan JSON) are **`{database}/{schema}/...`** relative to `RM_SQL_ROOT`, matching Go `fs.Object.Path` / `TransitionScript.Path`. `plan::diff_object` and `plan::transitions` normalize via `domain::with_database_prefix`.
 - Git preload is best-effort when `.git` exists at repo root.
 
 ## Nominal flow

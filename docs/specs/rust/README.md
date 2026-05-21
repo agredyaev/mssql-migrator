@@ -62,7 +62,7 @@ This directory holds NASA-style specifications (`docs/specs/nasa-document-spec.m
 ## Verification and validation
 
 - `make rust-check` — arch, release dep guard, fmt, `clippy -D warnings`, unit + non-SQL tests (`Makefile`)
-- `make rust-slo` — warm `cli_wall_ms` < 100 ms gate (`docs/rust-port-plan.md`)
+- `make rust-slo` — warm `cli_wall_ms` < 150 ms gate (`docs/rust-port-plan.md`)
 - `make rust-plan-db-perf` — plan DB `parallel_wall_ms` ≤ 500 ms (`ops/perf/README.md`)
 - `make rust-workflow-fast` — full workflow integration ~2 s (`ops/perf/rust_workflow_fast.sh`)
 - `make rust-prod-gate` — incremental plan go/no-go (`docs/prod-gate.md`)
