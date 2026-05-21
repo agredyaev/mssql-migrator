@@ -9,11 +9,7 @@ use migrator_core::plan::compute_diff_into;
 #[global_allocator]
 static DHAT: dhat::Alloc = dhat::Alloc;
 
-fn bench_setup() -> (
-    migrator_core::domain::Workspace,
-    CatalogState,
-    ChecksumMap,
-) {
+fn bench_setup() -> (migrator_core::domain::Workspace, CatalogState, ChecksumMap) {
     bench_support::table_heavy_workspace(500)
 }
 

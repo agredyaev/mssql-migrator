@@ -10,27 +10,24 @@ use migrator_core::plan::compute_diff_into;
 #[global_allocator]
 static DHAT: dhat::Alloc = dhat::Alloc;
 
-fn bench_scan_setup() -> (
-    migrator_core::domain::Workspace,
-    CatalogState,
-    ChecksumMap,
-) {
+fn bench_scan_setup() -> (migrator_core::domain::Workspace, CatalogState, ChecksumMap) {
     let root = bench_support::temp_scan_root("5k");
     let ws = bench_support::scan_fixture_workspace(&root, 5000);
     let mut catalog = CatalogState::default();
     catalog.schemas.insert("schema".into());
     let mut checksums = ChecksumMap::new();
     for obj in &ws.object_entries {
+        let key = obj.key(&ws);
         catalog.objects.insert(
-            obj.key.clone(),
+            key.clone(),
             catalog_object_parts(
-                share("schema"),
-                obj.kind.clone(),
-                obj.name.clone(),
+                obj.schema_shared(&ws),
+                obj.kind_shared(&ws),
+                obj.name_shared(&ws),
                 None,
             ),
         );
-        checksums.insert(obj.key.clone(), obj.checksum);
+        checksums.insert_key(&key, obj.checksum);
     }
     (ws, catalog, checksums)
 }
