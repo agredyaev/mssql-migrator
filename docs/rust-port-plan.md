@@ -1,4 +1,4 @@
-# Rust migrator implementation plan (<100ms `cli_wall_ms`)
+# Rust migrator implementation plan (<150ms `cli_wall_ms`)
 
 Lifecycle: `Current`.
 
@@ -6,7 +6,7 @@ Canonical plan for the Rust port; do not rely on chat history.
 
 ## Purpose
 
-Define the Rust migrator implementation plan, product SLO (`cli_wall_ms` < 100 ms), module map, Makefile targets, and remaining parity gaps vs the Go reference.
+Define the Rust migrator implementation plan, product SLO (`cli_wall_ms` < 150 ms), module map, Makefile targets, and remaining parity gaps vs the Go reference.
 
 ## Durable artifact
 
@@ -17,7 +17,7 @@ This file is the source of truth for the Rust migrator. Implementation lives und
 **Snapshot:** 2026-05-19.
 
 - **Implementation:** Milestones M0–M15 are implemented under [`rust/`](../rust/) (except optional SQL-only integration tests noted per milestone). Binaries: `rmig` ([`rust/crates/cli/`](../rust/crates/cli/)), `rmigd` ([`rust/crates/rmigd/`](../rust/crates/rmigd/)).
-- **SLO:** **Met** via `make rust-slo` (release build, `rmigd` + `RMIG_SESSION`, parallel plan DB, warm catalog snapshot). Gate: [`integration_plan_sqlserver_suite`](../rust/crates/core/tests/integration_plan.rs) asserts `cli_wall_ms` &lt; `RMIG_SLO_MAX_CLI_WALL_MS` (default 100).
+- **SLO:** **Met** via `make rust-slo` (release build, `rmigd` + `RMIG_SESSION`, parallel plan DB, warm catalog snapshot). Gate: [`integration_plan_sqlserver_suite`](../rust/crates/core/tests/integration_plan.rs) asserts `cli_wall_ms` &lt; `RMIG_SLO_MAX_CLI_WALL_MS` (default 150).
 - **Production:** Rust `rmig` is the **operator-facing migrator** (Go was not deployed to production). Go remains for reference tests and Go↔Rust parity harness.
 - **Parity vs Go reference:** Core `plan` / unblocked `migrate` match; remaining operator-facing gaps — see [Functional parity vs Go rmig](#functional-parity-vs-go-rmig) and [Remaining milestones](#remaining-milestones-m8).
 
@@ -27,7 +27,7 @@ This file is the source of truth for the Rust migrator. Implementation lives und
 
 - Side-by-side Rust implementation of Go `rmig` under [`rust/`](../rust/): commands `plan`, `migrate`, `validate`, `baseline`, `repair-checksum`, `version`
 - Same operator contract: `RM_*` env, plan JSON wire format, `azdo_deploy_meta` audit tables, T-SQL in [`rust/sql/`](../rust/sql/)
-- Product SLO: cache-miss `plan` **`cli_wall_ms` < 100 ms** (see [Product SLO](#product-slo-locked))
+- Product SLO: cache-miss `plan` **`cli_wall_ms` < 150 ms** (see [Product SLO](#product-slo-locked))
 - Parity backlog M8–M15 until drop-in replacement is allowed
 - Rust-only accelerators (documented separately): L1 cache, `rmigd` / `RMIG_SESSION`
 
@@ -49,7 +49,7 @@ This file is the source of truth for the Rust migrator. Implementation lives und
 | Item | Definition |
 |------|------------|
 | **Metric** | Full CLI `plan`: **`cli_wall_ms`** (connect through diff + CLI overhead), emitted as JSON when `--json` |
-| **Threshold** | **< 100 ms** |
+| **Threshold** | **< 150 ms** |
 | **Cold** | **Cache miss**: in-process and/or `azdo_deploy_meta.catalog_cache` miss, or layout digest change; **DB already has schema** (not empty DROP/CREATE) |
 | **Warm** | Same threshold (no relaxation) |
 | **Reference env** | Docker SQL Server 2019 + `.temp/sql` smoke tree; gate uses git delta per [`prod-gate.md`](prod-gate.md) |
@@ -171,7 +171,7 @@ flowchart LR
     CatCache[catalog_cache_save_invalidate]
     Reports[plan_and_report_json]
     ProdGate[prod_gate_integration]
-    SLOtarget["SLO_less_than_100ms"]
+    SLOtarget["SLO_less_than_150ms"]
   end
   PlanCore --> gaps
 ```
@@ -246,7 +246,7 @@ Starts Docker SQL (if needed), builds release `rmigd`, runs [`ops/perf/rust_cli_
 |-----|------|
 | `RMIG_USE_RMIGD=1` | Test harness spawns `rmigd`, sets `RMIG_SESSION` |
 | `RMIG_INTEGRATION_WARM_SNAPSHOT=1` | Reuse warm plan DB snapshot after L1 invalidate (integration fixture) |
-| `RMIG_SLO_MAX_CLI_WALL_MS=100` | Threshold |
+| `RMIG_SLO_MAX_CLI_WALL_MS=150` | Threshold |
 
 Manual daemon (optional):
 

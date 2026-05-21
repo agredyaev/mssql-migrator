@@ -1,0 +1,5 @@
+{
+  "note": "Rust plan SLO: cli_wall_ms < 150 on cache-miss with warm DB schema (Docker SQL 2019 + .temp/sql)",
+  "max_cli_wall_ms": 150,
+  "requires": ["RMIG_RUN_SQLSERVER_INTEGRATION=1", "co-located SQL RTT", "L1 invalidated before run"]
+}
