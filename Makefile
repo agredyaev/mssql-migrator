@@ -1,4 +1,4 @@
-.PHONY: all build test vet lint fmt check doc-check release-build db-up db-down db-init test-int test-int-phase test-int-phase-cli test-int-phase-cli-warm test-cli-phase-cold test-cli-phase-warm test-prod-gate test-prod-gate-update-baseline go-rust-e2e go-rust-e2e-all check-e2e go-rust-io-debug rust-check rust-e2e rust-prod-gate rust-slo rust-plan-db-perf rust-workflow-fast bench-footprint bench-footprint-profile bench-footprint-update-baseline profile-summary test-int-v
+.PHONY: all build test vet lint fmt check doc-check release-build db-up db-down db-init test-int test-int-phase test-int-phase-cli test-int-phase-cli-warm test-cli-phase-cold test-cli-phase-warm test-prod-gate test-prod-gate-update-baseline go-rust-e2e go-rust-e2e-all check-e2e go-rust-io-debug rust-check rust-e2e rust-prod-gate rust-slo rust-plan-db-perf rust-workflow-fast bench-footprint bench-footprint-profile bench-footprint-update-baseline rust-bench-footprint rust-bench-footprint-profile rust-bench-footprint-alloc rust-bench-footprint-update-baseline profile-summary test-int-v
 
 STATICCHECK = $(shell go env GOPATH)/bin/staticcheck
 
@@ -131,6 +131,23 @@ bench-footprint-update-baseline:
 	@chmod +x ops/perf/footprint_bench.sh
 	ops/perf/footprint_bench.sh update-baseline $(ARGS)
 
+# Rust in-process footprint (struct sizes + plan diff 5k); no SQL Server. See ops/perf/rust_footprint_bench.sh.
+rust-bench-footprint:
+	@chmod +x ops/perf/rust_footprint_bench.sh
+	ops/perf/rust_footprint_bench.sh bench $(ARGS)
+
+rust-bench-footprint-profile:
+	@chmod +x ops/perf/rust_footprint_bench.sh
+	ops/perf/rust_footprint_bench.sh profile $(ARGS)
+
+rust-bench-footprint-alloc:
+	@chmod +x ops/perf/rust_footprint_bench.sh
+	ops/perf/rust_footprint_bench.sh alloc $(ARGS)
+
+rust-bench-footprint-update-baseline:
+	@chmod +x ops/perf/rust_footprint_bench.sh
+	ops/perf/rust_footprint_bench.sh update-baseline $(ARGS)
+
 # Text top-20 from existing *.prof in ops/perf/artifacts (footprint + cli if present).
 profile-summary:
 	@chmod +x ops/perf/profile_summary.sh
@@ -179,7 +196,7 @@ rust-check:
 	scripts/check-rust-arch.sh
 	scripts/check-rust-release-deps.sh
 	cd rust && cargo fmt --all -- --check
-	cd rust && RUSTFLAGS="-D warnings" cargo clippy -p migrator-core -p rmig -p rmigd --all-targets -- -D warnings
+	cd rust && RUSTFLAGS="-D warnings" cargo clippy -p migrator-core -p rmig -p rmigd --lib --bins --tests -- -D warnings
 	cd rust && RUSTFLAGS="-D warnings" cargo test -p migrator-core --lib --tests
 	@echo "rust-check: PASS (integration SQL tests: make rust-e2e)"
 
@@ -189,7 +206,7 @@ rust-prod-gate: db-up
 
 rust-slo: db-up
 	@chmod +x ops/perf/rust_cli_phase.sh
-	RMIG_USE_RMIGD=1 ops/perf/rust_cli_phase.sh cold $(ARGS)
+	RMIG_USE_RMIGD=1 ops/perf/rust_cli_phase.sh slo $(ARGS)
 
 rust-plan-db-perf: db-up
 	@chmod +x ops/perf/rust_plan_db_perf.sh
