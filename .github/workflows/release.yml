@@ -1,0 +1,135 @@
+# ---------------------------------------------------------------------------
+# release.yml — Version bump, git tag, GitHub Release with binaries.
+#
+# Responsibility: semver lifecycle only.
+# Triggers:
+#   - Automatically after CI passes on main (workflow_run)
+#   - Manually via workflow_dispatch (major/minor/patch)
+# ---------------------------------------------------------------------------
+name: Release
+
+on:
+  # Auto-release after CI completes successfully on main.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main, master]
+
+  # Manual release via GitHub UI.
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version component to bump'
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Bump & publish release
+    runs-on: ubuntu-latest
+
+    # For workflow_run: only run if CI succeeded and it was a push (not PR).
+    # For workflow_dispatch: always run.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'
+      )
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Determine bump type
+        id: bump_type
+        run: |
+          BUMP="${{ github.event.inputs.bump || 'patch' }}"
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if docs-only change
+        id: filter
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "unknown")
+            NON_DOC=$(echo "$CHANGED" | grep -cvE '\.md$|^docs/' || true)
+            if [[ "$NON_DOC" -eq 0 && "$CHANGED" != "unknown" ]]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "Docs-only change — skipping release."
+              exit 0
+            fi
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version
+        if: steps.filter.outputs.skip != 'true'
+        id: version
+        run: |
+          OLD=$(cat VERSION)
+          python3 scripts/bump-version.py "${{ steps.bump_type.outputs.bump }}"
+          NEW=$(cat VERSION)
+          echo "old=$OLD"   >> "$GITHUB_OUTPUT"
+          echo "new=$NEW"   >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW"  >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.filter.outputs.skip != 'true'
+
+      - uses: actions/cache@v4
+        if: steps.filter.outputs.skip != 'true'
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-build-
+
+      - name: Build release binaries
+        if: steps.filter.outputs.skip != 'true'
+        run: make release-build
+
+      - name: Commit & push version bump
+        if: steps.filter.outputs.skip != 'true'
+        run: |
+          git add VERSION Cargo.toml
+          git commit -m "chore: bump ${{ steps.version.outputs.old }} → ${{ steps.version.outputs.new }} [skip ci]"
+          git push
+
+      - name: Create git tag
+        if: steps.filter.outputs.skip != 'true'
+        run: |
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Publish GitHub Release
+        if: steps.filter.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "${{ steps.version.outputs.tag }}"
+          body: |
+            **Author:** Aleksey Gredyaev
+            **Version:** `${{ steps.version.outputs.new }}`
+            **Bump:** `${{ steps.bump_type.outputs.bump }}`
+
+            Automated release from `${{ github.sha }}`.
+          files: |
+            bin/rmig
+            target/release-dist/rmigd
+          fail_on_unmatched_files: true
