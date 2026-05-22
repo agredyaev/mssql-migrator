@@ -1,0 +1,34 @@
+use std::collections::HashMap;
+
+use super::shared::SharedStr;
+
+mod builder;
+mod interner;
+mod slice;
+mod ws_apply;
+mod ws_git;
+mod ws_intern;
+mod ws_register;
+
+pub use ws_git::intern_script_git_strings;
+pub use ws_intern::{install_layout_arena, intern_workspace_strings};
+
+/// Layout string buffer for scan-finalize deduplication.
+pub type LayoutArena = StringArena;
+
+/// Single backing buffer for deduplicated strings.
+pub struct StringArenaBuilder {
+    pub(super) buf: Vec<u8>,
+    pub(super) index: HashMap<Box<str>, u32>,
+}
+
+#[derive(Clone)]
+pub struct StringArena {
+    pub(super) buf: std::sync::Arc<[u8]>,
+    pub(super) index: HashMap<Box<str>, u32>,
+}
+
+/// Arc-dedup interner for synthetic benches (pre-finalize); scan uses [`StringArena`].
+pub struct StringInterner {
+    pub(super) index: HashMap<Box<str>, SharedStr>,
+}

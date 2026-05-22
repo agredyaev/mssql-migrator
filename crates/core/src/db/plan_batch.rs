@@ -1,0 +1,19 @@
+use crate::cache::l1::L1Cache;
+use crate::config::Config;
+use crate::domain::Workspace;
+use crate::driver::TimingConn;
+use crate::error::Result;
+
+use super::plan_common::{execute, PlanDbMode};
+use super::plan_snapshot::PlanDbResult;
+
+pub async fn run_batch(
+    cfg: &Config,
+    conn: &mut TimingConn,
+    ws: &Workspace,
+    keys_json: &str,
+    fp: &str,
+    l1: &L1Cache,
+) -> Result<PlanDbResult> {
+    execute(cfg, conn, ws, keys_json, fp, l1, PlanDbMode::Sequential).await
+}

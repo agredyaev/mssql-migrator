@@ -1,0 +1,14 @@
+{
+  "scenario": "apply_smoke_result",
+  "setup_steps": [
+    "plan_pipeline",
+    "apply_execute"
+  ],
+  "applied": 7,
+  "failed": 0,
+  "skipped": 0,
+  "audit_object_rows": 6,
+  "audit_migration_rows": 0,
+  "catalog_meta_rows": 1,
+  "catalog_cache_rows": 6
+}

@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "rustc_version": "unknown",
+  "target": "unknown",
+  "threshold_bytes": 40,
+  "struct_sizes": [
+    {
+      "package": "domain",
+      "type": "WorkspaceCold",
+      "bytes": 928
+    },
+    {
+      "package": "export",
+      "type": "MigrationPlan",
+      "bytes": 304
+    },
+    {
+      "package": "config",
+      "type": "ConfigCold",
+      "bytes": 232
+    },
+    {
+      "package": "timings",
+      "type": "PhaseTimings",
+      "bytes": 192
+    },
+    {
+      "package": "config",
+      "type": "Config",
+      "bytes": 144
+    },
+    {
+      "package": "export",
+      "type": "PlannedObject",
+      "bytes": 144
+    },
+    {
+      "package": "gate",
+      "type": "PlanSnapshot",
+      "bytes": 104
+    },
+    {
+      "package": "domain",
+      "type": "Workspace",
+      "bytes": 88
+    },
+    {
+      "package": "gate",
+      "type": "SnapshotObject",
+      "bytes": 80
+    },
+    {
+      "package": "export",
+      "type": "PlanSummary",
+      "bytes": 56
+    },
+    {
+      "package": "domain",
+      "type": "ObjectEntry",
+      "bytes": 48
+    }
+  ]
+}

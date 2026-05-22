@@ -1,0 +1,39 @@
+[workspace]
+resolver = "2"
+members = ["crates/cli", "crates/core", "crates/core-dev", "crates/rmigd"]
+default-members = ["crates/cli", "crates/rmigd"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "tracing"] }
+tokio-util = { version = "0.7.18", features = ["compat"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "registry"] }
+
+# Profiling builds: optimized with debug symbols for flamegraphs (`cargo flamegraph`, samply).
+[profile.release]
+opt-level = 3
+debug = true
+
+# Operator artifact: `make release-build` → bin/rmig (production strip + LTO).
+[profile.release-dist]
+inherits = "release"
+debug = false
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
+incremental = false
+
+# Integration tests: optimized, no debuginfo (lower RSS than release+debug=true).
+[profile.release-fast]
+inherits = "release"
+debug = false
+
+[profile.profiling]
+inherits = "release"
+debug = true
