@@ -8,16 +8,16 @@ Describe **migration plan computation**: apply catalog/checksums to workspace, b
 
 ## Scope
 
-- `rust/crates/core/src/plan/diff.rs`, `diff_decide.rs`, `diff_object.rs`, `diff_ctx.rs` — diff engine
-- `rust/crates/core/src/plan/scope.rs`, `scope_build.rs` — inspect scope, stable vs hot keys
-- `rust/crates/core/src/plan/git_scope.rs` — git hot scope JSON for catalog SQL
-- `rust/crates/core/src/plan/scenario.rs` — action scenarios (create, update, adopt, blocked)
-- `rust/crates/core/src/plan/transitions.rs` — transition migration handling
-- `rust/crates/core/src/plan/filter_migrations.rs` — applied migration filter
+- `crates/core/src/plan/diff.rs`, `diff_decide.rs`, `diff_object.rs`, `diff_ctx.rs` - diff engine
+- `crates/core/src/plan/scope.rs`, `scope_build.rs` - inspect scope, stable vs hot keys
+- `crates/core/src/plan/git_scope.rs` - git hot scope JSON for catalog SQL
+- `crates/core/src/plan/scenario.rs` - action scenarios (create, update, adopt, blocked)
+- `crates/core/src/plan/transitions.rs` - transition migration handling
+- `crates/core/src/plan/filter_migrations.rs` - applied migration filter
 
 ## System context
 
-After plan DB phase, `compute_diff` compares workspace file checksums and catalog existence against audit history. Output is `export::MigrationPlan` JSON (same wire shape as Go).
+After plan DB phase, `compute_diff` compares workspace file checksums and catalog existence against audit history. Output is `export::MigrationPlan` JSON.
 
 ## Interfaces and boundaries
 
@@ -28,7 +28,7 @@ After plan DB phase, `compute_diff` compares workspace file checksums and catalo
 
 ## Assumptions and constraints
 
-- Stable objects (file checksum == audit history, outside git delta) merge into catalog without SQL (Go parity).
+- Stable objects (file checksum == audit history, outside git delta) merge into catalog without SQL.
 - `RMIG_CATALOG_SPOTCHECK` promotes stable keys to hot for SQL verification.
 
 ## Nominal flow
@@ -44,9 +44,9 @@ After plan DB phase, `compute_diff` compares workspace file checksums and catalo
 
 ## Verification and validation
 
-- `rust/crates/core/tests/plan_diff_test.rs`
-- `rust/crates/core/tests/workflow_integration.rs` — blocked + view update actions
-- `make rust-prod-gate`
+- `crates/core/tests/plan_diff_test.rs`
+- `crates/core/tests/workflow_integration.rs` - blocked + view update actions
+- `make prod-gate`
 
 ## Operations and recovery
 
@@ -59,4 +59,4 @@ After plan DB phase, `compute_diff` compares workspace file checksums and catalo
 ## References
 
 - `docs/specs/rust/module-db.md`
-- `docs/specs/internals/module-diff.md` (Go reference)
+- `docs/specs/rust/module-db.md`

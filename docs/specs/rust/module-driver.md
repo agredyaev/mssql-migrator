@@ -8,11 +8,11 @@ Describe the **TDS SQL Server client layer**: connect, query, exec, row decoding
 
 ## Scope
 
-- `rust/crates/core/src/driver/mssql.rs` — TDS protocol / client
-- `rust/crates/core/src/driver/db_client.rs` — direct vs proxy client enum
-- `rust/crates/core/src/driver/timing.rs` — `TimingConn`, connect wrapper
-- `rust/crates/core/src/driver/io_profile.rs` — query call count and wall ms
-- `rust/crates/core/src/driver/row.rs` — row cell accessors
+- `crates/core/src/driver/mssql.rs` - TDS protocol / client
+- `crates/core/src/driver/db_client.rs` - direct vs proxy client enum
+- `crates/core/src/driver/timing.rs` - `TimingConn`, connect wrapper
+- `crates/core/src/driver/io_profile.rs` - query call count and wall ms
+- `crates/core/src/driver/row.rs` - row cell accessors
 
 ## System context
 
@@ -28,7 +28,7 @@ All SQL I/O from `audit`, `db`, `apply`, `lock`, and `scaffold` flows through `T
 ## Assumptions and constraints
 
 - `trust_server_certificate` supported for Docker dev.
-- Integrated Windows auth not implemented (see `docs/rust-port-plan.md` out of scope).
+- Integrated Windows auth not implemented (see [`docs/rust-port-plan.md`](../../../rust-port-plan.md) out of scope).
 
 ## Nominal flow
 
@@ -39,7 +39,7 @@ All SQL I/O from `audit`, `db`, `apply`, `lock`, and `scaffold` flows through `T
 ## Verification and validation
 
 - Integration tests with `RMIG_RUN_SQLSERVER_INTEGRATION=1`
-- `make rust-check`
+- `make check`
 
 ## Off-nominal behavior and failure containment
 
@@ -56,5 +56,5 @@ All SQL I/O from `audit`, `db`, `apply`, `lock`, and `scaffold` flows through `T
 
 ## References
 
-- `docs/specs/internals/module-driver.md` (Go reference)
+- `docs/rmig-rust.md`
 - `docs/specs/rust/module-cache-session.md`

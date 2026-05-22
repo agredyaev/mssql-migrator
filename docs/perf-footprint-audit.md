@@ -1,368 +1,89 @@
-# Technical Document: Footprint, flamegraph, and allocation audit
+# Footprint and allocation audit
 
 Lifecycle: `Current`.
 
 ## Purpose
 
-Define how operators and maintainers measure **in-process** memory and CPU behavior of the plan pipeline (scan → diff / plan output) for Go `rmig` and Rust `rmig`, capture baselines, and prioritize layout refactors.
-
-Layout rules (SoA, hot vs cold path, forbidden patterns) are in [`data-oriented-layout-policy.md`](data-oriented-layout-policy.md). This document is the **measurement runbook** only.
-
-This document answers: which structs dominate `sizeof`, where allocators spend bytes, and what to change next without mistaking SQL wall time for CPU/heap regressions.
+Measure in-process memory and CPU of the Rust plan pipeline (scan, diff, plan output). Layout rules: [`data-oriented-layout-policy.md`](data-oriented-layout-policy.md).
 
 ## Scope
 
-- Go footprint harness: [`internal/perf/`](../internal/perf/), [`ops/perf/footprint_bench.sh`](../ops/perf/footprint_bench.sh), baseline [`internal/app/testdata/perf/footprint_baseline.json`](../internal/app/testdata/perf/footprint_baseline.json)
-- Rust footprint harness: [`rust/crates/core/src/perf/`](../rust/crates/core/src/perf/), [`ops/perf/rust_footprint_bench.sh`](../ops/perf/rust_footprint_bench.sh), baseline [`internal/app/testdata/perf/rust_footprint_baseline.json`](../internal/app/testdata/perf/rust_footprint_baseline.json)
-- Benches: Go `BenchmarkDiffCompute_SkipHeavy_5000Objects`; Rust `plan_diff_skip_heavy_5000` ([`rust/crates/core/benches/plan_diff.rs`](../rust/crates/core/benches/plan_diff.rs))
-- Profile artifacts under `ops/perf/artifacts/` (gitignored except committed JSON baselines)
-- Summary script: [`ops/perf/profile_summary.sh`](../ops/perf/profile_summary.sh)
+- Harness: [`crates/core-dev/`](../crates/core-dev/) (`migrator-core-dev`, not a production dependency)
+- Scripts: [`ops/perf/footprint_bench.sh`](../ops/perf/footprint_bench.sh), [`ops/perf/dhat_alloc_tree.py`](../ops/perf/dhat_alloc_tree.py)
+- Baseline: [`crates/core/tests/testdata/perf/footprint_baseline.json`](../crates/core/tests/testdata/perf/footprint_baseline.json)
+- Bench: `plan_diff_skip_heavy_5000` in [`crates/core-dev/benches/plan_diff.rs`](../crates/core-dev/benches/plan_diff.rs)
 
-**Out of scope:** SQL Server tuning, `cli_wall_ms` SLO ([`docs/prod-gate.md`](prod-gate.md), `make rust-slo`), CI hard gates on perf.
+**Out of scope:** SQL Server tuning, `cli_wall_ms` SLO (`make slo`), CI hard perf gates.
 
 ## System context
 
-Both stacks run a **synthetic 5k-object skip-heavy diff** (objects exist in catalog; checksums match → mostly `SkipUnchanged`). This isolates plan/diff CPU and heap from network I/O.
-
-Go layout scan already uses DOD pieces ([`internal/fs/store.go`](../internal/fs/store.go) `ObjectStore` / `objectRow`, string arena). Rust still holds hot state in `HashMap`-backed [`Workspace`](../rust/crates/core/src/domain/workspace.rs) and fat per-object structs — higher pointer chasing and allocation churn than the Go scan index.
-
-```mermaid
-flowchart LR
-  subgraph measure [Harness]
-    StructSize[sizeof baseline JSON]
-    Bench[5k skip-heavy bench]
-    CPU[CPU flamegraph]
-    Heap[heap alloc profile]
-  end
-  subgraph dod [DOD target state]
-    SoA[SoA rows + index arrays]
-    Arena[deduped string arena]
-    PlanSlab[contiguous plan output]
-  end
-  measure --> Findings[Findings in this doc]
-  Findings --> dod
-```
+Footprint work validates layout policy under [`data-oriented-layout-policy.md`](data-oriented-layout-policy.md). Production binaries do not link `migrator-core-dev`; results are advisory unless a maintainer updates the committed baseline JSON.
 
 ## Interfaces and boundaries
 
-### Inputs
-
-| Input | Source |
+| Input | Output |
 |-------|--------|
-| Go struct sizes | `internal/perf.CollectStructSizes()` |
-| Go bench metrics | `go test -benchmem` via `footprint_bench.sh bench` |
-| Go profiles | `footprint_bench.sh profile` → `footprint_5k.{cpu,mem}.prof` |
-| Rust struct sizes | `migrator_core::perf::collect_struct_sizes()` |
-| Rust bench | `cargo bench --bench plan_diff` (`compute_diff_into`, warmed plan — same as dhat) |
-| Rust CPU flamegraph | Criterion **0.8** + [`RmigPprofProfiler`](../rust/crates/core/benches/bench_pprof.rs) (pprof 0.15, no duplicate criterion 0.5) → `rust_plan_diff_5k_flamegraph.svg` |
-| Rust heap | `cargo bench --bench plan_diff_dhat` → `rust_plan_diff_dhat.txt` |
-
-### Outputs
-
-| Artifact | Path |
-|----------|------|
-| Go bench log | `ops/perf/artifacts/footprint_bench.txt` |
-| Go profile summary | `ops/perf/artifacts/profile_summary.txt` |
-| Rust struct JSON | `ops/perf/artifacts/rust_struct_sizes.json` |
-| Rust bench log | `ops/perf/artifacts/rust_footprint_bench.txt` |
-| Rust dhat summary | `ops/perf/artifacts/rust_plan_diff_dhat.txt` |
-| Rust CPU SVG | `ops/perf/artifacts/rust_plan_diff_5k_flamegraph.svg` |
+| `make bench-footprint` | `artifacts/footprint_bench.txt`, struct size JSON |
+| `make bench-footprint-alloc` | `artifacts/plan_diff_dhat.txt`, `artifacts/alloc_flame.txt` |
+| `footprint_baseline_match` test | pass/fail vs committed JSON |
 
 ## Assumptions and constraints
 
-### Layout policy
-
-Hot-path layout MUST follow [`data-oriented-layout-policy.md`](data-oriented-layout-policy.md) (rules **DOD-1**–**DOD-6**, allowed **DOD-A***, forbidden **DOD-X***). For situation-specific choices (Kelley → rmig), use § Layout decision guide (**CASE-1**–**CASE-9**) in that doc. Rust should converge toward Go phase-4 scan index (`ObjectStore`), not add encapsulation layers on the diff loop.
-
-### Measurement constraints
-
-- `sizeof` / `std::mem::size_of` reports **stack struct size**, not heap behind `String`, `Vec`, `HashMap`.
-- Go mem profile for 5k bench includes **one-time** `makeBenchFS` / checksum preload in the profile run — interpret `alloc_space` top lines accordingly ([`profile_summary.sh`](../ops/perf/profile_summary.sh)).
-- Rust `dhat` reports bytes for **20×** `compute_diff` per process; divide totals for per-iteration estimates.
-- Full CLI CPU profiles (`cli_plan.cpu.prof`, `rust_rmig_plan_flamegraph.svg`) are **I/O bound** — not used for layout decisions.
+- Skip-heavy 5k workspace is the headline diff benchmark.
+- dhat **loop** phase B/iter is the allocation regression signal (target **0 B/iter** after warmup).
+- Struct sizes are platform-dependent; committed baseline is checked on maintainer platforms via `make check` / local bench.
 
 ## Nominal flow
 
-### 1. Struct audit (static)
-
-```bash
-# Go
-make bench-footprint
-go test ./internal/perf/ -run TestStructSizeReport -v -count=1
-go test ./internal/perf/ -run TestFootprintBaselineMatch -count=1
-
-# Rust
-make rust-bench-footprint
-cargo test -p migrator-core --test rust_footprint_baseline footprint_baseline_match -q
-```
-
-### 2. CPU flamegraph (in-process 5k)
-
-```bash
-make bench-footprint-profile          # Go
-make rust-bench-footprint-profile     # Rust → rust_plan_diff_5k_flamegraph.svg
-make profile-summary                  # text top-20
-```
-
-### 3. Heap / allocations
-
-```bash
-go tool pprof -top -alloc_space ops/perf/artifacts/footprint_5k.mem.prof
-make rust-bench-footprint-alloc       # dhat → rust_plan_diff_dhat.txt
-```
-
-### 4. Refresh baselines (maintainers only)
-
-```bash
-make bench-footprint-update-baseline
-make rust-bench-footprint-update-baseline
-```
-
-## Verification and validation
-
-| Check | Command |
-|-------|---------|
-| Go struct baseline | `go test ./internal/perf/ -run TestFootprintBaselineMatch` |
-| Go bench regression (optional) | `RMIG_FOOTPRINT_BENCH=1 go test ./internal/perf/ -run TestFootprintBenchmarkRegression` |
-| Rust struct baseline | `cargo test -p migrator-core --test rust_footprint_baseline footprint_baseline_match` |
-| Rust LOC / arch | `scripts/check-rust-loc.sh`, `scripts/check-rust-arch.sh` |
-
-**Exit criteria for an audit cycle:** baselines committed or reviewed; `profile_summary.txt` and dhat totals recorded in **Findings** below; DOD backlog items filed with concrete paths.
-
-## Findings (snapshot 2026-05-20)
-
-Environment: darwin/arm64, local `go test` / `cargo bench`. Re-run commands above after material layout changes.
-
-### Struct sizes (`sizeof` / `size_of`, threshold ≥ 40 B)
-
-| Rank | Go (`package.type`) | Bytes | Rust (`package.type`) | Bytes |
-|------|---------------------|------:|-----------------------|------:|
-| 1 | `types.MigrationPlan` | 496 | `config.Config` | **360** |
-| 2 | `fs.CachedFile` | 240 | `domain.Workspace` | **272** |
-| 3 | `types.PlannedObject` | 240 | `export.MigrationPlan` | 184 |
-| 4 | `fs.Layout` | 192 | `export.PlannedObject` | **144** |
-| 5 | `fs.Object` | 176 | `domain.Script` | **128** |
-| — | `fs.objectRow` (SoA) | 16 | `domain.ObjectRow` (SoA) | 6 |
-| — | — | — | `domain.ObjectEntry` (slim) | **56** |
-| — | — | — | `domain.ObjectStore` (header) | 96 |
-
-**ObjectEntry slim (2026-05-20, confirmed darwin/arm64):** 184 B → **56 B** (−128 B/row). N×5000 setup heap for entries: ~920 KB → **~280 KB**. `Workspace` header: 416 B → **272 B** (`Box<HashMap>` side tables + `scripts: Box<Vec>`).
-
-**Note:** Rust `Workspace` / `ObjectStore` `size_of` excludes heap for `HashMap` buckets, `Vec` rows, and `SharedStr` data. Scan ingest appends to **`object_entries`** via [`push_object`](../rust/crates/core/src/domain/workspace.rs); **`ingest_key_index`** (upsert only, cleared at finalize) is **CASE-2** staging, not primary layout storage.
-
-### Go alloc / CPU (5k skip-heavy, committed baseline)
-
-| Metric | `BenchmarkDiffCompute_SkipHeavy_5000Objects` |
-|--------|---------------------------------------------|
-| `ns/op` | ~938,266 |
-| `allocs/op` | **3** |
-| `B/op` | **1,057,520** (~240 B × 5000 plan objects + overhead) |
-
-**`alloc_space` top:** `diff.(*Computer).Compute` (~63% of sampled bytes). Bench setup (`makeBenchFS`, checksum preload) also visible — use mem profile for regressions on **Compute** after warmup.
-
-**CPU profile:** sample dominated by profiler/runtime noise in last run; use `-base` compares after refactors, or narrow with `pprof -focus=diff.Compute`.
-
-### Rust alloc / CPU (5k skip-heavy, post footprint pass — Rust-only)
-
-| Metric | Baseline (2026-05-20) | +ObjectStore/arena | +plan reuse | +empty_str/Option git | **+in-place plan / dense bench (**latest**)** |
-|--------|------------------------|---------------------|-------------|-------------------------------------|-----------------------------------------------|
-| dhat loop (warmed ×20) | **~7.0 MB/iter** | **~1.24 MB/iter** | **~296 KB/iter** | ~56 KB/iter (misleading) | **0 B/iter** (skip-heavy) |
-| dhat total (warm + 20 iter + setup) | ~139 MB | ~43 MB | ~24.4 MB | ~16.3 MB | **~10.9 MB** (setup ~10.2 MB) |
-| criterion `ns/op` (5k skip-heavy) | — | — | — | ~2.59 ms (`compute_diff`) | **~1.1 ms** (`compute_diff_into`, catalog cached) |
-| `PlannedObject` `size_of` | 304 B | 248 B → 224 B | 224 B | 224 B | **144 B** |
-| `Workspace` `size_of` | — | — | 344 B | 368 B → 416 B | **88 B** hot + **688 B** `WorkspaceCold` (`Box`, W4 split) |
-| `Script` `size_of` | — | 224 B | 224 B → 216 B | 216 B → 192 B | **128 B** |
-
-**dhat phases** (see [`dhat_alloc_tree.py`](../ops/perf/dhat_alloc_tree.py)): **setup** (fixture build) | **warm** (first `ensure_plan_objects` resize) | **loop** (warmed ×20 — headline **B/iter**). Default: `make rust-bench-footprint-alloc`. Variants: `make rust-bench-footprint-alloc ARGS=transitions`, `ARGS=scan`.
-
-| Bench | Command | Purpose |
-|-------|---------|---------|
-| skip-heavy 5k | `alloc` (default) | skip-unchanged hot path |
-| table+transitions 500 | `alloc transitions` | `paths_by_table` + `TableReprocess` |
-| scan fixture 5k | `alloc scan` | real `scan_root` ingest |
-
-**dhat call-tree (skip-heavy, latest):** loop **0 B/iter**; warm **~1.12 MB** one-time plan resize. Artifact: [`ops/perf/artifacts/rust_alloc_flame.txt`](../ops/perf/artifacts/rust_alloc_flame.txt).
-
-**CPU flamegraph (skip-heavy, 2026-05-20, regen after bench align):** [`rust_plan_diff_5k_flamegraph.svg`](../ops/perf/artifacts/rust_plan_diff_5k_flamegraph.svg). Criterion bench uses **`compute_diff_into`** with a warmed `MigrationPlan` (matches dhat loop). Top rmig frames (~182 samples): `compute_diff_into` ~81%, `decide_object_at` ~37%, `apply_catalog` / `for_each_entry_mut` ~28%, `apply_checksums` ~13%, `fill_planned_at` ~3%. No `drop_in_place<MigrationPlan>` — prior SVG was stale (`push_planned`, `compute_diff` per iter).
-
-**CPU flamegraph (skip-heavy, latest):** top rmig frames after catalog/checksum cache: `compute_diff_into` ~53%, `decide_object_at` ~31% — no `apply_catalog` / `for_each_entry_mut` on warmed loop (was ~28% / ~13%).
-
-- **Catalog/checksum API keys:** `ChecksumMap` = `HashMap<u64, [u8;32]>` keyed by normalized-path byte fingerprint; `WorkspaceCold::fp_index` maps fingerprint → row id. `fill_prior_by_row` is one pass over `checksums.iter_digests()` + `fp_index` (O(|checksums|), not O(n) per-row hash). L1 JSON still uses `String` keys on wire. `CatalogState.objects` keyed by `ObjectKey`.
-- **`CatalogObject` row:** `schema` / `kind` / `name` / `parent` are `SharedStr`; wire path uses [`catalog_object`](../rust/crates/core/src/db/state.rs), layout path uses `catalog_object_parts` (clone arena slices — no second `share()`)
-
-**Rust changes (2026-05-20 DOD closure):**
-- **`SchemaEntry` → `SharedStr`** — arena slices at scan finalize (no `.to_string()` round-trip)
-- **`intern_catalog_state`** — Kelley buffer after SQL catalog load / cache hit
-- **Go↔Rust e2e:** `make go-rust-e2e-all` — full matrix on `.temp/sql` (see [`ops/perf/README.md`](../ops/perf/README.md)); subset `make go-rust-e2e` = `empty_db_plan` + `warm_db_plan`
-
-**Rust changes (2026-05-20 follow-up):**
-- **CASE-6:** [`StringArena`](../rust/crates/core/src/domain/arena.rs) — single backing buffer; `SharedStr` arena slices after scan intern
-- **Git arena:** `intern_script_git_strings` after [`git_preload::preload`](../rust/crates/core/src/scan/git_preload.rs) in [`populate`](../rust/crates/core/src/scan/mod.rs) (Kelley buffer for git metadata)
-- **Catalog/checksum cache:** `apply_catalog_if_needed` / `apply_checksums_if_needed` — once per layout (`catalog_flags` bitset; invalidated on `reset_layout` / `finalize_object_layout` / `adopt_dense_entries`)
-
-**Rust changes (footprint cycle):**
-- `fill_planned_at` — in-place plan refresh (`resize_with` + field update); no `clear`/`push` per object
-- `adopt_dense_entries` — bench builds `Vec<ObjectEntry>` directly (no `HashMap` + rebuild)
-- `Script.git_{hash,author,date}` — `SharedStr` (**CASE-8** tail)
-- `object_entries: Vec<ObjectEntry>` — dense layout; index-only diff loop
-- Bench fixture: `StringInterner` in one pass; `ObjectKey::from(interned)` (no `ObjectKey::new` lowercase churn)
-- CPU bench [`plan_diff.rs`](../rust/crates/core/benches/plan_diff.rs): `compute_diff_into` + warmed plan (aligned with dhat; ~2× faster than per-iter `compute_diff`)
-
-Go reference unchanged (~1.06 MB/op, 3 allocs/op) — **not modified in this cycle**.
-
-### Go ↔ Rust layout mapping
-
-| Go (DOD-oriented) | Rust (current) | Gap |
-|-------------------|----------------|-----|
-| `fs.ObjectStore` + `objectRow` (**CASE-1**) | `object_store` + `object_entries` + index diff loop; scan via `push_object` → `finalize_object_layout` | **Done** (2026-05-20) — matches Go `[]*Object` + finalize index |
-| `layout.stringArena` (**CASE-6**) | `StringArena` at scan finalize; `SharedStr` arena slices on hot fields | **Done** — matches Go Kelley buffer |
-| `types.PlannedObject` slice (**CASE-7**) | `MigrationPlan.objects: Vec<PlannedObject>` pre-sized | Rust row 248 B vs Go 240 B — close |
-| `CachedFile` on heap (**CASE-8**) | `Script` git on `SharedStr`; `PlannedObject.git: Option<PlannedGit>` | Plan row still wider than Go; git copied into plan only when `with_git` |
-| Scenario encoding (**CASE-3**, **CASE-5**) | `PlanScenario` tag → `resolve_plan_scenario` + `apply_scenario` | Go: diff uses `PlanScenario`; **`PlannedAction` stored as `string`** in plan JSON (apply switch uses string constants, not typed enum) |
-
-## Struct layout audit (2026-05-20, ObjectEntry slim)
-
-Readonly field-level audit before the **ObjectEntry** DOD-6 refactor. Committed baseline: [`rust_footprint_baseline.json`](../internal/app/testdata/perf/rust_footprint_baseline.json). WIP targets measured after build stabilizes.
-
-### Hot path — bulk types (O(N))
-
-| Struct | Committed `size_of` | WIP target | Kelley | Action |
-|--------|--------------------:|-----------:|--------|--------|
-| `ObjectEntry` | **184 B** | **~56 B** | CASE-1 + DOD-6 | Remove dead `history`/`plan`; `script_id`; derive schema/kind/name from `key`; sparse `parent_by_object` (CASE-4) |
-| `ObjectRow` | 6 B | 6 B | CASE-1 Done | SoA codes; `schema_id` filled at finalize |
-| `ObjectStore` | 96 B (header) | 96 B | CASE-1 Done | Heap separate from `size_of` |
-| `Workspace` | 416 B | ~200–280 B est. | CASE-4 | Inline `HashMap` → `Box<HashMap>`; `scripts: Box<Vec>` + index |
-| `Script` | 128 B | 128 B | CASE-8 | Side store; not on row — no shrink priority |
-| `PlannedObject` | 144 B | 144 B | CASE-7 Done | Pre-sized plan slice; in-place `fill_planned_at` |
-
-**Committed `ObjectEntry` field breakdown (184 B):**
-
-| Field | ~Bytes | Hot read? | Verdict |
-|-------|-------:|-----------|---------|
-| `key` | 8 | yes | keep |
-| `script: ScriptKey` | 8 | yes | → `script_id: u32` |
-| `history: Option<[u8;32]>` | 33 | **no** | remove |
-| `db: DbFacts` | 16 | yes (`exists`) | → `db_exists: bool` |
-| `plan: Option<PlanDecision>` | 32 | **no** | remove |
-| `checksum` | 32 | yes | keep |
-| `schema/kind/name` ×3 | 24 | yes | derive from `ObjectKey` |
-| `database_name` | 8 | yes | keep |
-| `parent_name` + `parent_key` | 16 | sparse | → `parent_by_object` side table |
-
-**N×5000 setup heap (AoS entries only):** ~920 KB committed → ~280 KB WIP (−640 KB).
-
-### Warm / cold (no shrink this cycle)
-
-| Struct | Bytes | Note |
-|--------|------:|------|
-| `MigrationPlan` | 184 | container |
-| `Config` | 360 | CASE-9 CLI-only |
-| `PhaseTimings` | 168 | report wire |
-| `CatalogObject` | ~32 | SQL wire |
-| `SchemaEntry` | 24 | scan finalize |
-
-### Harness coverage gap (closed in this cycle)
-
-[`struct_sizes.rs`](../rust/crates/core/src/perf/struct_sizes.rs) extended with `ParentRef`, `CatalogObject`, `SchemaEntry`, `SharedStr`, `PlannedGit`. `layout_report_lines` emits field offsets for `ObjectEntry`, `ObjectRow`, `Workspace`.
-
-**Kelley #2 conclusion:** only **`ObjectEntry`** has setup-heap ROI; hot diff loop **0 B/iter** warmed (skip-heavy 5k, dhat ×3 after Phase 5b).
-
-## Kelley Deep Audit — Phase 5b closed (2026-05-20)
-
-Phase 5b closes **K-1**, **K-4**, **K-2** and fixes Phase 5 dhat regression on the Rust diff/plan hot path ([`data-oriented-layout-policy.md`](data-oriented-layout-policy.md) CASE-1, CASE-3, CASE-6).
-
-| ID | Policy | Change | Result |
-|----|--------|--------|--------|
-| **K-1** | CASE-6 | `object_path_cache`; `subslice_of` (Owned → Slice offset); `fill_planned_at` uses `object_path_at(i)` | No `with_database_prefix` / `share(part)` on O(N) fill |
-| **K-4** | CASE-3 | `skip_fill_unchanged` — **action-stable** guard (`action`, `exists`, checksum, key) in [`diff_fill_skip.rs`](../rust/crates/core/src/plan/diff_fill_skip.rs) | Warmed re-run skips string writes; `PlanScenario` stays in decide only (not on `ObjectDecision`) |
-| **K-2** | CASE-1 | Drop duplicate `ObjectStore.keys` | `ObjectStore` header **96 → 72 B** |
-| **5b** | CASE-6 | `subslice_of` Owned fix; bench `intern_workspace_strings`; non-zero `checksum_for` | Loop **4320 → 0 B/iter** (dhat ×3) |
-
-**Struct sizes (post Phase 5b):** [`rust_footprint_baseline.json`](../internal/app/testdata/perf/rust_footprint_baseline.json) — `ObjectEntry` **56 B**, `Workspace` **256 B**, `ObjectStore` **72 B**.
-
-**dhat skip-heavy 5k (×3, darwin/arm64, Phase 5b):** setup ~14 MB (bench arena intern), warm ~1.4 MB, loop **0 B/iter**. No `fill_planned_at` / `SharedStr::new` in loop-phase stacks.
-
-**Deferred:** K-3 (`Config` shrink), K-5/K-6/K-7, `PlannedObject` row width, Go parity (`go-rust-e2e empty_db_plan`).
-
-## Optimization backlog (policy-aligned)
-
-| Priority | Policy | Item | Status |
-|----------|--------|------|--------|
-| **P0** | **CASE-1** | Rust: `ObjectStore` SoA + index diff loop + dense scan ingest | **Done** (2026-05-20) — [`store.rs`](../rust/crates/core/src/domain/store.rs), [`diff.rs`](../rust/crates/core/src/plan/diff.rs), [`parse.rs`](../rust/crates/core/src/scan/parse.rs) |
-| **P0** | **CASE-7** | Plan output: pre-sized contiguous slice; slim row | **Done** (in-place) — `ensure_plan_objects` + `fill_planned_at`; row **224 B** |
-| **P1** | **CASE-3** | Combined `PlanScenario` tag → `Action` dispatch | **Done** (Rust) — [`scenario.rs`](../rust/crates/core/src/plan/scenario.rs) |
-| **P1** | **CASE-5** | `kindCode` in diff hot loop | **Done** (Rust) — [`kind_code.rs`](../rust/crates/core/src/domain/kind_code.rs) |
-| **P1** | **CASE-6** | Rust: string intern at scan finalize | **Done** — [`arena.rs`](../rust/crates/core/src/domain/arena.rs), `intern_workspace_strings` in [`walk.rs`](../rust/crates/core/src/scan/walk.rs) |
-| **P1** | **CASE-1** | Drop redundant `object_order` | **Done** — diff uses `object_store` only |
-| **P2** | **CASE-4** | Transition path map in diff | **Done** — `transition_path_cache` at scan finalize; `fill_planned_at` reads cache |
-| **P2** | **CASE-6** | Object path cache + skip fill + subslice Owned fix | **Done (Phase 5b)** — `object_path_cache`, `diff_fill_skip`, `subslice_of`, bench arena |
-| **P2** | **CASE-1** | Dedup `ObjectStore.keys` | **Done (Phase 5)** — key canonical in `object_entries` |
-| **P2** | **CASE-8** | Shrink `PlannedObject` / git as side data | **Closed (deferred)** — `Script.git_*: SharedStr`; plan git optional; side store not needed (audit **G**) |
-| **Defer** | — | SQL inspect / catalog cache / `rmigd` session | — |
-
-Violations remaining (Rust): none on hot path / layout scan+catalog. `CatalogState.schemas: HashSet<String>` retained (small set, lowercase keys).
-
-**Go↔Rust e2e:** `make go-rust-e2e-all` — seven scenarios on `.temp/sql` (`empty_db_plan`, `prod_gate_cold`, `apply_smoke_result`, `warm_db_plan`, `skip_unchanged_plan`, `catalog_cache_plan`, `blocked_table_plan`); `make go-rust-e2e` runs plan subset only. See [`ops/perf/README.md`](../ops/perf/README.md).
-
-## Audit decisions (2026-05-20)
-
-Footprint audit cycle scope and resolved open questions. **Go code not modified** unless a separate parity task is opened.
-
-| ID | Question | Decision | Rationale |
-|----|----------|----------|-----------|
-| **A** | Next cycle scope | **Rust-only footprint + harness/docs** | User constraint; Go reference unchanged |
-| **B** | P0 priority | **Harness → setup heap → measure scan/transitions** | Hot diff path already ~0 B/iter warmed |
-| **C** | Go `PlannedAction` string | **Doc fix only** | Apply already switches on typed string constants; JSON wire stays `string` |
-| **D** | dhat metrics | **Split setup / warm / loop** in `dhat_alloc_tree.py` | Amortized 56 KB/iter was misleading |
-| **E** | CASE-6 single buffer | **Done** — `StringArena` + `SharedStr` slice variant | One `Arc<[u8]>` per scan; bench still uses Arc-dedup `StringInterner` |
-| **F** | CASE-1 scan HashMap | **Done** — `push_object` + `object_entries`; staging `ingest_key_index` cleared at finalize | Removes duplicate `HashMap<ObjectKey, ObjectEntry>`; scan setup −~3.4 MB (5k fixture) |
-| **G** | CASE-8 git side store | **Keep `Script.git_*` + `Option<PlannedGit>`** | Row 224 B ≈ Go 240 B; separate side table low ROI until transition-heavy prod profile says otherwise |
-| **I** | Transitions diff alloc | **`transition_path_cache` + cache fill in `fill_planned_at`** | Loop **0 B/iter** (500 tables); was ~148 KB before cache, ~32 KB after partial fix |
-| **J** | Scan HashMap ingest | **Done** (same as **F**) | `alloc scan`: setup ~25 MB (scan ingest + 5k catalog rows; loop **0 B/iter** unchanged) |
-| **H** | CI perf gate | **Maintainer-only** (non-goal) | Per policy; manual `make rust-bench-footprint-alloc` before layout PRs |
-
-**Audit cycle status: CLOSED (2026-05-20).** Hot path + setup-key dedup complete. Remaining **defer:** SQL/rmigd session layout, CI gate, Go parity.
-
-### Final dhat snapshot (darwin/arm64, post Phase 5b)
-
-| Bench | Setup | Warm | Loop B/iter |
-|-------|-------|------|-------------|
-| skip-heavy 5k | ~14 MB | ~1.4 MB | **0 B** (×3 stable) |
-| table+transitions 500 | ~2.19 MB | ~144 KB | **0 B** |
-| scan fixture 5k | ~25 MB | ~720 KB | **0 B** |
-
-Commands: `make rust-bench-footprint-alloc`, `ARGS=transitions`, `ARGS=scan`.
+1. `make bench-footprint` — struct sizes + criterion + baseline match.
+2. Optional: `make bench-footprint-profile` (CPU), `make bench-footprint-alloc` (heap).
+3. On intentional size change: `make bench-footprint-update-baseline` and commit JSON.
 
 ## Off-nominal behavior
 
-- **Missing baseline JSON:** run `make *-footprint-update-baseline` after reviewed struct layout change.
-- **No `git` / no Docker:** footprint benches still run; CLI SQL profiles skipped.
-- **`make rust-bench-footprint-profile` slow:** use `cargo bench --bench plan_diff -- --profile-time=1` manually.
+- Baseline mismatch without JSON update → test failure; do not silence without review.
+- Large loop-phase allocations → layout regression; compare `alloc_flame.txt` to prior artifact.
+
+## Verification
+
+```bash
+make bench-footprint                    # struct sizes + criterion bench + baseline match
+make bench-footprint-profile            # CPU flamegraph (5k skip-heavy diff)
+make bench-footprint-alloc              # dhat + alloc call-tree (default: skip_heavy)
+make bench-footprint-alloc ARGS=transitions
+make bench-footprint-alloc ARGS=scan
+make bench-footprint-update-baseline    # maintainer: refresh committed JSON
+make profile-summary                    # text rollup of artifacts/
+cargo test -p migrator-core-dev --test footprint_baseline footprint_baseline_match -q
+```
 
 ## Operations and recovery
 
-Routine audit before large layout PRs:
+| Artifact | Meaning |
+|----------|---------|
+| `artifacts/struct_sizes.json` | `sizeof` snapshot |
+| `artifacts/footprint_bench.txt` | criterion log |
+| `artifacts/plan_diff_5k_flamegraph.svg` | CPU hot path |
+| `artifacts/plan_diff_dhat.txt` | dhat summary (skip-heavy) |
+| `artifacts/dhat_heap.json` | raw dhat heap (input to Python tree) |
+| `artifacts/alloc_flame.txt` | human alloc tree from `dhat_alloc_tree.py` |
 
-```bash
-make bench-footprint && make rust-bench-footprint
-make bench-footprint-profile && make rust-bench-footprint-alloc
-make profile-summary
-```
+dhat phases (`dhat_alloc_tree.py`):
 
-Compare Go mem: `go tool pprof -base ops/perf/artifacts/footprint_5k.mem.prof <new.prof>`. Compare Rust heap: re-run dhat and diff `rust_plan_diff_dhat.txt` totals.
+| Phase | Meaning |
+|-------|---------|
+| setup | fixture build (`skip_heavy_workspace`, scan ingest) |
+| warm | first `compute_diff_into` (plan Vec resize) |
+| loop | warmed iterations (headline **B/iter**) |
 
-## Open issues
+Recovery: re-run full bench suite after layout PR; attach artifacts to the PR when sizes or loop alloc change.
 
-- Rust criterion vs Go bench not byte-identical workloads (Rust `skip_heavy_workspace` vs Go full scan). Cross-stack compares are **directional** only.
-- `dhat-heap.json` copied to `ops/perf/artifacts/rust_dhat_heap.json` after alloc bench; variant reports: `rust_alloc_flame_transitions.txt`, `rust_alloc_flame_scan.txt`.
-- `integration_plan_sqlserver_suite` may fail `cli_wall_ms` SLO without `rmigd` harness — env issue, not footprint regression (see [`rust-port-plan.md`](rust-port-plan.md)).
-- **Deferred (next cycle, if any):** `CatalogState.schemas` HashSet owned strings; SQL/rmigd defer backlog.
+## Open issues and non-goals
+
+- Non-goals: gating merges on criterion wall time; substituting footprint for `make slo`.
 
 ## References
 
-- [`docs/data-oriented-layout-policy.md`](data-oriented-layout-policy.md) — canonical hot-path layout policy
-- [`docs/solution.md`](solution.md) — § DOD layout footprint (phase 4)
-- [`docs/specs/internals/module-fs.md`](specs/internals/module-fs.md) — `ObjectStore`, arena
-- [`ops/perf/README.md`](../ops/perf/README.md) — script index
-- [`docs/rust-port-plan.md`](rust-port-plan.md) — verification table
-- [`rust/README.md`](../rust/README.md) — Rust commands
+- [`ops/perf/README.md`](../ops/perf/README.md)
+- [`docs/dod.md`](dod.md)
+- [`docs/specs/rust/module-domain.md`](specs/rust/module-domain.md)

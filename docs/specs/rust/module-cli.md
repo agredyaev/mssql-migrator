@@ -8,13 +8,13 @@ Describe the **production operator entry points** for the Rust migrator: the `rm
 
 ## Scope
 
-- `rust/crates/cli/src/main.rs` — argument parsing, env load, command dispatch
-- `rust/crates/rmigd/` — session daemon (feature `session-daemon` on `migrator-core`)
-- Build outputs: `rust/target/release/rmig`, `rust/target/release/rmigd` (or `release-fast` profile for tests)
+- `crates/cli/src/main.rs` - argument parsing, env load, command dispatch
+- `crates/rmigd/` - session daemon (feature `session-daemon` on `migrator-core`)
+- Build outputs: `target/release/rmig`, `target/release/rmigd`, `bin/rmig` via `make release-build` (`--profile release-dist`; tests may use `release-fast` profile)
 
 ## System context
 
-Operators invoke `rmig` with the same command names as the historical Go CLI: `plan`, `migrate`, `validate`, `baseline`, `repair-checksum`, `version`. Configuration uses `RM_*` environment variables loaded from `--env` (default `.env`). When `RMIG_SESSION` points at a `rmigd` Unix socket, `engine::run_command` connects through `session::connect_daemon` instead of opening a new TDS connection per invocation.
+Operators invoke `rmig` with commands: `plan`, `migrate`, `validate`, `baseline`, `repair-checksum`, `version`. Configuration uses `RM_*` environment variables loaded from `--env` (default `.env`). When `RMIG_SESSION` points at a `rmigd` Unix socket, `engine::run_command` connects through `session::connect_daemon` instead of opening a new TDS connection per invocation.
 
 ## Interfaces and boundaries
 
@@ -41,13 +41,13 @@ Operators invoke `rmig` with the same command names as the historical Go CLI: `p
 
 ## Verification and validation
 
-- `cd rust && cargo build -p migrator-cli -p migrator-rmigd`
-- `make rust-slo` (uses `rmigd` + warm plan)
-- Integration: `rust/crates/core/tests/integration_plan.rs`
+- `cargo build -p rmig -p rmigd`
+- `make slo` (uses `rmigd` + warm plan)
+- Integration: `crates/core/tests/integration_plan.rs`
 
 ## Operations and recovery
 
-- Release build: `make release-build` or `cargo build --release -p migrator-cli`.
+- Release build: `make release-build` (`cargo build --profile release-dist -p rmig`) or `cargo build --release -p rmig` for profiling binaries.
 - Session daemon: start `rmigd`, set `RMIG_SESSION` to socket path (see `module-cache-session.md`).
 
 ## Open issues and non-goals
@@ -58,4 +58,4 @@ Operators invoke `rmig` with the same command names as the historical Go CLI: `p
 
 - `docs/specs/rust/module-engine.md`
 - `docs/specs/rust/module-config-export.md`
-- `docs/rust-port-plan.md`
+- `docs/rmig-rust.md`

@@ -107,14 +107,14 @@ When adding a new component, image, deploy path, or architecture decision, ensur
 - Generic durable document template: `docs/templates/document-template.md`
 - Generic NASA-style document rule: `docs/specs/nasa-document-spec.md`
 
-## Internal Go packages
+## Internal packages (removed)
 
-- Canonical specifications for `internal/*` packages: `docs/specs/internals/README.md` and the `module-*.md` files in the same directory.
+Historical non-Rust sources were removed from this repository. Canonical specifications live under `docs/specs/rust/`.
 
 ## Rust migrator (`migrator-core`)
 
-- Canonical specifications for `rust/crates/core/src/`: `docs/specs/rust/README.md` and the `module-*.md` files in the same directory.
-- Production operator CLI: `rust/crates/cli/` (see `docs/specs/rust/module-cli.md`).
+- Canonical specifications for `crates/core/src/`: `docs/specs/rust/README.md` and the `module-*.md` files in the same directory.
+- Production operator CLI: `crates/cli/` (see `docs/specs/rust/module-cli.md`).
 
 ## Change Synchronization Rule
 

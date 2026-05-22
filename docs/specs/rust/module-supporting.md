@@ -1,4 +1,4 @@
-# Technical Document: Supporting modules (`git`, `lock`, `perf`, `sql`)
+# Technical Document: Supporting modules (`git`, `lock`, `sql`)
 
 Lifecycle: `Current`.
 
@@ -10,23 +10,24 @@ Describe **auxiliary crates modules** that support scan, apply, embedded SQL, an
 
 | Module | Path | Role |
 |--------|------|------|
-| `git` | `rust/crates/core/src/git/` | Git log/diff helpers for scan preload |
-| `lock` | `rust/crates/core/src/lock/mod.rs` | Migrate apply mutex via `azdo_deploy_meta` lock table |
-| `perf` | `rust/crates/core/src/perf/` | Struct size reports, bench baselines |
-| `sql` | `rust/crates/core/src/sql/mod.rs` | `include_str!` embed of `rust/sql/**/*.sql` |
+| `git` | `crates/core/src/git/` | Git log/diff helpers for scan preload |
+| `lock` | `crates/core/src/lock/mod.rs` | Migrate apply mutex via `azdo_deploy_meta` lock table |
+| `sql` | `crates/core/src/sql/mod.rs` | `include_str!` embed of `sql/**/*.sql` |
+
+Footprint/bench harness (not in `migrator-core`): [`crates/core-dev/`](../../../crates/core-dev/) - struct sizes, criterion/dhat benches.
 
 Embedded SQL directories:
 
-- `rust/sql/audit/` — bootstrap, checksums, history
-- `rust/sql/catalog/` — scoped inspect, cache
-- `rust/sql/apply/` — transaction helpers
-- `rust/sql/lock/` — acquire/release
+- `sql/audit/` - bootstrap, checksums, history
+- `sql/catalog/` - scoped inspect, cache
+- `sql/apply/` - transaction helpers
+- `sql/lock/` - acquire/release
 
 ## Interfaces and boundaries
 
 - Inputs: callers pass SQL fragments via `sql` module constants only at compile time.
 - Outputs: embedded strings consumed by `audit`, `db`, `apply`, `lock`.
-- Boundaries: no runtime read of `rust/sql/` from disk in production binary.
+- Boundaries: no runtime read of `sql/` from disk in production binary.
 
 ## Assumptions and constraints
 
@@ -35,7 +36,7 @@ Embedded SQL directories:
 
 ## Nominal flow
 
-1. Developer edits `rust/sql/**/*.sql`.
+1. Developer edits `sql/**/*.sql`.
 2. `cargo build` embeds content into `sql` module.
 3. Integration tests validate behavior against Docker MSSQL.
 
@@ -55,8 +56,8 @@ Embedded SQL directories:
 
 ## Verification and validation
 
-- `make bench-footprint` (Go-side footprint; Rust `perf` module mirrors patterns)
-- SQL changes require integration tests (`make rust-plan-db-perf`)
+- `make bench-footprint` (struct sizes + diff bench via `migrator-core-dev`)
+- SQL changes require integration tests (`make plan-db-perf`)
 
 ## Open issues and non-goals
 

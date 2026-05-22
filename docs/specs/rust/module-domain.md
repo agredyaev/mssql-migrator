@@ -8,11 +8,13 @@ Describe the **in-memory layout model**: object keys, workspace entries, string 
 
 ## Scope
 
-- `rust/crates/core/src/domain/workspace.rs` — `Workspace`, object list, digest hooks
-- `rust/crates/core/src/domain/object.rs`, `key.rs`, `action.rs`, `kind_code.rs`
-- `rust/crates/core/src/domain/schema.rs`, `script.rs`, `store.rs`
-- `rust/crates/core/src/domain/arena.rs`, `shared.rs` — string dedup / `SharedStr`
-- `rust/crates/core/src/domain/mod.rs` — `intern_catalog_state`, `for_each_entry`
+- `crates/core/src/domain/workspace.rs` - `Workspace`, object list, digest hooks
+- `crates/core/src/domain/object.rs`, `key.rs`, `action.rs`, `kind_code.rs`
+- `crates/core/src/domain/schema.rs`, `script.rs`, `store.rs`
+- `crates/core/src/domain/arena.rs`, `shared.rs` - string dedup / `SharedStr`
+- `crates/core/src/domain/fingerprint.rs` - `key_fingerprint` for normalized path bytes
+- `crates/core/src/domain/path_cache.rs` - object/transition path caches on `Workspace`
+- `crates/core/src/domain/mod.rs` - `intern_catalog_state`, `for_each_entry`
 
 ## System context
 
@@ -20,8 +22,9 @@ Describe the **in-memory layout model**: object keys, workspace entries, string 
 
 ## Interfaces and boundaries
 
-- Core type: `Workspace`, `ObjectKey`, `Action`
+- Core type: `Workspace`, `ObjectKey`, `Action`, `key_fingerprint`
 - No SQL or filesystem I/O inside `domain`
+- Must not import `db`, `driver`, `apply`, `engine`, or other upper layers
 
 ## Assumptions and constraints
 
@@ -48,8 +51,8 @@ Describe the **in-memory layout model**: object keys, workspace entries, string 
 
 ## Verification and validation
 
-- `rust/crates/core/src/domain/arena.rs` tests
-- `rust/crates/core/src/domain/key.rs` tests
+- `crates/core/src/domain/arena.rs` tests
+- `crates/core/src/domain/key.rs` tests
 
 ## References
 
