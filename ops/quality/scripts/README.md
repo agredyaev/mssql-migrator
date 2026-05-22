@@ -8,12 +8,12 @@ Implement the **Verification Expectations** in `docs/specs/nasa-document-spec.md
 
 ## Scope
 
-- `ops/quality/scripts/doc_checks_common.py` — shared paths and exemption lists
-- `ops/quality/scripts/check_doc_structure.py` — NASA-style heading coverage
-- `ops/quality/scripts/check_doc_context.py` — lifecycle line
-- `ops/quality/scripts/check_doc_path_references.py` — backtick path existence
-- `ops/quality/scripts/check_doc_language.py` — English-only (no Cyrillic) for durable docs
-- `ops/quality/scripts/check_doc_sync.py` — `docs/specs/internals` and `docs/specs/rust` index vs `module-*.md` files
+- `ops/quality/scripts/doc_checks_common.py` - shared paths and exemption lists
+- `ops/quality/scripts/check_doc_structure.py` - NASA-style heading coverage
+- `ops/quality/scripts/check_doc_context.py` - lifecycle line
+- `ops/quality/scripts/check_doc_path_references.py` - backtick path existence
+- `ops/quality/scripts/check_doc_language.py` - English-only (no Cyrillic) for durable docs
+- `ops/quality/scripts/check_doc_sync.py` - `docs/specs/rust` index vs `module-*.md` files
 
 ## System context
 
@@ -49,7 +49,7 @@ Repository root is detected from `Path(__file__).resolve().parents[3]` unless **
 
 ## Operations and recovery
 
-- When adding a new `docs/specs/internals/module-*.md` or `docs/specs/rust/module-*.md`, add a table row in the matching `README.md` so `check_doc_sync.py` stays green.
+- When adding a new `docs/specs/rust/module-*.md`, add a table row in [`docs/specs/rust/README.md`](../../docs/specs/rust/README.md) so `check_doc_sync.py` stays green.
 
 ## Open issues and non-goals
 

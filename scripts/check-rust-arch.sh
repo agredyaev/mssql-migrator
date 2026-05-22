@@ -5,7 +5,7 @@
 # - megastructures: pub field count per struct (allowlist for wire/domain aggregates)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-RUST="$ROOT/rust/crates"
+RUST="$ROOT/crates"
 MAX_FIELDS=12
 fail=0
 
@@ -46,10 +46,18 @@ check_layer() {
   local forbidden=("$@")
   [[ -d "$dir" ]] || return 0
   for mod in "${forbidden[@]}"; do
-    if rg -q "use crate::${mod}" "$dir" 2>/dev/null; then
+    while IFS= read -r hit; do
+      [[ -z "$hit" ]] && continue
+      local file="${hit%%:*}"
+      local rest="${hit#*:}"
+      local line="${rest%%:*}"
+      local content="${rest#*:}"
+      if [[ "$content" =~ ^[[:space:]]*(//|/\*|\*) ]]; then
+        continue
+      fi
       err "layer violation: $(realpath --relative-to="$ROOT" "$dir" 2>/dev/null || echo "$dir") imports crate::$mod"
-      rg "use crate::${mod}" "$dir" 2>/dev/null | head -3 >&2 || true
-    fi
+      echo "$hit" >&2
+    done < <(rg -n "crate::${mod}(::|\s|;)" "$dir" 2>/dev/null || true)
   done
 }
 
@@ -66,6 +74,7 @@ ALLOWED_MEGA=(
   ObjectEntry
   Script
   Workspace
+  WorkspaceCold
   MigrationPlan
   PlanSnapshot
   GateInput
@@ -125,7 +134,7 @@ fi
 # --- No clippy suppressions: use `cargo clippy -- -D warnings` instead ---
 while IFS= read -r hit; do
   err "forbidden #[allow(clippy::...)] (fix or refactor): $hit"
-done < <(grep -rn 'allow(clippy::' "$ROOT/rust/crates" --include='*.rs' 2>/dev/null || true)
+done < <(grep -rn 'allow(clippy::' "$RUST" --include='*.rs' 2>/dev/null || true)
 
 if [[ $fail -ne 0 ]]; then
   echo "check-rust-arch: failed" >&2
