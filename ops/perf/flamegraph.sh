@@ -2,7 +2,7 @@
 # Full CLI CPU flamegraph (requires: cargo install flamegraph).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-cd "$ROOT/rust"
+cd "$ROOT"
 mkdir -p "$ROOT/ops/perf/artifacts"
 
 if ! command -v flamegraph >/dev/null 2>&1; then
@@ -20,6 +20,6 @@ export RM_DB_TRUST_SERVER_CERTIFICATE="${RM_DB_TRUST_SERVER_CERTIFICATE:-true}"
 export RM_SQL_ROOT="${RM_SQL_ROOT:-$ROOT/.temp/sql}"
 export RM_SQL_BASE="${RM_SQL_BASE:-$RM_SQL_ROOT}"
 
-OUT="$ROOT/ops/perf/artifacts/rust_rmig_plan_flamegraph.svg"
+OUT="$ROOT/ops/perf/artifacts/rmig_plan_flamegraph.svg"
 flamegraph -o "$OUT" -p rmig -- plan
 echo "wrote $OUT"

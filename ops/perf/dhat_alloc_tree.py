@@ -8,9 +8,9 @@ Writes human-readable report to stdout. Categories map to rmig hot-path CASE-* i
 docs/data-oriented-layout-policy.md.
 
 Phases (by stack symbols in plan_diff_dhat*.rs):
-  setup  — bench_setup / bench_scan_setup / skip_heavy_workspace / scan_fixture / scan_root
-  warm   — bench_warm (first compute_diff_into; plan Vec resize)
-  loop   — bench_loop (warmed compute_diff iterations; headline per-iter metric)
+  setup  - bench_setup / bench_scan_setup / skip_heavy_workspace / scan_fixture / scan_root
+  warm   - bench_warm (first compute_diff_into; plan Vec resize)
+  loop   - bench_loop (warmed compute_diff_into iterations; headline per-iter metric)
 """
 
 from __future__ import annotations
@@ -123,7 +123,7 @@ CASE_MAP = {
     "loop:transitions_map": "CASE-4",
     "loop:push_planned": "CASE-7, CASE-6",
     "loop:compute_diff_other": "CASE-1",
-    "loop:uncategorized": "—",
+    "loop:uncategorized": "n/a",
 }
 
 
@@ -203,7 +203,7 @@ def report(data: dict, iterations: int) -> str:
         share = (100.0 * b / loop_bytes) if loop_bytes else 0
         lines.append(
             f"{cat:<36} {fmt_bytes(b):>12} {fmt_bytes(int(b / iterations)):>12} "
-            f"{share:6.1f}%  {CASE_MAP.get(cat, '—')}"
+            f"{share:6.1f}%  {CASE_MAP.get(cat, 'n/a')}"
         )
     if not loop_cats:
         lines.append("(no loop-phase allocations detected)")
@@ -246,7 +246,7 @@ def main() -> int:
     parser.add_argument(
         "json_path",
         nargs="?",
-        default="ops/perf/artifacts/rust_dhat_heap.json",
+        default="ops/perf/artifacts/dhat_heap.json",
         help="Path to dhat-heap.json",
     )
     parser.add_argument(
@@ -259,7 +259,7 @@ def main() -> int:
 
     path = Path(args.json_path)
     if not path.is_file():
-        alt = Path("rust/crates/core/dhat-heap.json")
+        alt = Path("crates/core-dev/dhat-heap.json")
         if alt.is_file():
             path = alt
         else:
