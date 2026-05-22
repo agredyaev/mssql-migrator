@@ -124,7 +124,7 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           name: "${{ steps.version.outputs.tag }}"
           body: |
-            **Author:** Aleksey Gredyaev
+            **Author:** ${{ github.repository_owner }}
             **Version:** `${{ steps.version.outputs.new }}`
             **Bump:** `${{ steps.bump_type.outputs.bump }}`
 
