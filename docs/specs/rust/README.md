@@ -32,7 +32,7 @@ Operator-facing build/env docs: [`docs/rmig-rust.md`](../../rmig-rust.md). This 
 | `cache`, `session` | L1 cache, `rmigd` RPC | [`module-cache-session.md`](module-cache-session.md) |
 | `scaffold` | blocked DDL migration files | [`module-scaffold.md`](module-scaffold.md) |
 | `config`, `export`, `timings`, `error` | env, plan JSON, exit codes | [`module-config-export.md`](module-config-export.md) |
-| `git`, `lock`, `sql`, `sql_ident` | helpers + embedded SQL | [`module-supporting.md`](module-supporting.md) |
+| `git`, `lock`, `sql`, `sql_ident`, `buildinfo` | helpers, embedded SQL, and compile metadata | [`module-supporting.md`](module-supporting.md) |
 | Tests | `crates/core/tests/` | [`module-test-harness.md`](module-test-harness.md) |
 
 ## Assumptions and constraints
