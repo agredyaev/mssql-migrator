@@ -5,10 +5,10 @@
 *.so
 *.dylib
 
-# Test binary, built with `go test -c`
+# Test binary, built with `cargo test --no-run`
 *.test
 
-# Output of the go coverage tool, specifically when used with LiteIDE
+# Coverage output
 *.out
 rmig
 bin/
@@ -23,16 +23,18 @@ _old_*
 new_arch.txt
 review.md
 *.prof
-ops/perf/artifacts/*.json
-ops/perf/artifacts/*.prof
-ops/perf/artifacts/*.trace
+ops/perf/artifacts/*
 .temp/
 .DS_Store
 *.log
 phase-report-run.log
 
 # Rust build output
-rust/target/
+/target/
 
 # Rust runtime cache (catalog snapshots)
 .rmig/
+
+# Profiler bench output (never commit)
+dhat-heap.json
+**/dhat-heap.json
