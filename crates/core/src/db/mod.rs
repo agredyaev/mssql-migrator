@@ -1,3 +1,23 @@
+//! SQL Server catalog metadata inspection and database execution plans.
+//!
+//! ### Purpose
+//! Inspects system tables inside SQL Server (e.g. `sys.objects`, `sys.columns`) to extract the
+//! current database state, mapping it to structural catalog representations for diff planning.
+//!
+//! ### Architectural Context
+//! - **Inputs**: SQL database connections, L1 filesystem cache.
+//! - **Outputs**: `CatalogState` structs containing columns, schemas, and object definitions.
+//! - **Boundaries**: Uses thread-safe memory snapshots to speed up structural audits during heavy runs.
+//!
+//! ### Nominal Flow
+//! 1. Open SQL Server connection.
+//! 2. Retrieve catalog schemas, tables, and views (`run_plan_db_phase`).
+//! 3. Extract detailed column structures for active tables (`load_table_columns`).
+//! 4. Save metadata snapshots on disk to avoid future inspect round-trips (`save`).
+//!
+//! ### Off-Nominal & Failure Containment
+//! - **Inspect exceptions**: If catalog loading fails (e.g., lack of metadata permissions), falls back safely, logs exceptions, and returns `Error::Sql`.
+
 pub mod batch;
 mod catalog;
 mod catalog_cache;

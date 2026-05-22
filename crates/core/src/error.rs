@@ -1,3 +1,23 @@
+//! System error categorizations, database exception translation, and shell exit code mappings.
+//!
+//! ### Purpose
+//! Converts low-level errors (I/O, TDS database driver exceptions) into structured `Error` states
+//! and translates them to standard process exit codes to allow correct automated shell recovery.
+//!
+//! ### Architectural Context
+//! - **Inputs**: Low-level thread errors, database query exceptions, parse failures.
+//! - **Outputs**: Formatted error strings, process exit codes (e.g. `10` on blocked migration, `7` on lock held).
+//! - **Boundaries**: Used across all crates to ensure standard, consistent failure diagnostics.
+//!
+//! ### Mapped Exit Codes
+//! - `0`: Success (`EXIT_OK`)
+//! - `1`: Uncategorized / OS errors (`EXIT_GENERAL`)
+//! - `2`: Environmental config errors (`EXIT_CONFIG`)
+//! - `3`: Database connection failures (`EXIT_CONN`)
+//! - `5`: SQL execution runtime exceptions (`EXIT_SQL`)
+//! - `7`: Advisory lock timeout / contention (`EXIT_LOCK_TIMEOUT`)
+//! - `10`: Structural layout plan is blocked (`EXIT_PLAN_BLOCKED`)
+
 use std::fmt;
 
 #[derive(Debug)]

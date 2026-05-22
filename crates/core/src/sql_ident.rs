@@ -1,8 +1,22 @@
-//! T-SQL bracket identifier quoting and safe path component validation.
+//! T-SQL identifier sanitization and path component validation.
+//!
+//! ### Purpose
+//! Prevents SQL injection and directory traversal vulnerabilities when handling
+//! dynamically resolved schema names, table names, and migration SQL scripts.
+//!
+//! ### Threats Mitigated
+//! 1. **Path Traversal (`../`)**: Scrubbing filenames prevents malicious catalog layout scans
+//!    from crossing directory boundaries or reading arbitrary host system files.
+//! 2. **T-SQL Bracket Escapes**: Standard T-SQL escapes bracketed identifiers `[name]` by
+//!    doubling the closing bracket (`] -> ]]`). Failing to do so allows SQL injection via
+//!    malicious schema/table names during dynamic query generation.
 
 use crate::error::{Error, Result};
 
-/// Reject filesystem path components (`..`, separators).
+/// Asserts that a string is a safe single-level directory or filename component.
+///
+/// Returns `Error::InvalidInput` if the component is empty, contains directory traversal
+/// sequences (`.`, `..`), or includes path separators (`/`, `\`, `\0`).
 pub fn validate_path_component(name: &str) -> Result<()> {
     if name.is_empty() {
         return Err(Error::InvalidInput("empty path component".into()));
@@ -27,7 +41,9 @@ fn validate_bracket_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Safe filename token (e.g. git short hash in scaffold SQL names).
+/// Asserts that a token contains only safe alphanumeric, underscore, or dash characters.
+///
+/// Commonly used to validate dynamic git SHAs embedded inside migration SQL filenames.
 pub fn validate_filename_token(token: &str) -> Result<()> {
     if token.is_empty() {
         return Err(Error::InvalidInput("empty filename token".into()));
@@ -43,7 +59,10 @@ pub fn validate_filename_token(token: &str) -> Result<()> {
     Ok(())
 }
 
-/// Full T-SQL bracket identifier `[name]` with `]` escaped as `]]`.
+/// Escapes and wraps an identifier in standard T-SQL bracket formatting (e.g. `[object]`).
+///
+/// Any embedded closing brackets `]` are escaped by doubling them (`]]`) to prevent
+/// SQL injection through malicious table or schema names.
 pub fn bracket_ident(name: &str) -> Result<String> {
     validate_bracket_name(name)?;
     Ok(format!("[{}]", name.replace(']', "]]")))

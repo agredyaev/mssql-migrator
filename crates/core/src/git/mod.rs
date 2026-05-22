@@ -1,3 +1,22 @@
+//! Git repository metadata extraction, merge-base computation, and diff analysis.
+//!
+//! ### Purpose
+//! Extracts Git tracking information (e.g. merge base, changed file list, commit logs) to enable
+//! fast-path incremental inspections by isolating changed schema files since the last deployment.
+//!
+//! ### Architectural Context
+//! - **Inputs**: Workspace path, target remote branch reference (e.g. `origin/main`).
+//! - **Outputs**: List of altered layout file paths, Git metadata structs (`GitMeta`).
+//! - **Boundaries**: Spawns standard OS git child processes.
+//!
+//! ### Nominal Flow
+//! 1. Verify existence of Git repository inside or above the workspace root (`has_git_repo`).
+//! 2. Resolve the common ancestor commit reference against the target branch (`merge_base`).
+//! 3. Extract the list of filenames altered since that commit (`changed_paths_from_git`).
+//!
+//! ### Off-Nominal & Failure Containment
+//! - **Git Command Missing / Un-tracked Tree**: If git is not installed or the workspace has no repository tracking, falls back safely to full database catalog scans, avoiding migration failure.
+
 mod diff;
 mod log;
 mod repo;
