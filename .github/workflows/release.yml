@@ -129,6 +129,7 @@ jobs:
             **Bump:** `${{ steps.bump_type.outputs.bump }}`
 
             Automated release from `${{ github.sha }}`.
+          generate_release_notes: true
           files: |
             bin/rmig
             target/release-dist/rmigd
