@@ -1,61 +1,27 @@
 #!/usr/bin/env bash
-# Full CLI phase timings (plan + migrate) against Docker SQL Server.
+# Rust plan phase timings + SLO gate (cli_wall_ms < 150 on cache-miss, rmigd session).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
-
-: "${RMIG_RUN_SQLSERVER_INTEGRATION:=1}"
-: "${RM_DB_SERVER:=localhost}"
-: "${RM_DB_PORT:=1433}"
-: "${RM_DB_DATABASE:=rmig_test}"
-: "${RM_DB_USER:=sa}"
-: "${RM_DB_PASSWORD:=yourStrong(!)Password}"
-: "${RM_DB_ENCRYPT:=false}"
-: "${RM_DB_TRUST_SERVER_CERTIFICATE:=true}"
-
 ARTIFACTS="$ROOT/ops/perf/artifacts"
 mkdir -p "$ARTIFACTS"
 
-export RMIG_RUN_SQLSERVER_INTEGRATION RM_DB_SERVER RM_DB_PORT RM_DB_DATABASE
-export RM_DB_USER RM_DB_PASSWORD RM_DB_ENCRYPT RM_DB_TRUST_SERVER_CERTIFICATE
+export RMIG_RUN_SQLSERVER_INTEGRATION="${RMIG_RUN_SQLSERVER_INTEGRATION:-1}"
+export RM_SKIP_GIT="${RM_SKIP_GIT:-1}"
+export RMIG_SLO_MAX_CLI_WALL_MS="${RMIG_SLO_MAX_CLI_WALL_MS:-150}"
+export RMIG_USE_RMIGD="${RMIG_USE_RMIGD:-1}"
+export RMIG_SESSION_TOKEN="${RMIG_SESSION_TOKEN:-rmig-integration-test-token}"
+export RMIG_INTEGRATION_WARM_SNAPSHOT="${RMIG_INTEGRATION_WARM_SNAPSHOT:-1}"
 
-MODE="${1:-cold}"
-shift || true
-
+MODE="${1:-slo}"
 case "$MODE" in
-  cold)
-    export RMIG_CLI_PHASE_REPORT="$ARTIFACTS/cli_phase_plan_cold.json"
-    go test -tags=integration ./internal/app/ \
-      -run TestIntegration_PhaseReport_CLI_Plan -v -count=1 "$@"
-  ;;
-  warm)
-    export RMIG_PHASE_SKIP_DB_RESET=1
-    export RMIG_CLI_PHASE_REPORT="$ARTIFACTS/cli_phase_plan_warm.json"
-    go test -tags=integration ./internal/app/ \
-      -run TestIntegration_PhaseReport_CLI_Plan -v -count=1 "$@"
-  ;;
-  migrate-cold)
-    export RMIG_CLI_PHASE_REPORT="$ARTIFACTS/cli_phase_migrate_cold.json"
-    go test -tags=integration ./internal/app/ \
-      -run TestIntegration_PhaseReport_CLI_Migrate -v -count=1 "$@"
-  ;;
-  profile)
-    export RMIG_CLI_PHASE_REPORT="$ARTIFACTS/cli_phase_plan_cold.json"
-    go test -tags=integration ./internal/app/ \
-      -run TestIntegration_PhaseReport_CLI_Plan -v -count=1 \
-      -cpuprofile="$ARTIFACTS/cli_plan.cpu.prof" \
-      -memprofile="$ARTIFACTS/cli_plan.mem.prof" \
-      -memprofilerate=1 \
-      -trace="$ARTIFACTS/cli_plan.trace" \
-      "$@"
-    echo "Profiles: $ARTIFACTS/cli_plan.cpu.prof (mostly idle/wait on SQL Server)"
-    echo "         $ARTIFACTS/cli_plan.mem.prof"
-    echo "Inspect fetch: see fetch_ms in $RMIG_CLI_PHASE_REPORT"
+  slo|warm|all)
+    export RMIG_CLI_PHASE_REPORT="$ARTIFACTS/cli_phase_slo.json"
+    cargo build --release -p rmigd
+    cargo test --release -p migrator-core --test integration_plan integration_plan_sqlserver_suite -- --nocapture --test-threads=1
     ;;
   *)
-    echo "usage: $0 {cold|warm|migrate-cold|profile} [go test args...]" >&2
-    exit 2
+    echo "usage: $0 {slo|warm|all}" >&2
+    exit 1
     ;;
 esac
-
-echo "Phase report: ${RMIG_CLI_PHASE_REPORT:-<not set>}"
