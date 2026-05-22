@@ -1,0 +1,26 @@
+{
+  "scenario": "ddl_transition_apply",
+  "setup_steps": [
+    "baseline_migrate",
+    "git_column_change",
+    "migrate_blocked",
+    "commit_transition",
+    "migrate_transition"
+  ],
+  "applied": 1,
+  "failed": 0,
+  "skipped": 0,
+  "audit_object_rows": 6,
+  "audit_migration_rows": 1,
+  "catalog_meta_rows": 1,
+  "catalog_cache_rows": 6,
+  "timings": {
+    "setup_apply_ms": 0,
+    "plan_wall_ms": 1228,
+    "plan_parallel_wall_ms": 311,
+    "plan_db_path": "git_delta",
+    "migrate_wall_ms": 938,
+    "migrate_parallel_wall_ms": 64,
+    "total_ms": 3115
+  }
+}

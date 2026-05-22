@@ -1,0 +1,65 @@
+use std::sync::Arc;
+
+use super::StringArena;
+use crate::domain::shared::{SharedStr, SharedStrInner};
+use crate::domain::str_off::StrOff;
+
+impl StringArena {
+    pub fn get(&self, s: &str) -> SharedStr {
+        if s.is_empty() {
+            return SharedStr::empty();
+        }
+        let (off, len) = self.offset_len(s);
+        SharedStr::from_arena_slice(self.buf.clone(), off, len)
+    }
+
+    pub fn offset_len(&self, s: &str) -> (u32, u32) {
+        if s.is_empty() {
+            return (0, 0);
+        }
+        let off = self
+            .index
+            .get(s)
+            .copied()
+            .unwrap_or_else(|| panic!("arena missing string: {s:?}"));
+        (off, s.len() as u32)
+    }
+
+    pub fn slice_bytes(&self, off: u32, len: u32) -> &[u8] {
+        if len == 0 {
+            return b"";
+        }
+        let start = off as usize;
+        let end = start + len as usize;
+        &self.buf[start..end]
+    }
+
+    pub fn str_at(&self, off: u32, len: u32) -> &str {
+        std::str::from_utf8(self.slice_bytes(off, len)).expect("arena utf-8")
+    }
+
+    pub fn shared_at(&self, off: u32, len: u32) -> SharedStr {
+        if len == 0 {
+            return SharedStr::empty();
+        }
+        SharedStr::from_arena_slice(self.buf.clone(), off, len)
+    }
+
+    pub fn unique_count(&self) -> usize {
+        self.index.len()
+    }
+
+    pub fn byte_len(&self) -> usize {
+        self.buf.len()
+    }
+
+    /// If `s` already slices this arena buffer, return `StrOff` without hash lookup or `String` clone.
+    pub fn str_off_if_dedicated(&self, s: &SharedStr) -> Option<StrOff> {
+        match &*s.0 {
+            SharedStrInner::Slice { buf, start, len } if Arc::ptr_eq(buf, &self.buf) => {
+                Some(StrOff(*start, *len))
+            }
+            _ => None,
+        }
+    }
+}
