@@ -10,4 +10,3 @@ pub async fn connect_daemon(socket_path: &str, database: &str) -> Result<DbClien
     }
     Ok(DbClient::Proxy(proxy))
 }
-
