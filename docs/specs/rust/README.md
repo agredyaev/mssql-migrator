@@ -1,88 +1,79 @@
-# Rust module specifications (`migrator-core`)
+# Module specifications (`migrator-core`)
 
 Lifecycle: `Current`.
 
 ## Purpose
 
-This directory holds NASA-style specifications (`docs/specs/nasa-document-spec.md`, `docs/specs/documentation-spec.md`) for the production Rust migrator under `rust/crates/core/src/`. Go packages under `internal/` remain as a reference implementation; **production operators use Rust `rmig`** (see `docs/rust-port-plan.md`).
+One specification per top-level module in `crates/core/src/lib.rs`, plus CLI/daemon crates and the integration test harness.
 
 ## Scope
 
-- Core library: `rust/crates/core/src/` (all top-level modules in `lib.rs`).
-- CLI binary: `rust/crates/cli/` (`module-cli.md`).
-- Optional session daemon: `rust/crates/rmigd/` (documented in `module-cache-session.md`).
-- Embedded T-SQL: `rust/sql/` (referenced from `module-db.md` and `module-audit.md`).
-
-## Module index
-
-| Rust module / crate | Specification |
-|---------------------|---------------|
-| `rust/crates/cli`, `rust/crates/rmigd` | `module-cli.md` |
-| `engine` | `module-engine.md` |
-| `scan` | `module-scan.md` |
-| `plan` | `module-plan.md` |
-| `db` | `module-db.md` |
-| `driver` | `module-driver.md` |
-| `audit` | `module-audit.md` |
-| `apply` | `module-apply.md` |
-| `gate` | `module-gate.md` |
-| `domain` | `module-domain.md` |
-| `cache`, `session` | `module-cache-session.md` |
-| `scaffold` | `module-scaffold.md` |
-| `config`, `export`, `timings`, `error` | `module-config-export.md` |
-| Integration test harness | `module-test-harness.md` |
-| `git`, `lock`, `perf`, `sql` | `module-supporting.md` |
+- Source: `crates/core/src/`, `crates/cli/`, `crates/rmigd/`, `crates/core/tests/`
+- Embedded SQL: repo-root [`sql/`](../../../sql/) (wired in `crates/core/src/sql/mod.rs`)
 
 ## System context
 
-`rust/crates/cli/src/main.rs` loads `RM_*` configuration, then calls `migrator_core::engine::run_command` for `plan`, `migrate`, `validate`, `baseline`, and `repair-checksum`. The engine scans the SQL tree (`scan`), loads audit/catalog state (`db`, `audit`), computes a plan (`plan`), optionally applies DDL (`apply`), and publishes phase timings (`timings`). Incremental promotion checks use `gate` (prod gate snapshot/compare).
+Operator-facing build/env docs: [`docs/rmig-rust.md`](../../rmig-rust.md). This index links module specs to source paths.
 
 ## Interfaces and boundaries
 
-- Inputs: maintainer questions about Rust subsystem ownership; links from `README.md`, `docs/solution.md`, `docs/rust-port-plan.md`.
-- Outputs: per-module `module-*.md` files and this index.
-- Ownership boundaries: these specs describe `rust/crates/core/src/` and CLI crates; they do not replace `docs/operational-contract.md`.
+| Code | Path under `crates/core/src/` | Specification |
+|------|-------------------------------|---------------|
+| CLI / daemon | `../cli/`, `../rmigd/` | [`module-cli.md`](module-cli.md) |
+| `engine` | orchestration (`run_command`, plan/apply routing) | [`module-engine.md`](module-engine.md) |
+| `scan` | filesystem + git layout ingest | [`module-scan.md`](module-scan.md) |
+| `plan` | diff, scenarios, scope, filter | [`module-plan.md`](module-plan.md) |
+| `db` | plan DB phase, catalog, L1, cache | [`module-db.md`](module-db.md) |
+| `driver` | TDS client, timings, session proxy | [`module-driver.md`](module-driver.md) |
+| `audit` | history, checksums, bootstrap | [`module-audit.md`](module-audit.md) |
+| `apply` | migrate execution, transactions | [`module-apply.md`](module-apply.md) |
+| `gate` | prod gate, e2e reports, changed paths | [`module-gate.md`](module-gate.md) |
+| `domain` | workspace, object store, arena | [`module-domain.md`](module-domain.md) |
+| `cache`, `session` | L1 cache, `rmigd` RPC | [`module-cache-session.md`](module-cache-session.md) |
+| `scaffold` | blocked DDL migration files | [`module-scaffold.md`](module-scaffold.md) |
+| `config`, `export`, `timings`, `error` | env, plan JSON, exit codes | [`module-config-export.md`](module-config-export.md) |
+| `git`, `lock`, `sql`, `sql_ident` | helpers + embedded SQL | [`module-supporting.md`](module-supporting.md) |
+| Tests | `crates/core/tests/` | [`module-test-harness.md`](module-test-harness.md) |
 
 ## Assumptions and constraints
 
-- Assumptions: Microsoft SQL Server 2016+ with OPENJSON; co-located or low-latency SQL (see product SLO in `docs/rust-port-plan.md`).
-- Constraints: when a module’s public surface or command flow changes, update the matching `module-*.md` in the same change.
+- Integration examples assume Docker SQL Server and the `.temp/sql` fixture unless a spec states otherwise.
 
 ## Nominal flow
 
-1. Open this index to find the module file for a path under `rust/crates/core/src/`.
-2. Read the linked `module-*.md` before changing that module.
-3. Run `make rust-check` after code edits; run `make doc-check` when documentation changes.
+1. `crates/cli` loads `RM_*` from env / `--env` file.
+2. `engine::run_command` scans layout (`scan`), runs plan DB phase (`db` + `audit`), computes plan (`plan`).
+3. On `migrate`: optional blocked scaffold (`scaffold`), session lock (`lock`), apply (`apply`), audit flush (`audit`).
+4. Phase timings via `timings`; optional reports via `export`.
 
-## Off-nominal behavior and failure containment
+## Off-nominal behavior
 
-- Failure mode: `module-*.md` drifts from code (wrong paths or behavior).
-  Containment: `make doc-check` fails via `ops/quality/scripts/check_doc_sync.py`; fix docs before merge.
+- Missing or stale `module-*.md` for a changed module → update the spec in the same PR as the code change.
 
-## Verification and validation
+## Verification
 
-- `make rust-check` — arch, release dep guard, fmt, `clippy -D warnings`, unit + non-SQL tests (`Makefile`)
-- `make rust-slo` — warm `cli_wall_ms` < 150 ms gate (`docs/rust-port-plan.md`)
-- `make rust-plan-db-perf` — plan DB `parallel_wall_ms` ≤ 500 ms (`ops/perf/README.md`)
-- `make rust-workflow-fast` — full workflow integration ~2 s (`ops/perf/rust_workflow_fast.sh`)
-- `make rust-prod-gate` — incremental plan go/no-go (`docs/prod-gate.md`)
-- `make doc-check` — documentation sync scripts
+| Gate | Command |
+|------|---------|
+| Static + unit | `make check` |
+| Docs | `make doc-check` |
+| E2e baselines | `make e2e-all` |
+| Warm CLI SLO | `make slo` |
+| Prod gate | `make prod-gate` |
+| Plan DB perf | `make plan-db-perf` |
+| Git workflow | `make workflow-fast` |
+
+Harness details: [`ops/perf/README.md`](../../../ops/perf/README.md), [`docs/prod-gate.md`](../../prod-gate.md).
 
 ## Operations and recovery
 
-- Routine operation: add a row to the **Module index** table and add `module-<name>.md` when introducing a new documented subsystem.
-- Recovery: if the index and on-disk files disagree, `check_doc_sync.py` fails; align the table and filenames.
+- Add a new top-level module: create `module-*.md` and link it from this index (`check_doc_sync.py`).
 
 ## Open issues and non-goals
 
-- Open issues: parity gaps vs Go reference are tracked in `docs/rust-port-plan.md` (Remaining milestones).
-- Non-goals: line-by-line Rust doc comments; Go `internal/` specs (see `docs/specs/internals/README.md`).
+- Non-goals: exhaustive rustdoc for every private helper.
 
 ## References
 
-- `docs/templates/document-template.md`
-- `docs/specs/documentation-spec.md`
-- `docs/rust-port-plan.md`
-- `docs/prod-gate.md`
-- `ops/perf/README.md`
-- `rust/crates/core/src/lib.rs`
+- `crates/core/src/lib.rs`
+- [`docs/rmig-rust.md`](../../rmig-rust.md)
+- [`docs/templates/document-template.md`](../../templates/document-template.md)

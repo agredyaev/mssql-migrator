@@ -8,11 +8,11 @@ Describe **filesystem layout scan**: walk SQL tree, parse object scripts, comput
 
 ## Scope
 
-- `rust/crates/core/src/scan/walk.rs` — directory walk, object discovery
-- `rust/crates/core/src/scan/parse.rs`, `parse_object.rs` — script parsing
-- `rust/crates/core/src/scan/digest.rs` — layout digest for cache keys
-- `rust/crates/core/src/scan/transition.rs` — transition migration paths
-- `rust/crates/core/src/scan/git_preload.rs`, `git_log.rs`, `git_repo.rs` — optional git string preload
+- `crates/core/src/scan/walk.rs` - directory walk, object discovery
+- `crates/core/src/scan/parse.rs`, `parse_object.rs` - script parsing
+- `crates/core/src/scan/digest.rs` - layout digest for cache keys
+- `crates/core/src/scan/transition.rs` - transition migration paths
+- `crates/core/src/scan/git_preload.rs`, `git_log.rs`, `git_repo.rs` - optional git string preload
 - Public entry: `scan::populate`
 
 ## System context
@@ -28,12 +28,12 @@ First phase of `engine::run_command`. Populates `domain::Workspace` (`object_ent
 ## Assumptions and constraints
 
 - Layout follows repo SQL tree conventions (see `docs/solution.md`).
-- Catalog wire paths (`objectPath`, `transitionPaths` in plan JSON) are **`{database}/{schema}/...`** relative to `RM_SQL_ROOT`, matching Go `fs.Object.Path` / `TransitionScript.Path`. `plan::diff_object` and `plan::transitions` normalize via `domain::with_database_prefix`.
+- Catalog wire paths (`objectPath`, `transitionPaths` in plan JSON) are **`{database}/{schema}/...`** relative to `RM_SQL_ROOT`. `plan::diff_object` and `plan::transitions` normalize via `domain::with_database_prefix`.
 - Git preload is best-effort when `.git` exists at repo root.
 
 ## Nominal flow
 
-1. `walk::scan_root` — enumerate objects.
+1. `walk::scan_root` - enumerate objects.
 2. Parse scripts → `ObjectEntry` list.
 3. If not `skip_git`: git preload for author/date metadata.
 4. `layout_digest(ws)` stored on workspace.
@@ -44,8 +44,8 @@ First phase of `engine::run_command`. Populates `domain::Workspace` (`object_ent
 
 ## Verification and validation
 
-- `rust/crates/core/tests/workflow_integration.rs` (implicit scan on each command)
-- `make rust-check`
+- `crates/core/tests/workflow_integration.rs` (implicit scan on each command)
+- `make check`
 
 ## Operations and recovery
 
@@ -58,4 +58,4 @@ First phase of `engine::run_command`. Populates `domain::Workspace` (`object_ent
 ## References
 
 - `docs/specs/rust/module-domain.md`
-- `docs/specs/internals/module-fs.md` (Go reference layout)
+- `docs/specs/rust/module-domain.md`

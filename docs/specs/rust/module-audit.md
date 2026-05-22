@@ -8,10 +8,10 @@ Describe **azdo_deploy_meta audit tables**: bootstrap DDL, checksum history load
 
 ## Scope
 
-- `rust/crates/core/src/audit/load.rs` — bootstrap, checksum load, cache flags (`tables_ensured`, history probes)
-- `rust/crates/core/src/audit/history.rs` — flush applied/adopted records, index ensure
-- `rust/crates/core/src/audit/migrations.rs` — transition migration history
-- SQL: `rust/sql/audit/bootstrap_tables.sql`, `bootstrap_index.sql`, `load_checksums_openjson.sql`
+- `crates/core/src/audit/load.rs` - bootstrap, checksum load, cache flags (`tables_ensured`, history probes)
+- `crates/core/src/audit/history.rs` - flush applied/adopted records, index ensure
+- `crates/core/src/audit/migrations.rs` - transition migration history
+- SQL: `sql/audit/bootstrap_tables.sql`, `bootstrap_index.sql`, `load_checksums_openjson.sql`
 
 ## System context
 
@@ -25,7 +25,7 @@ Plan phase loads checksums via `LOAD_CHECKSUMS` OpenJSON batch. Apply phase writ
 ## Assumptions and constraints
 
 - Tables created idempotently (`IF OBJECT_ID … IS NULL`).
-- Test pre-bootstrap: `rust/crates/core/tests/common/db_reset.rs` runs bootstrap after CREATE DATABASE.
+- Test pre-bootstrap: `crates/core/tests/common/db_reset.rs` runs bootstrap after CREATE DATABASE.
 
 ## Nominal flow
 
@@ -35,7 +35,7 @@ Plan phase loads checksums via `LOAD_CHECKSUMS` OpenJSON batch. Apply phase writ
 
 ## Verification and validation
 
-- `rust/crates/core/src/audit/load.rs` unit tests
+- `crates/core/src/audit/load.rs` unit tests
 - Workflow integration audit row counts
 
 ## Off-nominal behavior and failure containment
@@ -54,4 +54,4 @@ Plan phase loads checksums via `LOAD_CHECKSUMS` OpenJSON batch. Apply phase writ
 ## References
 
 - `docs/specs/rust/module-db.md`
-- `docs/specs/internals/module-audit.md`
+- `docs/specs/rust/module-db.md`

@@ -10,20 +10,20 @@ Describe **process-local L1 plan cache** and optional **rmigd session daemon** f
 
 ### cache
 
-- `rust/crates/core/src/cache/l1.rs` — disk-backed L1 keyed by `(db_fingerprint, layout_digest)`
+- `crates/core/src/cache/l1.rs` - disk-backed L1 keyed by `(db_fingerprint, layout_digest)`
 - Used from `db::plan_snapshot` and invalidated on apply / DB reset
 
 ### session
 
-- `rust/crates/core/src/session/client.rs` — connect to daemon socket
-- `rust/crates/core/src/session/protocol.rs` — RPC framing
-- `rust/crates/core/src/session/proxy.rs` — `ProxyClient` implementing TDS proxy
-- `rust/crates/core/src/session/daemon.rs`, `daemon_rpc.rs` — `rmigd` (feature `session-daemon`)
-- Crate: `rust/crates/rmigd/`
+- `crates/core/src/session/client.rs` - connect to daemon socket
+- `crates/core/src/session/protocol.rs` - RPC framing
+- `crates/core/src/session/proxy.rs` - `ProxyClient` implementing TDS proxy
+- `crates/core/src/session/daemon.rs`, `daemon_rpc.rs` - `rmigd` (feature `session-daemon`)
+- Crate: `crates/rmigd/`
 
 ## System context
 
-Product SLO (`cli_wall_ms` < 150 ms) assumes warm path: L1 hit and/or `RMIG_SESSION` to `rmigd` avoiding connect + cold catalog. See `make rust-slo` and `ops/perf/rust_cli_phase.sh`.
+Product SLO (`cli_wall_ms` < 150 ms) assumes warm path: L1 hit and/or `RMIG_SESSION` to `rmigd` avoiding connect + cold catalog. See `make slo` and `ops/perf/cli_phase.sh`.
 
 ## Interfaces and boundaries
 
@@ -43,8 +43,8 @@ Product SLO (`cli_wall_ms` < 150 ms) assumes warm path: L1 hit and/or `RMIG_SESS
 
 ## Verification and validation
 
-- `make rust-slo`
-- `rust/crates/core/tests/integration_plan.rs`
+- `make slo`
+- `crates/core/tests/integration_plan.rs`
 
 ## Off-nominal behavior and failure containment
 
@@ -61,5 +61,5 @@ Product SLO (`cli_wall_ms` < 150 ms) assumes warm path: L1 hit and/or `RMIG_SESS
 
 ## References
 
-- `docs/rust-port-plan.md` — Product SLO
+- [`docs/rust-port-plan.md`](../../../rust-port-plan.md) - product SLO and Makefile gates
 - `docs/specs/rust/module-db.md`

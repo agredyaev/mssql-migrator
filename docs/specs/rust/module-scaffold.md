@@ -8,8 +8,8 @@ Describe **blocked DDL scaffold generation**: detect column/table transitions, w
 
 ## Scope
 
-- `rust/crates/core/src/scaffold/auto.rs`, `ensure.rs`, `content.rs`
-- `rust/crates/core/src/scaffold/column_parser.rs`, `dir.rs`, `git.rs`
+- `crates/core/src/scaffold/auto.rs`, `ensure.rs`, `content.rs`
+- `crates/core/src/scaffold/column_parser.rs`, `dir.rs`, `git.rs`
 - Invoked from `engine::blocked` on blocked migrate
 
 ## System context
@@ -48,10 +48,10 @@ When `plan.blocked` and command is `Migrate`, engine loads table columns (`db::l
 
 ## Verification and validation
 
-- `rust/crates/core/tests/scaffold_test.rs`
-- `workflow_integration.rs` — scaffold file assertions on blocked phase
+- `crates/core/tests/scaffold_test.rs`
+- `workflow_integration.rs` - scaffold file assertions on blocked phase
 
 ## References
 
 - `docs/specs/rust/module-plan.md`
-- `docs/specs/internals/module-supporting.md` (Go scaffold)
+- `docs/specs/rust/module-supporting.md`
