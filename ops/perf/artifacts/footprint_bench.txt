@@ -1,16 +1,17 @@
-   Compiling migrator-core v0.1.0 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core)
-   Compiling migrator-core-dev v0.1.0 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core-dev)
-    Finished `bench` profile [optimized + debuginfo] target(s) in 18.54s
-     Running benches/plan_diff.rs (target/release/deps/plan_diff-91bf57d507775029)
+   Compiling migrator-core v0.1.0 (/Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/crates/core)
+   Compiling migrator-core-dev v0.1.0 (/Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/crates/core-dev)
+    Finished `bench` profile [optimized + debuginfo] target(s) in 21.06s
+     Running benches/plan_diff.rs (target/release/deps/plan_diff-c54a1404ac9ad13e)
 Gnuplot not found, using plotters backend
 Benchmarking plan_diff_skip_heavy_5000
 Benchmarking plan_diff_skip_heavy_5000: Warming up for 3.0000 s
-Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.0464 s (71k iterations)
+Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.2672 s (91k iterations)
 Benchmarking plan_diff_skip_heavy_5000: Analyzing
 plan_diff_skip_heavy_5000
-                        time:   [70.175 µs 73.412 µs 78.042 µs]
-                        change: [+42.422% +53.506% +65.987%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 2 outliers among 100 measurements (2.00%)
+                        time:   [57.696 µs 57.982 µs 58.562 µs]
+                        change: [−4.7369% −2.8325% −1.2275%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) high mild
   2 (2.00%) high severe
 
