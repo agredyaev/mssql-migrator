@@ -1,64 +1,114 @@
-# rmig - Rust implementation
+# Technical Document: `rmig` Rust Implementation
 
 Lifecycle: `Current`.
 
-Operator and maintainer reference for the Rust workspace at the repository root.
+## Purpose
 
-## Build
+Provide a comprehensive operator and maintainer reference for the Rust workspace at the repository root, detailing compilation, testing, profiling, and daemon-based operation.
+
+## Scope
+
+This specification governs the Rust workspace compilation structures, profiling suites, session daemons, and L1 cache behaviors:
+
+- **Workspace Crates**: `crates/core`, `crates/cli`, `crates/rmigd`
+- **Embedded Cache**: `.rmig/cache/` located in the working directory (gitignored)
+
+---
+
+## System Context
+
+`rmig` compiles into a CLI utility which communicates directly with SQL Server. To improve execution speeds and bypass recurring connection handshakes under high-frequency executions, operators can optionally route traffic through the `rmigd` session proxy daemon via Unix domain sockets.
+
+---
+
+## Interfaces and Boundaries
+
+### 1. Optional Session Daemon (`rmigd`)
+- **Unix Domain Socket Integration**: Spawning the daemon exposes a Unix socket for warm connection multiplexing:
+  ```bash
+  cargo build --release -p rmigd
+  RMIGD_SOCKET=/tmp/rmigd.sock RMIGD_ENV=.env ./target/release/rmigd
+  export RMIG_SESSION=/tmp/rmigd.sock
+  ```
+- **SLO Enforcement**: Running `make slo` automatically spawns `rmigd`, sets `RMIG_USE_RMIGD=1`, and asserts that the `cli_wall_ms` remains below `RMIG_SLO_MAX_CLI_WALL_MS` (default `150`).
+
+### 2. Rust-Specific Environment Variables
+
+| Variable | Default | Meaning / Effect |
+| :--- | :---: | :--- |
+| `RMIG_SLO_MAX_CLI_WALL_MS` | `150` | Wall time threshold for the plan SLO gate (in milliseconds). |
+| `RMIG_SESSION` | - | Unix domain socket path connecting the CLI client to the active `rmigd` daemon. |
+| `RMIG_USE_RMIGD` | `0` | Test harness override: automatically spawns `rmigd` and configures `RMIG_SESSION`. |
+| `RMIG_INTEGRATION_WARM_SNAPSHOT` | `0` | Directs the engine to reuse warm metadata catalog snapshots after L1 invalidation. |
+| `RMIG_CATALOG_CACHE` | `on` | Toggle for the local DB catalog memory cache (set `0` to count raw SQL RTs). |
+
+---
+
+## Assumptions and Constraints
+
+- **Platform Compatibility**: Daemon sockets (`rmigd`) require POSIX-compliant environments supporting Unix domain sockets (Unix/macOS).
+- **Compilation for Profiling**: Deep CPU/allocation profiling requires target compilations retaining debug symbols (`[profile.release]` with `debug=true`).
+
+---
+
+## Nominal Flow
+
+Compile the core library and CLI components in the workspace:
 
 ```bash
 make build
-# target/release/rmig, target/release/rmigd
+# Compiles target/release/rmig and target/release/rmigd
 ```
 
-## Verify
+`make release-build` compiles `[profile.release-dist]` featuring fat LTO, symbol stripping, and a single codegen unit to produce highly optimized, minimal production binaries.
+
+---
+
+## Off-Nominal Behavior and Failure Containment
+
+- **Daemon Socket Disruption**: If `rmigd` crashes or the socket under `RMIG_SESSION` becomes inaccessible, the CLI client automatically fails safe by falling back to standard direct database TDS connections, logging the connection event to stderr.
+- **Cache Corruption**: If the local L1 cache under `.rmig/cache/` becomes corrupted or stale, execution can be recovered by purging the cache folder (`rm -rf .rmig/cache`).
+
+---
+
+## Verification and Validation
+
+### 1. Code Quality & Integration Tests
 
 ```bash
-make check           # arch, fmt, clippy -D warnings, unit tests
-make test-int        # SQL Server integration_plan (Docker + .temp/sql)
-make slo             # cache-miss cli_wall_ms gate (rmigd + RMIG_SESSION)
-make e2e-all         # scenario matrix vs committed baselines
-make integration     # apply + git workflow integration
-make prod-gate       # incremental plan go/no-go
+make check           # Run rustfmt, clippy (with -D warnings), and library unit tests
+make test-int        # Run SQL Server integration_plan tests against Docker MSSQL
+make e2e-all         # Execute full E2E scenario matrices vs committed baselines
+make integration     # Run apply and git workflow integration suites
+make prod-gate       # Execute incremental plans and go/no-go checks
 ```
 
-## Session daemon (optional)
+### 2. Memory & Performance Auditing
 
-```bash
-cargo build --release -p rmigd
-RMIGD_SOCKET=/tmp/rmigd.sock RMIGD_ENV=.env ./target/release/rmigd
-export RMIG_SESSION=/tmp/rmigd.sock
-```
+| Profiling Target | Tool / Command | Generated Artifacts |
+| :--- | :--- | :--- |
+| Struct sizes & baseline diffs | `make bench-footprint` | `artifacts/struct_sizes.json` |
+| CPU flamegraph (5k objects) | `make bench-footprint-profile` | `artifacts/plan_diff_5k_flamegraph.svg` |
+| DHAT heap allocations | `make bench-footprint-alloc` | `artifacts/plan_diff_dhat.txt` |
+| Full integration flamegraph | `ops/perf/flamegraph.sh` | Profiling artifacts |
 
-`make slo` spawns `rmigd`, sets `RMIG_USE_RMIGD=1`, and asserts `cli_wall_ms` below `RMIG_SLO_MAX_CLI_WALL_MS` (default 150).
+---
 
-## Profiling
+## Operations and Recovery
 
-`make build` uses `[profile.release]` with debug symbols for flamegraphs. Operator artifacts from `make release-build` use `[profile.release-dist]` (`lto = "fat"`, `strip`, `codegen-units = 1`, `panic = "abort"`, `incremental = false`).
+- **Profiling Recovery**: Purge gitignored profiling output files located under `ops/perf/artifacts/` to free local disk space.
+- **Stale Baselines**: When struct definitions change intentionally in `crates/core`, committed baselines must be updated via `make bench-footprint-update-baseline`.
 
-| Tool | Command |
-|------|---------|
-| Struct sizes + diff bench | `make bench-footprint` |
-| CPU flamegraph (5k diff) | `make bench-footprint-profile` |
-| dhat alloc audit | `make bench-footprint-alloc` |
-| Integration flamegraph | `ops/perf/flamegraph.sh` |
+---
 
-Artifacts: `ops/perf/artifacts/` (gitignored). Runbook: [`perf-footprint-audit.md`](perf-footprint-audit.md).
+## Open Issues and Non-Goals
 
-## Environment
+- **Non-Goals**: The `rmigd` daemon is not designed to support Windows Named Pipes or run as a Windows Service natively without emulation.
 
-Standard `RM_*` variables (see [`operational-contract.md`](operational-contract.md)). Rust-specific:
+---
 
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `RMIG_SLO_MAX_CLI_WALL_MS` | `150` | Plan SLO threshold |
-| `RMIG_SESSION` | - | Unix socket for `rmigd` |
-| `RMIG_USE_RMIGD` | `0` | Harness: spawn `rmigd` and set `RMIG_SESSION` |
-| `RMIG_INTEGRATION_WARM_SNAPSHOT` | `0` | Reuse warm catalog/checksums after L1 invalidate |
-| `RMIG_CATALOG_CACHE` | on | DB catalog cache (set `0` to count exact SQL RTs) |
+## References
 
-L1 filesystem cache: `.rmig/cache/` under the working directory (gitignored).
-
-## Module documentation
-
-Per-module specs: [`specs/README.md`](specs/README.md).
+- Deep footprint audit: [perf-footprint-audit.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/perf-footprint-audit.md)
+- Environment contract: [operational-contract.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/operational-contract.md)
+- Core specs: [specs/README.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/specs/rust/README.md)
