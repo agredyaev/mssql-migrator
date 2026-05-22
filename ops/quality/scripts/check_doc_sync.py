@@ -14,7 +14,6 @@ import doc_checks_common as C  # noqa: E402
 MODULE_RE = re.compile(r"`(module-[a-z0-9-]+\.md)`")
 
 SPEC_INDEXES = (
-    Path("docs/specs/internals/README.md"),
     Path("docs/specs/rust/README.md"),
 )
 

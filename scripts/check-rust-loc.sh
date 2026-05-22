@@ -11,5 +11,5 @@ while IFS= read -r f; do
     echo "LOC $n > $MAX: $f"
     fail=1
   fi
-done < <(find "$ROOT/rust/crates" -name '*.rs' -print)
+done < <(find "$ROOT/crates" -name '*.rs' -print)
 exit "$fail"
