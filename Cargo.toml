@@ -4,7 +4,7 @@ members = ["crates/cli", "crates/core", "crates/core-dev", "crates/rmigd"]
 default-members = ["crates/cli", "crates/rmigd"]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.1"
 edition = "2021"
 license = "MIT"
 
