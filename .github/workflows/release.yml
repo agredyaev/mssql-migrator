@@ -66,14 +66,47 @@ jobs:
         id: filter
         run: |
           if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "unknown")
-            NON_DOC=$(echo "$CHANGED" | grep -cvE '\.md$|^docs/' || true)
-            if [[ "$NON_DOC" -eq 0 && "$CHANGED" != "unknown" ]]; then
+            # Find the latest tag on the current branch
+            PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+            
+            if [[ -z "$PREV_TAG" ]]; then
+              echo "No previous tag found — building first release."
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            
+            echo "Comparing current HEAD with previous tag: $PREV_TAG"
+            CHANGED=$(git diff --name-only "$PREV_TAG" HEAD 2>/dev/null || echo "unknown")
+            
+            if [[ "$CHANGED" == "unknown" ]]; then
+              echo "Error running git diff — falling back to standard behavior (no skip)."
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            
+            # Print the list of changed files for visibility in logs
+            echo "Changed files since $PREV_TAG:"
+            echo "$CHANGED"
+            
+            # Count total changed files and non-code changed files
+            TOTAL=$(echo "$CHANGED" | grep -c . || true)
+            NON_CODE=$(echo "$CHANGED" | grep -c -E '\.md$|^docs/|^\.github/|^\.gitignore$|^ops/' || true)
+            
+            echo "Total changed files: $TOTAL"
+            echo "Non-code changed files: $NON_CODE"
+            
+            if [[ "$TOTAL" -eq 0 ]]; then
+              echo "No files have changed since the last tag ($PREV_TAG) — skipping release."
               echo "skip=true" >> "$GITHUB_OUTPUT"
-              echo "Docs-only change — skipping release."
+              exit 0
+            elif [[ "$TOTAL" -eq "$NON_CODE" ]]; then
+              echo "Only docs/CI/non-code files changed since $PREV_TAG — skipping release."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           fi
+          
+          echo "Active code changes detected — proceeding with release."
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Bump version
