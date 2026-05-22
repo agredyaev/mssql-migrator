@@ -1,3 +1,24 @@
+//! Database execution logging, schema bootstrapping, and migration checksum auditing.
+//!
+//! ### Purpose
+//! Maintains and queries the execution history and checksum index records directly in the SQL Server
+//! catalog target to track migration state, detect tampering, and determine incremental work plans.
+//!
+//! ### Architectural Context
+//! - **Inputs**: SQL execution outputs, migration definitions, database servers/databases.
+//! - **Outputs**: TAMPER checks, dynamic checksum maps, initialized history structures.
+//! - **Boundaries**: Operates in the database catalog under the `_rmig_` metadata tables.
+//!
+//! ### Nominal Flow
+//! 1. Verify existence of operational schema tracking tables (`ensure_tables`).
+//! 2. Load committed dynamic execution records and historical checksums (`load_checksums`).
+//! 3. Flush execution records upon successful migrations (`flush_history`).
+//! 4. Invalidate down-level memory snapshots (`invalidate_audit_cache`).
+//!
+//! ### Off-Nominal & Failure Containment
+//! - **History index missing**: Spawns the required schema index dynamically before retrying operations.
+//! - **Checksum validation exceptions**: Detects manual alterations or drift and marks executing runs as blocked.
+
 mod history;
 mod load;
 mod migrations;

@@ -1,4 +1,19 @@
-//! Embedded T-SQL from repo-root `sql/`.
+//! Embedded T-SQL query scripts compile-time bindings.
+//!
+//! ### Purpose
+//! Binds all static `.sql` queries located under the repository root `sql/` directory to compile-time
+//! constants using `include_str!`, ensuring queries are built into the binary.
+//!
+//! ### Architectural Context
+//! - **Inputs**: SQL files from `sql/` folder at compile-time.
+//! - **Outputs**: Static query string variables (`BOOTSTRAP_TABLES`, `SYS_OBJECTS`, `ACQUIRE`).
+//! - **Boundaries**: Strictly maps static SQL statements. Does not execute queries directly.
+//!
+//! ### Nominals & Submodules
+//! - **`audit`**: Bootstrapping metadata tables and reading/writing execution history records.
+//! - **`catalog`**: Inspecting SQL Server catalog tables and managing local L1 DB caches.
+//! - **`apply`**: Structural schema generation and explicit transactional controls.
+//! - **`lock`**: Distributed app advisory lock acquisition and releases.
 
 pub mod audit {
     pub const BOOTSTRAP_TABLES: &str = include_str!("../../../../sql/audit/bootstrap_tables.sql");

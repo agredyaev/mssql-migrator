@@ -1,3 +1,23 @@
+//! Schema verification gates, E2E validation reports, and baseline comparison.
+//!
+//! ### Purpose
+//! Enforces CI/CD safety gates by comparing active dynamic execution plans against committed E2E baselines,
+//! detecting un-migrated DDL changes, and ensuring compliance before production deployments.
+//!
+//! ### Architectural Context
+//! - **Inputs**: `MigrationPlan` plans, static baseline manifests, and git delta paths.
+//! - **Outputs**: Parity status reports, `GateResult` evaluation codes, and E2E diff files.
+//! - **Boundaries**: Operates locally during CI gates and pre-commit hooks to block unsafe deployments.
+//!
+//! ### Nominal Flow
+//! 1. Resolve local/CI changed file paths (`resolve_changed_paths`).
+//! 2. Generate active migration execution reports (`build_e2e_report`).
+//! 3. Compare current schema plan vs baseline definitions (`compare_snapshots`).
+//! 4. Audit execution durations against target SLO parameters (`evaluate_gate`).
+//!
+//! ### Off-Nominal & Failure Containment
+//! - **Parity Mismatches**: If database structure differs from E2E expectations, halts verification, formats diagnostic comparison outputs, and exits with a non-zero gate code.
+
 mod changed_paths;
 mod changed_paths_ci;
 mod compare;
