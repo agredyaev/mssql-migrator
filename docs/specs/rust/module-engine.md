@@ -8,16 +8,16 @@ Describe the **Rust orchestration engine**: connect (or session proxy), scan SQL
 
 ## Scope
 
-- `rust/crates/core/src/engine/run.rs` — `run_command`, `Command`, `RunOutput`
-- `rust/crates/core/src/engine/apply_run.rs` — migrate / baseline apply dispatch, post-apply catalog snapshot
-- `rust/crates/core/src/engine/blocked.rs` — blocked migrate scaffold path
-- `rust/crates/core/src/engine/filter.rs` — filter already-applied migrations
-- `rust/crates/core/src/engine/warm_store.rs` — in-process plan DB snapshot for warm paths
-- `rust/crates/core/src/engine/io.rs` — stdout JSON helpers
+- `crates/core/src/engine/run.rs` - `run_command`, `Command`, `RunOutput`
+- `crates/core/src/engine/apply_run.rs` - migrate / baseline apply dispatch, post-apply catalog snapshot
+- `crates/core/src/engine/blocked.rs` - blocked migrate scaffold path
+- `crates/core/src/engine/filter.rs` - filter already-applied migrations
+- `crates/core/src/engine/warm_store.rs` - in-process plan DB snapshot for warm paths
+- `crates/core/src/engine/io.rs` - stdout JSON helpers
 
 ## System context
 
-`run_command` is the single entry used by `rust/crates/cli`. Flow: connect → `scan::populate` → `db::run_plan_db_phase` → `plan::compute_diff` → command-specific apply (`apply_run::maybe_apply`).
+`run_command` is the single entry used by `crates/cli`. Flow: connect → `scan::populate` → `db::run_plan_db_phase` → `plan::compute_diff` → command-specific apply (`apply_run::maybe_apply`).
 
 ## Interfaces and boundaries
 
@@ -35,7 +35,7 @@ Describe the **Rust orchestration engine**: connect (or session proxy), scan SQL
 
 1. Connect (`driver::connect` or `session::connect_daemon`).
 2. Scan workspace (`scan::populate`).
-3. Plan DB phase (`db::run_plan_db_phase`) — may L1-hit (zero SQL).
+3. Plan DB phase (`db::run_plan_db_phase`) - may L1-hit (zero SQL).
 4. `plan::compute_diff`.
 5. **Migrate:** if `plan.blocked`, scaffold + exit 10; else lock → `apply::execute_plan` → unlock.
 6. Set `plan_wall_ms`, `cli_wall_ms`.
@@ -47,9 +47,9 @@ Describe the **Rust orchestration engine**: connect (or session proxy), scan SQL
 
 ## Verification and validation
 
-- `rust/crates/core/tests/workflow_integration.rs`
-- `rust/crates/core/tests/integration_plan.rs`
-- `make rust-check`
+- `crates/core/tests/workflow_integration.rs`
+- `crates/core/tests/integration_plan.rs`
+- `make check`
 
 ## Operations and recovery
 
@@ -57,7 +57,7 @@ Describe the **Rust orchestration engine**: connect (or session proxy), scan SQL
 
 ## Open issues and non-goals
 
-- Non-goals: engine does not embed bus/subscriber model (Go `internal/bus`).
+- Non-goals: engine does not embed a pub/sub subscriber model.
 
 ## References
 

@@ -8,10 +8,10 @@ Describe **configuration loading**, **catalog-derived database names**, **plan J
 
 ## Scope
 
-- `rust/crates/core/src/config/env.rs`, `validate.rs`, `catalog.rs`, `mod.rs`
-- `rust/crates/core/src/export/plan_json.rs`, `report.rs`, `checksum_json.rs`, `mod.rs`
-- `rust/crates/core/src/timings.rs`
-- `rust/crates/core/src/error.rs`
+- `crates/core/src/config/env.rs`, `validate.rs`, `catalog.rs`, `mod.rs`
+- `crates/core/src/export/plan_json.rs`, `report.rs`, `checksum_json.rs`, `mod.rs`
+- `crates/core/src/timings.rs`
+- `crates/core/src/error.rs`
 
 ## System context
 
@@ -68,19 +68,19 @@ If `RM_SQL_ROOT` contains multiple child directories with schema subfolders (e.g
 
 ## Verification and validation
 
-- `rust/crates/core/src/config/catalog.rs` unit test `discover_databases_from_layout`
-- `make rust-check`, `make rust-e2e`
-- `rust/crates/core/tests/plan_json_roundtrip_test.rs`, `exit_code_test.rs`
+- `crates/core/src/config/catalog.rs` unit test `discover_databases_from_layout`
+- `make check`, `make integration`
+- `crates/core/tests/plan_json_roundtrip_test.rs`, `exit_code_test.rs`
 
 ## Operations and recovery
 
-- Routine: run `make rust-check` after changes to `config/`, `export/`, or `error.rs`.
+- Routine: run `make check` after changes to `config/`, `export/`, or `error.rs`.
 - Recovery: invalid `RM_SQL_ROOT` layout → fix catalog tree; re-run `validate_config` via CLI.
 
 ## Open issues and non-goals
 
-- Non-goals: `RM_PLAN_FILE` / `RM_REPAIR_SCRIPT` are not engine-enforced (same as Go reference).
-- Open issues: `version` CLI output is a stub until release build metadata is wired.
+- Non-goals: `RM_PLAN_FILE` / `RM_REPAIR_SCRIPT` are not engine-enforced.
+- Open issues: none for `version`; release metadata is wired via `crates/core/build.rs` (`VERSION` + `git rev-parse --short HEAD`).
 
 ## References
 

@@ -4,23 +4,21 @@ Lifecycle: `Current`.
 
 ## Purpose
 
-Define how operators and release pipelines decide **go/no-go** for `rmig` using **incremental plan analysis**: only SQL tree **changes** (delta) may differ from a committed baseline plan snapshot; unexpected diffs outside the delta fail the gate. Production gate runner: **`make rust-prod-gate`** (`rust/crates/core/tests/prod_gate_integration.rs`). Go harness remains for parity reference (`make test-prod-gate`).
+Define how operators and release pipelines decide **go/no-go** for `rmig` using **incremental plan analysis**: only SQL tree **changes** (delta) may differ from a committed baseline plan snapshot; unexpected diffs outside the delta fail the gate. Runner: **`make prod-gate`** (`crates/core/tests/prod_gate_integration.rs`).
 
 ## Scope
 
-- Gate logic (Rust): [`rust/crates/core/src/gate/`](../rust/crates/core/src/gate/) — see `docs/specs/rust/module-gate.md`
-- Gate logic (Go reference): [`internal/prodgate/`](../internal/prodgate/)
-- Integration test (Rust): [`rust/crates/core/tests/prod_gate_integration.rs`](../rust/crates/core/tests/prod_gate_integration.rs)
-- Integration test (Go reference): [`internal/app/prod_gate_integration_test.go`](../internal/app/prod_gate_integration_test.go) (`TestProdGate_IncrementalPlan`)
-- Baseline artifact: [`internal/app/testdata/prod_gate/plan_baseline_empty_db.json`](../internal/app/testdata/prod_gate/plan_baseline_empty_db.json)
+- Gate logic (Rust): [`crates/core/src/gate/`](../crates/core/src/gate/) - see `docs/specs/rust/module-gate.md`
+- Makefile targets: `prod-gate`, `db-up` / `db-init`
 - Runner script: [`ops/perf/prod_gate.sh`](../ops/perf/prod_gate.sh)
-- Makefile targets: `rust-prod-gate`, `test-prod-gate` (Go reference), `test-prod-gate-update-baseline`, `db-up` / `db-init`
 
 ## System context
 
-The gate runs [`RunPlanPipeline`](../internal/app/plan_pipeline_integration.go) aligned with `engine.runPlan` (scan → **parallel** `EnsureTables` ‖ (`LoadChecksums` → scoped `InspectWithScope`) → diff) against SQL Server, builds a [`PlanSnapshot`](../internal/prodgate/snapshot.go), and compares it to a **baseline JSON**. Changed files (auto git delta or test override) map to **normalized object keys**; only those keys may differ from baseline when delta is non-empty. With **empty delta**, current plan must **match baseline exactly** (strict mode).
+The gate runs `engine::run_command(Command::Plan, …)` (scan → parallel ensure ‖ checksums+inspect → diff) against SQL Server, builds a [`PlanSnapshot`](../crates/core/src/gate/snapshot.rs), and compares it to a **baseline JSON**. Changed files (auto git delta or test override) map to **normalized object keys**; only those keys may differ from baseline when delta is non-empty. With **empty delta**, current plan must **match baseline exactly** (strict mode).
 
-Database **drop/create** (`ensureTestDatabase`) is optional and **excluded** from plan wall SLO when `RMIG_GATE_SKIP_DB_RESET=1`.
+Implementation: [`crates/core/src/gate/`](../crates/core/src/gate/), [`crates/core/tests/prod_gate_integration.rs`](../crates/core/tests/prod_gate_integration.rs).
+
+Database **drop/create** is optional and **excluded** from plan wall SLO when `RMIG_GATE_SKIP_DB_RESET=1`.
 
 ## Interfaces and boundaries
 
@@ -28,9 +26,9 @@ Database **drop/create** (`ensureTestDatabase`) is optional and **excluded** fro
 
 | Input | Source |
 |-------|--------|
-| Baseline plan | `internal/app/testdata/prod_gate/plan_baseline_empty_db.json` |
-| Delta paths | **Auto:** [`ResolveChangedPaths`](../internal/prodgate/changed_paths.go) — CI PR env or `git merge-base` (see [`docs/ci-checkout.md`](ci-checkout.md)). **Not used in prod:** `RMIG_GATE_CHANGED_FILES`, `RMIG_GATE_GIT_BASE` |
-| Scoped inspect | [`engine.BuildInspectScope`](../internal/engine/inspect_scope.go) + [`db.InspectWithScope`](../internal/db/inspector_impl.go): hot keys hit catalog SQL; stable keys (file checksum == audit history, outside delta) are synthetic in state. Force full: `RM_SKIP_GIT=1`, `RMIG_INSPECT_FULL=1`, or no `.git` |
+| Baseline plan | `crates/core/tests/testdata/prod_gate/plan_baseline_empty_db.json` |
+| Delta paths | **Auto:** [`gate::resolve_changed_paths`](../crates/core/src/gate/changed_paths.rs) - CI PR env or `git merge-base` (see [`docs/ci-checkout.md`](ci-checkout.md)). **Not used in prod:** `RMIG_GATE_CHANGED_FILES`, `RMIG_GATE_GIT_BASE` |
+| Scoped inspect | [`plan::build_inspect_scope`](../crates/core/src/plan/scope_build.rs) + [`db::inspect_with_scope`](../crates/core/src/db/inspector.rs): hot keys hit catalog SQL; stable keys (file checksum == audit history, outside delta) are synthetic in state. Force full: `RM_SKIP_GIT=1`, `RMIG_INSPECT_FULL=1`, or no `.git` |
 | SQL tree | `RM_SQL_ROOT` / `.temp/sql` in integration test |
 | Database | `RM_*` connection vars (same as `make test-int`) |
 
@@ -38,11 +36,11 @@ Database **drop/create** (`ensureTestDatabase`) is optional and **excluded** fro
 
 | Output | Description |
 |--------|-------------|
-| Test pass/fail | `TestProdGate_IncrementalPlan` exit code |
+| Test pass/fail | `prod_gate_incremental_plan` exit code |
 | JSON report | `RMIG_GATE_REPORT` (default via script: `ops/perf/artifacts/prod_gate_report.json`; gitignored) |
 | `t.Log` | Phase timings and `timingConn` DB boundary summary |
 
-### Gate verdict (`internal/prodgate.Evaluate`)
+### Gate verdict (`gate::evaluate_gate`)
 
 - **NO-GO:** `plan.Blocked`, risky actions in delta (`fail`, `reprocess_changed_blocked`), plan changes **outside** delta keys (strict), optional **plan wall SLO** exceeded (`RMIG_GATE_MAX_PLAN_WALL_MS`)
 - **GO:** otherwise
@@ -52,68 +50,51 @@ Database **drop/create** (`ensureTestDatabase`) is optional and **excluded** fro
 | Field | Meaning |
 |-------|---------|
 | `inspect_ms` | Wall time of `InspectWithScope` after checksums (schemas + objects; **no** table columns) |
-| `checksums_ms` | Wall time of `LoadChecksums` (same goroutine as inspect; runs before scope build) |
-| `ensure_ms` | `audit.EnsureTables` when run inside the harness |
-| `parallel_wall_ms` | Wall time of the inspect ‖ checksums join (Rust: [`plan_batch.rs`](../rust/crates/core/src/db/plan_batch.rs) through catalog save boundary) |
+| `checksums_ms` | Wall time of checksum load (runs before scope build in plan DB batch) |
+| `ensure_ms` | `audit::ensure_tables` when run inside the harness |
+| `parallel_wall_ms` | Wall time of the inspect ‖ checksums join (Rust: [`plan_batch.rs`](../crates/core/src/db/plan_batch.rs) through catalog save boundary) |
 | `audit_ms` | `ensure_ms` + `checksums_ms` (summed; **not** parallel overlap) |
 | `plan_wall_ms` | Scan through diff end-to-end |
 
 ### Rust plan DB SLO (`parallel_wall_ms`)
 
-Integration gate: [`rust/crates/core/tests/workflow_integration.rs`](../rust/crates/core/tests/workflow_integration.rs) asserts `parallel_wall_ms ≤ RMIG_PLAN_DB_MAX_PAR_MS` (default **500**) after each workflow phase (L1 hits exempt).
+Integration gate: [`crates/core/tests/workflow_integration.rs`](../crates/core/tests/workflow_integration.rs) asserts `parallel_wall_ms ≤ RMIG_PLAN_DB_MAX_PAR_MS` (default **500**) after each workflow phase (L1 hits exempt).
 
 | Variable | Default | Role |
 |----------|---------|------|
 | `RMIG_PLAN_DB_MAX_PAR_MS` | 500 | Hard ceiling for plan DB parallel wall |
-| `RMIG_PLAN_DB_TRACE=1` | off | Append per-phase trace to `ops/perf/artifacts/rust_plan_db_trace.json` |
+| `RMIG_PLAN_DB_TRACE=1` | off | Append per-phase trace to `ops/perf/artifacts/plan_db_trace.json` |
 
-Runner: `make rust-plan-db-perf` ([`ops/perf/rust_plan_db_perf.sh`](../ops/perf/rust_plan_db_perf.sh)). See [`ops/perf/README.md`](../ops/perf/README.md) for path → RT table and measured workflow timings on Docker SQL 2019 + `.temp/sql`.
+Runner: `make plan-db-perf` ([`ops/perf/plan_db_perf.sh`](../ops/perf/plan_db_perf.sh)). See [`ops/perf/README.md`](../ops/perf/README.md) for path → RT table and measured workflow timings on Docker SQL 2019 + `.temp/sql`.
 
 ## Plan-phase performance reference
 
-### Gate harness (`make test-prod-gate`)
+### Gate harness (`make prod-gate`)
 
-Measured on Docker SQL Server 2019 and `.temp/sql` smoke tree via `RunPlanPipeline` (`EnsureAudit: true`). **Not** a production SLA; use for regression comparison.
+Measured on Docker SQL Server 2019 and `.temp/sql` smoke tree via `engine::run_command(Plan)`. **Not** a production SLA; use for regression comparison.
 
 | Scenario | inspect_ms | plan_wall_ms | Notes |
 |----------|------------|--------------|--------|
-| Legacy baseline (pre-optimization, sequential inspect **with columns**) | 3608 | 3950 | Historical `ops/perf` sample |
-| After optimization, cold DB (`DROP/CREATE`) | ~1281 | ~1664 | Lazy columns + parallel inspect ‖ checksums |
-| After optimization, warm DB (`RMIG_GATE_SKIP_DB_RESET=1`) | ~100 | ~250 | Inspector/checksum caches hot |
+| Cold DB (`DROP/CREATE`) | ~1281 | ~1664 | Lazy columns + parallel inspect ‖ checksums |
+| Warm DB (`RMIG_GATE_SKIP_DB_RESET=1`) | ~100 | ~250 | Inspector/checksum caches hot |
 
-### Full CLI (`make test-int-phase-cli`)
+### Full CLI SLO (`make slo`)
 
-Canonical **prod-like** path: `runWithLookup` → `app.Run` (connect, subscribers, `engine.Plan` / `Migrate`; `EnsureTables` inside `engine.runPlan`) with `engine.PhaseObserver` and optional `RM_REPORT_DIR`. Tests: `TestIntegration_PhaseReport_CLI_Plan`, `TestIntegration_PhaseReport_CLI_Migrate` in [`phase_report_integration_test.go`](../internal/app/phase_report_integration_test.go).
+Canonical **prod-like** path: release `rmig` with `RMIG_USE_RMIGD=1` (harness spawns `rmigd`, sets `RMIG_SESSION`). Runner: [`ops/perf/cli_phase.sh`](../ops/perf/cli_phase.sh). Integration test: [`integration_plan.rs`](../crates/core/tests/integration_plan.rs) asserts `cli_wall_ms < RMIG_SLO_MAX_CLI_WALL_MS` (default 150).
 
-| Source | Matches production `app.Run`? |
-|--------|------------------------------|
-| `engine.runPlan` | Yes (parallel inspect ‖ checksums) |
-| `RunPlanPipeline` (gate / `test-int-phase`) | Almost (ensure inside harness; no bus/report) |
-| `TestIntegration_PhaseReport_CLI_*` | **Yes** (full CLI) |
-
-Additional CLI JSON fields: `connect_ms`, `ensure_ms`, `engine_ms`, `cli_wall_ms`, `report_write_ms` (migrate/plan with `RM_REPORT_DIR`), `apply_ms` / `audit_flush_ms` (migrate).
-
-**Measured full CLI plan** (Docker SQL Server 2019, `.temp/sql`, `RM_SKIP_GIT=1`):
+Reference timings JSON: [`crates/core/tests/testdata/cli_phase/plan_full_cli_reference.json`](../crates/core/tests/testdata/cli_phase/plan_full_cli_reference.json). Optional report: `RMIG_CLI_PHASE_REPORT` (default under `ops/perf/artifacts/`).
 
 | Scenario | inspect_ms | cli_wall_ms | Notes |
 |----------|------------|-------------|--------|
-| Cold (`ops/perf/cli_phase.sh cold`) | ~570–650 | ~630–700 | Empty DB: one scoped-hit query; parallel inspect ‖ ensure+checksums |
-| Warm (`RMIG_PHASE_SKIP_DB_RESET=1`, `cli_phase.sh warm`) | ~70–110 | ~170 | SQL plan + history probe hot |
+| Warm SLO gate | ~70–110 | &lt;150 | `make slo` with L1 + session reuse |
+| Cold plan (no session) | ~570–650 | ~630–700 | Historical reference sample |
 
-Scripts: [`ops/perf/cli_phase.sh`](../ops/perf/cli_phase.sh) (`cold`, `warm`, `migrate-cold`, `profile`). Makefile: `make test-cli-phase-cold`, `make test-int-phase-cli-warm`. Reference JSON: [`internal/app/testdata/cli_phase/plan_full_cli_reference.json`](../internal/app/testdata/cli_phase/plan_full_cli_reference.json). Optional report path: `RMIG_CLI_PHASE_REPORT`.
-
-**Profiling notes:** `-cpuprofile` on integration tests shows little CPU (work is I/O wait on SQL Server). `fetch_ms` in CLI timings (`timingRows`) is typically sub-ms; **inspect wall ≈ `Query` round-trip**, not `rows.Next` decode. Inspect runs **parallel schema + object** OpenJSON queries (since phase-2 follow-up).
-
-Optional profiles: `ops/perf/cli_phase.sh profile` or `make test-int-phase-cli ARGS='-cpuprofile=… -trace=…'`.
-
-Dominant cost before optimization was **column catalog** inside inspect; removing it from the default path is the largest win. OpenJSON scope uses **(schema, kind, object)** triples from layout.
-
-**Inspect refactor (catalog):** `db.Inspect` uses one **`buildCatalogStateSQL`** round-trip (schemas + objects) instead of separate schema/object queries; **kind-filtered** CTEs skip `type_rows` / `index_rows` / `sys_object_rows` when those kinds are absent from the layout. **Audit/checksums:** `engine.runPlan` runs **`EnsureTables` + `LoadChecksums`** in parallel with inspect; empty history skips OpenJSON; history index is created on first migrate flush. Warm full CLI inspect is typically **&lt;200ms**; cold plan `cli_wall_ms` is typically **&lt;800ms** on Docker SQL 2019 + `.temp/sql`. Use `RMIG_PHASE_SKIP_DB_RESET=1` / `ops/perf/cli_phase.sh warm` for prod-like timings.
+Dominant cost before optimization was **column catalog** inside inspect; removing it from the default path is the largest win. Inspect runs **parallel schema + object** OpenJSON queries on cache miss.
 
 ## Assumptions and constraints
 
-- Baseline reflects a **known-good** plan on the reference fixture (empty DB + `.temp/sql` smoke tree). Updating baseline requires maintainer intent: `make test-prod-gate-update-baseline`.
-- Incremental gate validates **plan business semantics**; use `make test-int-phase-cli` for full CLI wiring and subscriber timings.
+- Baseline reflects a **known-good** plan on the reference fixture (empty DB + `.temp/sql` smoke tree). Updating baseline: `RMIG_GATE_UPDATE_BASELINE=1 make prod-gate`.
+- Incremental gate validates **plan business semantics**; use `make slo` for full CLI wall-time SLO.
 - Delta mapping uses layout path indexes; transition-only paths map to transition keys.
 - Git delta requires a `.git` directory at repo root (discovered from `SQLRoot`). No manual `RMIG_GATE_GIT_BASE` in production CI.
 - On a feature branch, merge-base against `main` / `origin/main` defines changed paths; on `main` with no remote, delta may be empty (strict baseline match).
@@ -122,28 +103,28 @@ Dominant cost before optimization was **column catalog** inside inspect; removin
 ## Nominal flow
 
 1. `make db-up` (or existing SQL Server).
-2. `make test-prod-gate` (or `ops/perf/prod_gate.sh`).
-3. Test connects, runs plan pipeline, loads baseline, resolves delta paths → keys, calls `prodgate.Evaluate`.
+2. `make prod-gate` (or `ops/perf/prod_gate.sh`).
+3. Test connects, runs plan pipeline, loads baseline, resolves delta paths → keys, calls `evaluate_gate`.
 4. On **GO**, pipeline may proceed; on **NO-GO**, inspect `RMIG_GATE_REPORT` and phase logs.
 
 ## Off-nominal behavior and failure containment
 
-- **Missing baseline file:** test fails; run `make test-prod-gate-update-baseline` once after intentional fixture/plan contract change.
+- **Missing baseline file:** test fails; run `RMIG_GATE_UPDATE_BASELINE=1 make prod-gate` once after intentional fixture/plan contract change.
 - **Unexpected change outside delta:** gate fails closed (strict); fix SQL or widen delta only if change is intentional.
 - **SLO exceeded:** gate fails even if plan matches; tune SQL Server/network or raise SLO only with evidence.
 
 ## Verification and validation
 
-- Unit tests: `go test ./internal/prodgate/...`
-- Integration gate: `make test-prod-gate` with `RMIG_RUN_SQLSERVER_INTEGRATION=1` and Docker MSSQL
-- Phase profiling (harness): `make test-int-phase`
-- Phase profiling (full CLI): `make test-int-phase-cli`
+- Unit tests: `cargo test -p migrator-core --test gate_snapshot_test --test changed_paths_test --test golden_baseline_test`
+- Integration gate: `make prod-gate` with Docker MSSQL
+- CLI SLO: `make slo`
+- Plan DB perf: `make plan-db-perf`
 
 ## Operations and recovery
 
-- **Refresh baseline:** `make test-prod-gate-update-baseline` after reviewed plan contract change; commit updated JSON under `internal/app/testdata/prod_gate/`.
-- **PR check with delta:** run `make test-prod-gate` on a PR branch (CI auto-detect); local repro via temp git fixture or undocumented `RMIG_GATE_CHANGED_FILES`
-- **Prod-like run (no DB recreate):** `RMIG_GATE_SKIP_DB_RESET=1 make test-prod-gate`
+- **Refresh baseline:** `RMIG_GATE_UPDATE_BASELINE=1 make prod-gate` after reviewed plan contract change; commit updated JSON under `crates/core/tests/testdata/prod_gate/`.
+- **PR check with delta:** run `make prod-gate` on a PR branch (CI auto-detect); local repro via temp git fixture or undocumented `RMIG_GATE_CHANGED_FILES`
+- **Prod-like run (no DB recreate):** `RMIG_GATE_SKIP_DB_RESET=1 make prod-gate`
 
 ## Open issues and non-goals
 
@@ -152,7 +133,8 @@ Dominant cost before optimization was **column catalog** inside inspect; removin
 
 ## References
 
-- [`docs/solution.md`](solution.md) — runtime profiling and `RM_*` flags
-- [`docs/ci-checkout.md`](ci-checkout.md) — CI checkout requirements for git delta
+- [`docs/solution.md`](solution.md) - runtime profiling and `RM_*` flags
+- [`docs/ci-checkout.md`](ci-checkout.md) - CI checkout requirements for git delta
 - [`docs/operational-contract.md`](operational-contract.md)
-- [`internal/app/phase_report_integration_test.go`](../internal/app/phase_report_integration_test.go)
+- [`docs/specs/rust/module-gate.md`](specs/rust/module-gate.md)
+- [`crates/core/tests/integration_plan.rs`](../crates/core/tests/integration_plan.rs)

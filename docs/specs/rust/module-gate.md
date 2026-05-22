@@ -4,21 +4,21 @@ Lifecycle: `Current`.
 
 ## Purpose
 
-Describe **incremental prod gate**: git delta resolution, plan snapshot wire format, baseline compare, go/no-go evaluation, Go↔Rust e2e report types.
+Describe **incremental prod gate**: git delta resolution, plan snapshot wire format, baseline compare, go/no-go evaluation, e2e report types.
 
 ## Scope
 
-- `rust/crates/core/src/gate/changed_paths.rs`, `changed_paths_ci.rs` — git delta paths
-- `rust/crates/core/src/gate/delta.rs` — object key closure for changed files
-- `rust/crates/core/src/gate/snapshot.rs`, `compare.rs` — plan snapshot JSON
-- `rust/crates/core/src/gate/evaluate.rs` — gate verdict
-- `rust/crates/core/src/gate/e2e_report.rs` — e2e scenario report wire types
-- `rust/crates/core/src/gate/repo_root.rs`, `git_diff.rs` — repo discovery helpers
-- Tests: `rust/crates/core/tests/prod_gate_integration.rs`, `go_rust_scenario_integration.rs`
+- `crates/core/src/gate/changed_paths.rs`, `changed_paths_ci.rs` - git delta paths
+- `crates/core/src/gate/delta.rs` - object key closure for changed files
+- `crates/core/src/gate/snapshot.rs`, `compare.rs` - plan snapshot JSON
+- `crates/core/src/gate/evaluate.rs` - gate verdict
+- `crates/core/src/gate/e2e_report.rs` - e2e scenario report wire types
+- `crates/core/src/gate/repo_root.rs`, `git_diff.rs` - repo discovery helpers
+- Tests: `crates/core/tests/prod_gate_integration.rs`, `scenario_e2e_integration.rs`
 
 ## System context
 
-Operators run `make rust-prod-gate` against Docker SQL and baseline JSON (`internal/app/testdata/prod_gate/plan_baseline_empty_db.json`). Changed paths map to normalized keys; only delta keys may differ from baseline when delta is non-empty.
+Operators run `make prod-gate` against Docker SQL and baseline JSON (`crates/core/tests/testdata/prod_gate/plan_baseline_empty_db.json`). Changed paths map to normalized keys; only delta keys may differ from baseline when delta is non-empty.
 
 ## Interfaces and boundaries
 
@@ -39,9 +39,9 @@ Operators run `make rust-prod-gate` against Docker SQL and baseline JSON (`inter
 
 ## Verification and validation
 
-- `make rust-prod-gate`
-- `make go-rust-e2e` (subset parity)
-- `rust/crates/core/tests/gate_snapshot_test.rs`, `golden_baseline_test.rs`
+- `make prod-gate`
+- `make e2e` (subset parity)
+- `crates/core/tests/gate_snapshot_test.rs`, `golden_baseline_test.rs`
 
 ## Off-nominal behavior and failure containment
 
@@ -50,7 +50,7 @@ Operators run `make rust-prod-gate` against Docker SQL and baseline JSON (`inter
 
 ## Operations and recovery
 
-- Refresh baseline: `make test-prod-gate-update-baseline` (Go reference path); Rust gate reads same JSON file.
+- Refresh baseline: set `RMIG_GATE_UPDATE_BASELINE=1` and run `make prod-gate` (writes `crates/core/tests/testdata/prod_gate/plan_baseline_empty_db.json`).
 
 ## Open issues and non-goals
 
@@ -59,4 +59,4 @@ Operators run `make rust-prod-gate` against Docker SQL and baseline JSON (`inter
 ## References
 
 - `docs/prod-gate.md`
-- `ops/perf/rust_prod_gate.sh`
+- `ops/perf/prod_gate.sh`

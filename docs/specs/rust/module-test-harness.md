@@ -4,13 +4,13 @@ Lifecycle: `Current`.
 
 ## Purpose
 
-Document how `rust/crates/core/tests/` runs against Docker SQL Server: which helpers exist, how database names are resolved, and why test binaries only compile the modules they need (no `dead_code` under `-D warnings`).
+Document how `crates/core/tests/` runs against Docker SQL Server: which helpers exist, how database names are resolved, and why test binaries only compile the modules they need (no `dead_code` under `-D warnings`).
 
 ## Scope
 
-- Integration tests: `apply_e2e_integration.rs`, `workflow_integration.rs`, `go_rust_scenario_integration.rs`, `integration_plan.rs`, `prod_gate_integration.rs`.
-- Shared helpers under `rust/crates/core/tests/common/`.
-- Orchestrators: `ops/perf/rust_e2e.sh`, `ops/perf/rust_workflow_fast.sh`.
+- Integration tests: `apply_e2e_integration.rs`, `workflow_integration.rs`, `scenario_e2e_integration.rs`, `integration_plan.rs`, `prod_gate_integration.rs`.
+- Shared helpers under `crates/core/tests/common/`.
+- Orchestrators: `ops/perf/integration.sh`, `ops/perf/workflow_fast.sh`.
 
 ## System context
 
@@ -32,7 +32,7 @@ Tests point `RM_SQL_ROOT` at `$REPO/.temp/sql` (fixture in `.temp/`, not committ
 | Helper file | Used by | Role |
 |-------------|---------|------|
 | `integration_config.rs` | apply + workflow + `common/mod.rs` | `parity_config()`, `workflow_config()`, `enabled()` |
-| `db_reset.rs` | apply, workflow, go_rust | DROP/CREATE catalog DB from `cfg.database` |
+| `db_reset.rs` | apply, workflow, e2e | DROP/CREATE catalog DB from `cfg.database` |
 | `engine_smoke.rs` | apply, workflow | `baseline_migrate`, `plan` (skip git) |
 | `state_smoke.rs` | apply, workflow | smoke schema/table/view + audit row probes |
 | `state_ddl.rs` | workflow only | column + scaffold file probes |
@@ -42,20 +42,20 @@ Tests point `RM_SQL_ROOT` at `$REPO/.temp/sql` (fixture in `.temp/`, not committ
 
 **Non-obvious:** each integration test crate lists only the `#[path = "..."]` modules it needs. Compiling all of `workflow.rs` inside `apply_e2e` caused `dead_code` warnings; split files avoid that without `#![allow(dead_code)]`.
 
-**Git cleanup:** `GitRestore::drop` runs `git reset --hard` and deletes `dactests/smoke/tables/_migrations/smoke_table/*` so the next test starts from committed SQL only.
+**Git cleanup:** `GitRestore::drop` runs `git reset --hard` and deletes `{database}/smoke/tables/_migrations/smoke_table/*` under `RM_SQL_ROOT` so the next test starts from committed SQL only.
 
 ## Assumptions and constraints
 
 - `RMIG_RUN_SQLSERVER_INTEGRATION=1` gates SQL tests (otherwise `return` early).
-- `RM_DB_*` connection vars still required; **`RM_DB_DATABASE` is not used** — database name comes from catalog dir (`dactests`).
+- `RM_DB_*` connection vars required. Default catalog database name is discovered from the sole top-level directory under `RM_SQL_ROOT` (same as `discover_catalog_databases` in `config/catalog.rs`); `RM_DB_DATABASE` overrides that name for shell-side `DROP/CREATE` only (`ops/perf/e2e_env.sh`).
 - `RM_SQL_BASE` defaults to `RM_SQL_ROOT` when empty.
 - Profiler crates (`pprof`, `criterion`, `dhat`) are **dev-dependencies only**; `scripts/check-rust-release-deps.sh` asserts they are absent from `cargo tree -e normal` for `rmig` / `rmigd` / `migrator-core`.
 
 ## Nominal flow
 
-1. `make db-up` — Docker SQL Server only (databases created on first `migrate`).
-2. `make rust-check` — arch guard, release dep check, `clippy -D warnings`, unit + non-SQL integration tests.
-3. `make rust-e2e` — `apply_e2e_integration` + `workflow_integration` on `.temp/sql`.
+1. `make db-up` - Docker SQL Server only (databases created on first `migrate`).
+2. `make check` - arch guard, release dep check, `clippy -D warnings`, unit + non-SQL integration tests.
+3. `make integration` - `apply_e2e_integration` + `workflow_integration` on `.temp/sql`.
 
 ## Off-nominal behavior
 
@@ -65,23 +65,22 @@ Tests point `RM_SQL_ROOT` at `$REPO/.temp/sql` (fixture in `.temp/`, not committ
 ## Verification
 
 ```bash
-make rust-check
-RMIG_RUN_SQLSERVER_INTEGRATION=1 make rust-e2e
+make check
+RMIG_RUN_SQLSERVER_INTEGRATION=1 make integration
 RUSTFLAGS="-D warnings" cargo test -p migrator-core --test apply_e2e_integration --test workflow_integration
 ```
 
 ## Operations and recovery
 
-- Routine: run `make rust-e2e` before merging harness changes; use `GitRestore::drop` to reset `.temp/` git fixture.
-- Recovery: stuck scaffold files under `dactests/smoke/tables/_migrations/` → `workflow_git` cleanup on test drop or manual delete.
+- Routine: run `make integration` before merging harness changes; use `GitRestore::drop` to reset `.temp/` git fixture.
+- Recovery: stuck scaffold files under `{database}/smoke/tables/_migrations/` → `workflow_git` cleanup on test drop or manual delete.
 
 ## Open issues and non-goals
 
-- Non-goals: this harness does not replace Go parity tests (`make go-rust-e2e-all`).
-- Open issues: pending SQL integration tests for catalog cache save and migration re-run (see `docs/rust-port-plan.md`).
+- Non-goals: this harness does not cover scenario baseline JSON refresh (maintainer updates under `tests/testdata/e2e/`).
 
 ## References
 
 - `docs/specs/rust/module-config-export.md`
 - `ops/perf/README.md`
-- `rust/crates/core/src/config/catalog.rs`
+- `crates/core/src/config/catalog.rs`

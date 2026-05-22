@@ -8,9 +8,9 @@ Describe **what the CI pipeline must provide** so `rmig` can resolve SQL file de
 
 ## Scope
 
-- Git delta: [`internal/prodgate/changed_paths.go`](../internal/prodgate/changed_paths.go) (`ResolveChangedPaths`)
-- Scoped inspect: [`internal/engine/inspect_scope.go`](../internal/engine/inspect_scope.go), [`docs/prod-gate.md`](prod-gate.md)
-- Applies to: `rmig plan`, `rmig migrate`, `make test-prod-gate`
+- Git delta: [`crates/core/src/gate/changed_paths.rs`](../crates/core/src/gate/changed_paths.rs) (`resolve_changed_paths`)
+- Scoped inspect: [`crates/core/src/plan/scope_build.rs`](../crates/core/src/plan/scope_build.rs), [`docs/prod-gate.md`](prod-gate.md)
+- Applies to: `rmig plan`, `rmig migrate`, `make prod-gate`
 
 ## System context
 
@@ -79,8 +79,8 @@ No `export RMIG_GATE_GIT_BASE=...` step.
 
 ## Verification and validation
 
-- Unit: `go test ./internal/prodgate/ -run TestResolveChangedPaths`
-- Integration: `make test-prod-gate` on a PR branch or temp git fixture
+- Unit: `cargo test -p migrator-core --test changed_paths_test`
+- Integration: `make prod-gate` on a PR branch or temp git fixture
 
 ## Operations and recovery
 
@@ -94,5 +94,5 @@ No `export RMIG_GATE_GIT_BASE=...` step.
 ## References
 
 - [`docs/prod-gate.md`](prod-gate.md)
-- [`docs/solution.md`](solution.md) — scoped inspect (phase 1)
+- [`docs/solution.md`](solution.md) - engine pipeline overview
 - [`ops/perf/README.md`](../ops/perf/README.md)

@@ -8,9 +8,9 @@ Describe **DDL/DML apply execution**: schemas, objects, transitions, transaction
 
 ## Scope
 
-- `rust/crates/core/src/apply/mod.rs` — `execute_plan` orchestration
-- `rust/crates/core/src/apply/schemas.rs`, `objects.rs`, `objects_exec.rs`, `transitions.rs`
-- `rust/crates/core/src/apply/tx.rs`, `kind.rs`, `result.rs`
+- `crates/core/src/apply/mod.rs` - `execute_plan` orchestration
+- `crates/core/src/apply/schemas.rs`, `objects.rs`, `objects_exec.rs`, `transitions.rs`
+- `crates/core/src/apply/tx.rs`, `kind.rs`, `result.rs`
 
 ## System context
 
@@ -37,8 +37,8 @@ Called from `engine::apply_run` after lock acquire. On success with applied obje
 
 ## Verification and validation
 
-- `rust/crates/core/tests/workflow_integration.rs`
-- `make rust-workflow-fast`
+- `crates/core/tests/workflow_integration.rs`
+- `make workflow-fast`
 
 ## Off-nominal behavior and failure containment
 
@@ -56,4 +56,4 @@ Called from `engine::apply_run` after lock acquire. On success with applied obje
 ## References
 
 - `docs/specs/rust/module-engine.md`
-- `docs/specs/internals/module-apply.md`
+- `docs/prod-gate.md`
