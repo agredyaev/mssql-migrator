@@ -983,7 +983,7 @@ dependencies = [
 
 [[package]]
 name = "migrator-core"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -1003,7 +1003,7 @@ dependencies = [
 
 [[package]]
 name = "migrator-core-dev"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "criterion",
  "dhat",
@@ -1393,7 +1393,7 @@ dependencies = [
 
 [[package]]
 name = "rmig"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "migrator-core",
@@ -1406,7 +1406,7 @@ dependencies = [
 
 [[package]]
 name = "rmigd"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "migrator-core",

@@ -66,7 +66,7 @@ pub(super) async fn prepare_execute(
     }
 
     let need_catalog = catalog_base.is_none();
-    let defer_bootstrap = need_bootstrap && need_catalog && full && !git_delta;
+    let defer_bootstrap = need_bootstrap && need_catalog && !full && !git_delta && !need_checksums;
 
     Ok(ExecuteSetup {
         db_fp,
