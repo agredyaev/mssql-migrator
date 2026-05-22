@@ -49,6 +49,9 @@ jobs:
           key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-test-
 
+      - name: Setup git fixture repository
+        run: ./scripts/setup-temp-fixtures.sh
+
       - name: Start SQL Server
         run: |
           docker compose up -d
