@@ -1,3 +1,22 @@
+//! Entities, arenas, object stores, and workspace representation.
+//!
+//! ### Purpose
+//! Declares the primary structures and data models representing database objects, schemas, transition
+//! scripts, arena allocators, string interners, and workspaces that support diff planning.
+//!
+//! ### Architectural Context
+//! - **Inputs**: SQL files parsed from disk, catalog state entries.
+//! - **Outputs**: Strongly-typed structures (`Workspace`, `ObjectEntry`, `SchemaEntry`).
+//! - **Boundaries**: Uses string arenas (`LayoutArena`, `StringArena`) to optimize heap usage.
+//!
+//! ### Nominal Flow
+//! 1. Ingest workspace files, allocating strings into string interners.
+//! 2. Build the domain layout representing catalog tables, views, procedures, and transitions.
+//! 3. Use standard `ObjectKey` and `ScriptKey` indexes to perform O(1) comparison audits.
+//!
+//! ### Off-Nominal & Failure Containment
+//! - **String Interning Limit**: Arena capacities are bounded. Reaching limits triggers `Error::InvalidInput`.
+
 mod action;
 mod arena;
 mod arena_resolve;

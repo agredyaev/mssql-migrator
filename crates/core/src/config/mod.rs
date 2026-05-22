@@ -1,3 +1,22 @@
+//! Environment variables, dotenv parsing, and run-time config parameters.
+//!
+//! ### Purpose
+//! Resolves, validates, and stores database connection settings, SQL layout paths, cache policies,
+//! and threshold limits from system environment variables or dynamic `.env` configurations.
+//!
+//! ### Architectural Context
+//! - **Inputs**: Local process environment, target `.env` files.
+//! - **Outputs**: Parsed `Config` structs (containing hot run parameters and cold connection data in `ConfigCold`).
+//! - **Boundaries**: Connection settings are kept read-only behind `Arc` thread-safety wrappers.
+//!
+//! ### Nominal Flow
+//! 1. Discover and load environment structures (`load_env_file`).
+//! 2. Retrieve variables, checking against defaults (`build_config`).
+//! 3. Perform sanity checks on paths and servers (`validate_config`).
+//!
+//! ### Off-Nominal & Failure Containment
+//! - **Missing Variables / Bad Formats**: Halts processing, formats error outputs, and returns `Error::Config`.
+
 mod accessors;
 mod catalog;
 mod cold;

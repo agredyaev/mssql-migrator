@@ -1,3 +1,23 @@
+//! SQL schema filesystem tree scans, filename parsing, and MD5 digests.
+//!
+//! ### Purpose
+//! Scans the configured filesystem schema layouts, parsing table directories, views, procedures,
+//! and migration scripts to build a strongly-typed in-memory representation (`Workspace`).
+//!
+//! ### Architectural Context
+//! - **Inputs**: Local file paths, SQL script bytes.
+//! - **Outputs**: Hydrated `Workspace` entities containing layout objects and schema digests.
+//! - **Boundaries**: Operates strictly on the configured schema directory tree, avoiding out-of-bounds files.
+//!
+//! ### Nominal Flow
+//! 1. Walk directory tree to identify structural SQL schemas (`scan_root`).
+//! 2. Parse structural parameters and git commit logs for individual scripts.
+//! 3. Build string caches and rebuild path lookups inside the workspace (`populate`).
+//! 4. Compute unique schema MD5 layout hashes to assert validation parity (`layout_digest`).
+//!
+//! ### Off-Nominal & Failure Containment
+//! - **Malformed Schema Layout / Parse Failure**: Returns `Error::InvalidInput` immediately, preventing invalid schema trees from being processed by planning.
+
 mod digest;
 pub use digest::layout_digest;
 mod git_log;

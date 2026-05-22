@@ -1,3 +1,26 @@
+//! Transactional schema migration and object apply execution.
+//!
+//! ### Purpose
+//! Executes planned schema DDL migrations, dynamic structural objects (views, procedures, functions),
+//! and layout transition scripts against the target database catalog.
+//!
+//! ### Architectural Context
+//! - **Inputs**: `Config` env specifications, target database connection, `Workspace` schema definition, and `MigrationPlan` listing resolved actions.
+//! - **Outputs**: `ApplyResult` mapping applied/failed migration counts and logged execution records.
+//! - **Boundaries**: All dynamic schema migrations are executed within explicit database transactions.
+//!
+//! ### Nominal Flow
+//! 1. Verify that the planning phase is not blocked.
+//! 2. Ensure targeted database structural tables exist (`audit::ensure_tables`).
+//! 3. Apply schema migrations sequentially (`schemas::apply_schemas`).
+//! 4. Apply non-schema structural objects (`objects::apply_objects`).
+//! 5. Execute state layout transitions (`transitions::apply_transitions`).
+//! 6. Flush generated history logs and invalidate downstream memory caches on completion.
+//!
+//! ### Off-Nominal & Failure Containment
+//! - **Execution Exceptions**: If any query execution fails, the active database transaction is rolled back immediately, halting subsequent steps, flushing failure messages to stderr, and returning `Error::Sql`.
+//! - **Blocked Plans**: Blocked plans automatically fail-closed with `Error::PlanBlocked` before hitting the database.
+
 mod kind;
 mod objects;
 mod objects_exec;
