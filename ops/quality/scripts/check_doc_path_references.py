@@ -21,7 +21,7 @@ def should_skip_path(raw: str) -> bool:
     if not parts:
         return True
     last = parts[-1]
-    # Skip type-like segments (e.g. internal/app.Run, internal/driver.Conn).
+    # Skip type-like segments (e.g. crates/core/src/engine/run.rs types).
     if "." in last and not last.endswith((".go", ".md", ".sql", ".yml", ".yaml")):
         return True
     return False
