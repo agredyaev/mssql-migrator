@@ -22,7 +22,7 @@ pub(super) async fn run_command_for_database(
 
     let t_conn = Instant::now();
     let db_client = if !cfg.session_socket.is_empty() && !multi_db {
-        crate::session::connect_daemon(&cfg.session_socket).await?
+        crate::session::connect_daemon(&cfg.session_socket, &cfg.database).await?
     } else {
         DbClient::Direct(connect(cfg).await?.client)
     };
