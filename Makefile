@@ -2,7 +2,8 @@
 	arch e2e e2e-all e2e-timings check-e2e integration \
 	slo prod-gate plan-db-perf workflow-fast \
 	bench-footprint bench-footprint-profile bench-footprint-alloc \
-	bench-footprint-update-baseline profile-summary test-int
+	bench-footprint-update-baseline profile-summary test-int \
+	bump bump-minor bump-major
 
 RELEASE_BIN = bin/rmig
 
@@ -119,3 +120,15 @@ profile-summary:
 	ops/perf/profile_summary.sh
 
 full-check: check doc-check
+
+bump:
+	@chmod +x scripts/bump-version.py
+	python3 scripts/bump-version.py patch
+
+bump-minor:
+	@chmod +x scripts/bump-version.py
+	python3 scripts/bump-version.py minor
+
+bump-major:
+	@chmod +x scripts/bump-version.py
+	python3 scripts/bump-version.py major
