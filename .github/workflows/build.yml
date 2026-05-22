@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------------------
+# build.yml — Compile release-dist binaries and upload as artifacts.
+#
+# Responsibility: production build (fat LTO, strip, codegen-units=1).
+# Reusable module — called by ci.yml orchestrator and release.yml.
+# ---------------------------------------------------------------------------
+name: Build
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    name: Release build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-build-
+
+      - name: Build release-dist binaries
+        run: make release-build
+
+      - name: Upload executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: rmig-executables-${{ runner.os }}
+          path: |
+            bin/rmig
+            target/release-dist/rmigd
+          if-no-files-found: error

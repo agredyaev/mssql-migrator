@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------------------
+# ci.yml — Pipeline orchestrator.
+#
+# Responsibility: sequence and gate all quality checks before merge.
+# Calls lint, test, build as reusable workflows in dependency order.
+# This is the ONLY workflow that triggers on push/PR events for CI.
+#
+# Pipeline:
+#   ┌──────┐  ┌──────┐
+#   │ Lint │  │ Test │   ← parallel
+#   └──┬───┘  └──┬───┘
+#      └────┬────┘
+#       ┌───┴───┐
+#       │ Build │            ← after both pass
+#       └───────┘
+# ---------------------------------------------------------------------------
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  # --- Stage 1: Lint + Test (parallel) ---
+  lint:
+    name: Lint
+    uses: ./.github/workflows/lint.yml
+
+  test:
+    name: Test
+    uses: ./.github/workflows/test.yml
+
+  # --- Stage 2: Build (after both lint and test pass) ---
+  build:
+    name: Build
+    needs: [lint, test]
+    uses: ./.github/workflows/build.yml
