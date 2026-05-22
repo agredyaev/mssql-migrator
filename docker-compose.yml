@@ -10,7 +10,7 @@
 #            RM_DB_SERVER=localhost RM_DB_DATABASE=dactests \
 #            RM_DB_USER=sa RM_DB_PASSWORD='yourStrong(!)Password' \
 #            RM_DB_ENCRYPT=false RM_DB_TRUST_SERVER_CERTIFICATE=true \
-#            go test -tags=integration ./internal/app/ -run TestIntegration -v
+#            cargo test -p migrator-core --test integration_plan -- --nocapture
 
 services:
   mssql:
