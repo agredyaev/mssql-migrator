@@ -1,50 +1,8 @@
-   Compiling migrator-core v0.1.0 (~/project/mssql-reporting-migrator/rust/crates/core)
-warning: fields `schema` and `table` are never read
-  --> crates/core/src/scan/transition.rs:33:5
-   |
-32 | struct TransitionMeta {
-   |        -------------- fields in this struct
-33 |     schema: String,
-   |     ^^^^^^
-34 |     table: String,
-   |     ^^^^^
-   |
-   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: `migrator-core` (lib) generated 1 warning
-warning: unused import: `empty_str`
- --> crates/core/benches/bench_table.rs:4:5
-  |
-4 |     empty_str, share, ObjectKey, Script, ScriptKind, ScriptKey, StringInterner, Workspace,
-  |     ^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused imports: `scan_fixture_workspace` and `temp_scan_root`
-  --> crates/core/benches/bench_support.rs:14:22
-   |
-14 | pub use bench_scan::{scan_fixture_workspace, temp_scan_root};
-   |                      ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
-
-warning: unused import: `bench_table::table_heavy_workspace`
-  --> crates/core/benches/bench_support.rs:16:9
-   |
-16 | pub use bench_table::table_heavy_workspace;
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: this lint expectation is unfulfilled
- --> crates/core/benches/bench_support.rs:3:11
-  |
-3 | #![expect(dead_code)]
-  |           ^^^^^^^^^
-  |
-  = note: `#[warn(unfulfilled_lint_expectations)]` on by default
-
-warning: `migrator-core` (bench "plan_diff_dhat") generated 4 warnings (run `cargo fix --bench "plan_diff_dhat" -p migrator-core` to apply 3 suggestions)
-    Finished `profiling` profile [optimized + debuginfo] target(s) in 15.29s
-     Running benches/plan_diff_dhat.rs (target/profiling/deps/plan_diff_dhat-3ebc6183931c42f8)
+   Compiling migrator-core-dev v0.1.0 (~/project/mssql-reporting-migrator/rust/crates/core-dev)
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 0.60s
+     Running benches/plan_diff_dhat.rs (target/profiling/deps/plan_diff_dhat-a2a66fc39d38e251)
 dhat: plan_diff_skip_heavy_5000 x20 complete
-dhat: Total:     13,293,414 bytes in 155,138 blocks
-dhat: At t-gmax: 7,427,544 bytes in 100,048 blocks
+dhat: Total:     8,329,494 bytes in 70,083 blocks
+dhat: At t-gmax: 5,321,730 bytes in 45,035 blocks
 dhat: At t-end:  112 bytes in 2 blocks
 dhat: The data has been saved to dhat-heap.json, and is viewable with dhat/dh_view.html

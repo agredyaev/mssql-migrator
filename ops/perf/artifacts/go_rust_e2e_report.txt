@@ -1,4 +1,0 @@
-go-rust e2e scenarios: PASS
-empty_db_plan: ~/project/mssql-reporting-migrator/ops/perf/artifacts/go_e2e_empty_db_plan.json ↔ ~/project/mssql-reporting-migrator/ops/perf/artifacts/rust_e2e_empty_db_plan.json
-warm_db_plan:  ~/project/mssql-reporting-migrator/ops/perf/artifacts/go_e2e_warm_db_plan.json ↔ ~/project/mssql-reporting-migrator/ops/perf/artifacts/rust_e2e_warm_db_plan.json
-timing factor=3.0 slack_ms=100

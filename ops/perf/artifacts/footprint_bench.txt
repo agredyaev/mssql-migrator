@@ -1,13 +1,16 @@
-goos: darwin
-goarch: arm64
-pkg: reporting-db-migrations/internal/perf
-cpu: Apple M2
-BenchmarkDiffCompute_SkipHeavy_500Objects-8    	   25142	     46376 ns/op	  107248 B/op	       3 allocs/op
-BenchmarkDiffCompute_SkipHeavy_500Objects-8    	   25381	     46925 ns/op	  107248 B/op	       3 allocs/op
-BenchmarkDiffCompute_SkipHeavy_500Objects-8    	   25098	     47454 ns/op	  107248 B/op	       3 allocs/op
-BenchmarkDiffCompute_SkipHeavy_500Objects-8    	   25066	     48099 ns/op	  107248 B/op	       3 allocs/op
-BenchmarkDiffCompute_SkipHeavy_500Objects-8    	   24810	     47408 ns/op	  107248 B/op	       3 allocs/op
-BenchmarkDiffCompute_SkipHeavy_5000Objects-8   	    2022	    531036 ns/op	 1057520 B/op	       3 allocs/op
-BenchmarkDiffCompute_SkipHeavy_5000Objects-8   	    1858	    545781 ns/op	 1057520 B/op	       3 allocs/op
-BenchmarkDiffCompute_SkipHeavy_5000Objects-8   	    1988	    566468 ns/op	 1057520 B/op	       3 allocs/op
-BenchmarkDiffCompute_SkipHeavy_5000Objects-8   	
+   Compiling migrator-core v0.1.0 (~/project/mssql-reporting-migrator/crates/core)
+   Compiling migrator-core-dev v0.1.0 (~/project/mssql-reporting-migrator/crates/core-dev)
+    Finished `bench` profile [optimized + debuginfo] target(s) in 18.54s
+     Running benches/plan_diff.rs (target/release/deps/plan_diff-91bf57d507775029)
+Gnuplot not found, using plotters backend
+Benchmarking plan_diff_skip_heavy_5000
+Benchmarking plan_diff_skip_heavy_5000: Warming up for 3.0000 s
+Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.0464 s (71k iterations)
+Benchmarking plan_diff_skip_heavy_5000: Analyzing
+plan_diff_skip_heavy_5000
+                        time:   [70.175 µs 73.412 µs 78.042 µs]
+                        change: [+42.422% +53.506% +65.987%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 2 outliers among 100 measurements (2.00%)
+  2 (2.00%) high severe
+
