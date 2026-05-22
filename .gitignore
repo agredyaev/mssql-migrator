@@ -23,7 +23,12 @@ _old_*
 new_arch.txt
 review.md
 *.prof
-ops/perf/artifacts/*
+# Python cache files
+**/__pycache__/
+__pycache__/
+
+# Performance benchmarks artifacts
+ops/perf/artifacts/
 .temp/
 .DS_Store
 *.log
