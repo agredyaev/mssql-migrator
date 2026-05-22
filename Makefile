@@ -1,3 +1,5 @@
+SHELL := /bin/bash
+
 .PHONY: all build release-build test check doc-check db-up db-down db-init \
 	arch e2e e2e-all e2e-timings check-e2e integration \
 	slo prod-gate plan-db-perf workflow-fast \
