@@ -79,10 +79,19 @@ fn use_rmigd() -> bool {
 
 fn socket_path() -> String {
     std::env::var("RMIGD_SOCKET").unwrap_or_else(|_| {
-        super::repo_root()
+        let default_path = super::repo_root()
             .join(".rmig/rmigd-integration.sock")
             .to_string_lossy()
-            .into_owned()
+            .into_owned();
+        if default_path.len() >= 100 && cfg!(unix) {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            super::repo_root().hash(&mut hasher);
+            let hash = hasher.finish();
+            format!("/tmp/rmigd-{:x}.sock", hash)
+        } else {
+            default_path
+        }
     })
 }
 
