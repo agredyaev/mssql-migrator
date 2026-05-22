@@ -1,0 +1,71 @@
+# ---------------------------------------------------------------------------
+# test.yml — Unit tests and SQL Server integration / E2E tests.
+#
+# Responsibility: cargo test (unit), MSSQL integration plan, full E2E matrix.
+# Reusable module — called by ci.yml orchestrator.
+# ---------------------------------------------------------------------------
+name: Test
+
+on:
+  workflow_call:
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-test-
+      - run: cargo test -p migrator-core --lib
+
+  integration:
+    name: Integration & E2E (MSSQL)
+    runs-on: ubuntu-latest
+    needs: unit
+    env:
+      RMIGD_SOCKET: /tmp/rmigd.sock
+      RMIG_E2E_TIMING_FACTOR: '5.0'
+      RMIG_E2E_TIMING_SLACK_MS: '300'
+      RMIG_RUN_SQLSERVER_INTEGRATION: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-test-
+
+      - name: Start SQL Server
+        run: |
+          docker compose up -d
+          echo "Waiting for MSSQL to be ready..."
+          for i in {1..20}; do
+            docker compose exec -T mssql /opt/mssql-tools18/bin/sqlcmd \
+              -S localhost -U sa -P "yourStrong(!)Password" -C \
+              -Q "SELECT 1" >/dev/null 2>&1 && echo "MSSQL is ready!" && break
+            sleep 3
+          done
+
+      - name: Integration plan tests
+        run: cargo test --release -p migrator-core --test integration_plan -- --nocapture
+
+      - name: E2E scenario matrix + SLO + prod gate
+        run: make check-e2e
+
+      - name: Tear down SQL Server
+        if: always()
+        run: docker compose down -v
