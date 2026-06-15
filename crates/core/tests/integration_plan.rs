@@ -6,11 +6,6 @@ mod common;
 #[path = "common/warm.rs"]
 mod warm;
 
-use std::fs::{create_dir_all, OpenOptions};
-use std::io::Write;
-use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use migrator_core::config::{
     build_config, discover_catalog_databases, ensure_catalog_databases_exist, load_env_file,
     validate_config,
@@ -21,36 +16,8 @@ use tokio::sync::OnceCell;
 
 static DB_ENSURE: OnceCell<()> = OnceCell::const_new();
 
-fn debug_log(hypothesis_id: &str, location: &str, message: &str, data: serde_json::Value) {
-    let payload = serde_json::json!({
-        "sessionId": "1200a9",
-        "runId": std::env::var("RMIG_DEBUG_RUN_ID").unwrap_or_else(|_| "manual".into()),
-        "hypothesisId": hypothesis_id,
-        "location": location,
-        "message": message,
-        "data": data,
-        "timestamp": SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_millis())
-            .unwrap_or_default(),
-    });
-    let debug_log = std::env::var("RMIG_DEBUG_LOG").unwrap_or_else(|_| {
-        let cwd = std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."));
-        format!("{}/.cursor/debug-1200a9.log", cwd.display())
-    });
-    if let Some(parent) = PathBuf::from(&debug_log).parent() {
-        let _ = create_dir_all(parent);
-    }
-    if let Ok(mut file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&debug_log)
-    {
-        let mut line = payload.to_string();
-        line.push('\n');
-        let _ = file.write_all(line.as_bytes());
-    }
+#[allow(dead_code)]
+fn debug_log(_hypothesis_id: &str, _location: &str, _message: &str, _data: serde_json::Value) {
 }
 
 /// Same env contract as `ops/perf/cli_phase.sh` / `make slo`.

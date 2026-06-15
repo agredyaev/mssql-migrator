@@ -7,29 +7,11 @@ ARTIFACTS="$ROOT/ops/perf/artifacts"
 mkdir -p "$ARTIFACTS"
 
 debug_log() {
-  json_escape() {
-    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
-  }
-
-  hypothesis_id_escaped="$(json_escape "$1")"
-  location_escaped="$(json_escape "$2")"
-  message_escaped="$(json_escape "$3")"
-  mode_escaped="$(json_escape "${MODE:-}")"
-  pwd_escaped="$(json_escape "$PWD")"
-  run_id_escaped="$(json_escape "${RMIG_DEBUG_RUN_ID:-manual}")"
-  integration_escaped="$(json_escape "${RMIG_RUN_SQLSERVER_INTEGRATION:-}")"
-  use_rmigd_escaped="$(json_escape "${RMIG_USE_RMIGD:-}")"
-  slo_escaped="$(json_escape "${RMIG_SLO_MAX_CLI_WALL_MS:-}")"
-  timestamp_ms="$(($(date +%s) * 1000))"
-
-  printf '%s\n' \
-    "{\"sessionId\":\"1200a9\",\"runId\":\"${run_id_escaped}\",\"hypothesisId\":\"${hypothesis_id_escaped}\",\"location\":\"${location_escaped}\",\"message\":\"${message_escaped}\",\"data\":{\"mode\":\"${mode_escaped}\",\"pwd\":\"${pwd_escaped}\",\"rmig_run_sqlserver_integration\":\"${integration_escaped}\",\"rmig_use_rmigd\":\"${use_rmigd_escaped}\",\"rmig_slo_max_cli_wall_ms\":\"${slo_escaped}\"},\"timestamp\":${timestamp_ms}}" \
-    >> "${RMIG_DEBUG_LOG:-$ROOT/.cursor/debug-1200a9.log}"
+  true
 }
 
 export RMIG_RUN_SQLSERVER_INTEGRATION="${RMIG_RUN_SQLSERVER_INTEGRATION:-1}"
 export RM_SKIP_GIT="${RM_SKIP_GIT:-1}"
-mkdir -p "$(dirname "${RMIG_DEBUG_LOG:-$ROOT/.cursor/debug-1200a9.log}")"
 export RMIG_SLO_MAX_CLI_WALL_MS="${RMIG_SLO_MAX_CLI_WALL_MS:-150}"
 export RMIG_USE_RMIGD="${RMIG_USE_RMIGD:-1}"
 export RMIG_SESSION_TOKEN="${RMIG_SESSION_TOKEN:-rmig-integration-test-token}"
