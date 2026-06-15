@@ -4,9 +4,12 @@ use crate::error::Result;
 
 /// Open a CLI connection via `rmigd` (warm TDS held in the daemon process).
 pub async fn connect_daemon(socket_path: &str, cfg: &Config) -> Result<DbClient> {
-    Ok(DbClient::Proxy(
-        super::proxy::ProxyClient::connect(socket_path, Some(cfg)).await?,
-    ))
+    let mut proxy = super::proxy::ProxyClient::connect(socket_path, Some(cfg)).await?;
+    if !cfg.database.is_empty() {
+        let escaped = cfg.database.replace(']', "]]");
+        proxy.exec(&format!("USE [{escaped}]")).await?;
+    }
+    Ok(DbClient::Proxy(proxy))
 }
 
 /// Connect through `rmigd` when `RMIG_SESSION` is set; fall back to direct TDS on socket failure.
