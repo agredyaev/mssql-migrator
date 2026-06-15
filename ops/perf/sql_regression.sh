@@ -12,42 +12,13 @@ mkdir -p "$ROOT/.rmig"
 export RMIGD_SOCKET="${RMIGD_SOCKET:-$ROOT/.rmig/rmigd-sql-regression.sock}"
 LOCK_DIR="$ROOT/.rmig/sql-regression.lock"
 LOCK_PID="$LOCK_DIR/pid"
-DEBUG_LOG="${RMIG_DEBUG_LOG:-$ROOT/.cursor/debug-1200a9.log}"
-mkdir -p "$(dirname "$DEBUG_LOG")"
 
 debug_log() {
-  json_escape() {
-    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
-  }
-
-  hypothesis_id_escaped="$(json_escape "$1")"
-  location_escaped="$(json_escape "$2")"
-  message_escaped="$(json_escape "$3")"
-  phase_escaped="$(json_escape "$4")"
-  pwd_escaped="$(json_escape "$PWD")"
-  run_id_escaped="$(json_escape "${RMIG_DEBUG_RUN_ID:-manual}")"
-  socket_escaped="$(json_escape "$RMIGD_SOCKET")"
-  lock_dir_escaped="$(json_escape "$LOCK_DIR")"
-  timestamp_ms="$(($(date +%s) * 1000))"
-
-  printf '%s\n' \
-    "{\"sessionId\":\"1200a9\",\"runId\":\"${run_id_escaped}\",\"hypothesisId\":\"${hypothesis_id_escaped}\",\"location\":\"${location_escaped}\",\"message\":\"${message_escaped}\",\"data\":{\"phase\":\"${phase_escaped}\",\"pwd\":\"${pwd_escaped}\",\"rmigd_socket\":\"${socket_escaped}\",\"lock_dir\":\"${lock_dir_escaped}\"},\"timestamp\":${timestamp_ms}}" \
-    >> "$DEBUG_LOG"
+  true
 }
 
 debug_log_failure() {
-  json_escape() {
-    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
-  }
-
-  status_escaped="$(json_escape "$1")"
-  command_escaped="$(json_escape "$2")"
-  run_id_escaped="$(json_escape "${RMIG_DEBUG_RUN_ID:-manual}")"
-  timestamp_ms="$(($(date +%s) * 1000))"
-
-  printf '%s\n' \
-    "{\"sessionId\":\"1200a9\",\"runId\":\"${run_id_escaped}\",\"hypothesisId\":\"H11\",\"location\":\"ops/perf/sql_regression.sh:err\",\"message\":\"sql_regression command failed\",\"data\":{\"exit_code\":\"${status_escaped}\",\"failed_command\":\"${command_escaped}\"},\"timestamp\":${timestamp_ms}}" \
-    >> "$DEBUG_LOG"
+  true
 }
 
 on_error() {
