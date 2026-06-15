@@ -1,4 +1,4 @@
-# Technical Document: Module `gate`
+# Module `gate`
 
 Lifecycle: `Current`.
 

@@ -24,7 +24,7 @@ if [ "${RMIG_GATE_SKIP_DB_RESET:-}" != "1" ]; then
     name="$(basename "$db")"
     [[ "$name" == .* ]] && continue
     docker compose -f "$ROOT/docker-compose.yml" exec -T mssql /opt/mssql-tools18/bin/sqlcmd \
-      -S localhost -U sa -P 'yourStrong(!)Password' -C \
+      -S "$RM_DB_SERVER" -U "$RM_DB_USER" -P "$RM_DB_PASSWORD" -C \
       -Q "IF DB_ID('${name}') IS NOT NULL BEGIN ALTER DATABASE [${name}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${name}]; END; CREATE DATABASE [${name}];"
   done
 fi

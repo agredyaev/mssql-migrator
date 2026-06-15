@@ -1,4 +1,4 @@
-# Technical Document: Rust SQL Server integration test harness
+# Rust SQL Server integration test harness
 
 Lifecycle: `Current`.
 
@@ -8,9 +8,9 @@ Document how `crates/core/tests/` runs against Docker SQL Server: which helpers 
 
 ## Scope
 
-- Integration tests: `apply_e2e_integration.rs`, `workflow_integration.rs`, `scenario_e2e_integration.rs`, `integration_plan.rs`, `prod_gate_integration.rs`.
+- Integration tests: `apply_e2e_integration.rs`, `workflow_integration.rs`, `scenario_e2e_integration.rs`, `integration_plan.rs`, `prod_gate_integration.rs`, bugslog regression crates (`multi_db_plan_test.rs`, `plan_deferred_bootstrap_test.rs`, `advisory_lock_guard_test.rs`, `advisory_lock_rmigd_test.rs`, and others).
 - Shared helpers under `crates/core/tests/common/`.
-- Orchestrators: `ops/perf/integration.sh`, `ops/perf/workflow_fast.sh`.
+- Orchestrators: `ops/perf/sql_regression.sh`, `ops/perf/integration.sh`, `ops/perf/workflow_fast.sh`, `ops/perf/e2e_all.sh`.
 
 ## System context
 
@@ -49,30 +49,40 @@ Tests point `RM_SQL_ROOT` at `$REPO/.temp/sql` (fixture in `.temp/`, not committ
 - `RMIG_RUN_SQLSERVER_INTEGRATION=1` gates SQL tests (otherwise `return` early).
 - `RM_DB_*` connection vars required. Default catalog database name is discovered from the sole top-level directory under `RM_SQL_ROOT` (same as `discover_catalog_databases` in `config/catalog.rs`); `RM_DB_DATABASE` overrides that name for shell-side `DROP/CREATE` only (`ops/perf/e2e_env.sh`).
 - `RM_SQL_BASE` defaults to `RM_SQL_ROOT` when empty.
+- On Apple Silicon with Colima, Docker SQL Server images require Rosetta-backed amd64 emulation. Use `colima start --vz-rosetta --memory 4 --cpu 4` (or set `rosetta: true` in `~/.config/colima/default/colima.yaml`) while keeping the VM on `arch: aarch64`. With `rosetta: false`, `mcr.microsoft.com/mssql/server:*` can fail during startup with `Invalid mapping of address ... below 0x400000000000`.
 - Profiler crates (`pprof`, `criterion`, `dhat`) are **dev-dependencies only**; `scripts/check-rust-release-deps.sh` asserts they are absent from `cargo tree -e normal` for `rmig` / `rmigd` / `migrator-core`.
 
 ## Nominal flow
 
-1. `make db-up` - Docker SQL Server only (databases created on first `migrate`).
-2. `make check` - arch guard, release dep check, `clippy -D warnings`, unit + non-SQL integration tests.
-3. `make integration` - `apply_e2e_integration` + `workflow_integration` on `.temp/sql`.
+1. On Apple Silicon + Colima, run `colima start --vz-rosetta --memory 4 --cpu 4` before starting Docker SQL Server.
+2. `make db-up` - Docker SQL Server only (databases created on first `migrate`).
+3. `make check` - arch guard, release dep check, `clippy -D warnings`, unit + non-SQL integration tests (SQL suites skip without `RMIG_RUN_SQLSERVER_INTEGRATION=1`).
+4. `make sql-regression` - bugslog SQL regression battery via `ops/perf/sql_regression.sh` (includes `rmigd` lock tests).
+5. `make check-e2e` - `sql-regression` + scenario matrix + workflow + SLO + prod gate (ADO merge gate).
+6. `make integration` - `apply_e2e_integration` + `workflow_integration` on `.temp/sql` (subset; prefer `make check-e2e` before merge).
 
 ## Off-nominal behavior
 
 - Missing `RM_SQL_ROOT` or empty catalog dirs → `validate_config` / `discover_catalog_databases` error before connect.
 - Multiple top-level DB dirs → engine runs plan/migrate once per database (see `engine/run.rs`).
+- Apple Silicon + Colima without Rosetta → Docker MSSQL can crash before bind/listen with `Invalid mapping of address ... below 0x400000000000`; fix the Colima profile first, then rerun `make db-up`.
 
 ## Verification
 
 ```bash
+colima start --vz-rosetta --memory 4 --cpu 4
+make db-up
 make check
-RMIG_RUN_SQLSERVER_INTEGRATION=1 make integration
-RUSTFLAGS="-D warnings" cargo test -p migrator-core --test apply_e2e_integration --test workflow_integration
+make sql-regression
+make check-e2e
+scripts/check-sql-regression-manifest.sh
 ```
 
 ## Operations and recovery
 
-- Routine: run `make integration` before merging harness changes; use `GitRestore::drop` to reset `.temp/` git fixture.
+- Routine: run `make check-e2e` before merging harness changes; use `GitRestore::drop` to reset `.temp/` git fixture.
+- CI: `.github/workflows/test.yml` integration job runs `make check-e2e` against Docker MSSQL with `RMIG_USE_RMIGD=1`.
+- Recovery: if Docker MSSQL fails immediately on Apple Silicon, confirm the active Colima profile still has Rosetta enabled before debugging `rmig` itself.
 - Recovery: stuck scaffold files under `{database}/smoke/tables/_migrations/` → `workflow_git` cleanup on test drop or manual delete.
 
 ## Open issues and non-goals

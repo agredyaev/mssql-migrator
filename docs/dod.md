@@ -1,4 +1,4 @@
-# Technical Document: Data-oriented layout invariants
+# Data-oriented layout invariants
 
 Lifecycle: `Current`.
 

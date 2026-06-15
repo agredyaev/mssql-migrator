@@ -1,4 +1,4 @@
-# Technical Document: Module `scaffold`
+# Module `scaffold`
 
 Lifecycle: `Current`.
 

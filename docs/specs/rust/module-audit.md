@@ -1,4 +1,4 @@
-# Technical Document: Module `audit`
+# Module `audit`
 
 Lifecycle: `Current`.
 

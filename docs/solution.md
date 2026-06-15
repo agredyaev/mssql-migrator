@@ -38,7 +38,7 @@ Configuration surface: `RM_*` env vars via `config::build_config`. Optional repo
 
 - Required env: `RM_DB_SERVER`, `RM_SQL_ROOT`.
 - Database name comes from catalog directories under `RM_SQL_ROOT` (`config/catalog.rs`); `RM_SQL_BASE` defaults to `RM_SQL_ROOT` when empty.
-- Co-located SQL Server for product SLO measurements (see [`rust-port-plan.md`](rust-port-plan.md)).
+- Co-located SQL Server for product SLO measurements (see [`prod-gate.md`](prod-gate.md) and [`ops/perf/README.md`](../ops/perf/README.md)).
 
 ## Nominal flow
 

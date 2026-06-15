@@ -1,4 +1,4 @@
-# Technical Document: Module `db`
+# Module `db`
 
 Lifecycle: `Current`.
 
@@ -77,7 +77,6 @@ Paths: `cold_full`, `git_delta`, `incremental`, `cache_hit`, `warm_snapshot`. Em
 ## References
 
 - `docs/prod-gate.md` - plan DB SLO section
-- [`docs/rust-port-plan.md`](../../../rust-port-plan.md) - verification gates and parallel plan DB context
 - `ops/perf/README.md`
 - `docs/specs/rust/module-audit.md`
 - `docs/specs/rust/module-driver.md`
