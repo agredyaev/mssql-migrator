@@ -8,9 +8,10 @@ Describe **incremental prod gate**: git delta resolution, plan snapshot wire for
 
 ## Scope
 
-- `crates/core/src/gate/changed_paths.rs`, `changed_paths_ci.rs` - git delta paths
+- `crates/core/src/gate/changed_paths/mod.rs`, `changed_paths_ci.rs` - git delta paths
 - `crates/core/src/gate/delta.rs` - object key closure for changed files
-- `crates/core/src/gate/snapshot.rs`, `compare.rs` - plan snapshot JSON
+- `crates/core/src/gate/snapshot.rs` - plan snapshot JSON
+- `crates/core/src/gate/compare/` - baseline comparison, parity, snapshot I/O
 - `crates/core/src/gate/evaluate.rs` - gate verdict
 - `crates/core/src/gate/e2e_report/` - e2e scenario report wire types and strict readers
 - `crates/core/src/gate/repo_root.rs`, `git_diff.rs` - repo discovery helpers

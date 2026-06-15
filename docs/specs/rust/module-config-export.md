@@ -9,8 +9,8 @@ Describe **configuration loading**, **catalog-derived database names**, **plan J
 ## Scope
 
 - `crates/core/src/config/env.rs`, `validate.rs`, `catalog.rs`, `mod.rs`
-- `crates/core/src/export/plan_json.rs`, `report.rs`, `checksum_json.rs`, `mod.rs`
-- `crates/core/src/timings.rs`
+- `crates/core/src/export/plan_json/mod.rs`, `report.rs`, `checksum_json.rs`, `mod.rs`
+- `crates/core/src/timings/mod.rs`
 - `crates/core/src/error.rs`
 
 ## System context
