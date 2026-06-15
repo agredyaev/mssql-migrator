@@ -12,6 +12,8 @@ mkdir -p "$ROOT/.rmig"
 export RMIGD_SOCKET="${RMIGD_SOCKET:-$ROOT/.rmig/rmigd-sql-regression.sock}"
 LOCK_DIR="$ROOT/.rmig/sql-regression.lock"
 LOCK_PID="$LOCK_DIR/pid"
+DEBUG_LOG="${RMIG_DEBUG_LOG:-$ROOT/.cursor/debug-1200a9.log}"
+mkdir -p "$(dirname "$DEBUG_LOG")"
 
 debug_log() {
   json_escape() {
@@ -30,7 +32,7 @@ debug_log() {
 
   printf '%s\n' \
     "{\"sessionId\":\"1200a9\",\"runId\":\"${run_id_escaped}\",\"hypothesisId\":\"${hypothesis_id_escaped}\",\"location\":\"${location_escaped}\",\"message\":\"${message_escaped}\",\"data\":{\"phase\":\"${phase_escaped}\",\"pwd\":\"${pwd_escaped}\",\"rmigd_socket\":\"${socket_escaped}\",\"lock_dir\":\"${lock_dir_escaped}\"},\"timestamp\":${timestamp_ms}}" \
-    >> "/Users/fingerbib/project/mssql-reporting-migrator/.cursor/debug-1200a9.log"
+    >> "$DEBUG_LOG"
 }
 
 debug_log_failure() {
@@ -45,7 +47,7 @@ debug_log_failure() {
 
   printf '%s\n' \
     "{\"sessionId\":\"1200a9\",\"runId\":\"${run_id_escaped}\",\"hypothesisId\":\"H11\",\"location\":\"ops/perf/sql_regression.sh:err\",\"message\":\"sql_regression command failed\",\"data\":{\"exit_code\":\"${status_escaped}\",\"failed_command\":\"${command_escaped}\"},\"timestamp\":${timestamp_ms}}" \
-    >> "/Users/fingerbib/project/mssql-reporting-migrator/.cursor/debug-1200a9.log"
+    >> "$DEBUG_LOG"
 }
 
 on_error() {

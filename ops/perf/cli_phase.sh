@@ -24,11 +24,12 @@ debug_log() {
 
   printf '%s\n' \
     "{\"sessionId\":\"1200a9\",\"runId\":\"${run_id_escaped}\",\"hypothesisId\":\"${hypothesis_id_escaped}\",\"location\":\"${location_escaped}\",\"message\":\"${message_escaped}\",\"data\":{\"mode\":\"${mode_escaped}\",\"pwd\":\"${pwd_escaped}\",\"rmig_run_sqlserver_integration\":\"${integration_escaped}\",\"rmig_use_rmigd\":\"${use_rmigd_escaped}\",\"rmig_slo_max_cli_wall_ms\":\"${slo_escaped}\"},\"timestamp\":${timestamp_ms}}" \
-    >> "/Users/fingerbib/project/mssql-reporting-migrator/.cursor/debug-1200a9.log"
+    >> "${RMIG_DEBUG_LOG:-$ROOT/.cursor/debug-1200a9.log}"
 }
 
 export RMIG_RUN_SQLSERVER_INTEGRATION="${RMIG_RUN_SQLSERVER_INTEGRATION:-1}"
 export RM_SKIP_GIT="${RM_SKIP_GIT:-1}"
+mkdir -p "$(dirname "${RMIG_DEBUG_LOG:-$ROOT/.cursor/debug-1200a9.log}")"
 export RMIG_SLO_MAX_CLI_WALL_MS="${RMIG_SLO_MAX_CLI_WALL_MS:-150}"
 export RMIG_USE_RMIGD="${RMIG_USE_RMIGD:-1}"
 export RMIG_SESSION_TOKEN="${RMIG_SESSION_TOKEN:-rmig-integration-test-token}"
