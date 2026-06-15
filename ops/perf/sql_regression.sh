@@ -9,6 +9,32 @@ source "$ROOT/ops/perf/e2e_env.sh"
 export RMIG_USE_RMIGD="${RMIG_USE_RMIGD:-1}"
 export RMIG_SESSION_TOKEN="${RMIG_SESSION_TOKEN:-rmig-integration-test-token}"
 mkdir -p "$ROOT/.rmig"
+
+# Ensure catalog databases exist before rmigd discovers them from RM_SQL_ROOT.
+ensure_catalog_databases() {
+  local root="$1"
+  local user="$2"
+  local password="$3"
+  local server="$4"
+  local port="$5"
+  local sub name
+  if [[ ! -d "$root" ]]; then return; fi
+  for sub in "$root"/*; do
+    [[ -d "$sub" ]] || continue
+    name="$(basename "$sub")"
+    [[ "$name" == .* ]] && continue
+    for _ in "$sub"/*; do
+      if [[ -d "$_" ]]; then
+        docker compose exec -T mssql /opt/mssql-tools18/bin/sqlcmd \
+          -S "localhost,$port" -U "$user" -P "$password" -C \
+          -Q "IF DB_ID(N'$name') IS NULL CREATE DATABASE [$name]" 2>/dev/null
+        break
+      fi
+    done
+  done
+}
+ensure_catalog_databases \
+  "$RM_SQL_ROOT" "$RM_DB_USER" "$RM_DB_PASSWORD" "$RM_DB_SERVER" "$RM_DB_PORT" || true
 export RMIGD_SOCKET="${RMIGD_SOCKET:-$ROOT/.rmig/rmigd-sql-regression.sock}"
 LOCK_DIR="$ROOT/.rmig/sql-regression.lock"
 LOCK_PID="$LOCK_DIR/pid"
