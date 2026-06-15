@@ -1,4 +1,4 @@
-# Technical Document: `rmig` (MSSQL Reporting Migrator)
+# `rmig` (MSSQL Reporting Migrator)
 
 Lifecycle: `Current`.
 
