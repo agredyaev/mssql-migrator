@@ -31,6 +31,7 @@ pub(super) async fn prepare_execute(
     trace: &mut PlanDbTrace,
 ) -> Result<ExecuteSetup> {
     let db_fp = audit::db_fingerprint(&cfg.server, &cfg.database);
+    audit::sync_tables_ensured(conn, &db_fp).await?;
     let git = resolve_changed_paths(&cfg.sql_root);
     let full = cfg.inspect_full() || cfg.skip_git() || git.full_inspect;
     let git_delta = !full && !git.paths.is_empty();

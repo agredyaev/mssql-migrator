@@ -3,20 +3,23 @@ use crate::driver::TimingConn;
 use crate::error::Result;
 use crate::sql;
 
-use super::cache::{history_empty_cache, history_known_nonempty};
+use super::bootstrap::ensure_tables;
+use super::cache::{
+    cache_history_empty, history_empty_cached, history_known_nonempty, tables_ensured,
+};
 use super::checksum::{checksum_map_from_rows_ws, empty_checksums_from_keys_json};
 
 pub async fn history_table_is_empty(conn: &mut TimingConn, db_fp: &str) -> Result<bool> {
-    if let Some(empty) = history_empty_cache().lock().unwrap().get(db_fp).copied() {
+    if let Some(empty) = history_empty_cached(db_fp) {
         return Ok(empty);
+    }
+    if !tables_ensured(db_fp) {
+        ensure_tables(conn, db_fp).await?;
     }
     let rows = conn.query(sql::audit::HISTORY_EMPTY, &[]).await?;
     let has_rows = rows.first().map(history_probe_has_rows).unwrap_or(false);
     let empty = !has_rows;
-    history_empty_cache()
-        .lock()
-        .unwrap()
-        .insert(db_fp.to_string(), empty);
+    cache_history_empty(db_fp, empty);
     Ok(empty)
 }
 

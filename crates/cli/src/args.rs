@@ -1,15 +1,38 @@
+//! CLI argument parsing for `rmig`.
+//!
+//! ### Purpose
+//! Tokenises argv into [`ParsedArgs`] (help or run) and validates subcommand
+//! names via [`parse_command`].
+//!
+//! ### Flags
+//! - `--env <path>` — dotenv path (default `.env`)
+//! - `--json` — JSON output mode
+//! - `-h` / `--help` — print help text and exit
+//!
+//! ### Nominal flow
+//! 1. `parse_args` walks argv, classifies flags vs positional command.
+//! 2. If no command given → returns `ParsedArgs::Help`.
+//! 3. `parse_command` maps string to [`Command`] enum.
+
 use migrator_core::engine::Command;
 use migrator_core::error::Error;
 
+/// Parsed CLI invocation: either a help request or a run command with flags.
 pub enum ParsedArgs {
+    /// User requested `--help`.
     Help,
+    /// User requested a command with optional flags.
     Run {
+        /// Subcommand string (`plan`, `migrate`, …).
         cmd: String,
+        /// Optional `--env <path>` value.
         env_file: Option<String>,
+        /// `--json` flag.
         json: bool,
     },
 }
 
+/// Tokenise argv into [`ParsedArgs`].
 pub fn parse_args(args: &[String]) -> migrator_core::Result<ParsedArgs> {
     let mut cmd = String::new();
     let mut env_file = None;
@@ -65,3 +88,7 @@ pub fn parse_command(cmd: &str) -> migrator_core::Result<Command> {
         ))),
     }
 }
+
+#[cfg(test)]
+#[path = "tests/args_test.rs"]
+mod args_tests;

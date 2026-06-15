@@ -1,5 +1,9 @@
 use crate::domain::Action;
 
+/// Planned action classification for each database object.
+///
+/// `#[repr(u8)]` — compact wire encoding; enables `as_repr`/`from_repr`
+/// conversions without a serde round-trip.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PlanScenario {

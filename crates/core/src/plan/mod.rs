@@ -33,6 +33,7 @@ mod scenario_apply;
 mod scenario_resolve;
 pub mod scope;
 mod scope_build;
+mod scope_spot_check;
 pub mod transitions;
 
 pub use diff::{compute_diff, compute_diff_into};

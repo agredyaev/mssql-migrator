@@ -7,7 +7,7 @@
 //! ### Architectural Context
 //! - **Inputs**: Durations of execution segments.
 //! - **Outputs**: Hydrated `PhaseTimings` structs.
-//! - **Boundaries**: Operates in memory as a simple accumulator during active commands.
+//! - **Boundaries**: Operates in memory as an i64-millisecond accumulator during active commands; no I/O, no allocations per timing event.
 //!
 //! ### Nominal Flow
 //! 1. Measure duration of a phase (e.g. workspace scans, diff calculations).

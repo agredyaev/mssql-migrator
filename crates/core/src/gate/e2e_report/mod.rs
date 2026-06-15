@@ -1,5 +1,6 @@
 mod compare;
 mod io;
+mod read;
 mod timing_compare;
 mod types;
 

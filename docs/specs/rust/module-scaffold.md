@@ -1,4 +1,4 @@
-# Technical Document: Module `scaffold`
+# Module `scaffold`
 
 Lifecycle: `Current`.
 
@@ -25,6 +25,7 @@ When `plan.blocked` and command is `Migrate`, engine loads table columns (`db::l
 
 - Assumption: blocked plan includes resolvable table column metadata when needed.
 - Constraint: scaffold writes under `_migrations/` beneath object SQL path.
+- Constraint: auto-generated `ALTER TABLE ... ADD` scripts are only emitted for additive column diffs with safe type literals. Dropped columns or ambiguous/unsafe column definitions fall back to a manual scaffold.
 
 ## Nominal flow
 
@@ -37,6 +38,8 @@ When `plan.blocked` and command is `Migrate`, engine loads table columns (`db::l
 
 - Failure mode: filesystem not writable.
   Containment: I/O error returned; DB unchanged.
+- Failure mode: changed table DDL includes dropped columns or computed/unsafe column definitions.
+  Containment: write a manual scaffold file instead of auto-generated `ALTER TABLE` SQL.
 
 ## Operations and recovery
 

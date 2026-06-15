@@ -1,4 +1,4 @@
-# Technical Document: Operational Contract
+# Operational Contract
 
 Lifecycle: `Current`.
 
@@ -32,9 +32,11 @@ This contract governs the CLI entry points, execution commands, dynamic environm
 | Variable | Meaning | Path Reference |
 | :--- | :--- | :--- |
 | `RM_DB_SERVER` | Target SQL Server host address | Sourced in config |
-| `RM_DB_DATABASE` | Target catalog database name | Sourced in config |
-| `RM_SQL_ROOT` | Absolute root directory of the SQL schema tree | Sourced in config |
+| `RM_SQL_ROOT` | Absolute root directory of the SQL schema tree; **database name(s) are the top-level directories here** (e.g. `dactests/`) | Sourced in config |
 | `RM_SQL_BASE` | Base directory for dynamic scaffold migrations | Defaults to `RM_SQL_ROOT` |
+| `RM_DB_USER` / `RM_DB_PASSWORD` | SQL authentication credentials | Sourced in config (required for SQL auth) |
+
+`RM_DB_DATABASE` is **not** read by `rmig` / `migrator_core::config::build_config`. Shell helpers under `ops/perf/` may set it for Docker `DROP/CREATE` orchestration only; see `ops/perf/e2e_env.sh`.
 
 ### 3. Optional Operational Variables
 
@@ -45,9 +47,12 @@ This contract governs the CLI entry points, execution commands, dynamic environm
 | `RMIG_SESSION` | - | Unix domain socket address to communicate with `rmigd` session manager. |
 | `RMIG_CATALOG_CACHE` | `1` | Set to `0` to disable the local catalog memory cache. |
 | `RMIG_GATE_SKIP_DB_RESET` | `0` | Set to `1` during integration to bypass active DROP/CREATE steps. |
+| `RM_LOG_LEVEL` / `RUST_LOG` | `info` | Controls structured stderr logging from `crates/cli/src/main.rs` and `crates/rmigd/src/main.rs`. Simple levels such as `info` apply to `migrator_core`, `rmig`, and `rmigd` while dependencies stay at `warn`. `RUST_LOG` takes precedence when set. |
+| `RM_LOCK_TIMEOUT` | `60s` | Advisory lock wait time. Values are converted to SQL Server `int` milliseconds and clamped at `2147483647`. |
 
 ### 4. Produced Artifacts
 - **Run Reports**: When `RM_REPORT_DIR` is set, `rmig` writes a compact JSON plan (`.plan.json`) and run report (`.report.json`) upon successful execution.
+- **Runtime Logs**: `rmig` and `rmigd` write structured key-value logs to stderr. `rmig --json <command>` keeps command output on stdout and still writes logs to stderr.
 
 ---
 
@@ -74,6 +79,7 @@ make check           # checks codebase architecture, formatting, and unit tests
 
 - **Blocked Migrations**: If a migration planning step is blocked (e.g., due to DDL shifts without valid migrations), `rmig` exits with code **10**, containment is achieved by writing a skeleton migration scaffold and aborting further executions.
 - **Lock Contention**: If another deployment process holds the catalog lock, `rmig` fails closed, writes lock details to stderr, and exits with code **7**.
+- **Cache Poisoning**: Process-local audit and catalog inspect caches recover poisoned mutexes, emit a warning log, and continue so later commands can re-check SQL Server state.
 
 ---
 
@@ -82,18 +88,20 @@ make check           # checks codebase architecture, formatting, and unit tests
 Verify operational behavior by running:
 
 ```bash
-make db-up      # Starts target MSSQL Docker containers
-make e2e-all    # Validates full scenario execution matrices
-make prod-gate  # Audits incremental migration plans
-make slo        # Asserts execution duration SLO thresholds
+make db-up           # Starts target MSSQL Docker containers
+make check           # Fast gate: arch, fmt, clippy, unit + non-SQL tests
+make sql-regression  # Bugslog SQL regression battery (ops/perf/sql_regression.sh)
+make check-e2e       # ADO merge gate: sql-regression + e2e matrix + workflow + slo + prod-gate
 ```
+
+Azure DevOps / production release: the CI **Integration & E2E (MSSQL)** job (`.github/workflows/test.yml`) must pass `make check-e2e`. Unit tests alone are not sufficient.
 
 ---
 
 ## Operations and Recovery
 
 - **Blocked Migration Recovery**: Inspect `_migrations/` scaffold files under the affected table directory. Commit a valid migration SQL script or revert the layout change before retrying.
-- **Distributed Lock Release**: Refer to [runbook.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/runbook.md) for unlocking the mutex when a deployment process terminates abnormally.
+- **Distributed Lock Release**: Refer to [runbook.md](runbook.md) for unlocking the mutex when a deployment process terminates abnormally.
 
 ---
 
@@ -105,6 +113,6 @@ make slo        # Asserts execution duration SLO thresholds
 
 ## References
 
-- Comprehensive runbook: [runbook.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/runbook.md)
-- Product overview: [solution.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/solution.md)
-- Core index: [specs/README.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/specs/rust/README.md)
+- Runbook: [runbook.md](runbook.md)
+- Product overview: [solution.md](solution.md)
+- Core index: [specs/rust/README.md](specs/rust/README.md)

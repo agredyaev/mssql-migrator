@@ -6,5 +6,5 @@ SELECT
     CAST('' AS nvarchar(128)) AS parent_name
 FROM sys.schemas s
 WHERE EXISTS (
-    SELECT 1 FROM layout_schema_filter lf WHERE lf.schema_name = LOWER(s.name)
+    SELECT 1 FROM layout_schema_filter lf WHERE lf.schema_name = LOWER(s.name) COLLATE DATABASE_DEFAULT
 )

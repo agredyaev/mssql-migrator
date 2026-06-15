@@ -1,10 +1,10 @@
-# Technical Document: `rmig` Rust Implementation
+# `rmig` Rust Implementation
 
 Lifecycle: `Current`.
 
 ## Purpose
 
-Provide a comprehensive operator and maintainer reference for the Rust workspace at the repository root, detailing compilation, testing, profiling, and daemon-based operation.
+Provide an operator and maintainer reference for the Rust workspace at the repository root, detailing compilation, testing, profiling, and daemon-based operation.
 
 ## Scope
 
@@ -83,6 +83,8 @@ make integration     # Run apply and git workflow integration suites
 make prod-gate       # Execute incremental plans and go/no-go checks
 ```
 
+`ops/perf/sql_regression.sh` claims the repo-local lock directory `.rmig/sql-regression.lock` before it starts `rmigd` or the shared SQL Server regression battery. This prevents overlapping runs from contending on the same advisory-lock resource or fixed integration database names and turning the battery flaky.
+
 ### 2. Memory & Performance Auditing
 
 | Profiling Target | Tool / Command | Generated Artifacts |
@@ -109,6 +111,6 @@ make prod-gate       # Execute incremental plans and go/no-go checks
 
 ## References
 
-- Deep footprint audit: [perf-footprint-audit.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/perf-footprint-audit.md)
-- Environment contract: [operational-contract.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/operational-contract.md)
-- Core specs: [specs/README.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/specs/rust/README.md)
+- Deep footprint audit: [perf-footprint-audit.md](../docs/perf-footprint-audit.md)
+- Environment contract: [operational-contract.md](../docs/operational-contract.md)
+- Core specs: [specs/README.md](../docs/specs/rust/README.md)

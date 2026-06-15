@@ -1,4 +1,4 @@
-# Technical Document: Module `driver`
+# Module `driver`
 
 Lifecycle: `Current`.
 
@@ -24,11 +24,12 @@ All SQL I/O from `audit`, `db`, `apply`, `lock`, and `scaffold` flows through `T
 - Inputs: `Config` (server, port, database, credentials)
 - Outputs: query result rows, errors as `Error::Sql`
 - Must not import `plan` or `apply`
+- I/O timing counters are best-effort observability data. If their mutex is poisoned, the driver recovers existing counters instead of panicking.
 
 ## Assumptions and constraints
 
 - `trust_server_certificate` supported for Docker dev.
-- Integrated Windows auth not implemented (see [`docs/rust-port-plan.md`](../../../rust-port-plan.md) out of scope).
+- Integrated Windows auth is outside the normal SQL-auth path; see `docs/operational-contract.md` for runtime environment variables.
 
 ## Nominal flow
 
@@ -45,6 +46,8 @@ All SQL I/O from `audit`, `db`, `apply`, `lock`, and `scaffold` flows through `T
 
 - Failure mode: connection refused or login failure.
   Containment: error returned to engine; no partial plan state on conn failure.
+- Failure mode: I/O profile mutex poison after an internal panic.
+  Containment: recover the mutex contents and continue metrics aggregation.
 
 ## Operations and recovery
 

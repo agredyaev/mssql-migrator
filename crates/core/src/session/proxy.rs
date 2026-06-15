@@ -5,9 +5,10 @@ use tokio::net::{unix::OwnedWriteHalf, UnixStream};
 use crate::driver::RowData;
 use crate::error::{Error, Result};
 
-use super::auth::session_token_from_env;
+use super::auth::resolve_session_token;
 use super::limits::MAX_SESSION_LINE_BYTES;
 use super::protocol::{Request, Response};
+use crate::config::Config;
 
 pub struct ProxyClient {
     reader: BufReader<OwnedReadHalf>,
@@ -15,7 +16,7 @@ pub struct ProxyClient {
 }
 
 impl ProxyClient {
-    pub async fn connect(socket_path: &str) -> Result<Self> {
+    pub async fn connect(socket_path: &str, cfg: Option<&Config>) -> Result<Self> {
         let stream = UnixStream::connect(socket_path)
             .await
             .map_err(|e| Error::Config(format!("rmigd connect {}: {e}", socket_path)))?;
@@ -24,7 +25,7 @@ impl ProxyClient {
             reader: BufReader::new(read_half),
             writer: write_half,
         };
-        let token = session_token_from_env();
+        let token = resolve_session_token(cfg);
         if !token.is_empty() {
             client
                 .call(Request::Auth {
@@ -85,3 +86,7 @@ impl ProxyClient {
         serde_json::from_str(&resp_line).map_err(|e| Error::Other(e.into()))
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/proxy_test.rs"]
+mod proxy_tests;

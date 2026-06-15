@@ -2,10 +2,10 @@
 
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::OnceLock;
+use std::sync::Mutex;
 use std::time::Duration;
 
-static CHILD: OnceLock<Child> = OnceLock::new();
+static CHILD: Mutex<Option<Child>> = Mutex::new(None);
 
 const INTEGRATION_TOKEN: &str = "rmig-integration-test-token";
 
@@ -15,9 +15,16 @@ pub fn ensure_started() -> Option<String> {
     }
     std::env::set_var("RMIG_SESSION_TOKEN", INTEGRATION_TOKEN);
     let socket = socket_path();
-    if CHILD.get().is_some() {
-        return Some(socket);
+    {
+        let mut guard = CHILD.lock().expect("rmigd child lock");
+        if let Some(child) = guard.as_mut() {
+            if child.try_wait().ok().flatten().is_none() {
+                return Some(socket);
+            }
+            *guard = None;
+        }
     }
+    kill_stale_socket_holder(&socket);
     let root = super::repo_root();
     if let Some(parent) = PathBuf::from(&socket).parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -32,10 +39,14 @@ pub fn ensure_started() -> Option<String> {
         assert!(status.success(), "rmigd build failed");
     }
     let _ = std::fs::remove_file(&socket);
-    let child = Command::new(&bin)
-        .env("RMIGD_SOCKET", &socket)
-        .env("RMIG_SESSION_TOKEN", INTEGRATION_TOKEN)
-        .env("RMIGD_ENV", root.join(".env"))
+    let mut cmd = Command::new(&bin);
+    cmd.env("RMIGD_SOCKET", &socket)
+        .env("RMIG_SESSION_TOKEN", INTEGRATION_TOKEN);
+    let env_path = root.join(".env");
+    if env_path.is_file() {
+        cmd.env("RMIGD_ENV", &env_path);
+    }
+    let child = cmd
         .env(
             "RM_DB_SERVER",
             std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "127.0.0.1".into()),
@@ -55,19 +66,37 @@ pub fn ensure_started() -> Option<String> {
         .env("RM_DB_TRUST_SERVER_CERTIFICATE", "true")
         .env(
             "RM_SQL_ROOT",
-            std::env::var("RM_SQL_ROOT").unwrap_or_default(),
+            std::env::var("RM_SQL_ROOT")
+                .unwrap_or_else(|_| root.join(".temp/sql").to_string_lossy().into_owned()),
         )
         .env(
             "RM_SQL_BASE",
-            std::env::var("RM_SQL_BASE").unwrap_or_default(),
+            std::env::var("RM_SQL_BASE")
+                .unwrap_or_else(|_| root.join(".temp/sql").to_string_lossy().into_owned()),
         )
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())
         .spawn()
         .expect("spawn rmigd");
     wait_socket(&socket);
-    CHILD.set(child).ok();
+    *CHILD.lock().expect("rmigd child lock") = Some(child);
     Some(socket)
+}
+
+/// Drop orphaned daemons left by prior test runs so advisory locks are not held.
+fn kill_stale_socket_holder(socket: &str) {
+    #[cfg(unix)]
+    {
+        if let Ok(out) = Command::new("lsof").args(["-t", socket]).output() {
+            for line in std::str::from_utf8(&out.stdout).unwrap_or("").lines() {
+                let pid = line.trim();
+                if !pid.is_empty() {
+                    let _ = Command::new("kill").arg(pid).status();
+                }
+            }
+        }
+    }
+    let _ = std::fs::remove_file(socket);
 }
 
 fn use_rmigd() -> bool {

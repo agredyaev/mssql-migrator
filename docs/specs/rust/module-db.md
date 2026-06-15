@@ -1,15 +1,15 @@
-# Technical Document: Module `db`
+# Module `db`
 
 Lifecycle: `Current`.
 
 ## Purpose
 
-Describe **SQL Server catalog and audit I/O for the plan phase**: batched TDS round-trips, persistent catalog cache, checksum load, parallel ensure, and plan DB performance tracing.
+Describe **SQL Server catalog and audit I/O for the plan phase**: batched TDS round-trips, persistent catalog cache, checksum load, bootstrap ensure, and plan DB performance tracing.
 
 ## Scope
 
 - `crates/core/src/db/plan_snapshot.rs` - L1 + warm snapshot + `run_plan_db_phase` entry
-- `crates/core/src/db/plan_parallel.rs` - direct-connect parallel runner (`tokio::join` ensure ‖ checksums→inspect)
+- `crates/core/src/db/plan_parallel.rs` - direct-connect runner with a shared TDS session
 - `crates/core/src/db/plan_batch.rs` - sequential runner (`RMIG_SESSION` / rmigd)
 - `crates/core/src/db/plan_common.rs` - shared cold / incremental / git-delta logic
 - `crates/core/src/db/plan_db_trace.rs` - `PlanDbTrace` (`PlanDbTimings`, `PlanDbFlags`), SLO env, trace JSON
@@ -24,7 +24,7 @@ Describe **SQL Server catalog and audit I/O for the plan phase**: batched TDS ro
 
 ## System context
 
-`engine::run_command` calls `run_plan_db_phase`, which tries L1 (`cache::l1`), then warm snapshot, then plan DB I/O. On **direct connect** (`session_socket` empty), `plan_parallel::run_parallel` overlaps `audit::ensure_tables` (tables only) with checksum load + catalog inspect on a second connection. With `RMIG_SESSION`, `plan_batch::run_batch` runs the same logic sequentially on one connection.
+`engine::run_command` calls `run_plan_db_phase`, which tries L1 (`cache::l1`), then warm snapshot, then plan DB I/O. On **direct connect** (`session_socket` empty), `plan_parallel::run_parallel` keeps the primary TDS session and serialises bootstrap ensure + plan-body queries through an async mutex. With `RMIG_SESSION`, `plan_batch::run_batch` runs the same logic sequentially through `rmigd`.
 
 Paths: `cold_full`, `git_delta`, `incremental`, `cache_hit`, `warm_snapshot`. Empty audit history skips OPENJSON checksum load (`audit::load_checksums` zero-digest map). Plan-path bootstrap omits `BOOTSTRAP_INDEX` (deferred to apply). Catalog save runs **outside** `parallel_wall_ms`.
 
@@ -47,7 +47,7 @@ Paths: `cold_full`, `git_delta`, `incremental`, `cache_hit`, `warm_snapshot`. Em
 1. Resolve git delta (`gate::resolve_changed_paths`).
 2. Optional L1 hit → return immediately.
 3. Optional warm snapshot → seed L1 and return.
-4. **Parallel (direct connect):** `tokio::join!(ensure_tables on conn₂, checksums→inspect on conn₁)`; `parallel_wall_ms = max(ensure, checksums+inspect)`.
+4. **Direct connect:** if bootstrap is needed, `tokio::join!` coordinates ensure and plan-body tasks, but both use the same TDS session through an async mutex; `parallel_wall_ms` records the coordinated wall time.
 5. **Git delta:** `audit::load_checksums` fast path; optional relaxed cache load; hot catalog SQL or inspector cache hit.
 6. **Cold / incremental:** `audit::load_checksums` (skip OPENJSON when history empty); scoped catalog batch or single RT bootstrap+catalog when cold full + empty history.
 7. `save_batched` after plan when cache enabled; `save_workspace_snapshot` after apply (engine).
@@ -72,12 +72,11 @@ Paths: `cold_full`, `git_delta`, `incremental`, `cache_hit`, `warm_snapshot`. Em
 
 ## Open issues and non-goals
 
-- Non-goals: `db` does not open the primary connection (caller owns `TimingConn`); parallel path opens one extra direct connection for ensure overlap.
+- Non-goals: `db` does not open the primary connection (caller owns `TimingConn`); it does not maintain a general connection pool.
 
 ## References
 
 - `docs/prod-gate.md` - plan DB SLO section
-- [`docs/rust-port-plan.md`](../../../rust-port-plan.md) - verification gates and parallel plan DB context
 - `ops/perf/README.md`
 - `docs/specs/rust/module-audit.md`
 - `docs/specs/rust/module-driver.md`

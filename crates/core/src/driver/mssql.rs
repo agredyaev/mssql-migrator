@@ -5,11 +5,16 @@ use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 use crate::config::Config;
 use crate::error::{Error, Result};
 
+use super::mssql_auth::select_auth_method;
+
 pub type RawClient = Client<Compat<TcpStream>>;
 
 pub struct MssqlConn {
     pub client: RawClient,
 }
+
+// Re-export query helpers so crate::driver::mssql::exec etc still resolve.
+pub use super::mssql_query::{exec, ping, query_all_results, query_tiberius};
 
 pub async fn connect(cfg: &Config) -> Result<MssqlConn> {
     let mut tds = TdsConfig::new();
@@ -18,7 +23,7 @@ pub async fn connect(cfg: &Config) -> Result<MssqlConn> {
         tds.port(port);
     }
     tds.database(&cfg.database);
-    tds.authentication(tiberius::AuthMethod::sql_server(&cfg.user, &cfg.password));
+    tds.authentication(select_auth_method(cfg)?);
     if cfg.trust_server_certificate() {
         tds.trust_cert();
     }
@@ -28,69 +33,49 @@ pub async fn connect(cfg: &Config) -> Result<MssqlConn> {
         tds.encryption(tiberius::EncryptionLevel::NotSupported);
     }
     let addr = format!("{}:{}", cfg.server, cfg.port);
-    let tcp = TcpStream::connect(&addr)
-        .await
-        .map_err(|e| Error::Sql(format!("connect {addr}: {e}")))?;
+    let tcp = match TcpStream::connect(&addr).await {
+        Ok(tcp) => tcp,
+        Err(e) => {
+            tracing::debug!(
+                operation = "tcp_connect",
+                server = %cfg.server,
+                port = %cfg.port,
+                database = %cfg.database,
+                db_auth = %cfg.db_auth,
+                error = %e,
+                "sql server tcp connect failed"
+            );
+            return Err(Error::Sql(format!("connect {addr}: {e}")));
+        }
+    };
     tcp.set_nodelay(true).ok();
-    let mut client = Client::connect(tds, tcp.compat_write())
-        .await
-        .map_err(|e| Error::Sql(format!("tds handshake: {e}")))?;
+    let mut client = match Client::connect(tds, tcp.compat_write()).await {
+        Ok(client) => client,
+        Err(e) => {
+            tracing::debug!(
+                operation = "tds_handshake",
+                server = %cfg.server,
+                port = %cfg.port,
+                database = %cfg.database,
+                db_auth = %cfg.db_auth,
+                error = %e,
+                "sql server tds handshake failed"
+            );
+            return Err(Error::Sql(format!("connect {addr}: tds handshake: {e}")));
+        }
+    };
     init_session(&mut client).await?;
     Ok(MssqlConn { client })
 }
 
 async fn init_session(client: &mut RawClient) -> Result<()> {
-    exec(
+    super::mssql_query::exec(
         client,
         "SET QUOTED_IDENTIFIER ON; SET ANSI_NULLS ON; SET ANSI_PADDING ON;",
     )
     .await
 }
 
-pub async fn ping(client: &mut RawClient) -> Result<()> {
-    client
-        .simple_query("SELECT 1")
-        .await
-        .map_err(|e| Error::Sql(e.to_string()))?;
-    Ok(())
-}
-
-pub async fn exec(client: &mut RawClient, sql: &str) -> Result<()> {
-    client
-        .simple_query(sql)
-        .await
-        .map_err(|e| Error::Sql(e.to_string()))?
-        .into_results()
-        .await
-        .map_err(|e| Error::Sql(e.to_string()))?;
-    Ok(())
-}
-
-pub async fn query_tiberius(
-    client: &mut RawClient,
-    sql: &str,
-    params: &[&dyn tiberius::ToSql],
-) -> Result<Vec<tiberius::Row>> {
-    client
-        .query(sql, params)
-        .await
-        .map_err(|e| Error::Sql(e.to_string()))?
-        .into_first_result()
-        .await
-        .map_err(|e| Error::Sql(e.to_string()))
-}
-
-/// All result sets from one batch (single round-trip).
-pub async fn query_all_results(
-    client: &mut RawClient,
-    sql: &str,
-    params: &[&dyn tiberius::ToSql],
-) -> Result<Vec<Vec<tiberius::Row>>> {
-    client
-        .query(sql, params)
-        .await
-        .map_err(|e| Error::Sql(e.to_string()))?
-        .into_results()
-        .await
-        .map_err(|e| Error::Sql(e.to_string()))
-}
+#[cfg(test)]
+#[path = "../tests/driver_mssql_test.rs"]
+mod driver_mssql_tests;

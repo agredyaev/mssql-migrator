@@ -1,4 +1,4 @@
-# Technical Document: Module `apply`
+# Module `apply`
 
 Lifecycle: `Current`.
 
@@ -14,7 +14,7 @@ Describe **DDL/DML apply execution**: schemas, objects, transitions, transaction
 
 ## System context
 
-Called from `engine::apply_run` after lock acquire. On success with applied objects, invalidates catalog cache and L1; engine may call `save_workspace_snapshot` separately.
+Called from `engine::apply_run` after `lock::acquire`; `lock::release_after_body` runs even when apply fails. On success with applied objects, invalidates catalog cache and L1; engine may call `save_workspace_snapshot` separately.
 
 ## Interfaces and boundaries
 

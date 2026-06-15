@@ -5,6 +5,7 @@ use crate::domain::{ObjectKey, Workspace};
 use crate::gate::{expand_delta_closure, keys_for_changed_paths};
 
 use super::scope::InspectScope;
+use super::scope_spot_check::promote_spot_check_keys;
 
 pub fn build_inspect_scope(
     ws: &Workspace,
@@ -67,40 +68,4 @@ pub fn build_inspect_scope(
         stable_objects: stable,
         allow_l1_skip,
     }
-}
-
-fn promote_spot_check_keys(
-    hot: &mut HashSet<String>,
-    stable: &mut HashMap<ObjectKey, CatalogObject>,
-    ws: &Workspace,
-) {
-    let n = spot_check_count_from_env();
-    if n == 0 || stable.is_empty() {
-        return;
-    }
-    let digest = hex::encode(ws.layout_digest);
-    let mut keys: Vec<_> = stable.keys().map(|k| k.as_str().to_string()).collect();
-    keys.sort_by_key(|a| spot_check_rank(a, &digest));
-    let take = n.min(keys.len());
-    for key in keys.into_iter().take(take) {
-        stable.remove(&ObjectKey::from_normalized(&key));
-        hot.insert(key);
-    }
-}
-
-fn spot_check_count_from_env() -> usize {
-    std::env::var("RMIG_CATALOG_SPOTCHECK")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0)
-}
-
-fn spot_check_rank(key: &str, layout_digest: &str) -> u64 {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(layout_digest.as_bytes());
-    h.update([0u8]);
-    h.update(key.as_bytes());
-    let sum = h.finalize();
-    u64::from_le_bytes(sum[..8].try_into().expect("8 bytes"))
 }

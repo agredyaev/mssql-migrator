@@ -3,7 +3,8 @@ use std::sync::Arc;
 use super::{empty_str, share, SharedStr, SharedStrInner};
 
 fn arc_str_as_bytes(s: Arc<str>) -> Arc<[u8]> {
-    // SAFETY: `Arc<str>` and `Arc<[u8]>` share the same thin layout (data ptr + len).
+    // SAFETY: `str` and `[u8]` use the same slice metadata and allocation
+    // layout, and every `str` is valid UTF-8 bytes for the lifetime of the Arc.
     unsafe { Arc::from_raw(Arc::into_raw(s) as *const [u8]) }
 }
 
@@ -71,6 +72,16 @@ mod tests {
             }
             other => panic!("expected Slice, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn subslice_of_owned_base_keeps_buffer_alive_after_base_drop() {
+        let part = {
+            let base = share("schema/tables/t1");
+            SharedStr::subslice_of(&base, "tables")
+        };
+
+        assert_eq!(part.as_str(), "tables");
     }
 
     #[test]

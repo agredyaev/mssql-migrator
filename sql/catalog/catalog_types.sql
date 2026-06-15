@@ -6,6 +6,6 @@ SELECT
     CAST('' AS nvarchar(128)) AS parent_name
 FROM sys.table_types tt
 INNER JOIN sys.schemas s ON s.schema_id = tt.schema_id
-INNER JOIN inspector_scope sc ON sc.schema_name = LOWER(s.name)
-    AND sc.object_name = LOWER(tt.name)
+INNER JOIN inspector_scope sc ON sc.schema_name = LOWER(s.name) COLLATE DATABASE_DEFAULT
+    AND sc.object_name = LOWER(tt.name) COLLATE DATABASE_DEFAULT
     AND sc.kind = 'types'

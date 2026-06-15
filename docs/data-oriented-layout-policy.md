@@ -1,4 +1,4 @@
-# Technical Document: Data-oriented layout policy
+# Data-oriented layout policy
 
 Lifecycle: `Current`.
 
