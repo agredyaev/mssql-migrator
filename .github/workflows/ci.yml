@@ -19,8 +19,17 @@ name: CI
 on:
   push:
     branches: [main, master]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'AGENTS.md'
   pull_request:
     branches: [main, master]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'AGENTS.md'
+      - '.github/pull_request_template.md'
 
 jobs:
   # --- Stage 1: Lint + Test (parallel) ---
