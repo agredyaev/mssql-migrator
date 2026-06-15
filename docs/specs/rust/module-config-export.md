@@ -1,4 +1,4 @@
-# Technical Document: Modules `config`, `export`, `timings`, `error`
+# Modules `config`, `export`, `timings`, `error`
 
 Lifecycle: `Current`.
 
@@ -15,7 +15,7 @@ Describe **configuration loading**, **catalog-derived database names**, **plan J
 
 ## System context
 
-CLI loads env → `Config` → `validate_config` → `discover_catalog_databases` → `ensure_catalog_databases_exist` → engine.
+CLI loads env → `Config` → `validate_config` → `discover_catalog_databases` → (`ensure_catalog_databases_exist` for mutate commands only) → engine.
 
 SQL layout:
 
@@ -38,13 +38,14 @@ The first path segment under `RM_SQL_ROOT` is the **SQL Server database name** (
 |----------|----------|-------|
 | `RM_DB_SERVER` | yes | Host |
 | `RM_SQL_ROOT` | yes | Root of catalog tree |
-| `RM_DB_USER` / `RM_DB_PASSWORD` | yes for SQL auth | |
+| `RM_DB_AUTH` | no | `sql` (default), `integrated`, or `windows`; integrated modes skip SQL credential validation |
+| `RM_DB_USER` / `RM_DB_PASSWORD` | yes for SQL auth | Not required when `RM_DB_AUTH` is `integrated` or `windows` without explicit credentials |
 | `RM_DB_DATABASE` | **no** | Derived from catalog; field on `Config` is runtime-only |
 | `RM_SQL_BASE` | no | Defaults to `RM_SQL_ROOT` (scaffold/migrations path) |
 
 ### Multi-database repos
 
-If `RM_SQL_ROOT` contains multiple child directories with schema subfolders (e.g. `dactests/`, `warehouse/`), `run_command` loops: ensure each DB exists on the server, scan once, filter workspace per DB, connect to that database, plan/apply.
+If `RM_SQL_ROOT` contains multiple child directories with schema subfolders (e.g. `dactests/`, `warehouse/`), `run_command` loops: ensure each DB exists on the server, scan once, filter workspace per DB, connect to that database, and merge per-DB plans into one final result.
 
 `RMIG_SESSION` / `rmigd` is used only for single-database catalogs (multi-DB forces direct TDS per DB).
 
@@ -56,21 +57,22 @@ If `RM_SQL_ROOT` contains multiple child directories with schema subfolders (e.g
 ## Nominal flow
 
 1. Load dotenv → `build_config` (does not read `RM_DB_DATABASE`).
-2. `validate_config` → set `sql_base`, discover DB name when exactly one catalog DB.
-3. Engine: ensure DBs → scan → per-DB plan/migrate.
+2. `validate_config` → require `RM_DB_SERVER`, `RM_SQL_ROOT`, and (for SQL auth) non-empty `RM_DB_USER` / `RM_DB_PASSWORD`; then set `sql_base` and discover DB name when exactly one catalog DB.
+3. Engine: for each catalog DB, first probe direct connectivity to that target database; only fall back to `master` create-db preflight when the target connection fails. Then scan → per-DB plan/migrate.
 
 ## Off-nominal behavior
 
 - Failure mode: no catalog databases under `RM_SQL_ROOT`.
   Containment: `Error::Config` before connect.
 - Failure mode: multiple catalog DBs without operator narrowing `RM_SQL_ROOT`.
-  Containment: engine processes each DB sequentially; reports last plan.
+  Containment: engine processes each DB sequentially and merges the per-DB plans.
 
 ## Verification and validation
 
 - `crates/core/src/config/catalog.rs` unit test `discover_databases_from_layout`
+- `crates/core/src/config/validate.rs` unit tests for SQL credential preflight
 - `make check`, `make integration`
-- `crates/core/tests/plan_json_roundtrip_test.rs`, `exit_code_test.rs`
+- `crates/core/tests/plan_json_roundtrip_test.rs`, `exit_code_test.rs`, `db_auth_test.rs`
 
 ## Operations and recovery
 

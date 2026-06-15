@@ -1,4 +1,4 @@
-# Technical Document: Module `scan`
+# Module `scan`
 
 Lifecycle: `Current`.
 

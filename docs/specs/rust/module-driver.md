@@ -1,4 +1,4 @@
-# Technical Document: Module `driver`
+# Module `driver`
 
 Lifecycle: `Current`.
 
@@ -28,7 +28,7 @@ All SQL I/O from `audit`, `db`, `apply`, `lock`, and `scaffold` flows through `T
 ## Assumptions and constraints
 
 - `trust_server_certificate` supported for Docker dev.
-- Integrated Windows auth not implemented (see [`docs/rust-port-plan.md`](../../../rust-port-plan.md) out of scope).
+- Integrated Windows auth is outside the normal SQL-auth path; see `docs/operational-contract.md` for runtime environment variables.
 
 ## Nominal flow
 

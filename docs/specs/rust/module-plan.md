@@ -1,4 +1,4 @@
-# Technical Document: Module `plan`
+# Module `plan`
 
 Lifecycle: `Current`.
 

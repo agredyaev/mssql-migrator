@@ -1,4 +1,4 @@
-# Technical Document: Rust CLI (`rmig`, `rmigd`)
+# Rust CLI (`rmig`, `rmigd`)
 
 Lifecycle: `Current`.
 
@@ -14,12 +14,12 @@ Describe the **production operator entry points** for the Rust migrator: the `rm
 
 ## System context
 
-Operators invoke `rmig` with commands: `plan`, `migrate`, `validate`, `baseline`, `repair-checksum`, `version`. Configuration uses `RM_*` environment variables loaded from `--env` (default `.env`). When `RMIG_SESSION` points at a `rmigd` Unix socket, `engine::run_command` connects through `session::connect_daemon` instead of opening a new TDS connection per invocation.
+Operators invoke `rmig` with commands: `plan`, `migrate`, `validate`, `baseline`, `repair-checksum`, `version`. Configuration uses `RM_*` environment variables loaded from `--env` (default `.env`, optional when missing) or from an explicit `--env <path>` (required; missing or unreadable file fails before connect). When `RMIG_SESSION` points at a `rmigd` Unix socket, `engine::run_command` connects through `session::connect_daemon` instead of opening a new TDS connection per invocation.
 
 ## Interfaces and boundaries
 
 - Inputs: argv, dotenv file, `RM_*` / `RMIG_*` environment
-- Outputs: stderr logs, stdout plan JSON when `--json`, exit codes from `migrator_core::error`
+- Outputs: stderr logs and timings JSON, stdout plan JSON when `plan --json`, exit codes from `migrator_core::error`
 - Boundaries: CLI does not implement planning logic; all work delegates to `migrator_core::engine::run_command`
 
 ## Assumptions and constraints
@@ -32,7 +32,7 @@ Operators invoke `rmig` with commands: `plan`, `migrate`, `validate`, `baseline`
 1. Parse command and flags (`--env`, `--json`).
 2. `build_config` + `validate_config`.
 3. `run_command(Command, &cfg)` → timings + optional plan.
-4. Write plan stdout / reports when configured (`export::write_reports`).
+4. For `plan --json`, write plan JSON to stdout and timings JSON to stderr; write reports when configured (`export::write_reports`).
 
 ## Off-nominal behavior and failure containment
 
@@ -44,6 +44,8 @@ Operators invoke `rmig` with commands: `plan`, `migrate`, `validate`, `baseline`
 - `cargo build -p rmig -p rmigd`
 - `make slo` (uses `rmigd` + warm plan)
 - Integration: `crates/core/tests/integration_plan.rs`
+- CLI JSON streams: `crates/cli/tests/plan_json_cli_test.rs`
+- Explicit env file errors: `crates/cli/tests/env_file_cli_test.rs`
 
 ## Operations and recovery
 

@@ -1,4 +1,4 @@
-# Technical Document: Supporting modules (`git`, `lock`, `sql`, `sql_ident`, `buildinfo`)
+# Supporting modules (`git`, `lock`, `sql`, `sql_ident`, `buildinfo`)
 
 Lifecycle: `Current`.
 
@@ -136,6 +136,6 @@ graph TD
 
 ## References
 
-- Rustdoc Module API: [`crates/core/src/sql_ident.rs`](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/crates/core/src/sql_ident.rs)
-- Rustdoc Module API: [`crates/core/src/buildinfo/mod.rs`](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/crates/core/src/buildinfo/mod.rs)
-- Core specs directory index: [`docs/specs/rust/README.md`](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/specs/rust/README.md)
+- Rustdoc Module API: [`crates/core/src/sql_ident.rs`](../../../crates/core/src/sql_ident.rs)
+- Rustdoc Module API: [`crates/core/src/buildinfo/mod.rs`](../../../crates/core/src/buildinfo/mod.rs)
+- Core specs directory index: [README.md](README.md)

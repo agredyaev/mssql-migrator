@@ -1,4 +1,4 @@
-# Technical Document: Modules `cache` and `session`
+# Modules `cache` and `session`
 
 Lifecycle: `Current`.
 
@@ -28,7 +28,7 @@ Product SLO (`cli_wall_ms` < 150 ms) assumes warm path: L1 hit and/or `RMIG_SESS
 ## Interfaces and boundaries
 
 - L1: `try_load`, `save`, `invalidate_all`
-- Session: `connect_daemon`, `run_daemon`
+- Session: `connect_daemon`, `connect_session_or_direct`, `resolve_session_token`, `run_daemon`
 - Env: `RMIG_SESSION` (socket path), `RMIG_L1_CACHE_DIR`
 
 ## Assumptions and constraints
@@ -39,12 +39,14 @@ Product SLO (`cli_wall_ms` < 150 ms) assumes warm path: L1 hit and/or `RMIG_SESS
 ## Nominal flow
 
 1. Plan: L1 try_load → on miss, SQL plan DB → L1 save.
-2. CLI with session: engine uses proxy conn for all queries in one process invocation.
+2. CLI with session: engine uses proxy conn for all queries in one process invocation; if the socket is missing or unreachable, it logs a warning and falls back to direct TDS for that run.
 
 ## Verification and validation
 
 - `make slo`
 - `crates/core/tests/integration_plan.rs`
+- `crates/core/tests/session_fallback_test.rs`
+- `crates/core/tests/session_token_test.rs`
 
 ## Off-nominal behavior and failure containment
 
@@ -53,7 +55,7 @@ Product SLO (`cli_wall_ms` < 150 ms) assumes warm path: L1 hit and/or `RMIG_SESS
 
 ## Operations and recovery
 
-- Start `rmigd` before CLI when using `RMIG_SESSION`; stop daemon to force cold connect.
+- Start `rmigd` before CLI when using `RMIG_SESSION` for the warm path; a missing daemon socket falls back to direct connect automatically.
 
 ## Open issues and non-goals
 
@@ -61,5 +63,6 @@ Product SLO (`cli_wall_ms` < 150 ms) assumes warm path: L1 hit and/or `RMIG_SESS
 
 ## References
 
-- [`docs/rust-port-plan.md`](../../../rust-port-plan.md) - product SLO and Makefile gates
+- `docs/prod-gate.md` - product SLO gate
+- `ops/perf/README.md` - Makefile performance and e2e gates
 - `docs/specs/rust/module-db.md`
