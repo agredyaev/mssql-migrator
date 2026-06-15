@@ -11,13 +11,13 @@ Describe **SQL Server catalog and audit I/O for the plan phase**: batched TDS ro
 - `crates/core/src/db/plan_snapshot.rs` - L1 + warm snapshot + `run_plan_db_phase` entry
 - `crates/core/src/db/plan_parallel.rs` - direct-connect runner with a shared TDS session
 - `crates/core/src/db/plan_batch.rs` - sequential runner (`RMIG_SESSION` / rmigd)
-- `crates/core/src/db/plan_common.rs` - shared cold / incremental / git-delta logic
+- `crates/core/src/db/plan_common/mod.rs` - shared cold / incremental / git-delta logic
 - `crates/core/src/db/plan_db_trace.rs` - `PlanDbTrace` (`PlanDbTimings`, `PlanDbFlags`), SLO env, trace JSON
 - `crates/core/src/db/catalog_inspect_cache.rs` - in-process inspector scope cache
 - `crates/core/src/db/batch.rs` - combined SQL batch builder (plan bootstrap = tables only)
 - `crates/core/src/db/catalog.rs` - catalog SQL composition, row merge
 - `crates/core/src/db/catalog_cache.rs` - strict and relaxed cache load
-- `crates/core/src/db/catalog_cache_save.rs` - batched cache save, workspace snapshot
+- `crates/core/src/db/catalog_cache_save/mod.rs` - batched cache save, workspace snapshot
 - `crates/core/src/db/columns.rs` - on-demand column load (scaffold)
 - `crates/core/src/db/state.rs` - `CatalogState`, `ChecksumMap`
 - `sql/catalog/`, `sql/audit/` - embedded via `crates/core/src/sql/mod.rs`

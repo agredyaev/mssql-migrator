@@ -8,10 +8,10 @@ Describe the **in-memory layout model**: object keys, workspace entries, string 
 
 ## Scope
 
-- `crates/core/src/domain/workspace.rs` - `Workspace`, object list, digest hooks
-- `crates/core/src/domain/object.rs`, `key.rs`, `action.rs`, `kind_code.rs`
+- `crates/core/src/domain/workspace/mod.rs` - `Workspace`, object list, digest hooks
+- `crates/core/src/domain/object/mod.rs`, `key.rs`, `action.rs`, `kind_code.rs`
 - `crates/core/src/domain/schema.rs`, `script.rs`, `store.rs`
-- `crates/core/src/domain/arena.rs`, `shared.rs` - string dedup / `SharedStr`
+- `crates/core/src/domain/arena/mod.rs`, `shared/mod.rs` - string dedup / `SharedStr`
 - `crates/core/src/domain/fingerprint.rs` - `key_fingerprint` for normalized path bytes
 - `crates/core/src/domain/path_cache.rs` - object/transition path caches on `Workspace`
 - `crates/core/src/domain/mod.rs` - `intern_catalog_state`, `for_each_entry`
