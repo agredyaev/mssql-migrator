@@ -17,8 +17,7 @@ use tokio::sync::OnceCell;
 static DB_ENSURE: OnceCell<()> = OnceCell::const_new();
 
 #[allow(dead_code)]
-fn debug_log(_hypothesis_id: &str, _location: &str, _message: &str, _data: serde_json::Value) {
-}
+fn debug_log(_hypothesis_id: &str, _location: &str, _message: &str, _data: serde_json::Value) {}
 
 /// Same env contract as `ops/perf/cli_phase.sh` / `make slo`.
 fn ensure_slo_harness_env() {
