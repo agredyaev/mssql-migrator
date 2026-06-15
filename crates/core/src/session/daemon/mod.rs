@@ -1,4 +1,22 @@
 //! Unix socket daemon holding one warm TDS connection.
+//!
+//! ### Purpose
+//! Listens on a Unix socket, accepts session requests, and multiplexes them
+//! over a single pre-warmed TDS connection. Avoids per-invocation TDS login
+//! overhead and catalog warm-up for repeated `rmig` operations.
+//!
+//! ### Non-obvious behaviour
+//! - **Single connection, concurrent clients**: All spawned tasks share one
+//!   `Arc<tokio::sync::Mutex<RawClient>>`. Requests are serialised at the
+//!   TDS level — each waits for the previous query to finish.
+//! - **Async mutex**: Uses `tokio::sync::Mutex` (not `std::sync::Mutex`)
+//!   because the lock is held across `.await` points in RPC handlers.
+//! - **Feature-gated**: Entire module is `#[cfg(feature = "session-daemon")]`.
+//!   Without the feature, `run_daemon`, `verify_token`, etc. are unavailable.
+//! - **No backpressure**: Incoming connections spawn a new `tokio::spawn`
+//!   unconditionally. Under extreme load the task queue grows unbounded.
+//! - **Socket lifecycle**: Existing socket file is removed on startup.
+//!   Directory parents are created if missing.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -6,17 +24,22 @@ use std::sync::Arc;
 use tokio::net::UnixListener;
 use tokio::sync::Mutex;
 
-use crate::config::{build_config, load_env_file, validate_config};
+use crate::config::{build_config, load_env_file, load_env_file_required, validate_config};
 use crate::driver::connect;
 
 mod serve;
 use super::socket::{resolve_socket_path, restrict_socket_mode};
 use serve::serve;
 
-pub async fn run_daemon(socket: &Path, env_path: &Path) -> anyhow::Result<()> {
-    let env = load_env_file(env_path)?;
+pub async fn run_daemon(socket: &Path, env_path: &Path, env_required: bool) -> anyhow::Result<()> {
+    let env = if env_required {
+        load_env_file_required(env_path)?
+    } else {
+        load_env_file(env_path)?
+    };
     let mut cfg = build_config(&env, false);
     validate_config(&mut cfg).map_err(|e| anyhow::anyhow!("{e}"))?;
+    super::auth::apply_session_token_from_config(&cfg);
     let conn = connect(&cfg).await?;
     let shared = Arc::new(Mutex::new(conn.client));
     let socket = if socket.as_os_str().is_empty() {
@@ -34,13 +57,13 @@ pub async fn run_daemon(socket: &Path, env_path: &Path) -> anyhow::Result<()> {
     }
     let listener = UnixListener::bind(&socket)?;
     restrict_socket_mode(&socket)?;
-    eprintln!("rmigd listening on {}", socket.display());
+    tracing::info!(socket = %socket.display(), "rmigd listening");
     loop {
         let (stream, _) = listener.accept().await?;
         let client = shared.clone();
         tokio::spawn(async move {
             if let Err(e) = serve(stream, client).await {
-                eprintln!("rmigd client: {e}");
+                tracing::warn!(error = %e, "rmigd client failed");
             }
         });
     }

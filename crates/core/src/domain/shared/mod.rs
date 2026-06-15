@@ -94,6 +94,11 @@ pub fn share(s: impl AsRef<str>) -> SharedStr {
     SharedStr::new(s)
 }
 
+/// Returns a canonical empty [`SharedStr`].
+///
+/// The `OnceLock` caches a single `SharedStrInner::Empty` allocation across
+/// the process lifetime, avoiding repeated heap allocations for every
+/// empty-string reference.
 pub fn empty_str() -> SharedStr {
     static EMPTY: OnceLock<SharedStr> = OnceLock::new();
     EMPTY

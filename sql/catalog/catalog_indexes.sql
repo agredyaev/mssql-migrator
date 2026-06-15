@@ -7,8 +7,8 @@ SELECT
 FROM sys.indexes i
 INNER JOIN sys.objects o ON o.object_id = i.object_id
 INNER JOIN sys.schemas s ON s.schema_id = o.schema_id
-INNER JOIN inspector_scope sc ON sc.schema_name = LOWER(s.name)
-    AND sc.object_name = LOWER(i.name)
+INNER JOIN inspector_scope sc ON sc.schema_name = LOWER(s.name) COLLATE DATABASE_DEFAULT
+    AND sc.object_name = LOWER(i.name) COLLATE DATABASE_DEFAULT
     AND sc.kind = 'indexes'
 WHERE i.is_hypothetical = 0
   AND i.name IS NOT NULL

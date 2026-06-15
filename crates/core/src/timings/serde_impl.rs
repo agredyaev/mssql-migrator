@@ -3,6 +3,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use super::phase::PhaseTimings;
 use super::wire::PhaseTimingsWire;
 
+/// Custom `Serialize`: zero-valued timing fields and `false` boolean flags
+/// are omitted for compact JSON. Custom `Deserialize` reads through the wire
+/// intermediate, then converts.
 impl<'de> Deserialize<'de> for PhaseTimings {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         Ok(PhaseTimingsWire::deserialize(deserializer)?.into_phase_timings())

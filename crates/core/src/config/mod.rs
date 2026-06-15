@@ -18,23 +18,28 @@
 //! - **Missing Variables / Bad Formats**: Halts processing, formats error outputs, and returns `Error::Config`.
 
 mod accessors;
+mod auth_mode;
 mod catalog;
+mod catalog_paths;
 mod cold;
 mod debug;
 mod default;
+mod ensure_db;
 mod env;
+mod env_build;
 mod flags;
 mod validate;
 
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-pub use catalog::{
-    discover_catalog_databases, ensure_catalog_databases_exist, normalize_catalog_paths,
-    resolve_single_database,
-};
+pub use auth_mode::{sql_credentials_required, uses_integrated_auth};
+pub use catalog::discover_catalog_databases;
+pub use catalog_paths::{normalize_catalog_paths, resolve_single_database};
 pub use cold::ConfigCold;
-pub use env::{build_config, load_env_file};
+pub use ensure_db::ensure_catalog_databases_exist;
+pub use env::{load_env_file, load_env_file_required};
+pub use env_build::build_config;
 pub use validate::validate_config;
 
 /// Hot run flags + layout paths; connection block in [`ConfigCold`] behind `Arc`.
