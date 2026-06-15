@@ -21,12 +21,36 @@ pub async fn warm_db_once() {
         .get_or_init(|| async {
             let cfg = config();
             let l1 = migrator_core::cache::l1::L1Cache::new(&cfg.l1_cache_dir);
-            let _ = l1.invalidate_all(&l1_fingerprint(cfg));
+            let fingerprint = l1_fingerprint(cfg);
+            let _ = l1.invalidate_all(&fingerprint);
+            // #region agent log
+            super::debug_log(
+                "H6",
+                "crates/core/tests/common/warm.rs:warm_db_once",
+                "warm db invalidated l1 before bootstrap run",
+                serde_json::json!({
+                    "fingerprint": fingerprint,
+                    "l1_cache_dir": cfg.l1_cache_dir,
+                    "database": cfg.database,
+                }),
+            );
+            // #endregion
             let mut warm = cfg.clone();
             warm.set_inspect_full(false);
-            run_command(Command::Plan, &warm)
+            let out = run_command(Command::Plan, &warm)
                 .await
                 .expect("integration warm_db_once plan");
+            // #region agent log
+            super::debug_log(
+                "H6",
+                "crates/core/tests/common/warm.rs:warm_db_once",
+                "warm db plan timings captured",
+                serde_json::json!({
+                    "timings": serde_json::to_value(&out.timings).unwrap_or(serde_json::Value::Null),
+                    "l1_hit": out.timings.l1_cache_hit(),
+                }),
+            );
+            // #endregion
         })
         .await;
 }

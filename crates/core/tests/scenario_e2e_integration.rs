@@ -65,7 +65,7 @@ async fn apply_smoke_setup() {
         eprintln!("skip: RMIG_RUN_SQLSERVER_INTEGRATION not set");
         return;
     }
-    let cfg = common::config();
+    let cfg = common::direct_config();
     migrate::run_apply_smoke(cfg)
         .await
         .expect("apply smoke setup for warm scenarios");
@@ -104,7 +104,7 @@ async fn scenario_matches_baseline() {
 
 async fn run_plan_scenario(scenario: &str, baseline_data: &str) {
     let baseline_rep = read_e2e_report_json(baseline_data).expect("parse baseline e2e report");
-    let cfg = common::config();
+    let cfg = common::direct_config();
     if !db_reset_skip::skip_db_reset() {
         db_reset::reset_test_database(cfg)
             .await
@@ -130,7 +130,7 @@ async fn run_plan_scenario(scenario: &str, baseline_data: &str) {
 
 async fn run_apply_scenario(baseline_data: &str) {
     let baseline_rep = read_e2e_apply_json(baseline_data).expect("parse baseline apply report");
-    let cfg = common::config();
+    let cfg = common::direct_config();
     if !db_reset_skip::skip_db_reset() {
         db_reset::reset_test_database(cfg)
             .await
@@ -168,7 +168,7 @@ async fn run_apply_scenario(baseline_data: &str) {
 
 async fn run_ddl_transition_scenario(baseline_data: &str) {
     let baseline_rep = read_e2e_apply_json(baseline_data).expect("parse baseline apply report");
-    let mut cfg = common::config().clone();
+    let mut cfg = common::direct_config().clone();
     cfg.set_skip_git(false);
     if !db_reset_skip::skip_db_reset() {
         db_reset::reset_test_database(&cfg)
@@ -193,7 +193,7 @@ async fn run_ddl_transition_scenario(baseline_data: &str) {
 
 async fn run_gate_scenario(baseline_data: &str) {
     let baseline_rep = read_e2e_gate_json(baseline_data).expect("parse baseline gate report");
-    let cfg = common::config();
+    let cfg = common::direct_config();
     if !db_reset_skip::skip_db_reset() {
         db_reset::reset_test_database(cfg)
             .await
@@ -214,7 +214,7 @@ async fn run_gate_scenario(baseline_data: &str) {
 
 async fn run_blocked_scenario(baseline_data: &str) {
     let baseline_rep = read_e2e_blocked_json(baseline_data).expect("parse baseline blocked report");
-    let cfg = common::config();
+    let cfg = common::direct_config();
     if !db_reset_skip::skip_db_reset() {
         db_reset::reset_test_database(cfg)
             .await
