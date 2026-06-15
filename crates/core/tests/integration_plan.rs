@@ -6,8 +6,9 @@ mod common;
 #[path = "common/warm.rs"]
 mod warm;
 
-use std::fs::OpenOptions;
+use std::fs::{create_dir_all, OpenOptions};
 use std::io::Write;
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use migrator_core::config::{
@@ -33,10 +34,18 @@ fn debug_log(hypothesis_id: &str, location: &str, message: &str, data: serde_jso
             .map(|duration| duration.as_millis())
             .unwrap_or_default(),
     });
+    let debug_log = std::env::var("RMIG_DEBUG_LOG").unwrap_or_else(|_| {
+        let cwd = std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."));
+        format!("{}/.cursor/debug-1200a9.log", cwd.display())
+    });
+    if let Some(parent) = PathBuf::from(&debug_log).parent() {
+        let _ = create_dir_all(parent);
+    }
     if let Ok(mut file) = OpenOptions::new()
         .create(true)
         .append(true)
-        .open("~/project/mssql-reporting-migrator/.cursor/debug-1200a9.log")
+        .open(&debug_log)
     {
         let mut line = payload.to_string();
         line.push('\n');

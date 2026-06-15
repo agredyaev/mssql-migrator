@@ -105,6 +105,7 @@ prod-gate: db-up
 
 slo: db-up
 	@chmod +x ops/perf/cli_phase.sh
+	@mkdir -p .cursor
 	@printf '%s\n' "{\"sessionId\":\"1200a9\",\"runId\":\"$${RMIG_DEBUG_RUN_ID:-manual}\",\"hypothesisId\":\"H9\",\"location\":\"Makefile:slo\",\"message\":\"make slo target invoked\",\"data\":{\"pwd\":\"$(CURDIR)\",\"target\":\"slo\"},\"timestamp\":$$(($$(date +%s) * 1000))}" >> .cursor/debug-1200a9.log
 	@printf 'make slo debug session=1200a9 run_id=%s\n' "$${RMIG_DEBUG_RUN_ID:-manual}" >&2
 	RMIG_USE_RMIGD=1 ops/perf/cli_phase.sh slo $(ARGS)
