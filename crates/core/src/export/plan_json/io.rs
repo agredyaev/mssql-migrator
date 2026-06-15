@@ -11,7 +11,8 @@ pub fn write_plan_json(
     ws: Option<&Workspace>,
     w: &mut dyn Write,
 ) -> Result<()> {
-    let v = if !plan.rows.is_empty() {
+    let fully_materialized = !plan.rows.is_empty() && plan.objects.len() == plan.rows.len();
+    let v = if !plan.rows.is_empty() && !fully_materialized {
         let ws = ws.ok_or_else(|| {
             crate::error::Error::InvalidInput(
                 "write_plan_json: workspace required for slim plan rows".into(),

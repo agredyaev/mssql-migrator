@@ -2,7 +2,7 @@ use crate::driver::{DbClient, TimingConn};
 use crate::error::Result;
 use crate::sql;
 
-use super::cache::{mark_tables_ensured, tables_ensured};
+use super::cache::{invalidate_audit_cache_all, mark_tables_ensured, tables_ensured};
 
 pub async fn ensure_tables_on(client: &mut DbClient, db_fp: &str) -> Result<()> {
     if tables_ensured(db_fp) {
@@ -27,11 +27,11 @@ pub async fn probe_audit_tables_exist(conn: &mut TimingConn) -> Result<bool> {
 }
 
 pub async fn sync_tables_ensured(conn: &mut TimingConn, db_fp: &str) -> Result<()> {
-    if tables_ensured(db_fp) {
-        return Ok(());
-    }
-    if probe_audit_tables_exist(conn).await? {
+    let exists = probe_audit_tables_exist(conn).await?;
+    if exists {
         mark_tables_ensured(db_fp);
+    } else if tables_ensured(db_fp) {
+        invalidate_audit_cache_all(db_fp);
     }
     Ok(())
 }

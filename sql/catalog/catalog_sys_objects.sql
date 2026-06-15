@@ -18,8 +18,8 @@ SELECT
     LOWER(ISNULL(parent.name, '')) AS parent_name
 FROM sys.objects o
 INNER JOIN sys.schemas s ON s.schema_id = o.schema_id
-INNER JOIN inspector_scope sc ON sc.schema_name = LOWER(s.name)
-    AND sc.object_name = LOWER(o.name)
+INNER JOIN inspector_scope sc ON sc.schema_name = LOWER(s.name) COLLATE DATABASE_DEFAULT
+    AND sc.object_name = LOWER(o.name) COLLATE DATABASE_DEFAULT
     AND sc.kind IN (
         'tables', 'views', 'procedures', 'functions', 'triggers', 'queues', 'synonyms', 'sequences'
     )
@@ -35,6 +35,6 @@ INNER JOIN inspector_scope sc ON sc.schema_name = LOWER(s.name)
         WHEN 'synonym' THEN 'synonyms'
         WHEN 'sequence_object' THEN 'sequences'
         ELSE LOWER(o.type_desc)
-    END
+    END COLLATE DATABASE_DEFAULT
 LEFT JOIN sys.objects parent ON parent.object_id = o.parent_object_id
 WHERE o.is_ms_shipped = 0

@@ -1,6 +1,6 @@
 use crate::domain::{StrOff, Workspace};
 
-/// Slim git side row. Materialize to [`PlannedGit`] at export only.
+/// Slim git side row. Materialize to [`super::PlannedGit`] at export only.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PlanGitOff {
     pub hash_off: StrOff,

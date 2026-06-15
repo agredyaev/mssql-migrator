@@ -44,19 +44,22 @@ async fn run_apply(
     timings: &mut PhaseTimings,
 ) -> Result<()> {
     crate::lock::acquire(conn, cfg).await?;
-    let t = Instant::now();
-    let apply = crate::apply::execute_plan(cfg, conn, ws, plan).await?;
-    timings.apply_ms = timings::dur_ms(t.elapsed());
-    crate::lock::release(conn).await?;
-    tracing::debug!(
-        applied = apply.applied,
-        skipped = apply.skipped,
-        failed = apply.failed,
-        "apply finished"
-    );
-    if apply.failed == 0 && apply.applied > 0 {
-        super::warm_store::clear_plan_db_snapshot();
-        let _ = crate::db::save_workspace_snapshot(conn, &ws.layout_digest, ws).await;
+    let body_result = async {
+        let t = Instant::now();
+        let apply = crate::apply::execute_plan(cfg, conn, ws, plan).await?;
+        timings.apply_ms = timings::dur_ms(t.elapsed());
+        tracing::debug!(
+            applied = apply.applied,
+            skipped = apply.skipped,
+            failed = apply.failed,
+            "apply finished"
+        );
+        if apply.failed == 0 && apply.applied > 0 {
+            super::warm_store::clear_plan_db_snapshot();
+            let _ = crate::db::save_workspace_snapshot(conn, &ws.layout_digest, ws).await;
+        }
+        Ok(())
     }
-    Ok(())
+    .await;
+    crate::lock::release_after_body(conn, body_result).await
 }

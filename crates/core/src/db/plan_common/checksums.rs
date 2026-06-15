@@ -37,6 +37,9 @@ async fn history_table_is_empty_plan(conn: &mut PlanDbConn<'_>, db_fp: &str) -> 
     if let Some(empty) = audit::history_empty_cached(db_fp) {
         return Ok(empty);
     }
+    if !audit::tables_ensured(db_fp) {
+        ensure_tables_plan(conn, db_fp).await?;
+    }
     let rows = conn.query(sql::audit::HISTORY_EMPTY, &[]).await?;
     audit::mark_tables_ensured(db_fp);
     let has_rows = rows

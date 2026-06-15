@@ -12,7 +12,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.11"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-tiberius = { version = "0.12.3", default-features = false, features = ["tds73", "chrono", "native-tls"] }
+tiberius = { version = "0.12.3", default-features = false, features = ["tds73", "chrono", "native-tls", "integrated-auth-gssapi", "winauth"] }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
@@ -25,3 +25,4 @@ session-daemon = []
 tempfile = "3.27"
 tracing-subscriber = { workspace = true }
 migrator-core-dev = { path = "../core-dev" }
+proptest = "1.11.0"

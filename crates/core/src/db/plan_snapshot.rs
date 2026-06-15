@@ -44,7 +44,7 @@ pub async fn run_plan_db_phase(
         });
     }
 
-    if let Some((checksums, catalog)) = super::warm_snapshot::reuse(&ws.layout_digest) {
+    if let Some((checksums, catalog)) = super::warm_snapshot::reuse(&fp, &ws.layout_digest) {
         l1.save(&fp, &ws.layout_digest, &checksums, &catalog)?;
         return Ok(PlanDbResult {
             checksums,

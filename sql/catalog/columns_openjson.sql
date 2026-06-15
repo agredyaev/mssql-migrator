@@ -1,9 +1,9 @@
 WITH inspector_column_scope AS (
     SELECT
-        LOWER(JSON_VALUE(value, '$.schema')) AS schema_name,
-        LOWER(JSON_VALUE(value, '$.object')) AS table_name
+        LOWER(JSON_VALUE(value, '$.schema')) COLLATE DATABASE_DEFAULT AS schema_name,
+        LOWER(JSON_VALUE(value, '$.object')) COLLATE DATABASE_DEFAULT AS table_name
     FROM OPENJSON(@p1)
-    WHERE LOWER(JSON_VALUE(value, '$.kind')) = 'tables'
+    WHERE LOWER(JSON_VALUE(value, '$.kind')) COLLATE DATABASE_DEFAULT = 'tables'
 )
 SELECT
     LOWER(s.name) AS schema_name,
@@ -18,7 +18,7 @@ FROM sys.columns c
 JOIN sys.objects o ON o.object_id = c.object_id
 JOIN sys.schemas s ON s.schema_id = o.schema_id
 JOIN sys.types t ON t.user_type_id = c.user_type_id
-JOIN inspector_column_scope sc ON sc.schema_name = LOWER(s.name)
-    AND sc.table_name = LOWER(o.name)
+JOIN inspector_column_scope sc ON sc.schema_name = LOWER(s.name) COLLATE DATABASE_DEFAULT
+    AND sc.table_name = LOWER(o.name) COLLATE DATABASE_DEFAULT
 WHERE o.is_ms_shipped = 0
   AND o.type = 'U'

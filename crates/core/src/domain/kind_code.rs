@@ -1,3 +1,11 @@
+//! Compact numeric codes for SQL object kinds (`u8`).
+//!
+//! ### Purpose
+//! [`KindCode`] encodes the 9 supported SQL object kinds as `#[repr(u8)]`
+//! so they can be stored densely in script metadata and compared without
+//! string allocation. `parse_kind` resolves a kind string to its code;
+//! `kind_code` is the shorthand version.
+
 pub const KIND_TYPES: u8 = 1;
 pub const KIND_SEQUENCES: u8 = 2;
 pub const KIND_TABLES: u8 = 3;

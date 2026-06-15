@@ -1,3 +1,10 @@
+//! Catalog SQL batch construction and result-row merging.
+//!
+//! ### Purpose
+//! Builds parameterised T-SQL batches for inspecting the database catalog
+//! (schemas, sys.objects, types, indexes) and merges the result rows into a
+//! [`CatalogState`].
+
 use crate::db::state::{catalog_object, CatalogState};
 use crate::domain::ObjectKey;
 use crate::error::Result;
@@ -64,11 +71,13 @@ fn build_catalog_from_header(header: &str, kinds: &[&str], skip_schema_rows: boo
     b
 }
 
+/// Heuristic: true when rows look like catalog inspect output (first cell is `"object"` or `"schema"`).
 pub fn looks_like_catalog_rows(rows: &[crate::driver::RowData]) -> bool {
     rows.first()
         .is_some_and(|r| r.cells.len() >= 5 && matches!(r.get_str(0), Some("object" | "schema")))
 }
 
+/// Heuristic: true when rows look like cache-load output (first cell contains `/`).
 pub fn looks_like_cache_load_rows(rows: &[crate::driver::RowData]) -> bool {
     rows.first()
         .is_some_and(|r| r.cells.len() >= 5 && r.get_str(0).is_some_and(|k| k.contains('/')))
@@ -79,6 +88,7 @@ pub fn scoped_hit_sql_batch() -> String {
     sql::catalog::SCOPED_HIT.replace("@p1", "@p2")
 }
 
+/// Merge catalog SQL result rows into a [`CatalogState`].
 pub fn merge_rows(state: &mut CatalogState, rows: &[crate::driver::RowData]) -> Result<()> {
     for row in rows {
         let kind = row.get_str(0).unwrap_or("");

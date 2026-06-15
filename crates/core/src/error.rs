@@ -54,7 +54,10 @@ impl Error {
             Self::LockTimeout => EXIT_LOCK_TIMEOUT,
             Self::Sql(m) => {
                 let lower = m.to_lowercase();
-                if lower.contains("connect ") || lower.starts_with("connect") {
+                if lower.contains("connect ")
+                    || lower.starts_with("connect")
+                    || lower.contains("tds handshake")
+                {
                     EXIT_CONN
                 } else {
                     EXIT_SQL

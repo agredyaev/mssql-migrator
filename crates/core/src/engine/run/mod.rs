@@ -13,7 +13,14 @@ use crate::export::MigrationPlan;
 use crate::timings::{self, PhaseTimings};
 
 use database::run_command_for_database;
-use merge::merge_timings;
+use merge::{merge_plan, merge_timings};
+
+fn command_ensures_catalog_databases(cmd: types::Command) -> bool {
+    matches!(
+        cmd,
+        types::Command::Migrate | types::Command::Baseline | types::Command::RepairChecksum
+    )
+}
 
 pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput> {
     if cmd == types::Command::Version {
@@ -30,7 +37,9 @@ pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput>
     } else {
         discover_catalog_databases(&cfg.sql_root)?
     };
-    ensure_catalog_databases_exist(cfg, &databases).await?;
+    if command_ensures_catalog_databases(cmd) {
+        ensure_catalog_databases_exist(cfg, &databases).await?;
+    }
 
     let t_scan = Instant::now();
     let mut ws_full = Workspace::default();
@@ -57,8 +66,8 @@ pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput>
             run_command_for_database(cmd, &cfg_db, ws, scan_elapsed, cli_start, multi).await?;
         exit_code = exit_code.max(out.exit_code);
         merge_timings(&mut merged, &out.timings);
-        if out.plan.is_some() {
-            last_plan = out.plan;
+        if let Some(plan) = out.plan {
+            merge_plan(&mut last_plan, plan);
         }
     }
 
@@ -66,9 +75,10 @@ pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput>
     merged.engine_ms = merged.plan_wall_ms.saturating_sub(merged.connect_ms);
     merged.cli_wall_ms = merged.plan_wall_ms;
 
-    Ok(types::RunOutput {
+    let out = types::RunOutput {
         exit_code,
         timings: merged,
         plan: last_plan,
-    })
+    };
+    Ok(out)
 }

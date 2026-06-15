@@ -18,6 +18,9 @@ pub(super) async fn run_parallel_with_ensure(
     trace: &mut PlanDbTrace,
 ) -> Result<(i64, BodyOutput)> {
     let client = conn.take_client();
+    // `tokio::sync::Mutex` wraps the TDS connection so two async tasks
+    // (the plan-body query and the ensure-tables probe) can share one
+    // client without contention on a `std::sync::Mutex` across `.await`.
     let shared = Arc::new(tokio::sync::Mutex::new(client));
     let io = Arc::clone(&conn.io);
     let db_fp2 = ctx.db_fp.to_string();
