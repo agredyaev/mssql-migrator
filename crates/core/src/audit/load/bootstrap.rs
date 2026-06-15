@@ -14,7 +14,7 @@ pub async fn ensure_tables_on(client: &mut DbClient, db_fp: &str) -> Result<()> 
 }
 
 pub async fn ensure_tables(conn: &mut TimingConn, db_fp: &str) -> Result<()> {
-    ensure_tables_on(conn.client_mut(), db_fp).await
+    ensure_tables_on(conn.client_mut()?, db_fp).await
 }
 
 const AUDIT_HISTORY_TABLE_PROBE: &str =

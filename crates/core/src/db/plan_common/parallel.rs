@@ -17,10 +17,9 @@ pub(super) async fn run_parallel_with_ensure(
     ctx: RunParallelContext<'_>,
     trace: &mut PlanDbTrace,
 ) -> Result<(i64, BodyOutput)> {
-    let client = conn.take_client();
-    // `tokio::sync::Mutex` wraps the TDS connection so two async tasks
-    // (the plan-body query and the ensure-tables probe) can share one
-    // client without contention on a `std::sync::Mutex` across `.await`.
+    let client = conn.take_client()?;
+    // The direct path keeps one TDS session and serialises access through an
+    // async mutex while preserving a single owner for restoration below.
     let shared = Arc::new(tokio::sync::Mutex::new(client));
     let io = Arc::clone(&conn.io);
     let db_fp2 = ctx.db_fp.to_string();
@@ -82,7 +81,7 @@ pub(super) async fn run_parallel_with_ensure(
     let client = Arc::try_unwrap(shared)
         .map_err(|_| crate::error::Error::Sql("plan parallel: shared conn still in use".into()))?
         .into_inner();
-    conn.restore_client(client);
+    conn.restore_client(client)?;
 
     Ok((ensure_ms, body))
 }

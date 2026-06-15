@@ -3,9 +3,8 @@
 //! ### Non-obvious
 //! - Gated by `RMIG_INTEGRATION_WARM_SNAPSHOT=1` env var. Without it all
 //!   functions are no-ops.
-//! - Uses a process-global `Mutex<Option<Snapshot>>`. Every access unwraps the
-//!   lock — a panic while holding it will poison the mutex and crash subsequent
-//!   callers. Acceptable because this is a test-only / SLO-gate facility.
+//! - Uses a process-global `Mutex<Option<Snapshot>>`. A poisoned mutex disables
+//!   snapshot reuse for that call instead of crashing the process.
 //! - The digest + `server_database` pair are compared for cache-hit; a digest
 //!   match across different databases (BG-007) is explicitly rejected.
 
@@ -33,19 +32,32 @@ pub fn store(
     if !reuse_enabled() {
         return;
     }
-    *SNAP.lock().expect("warm snapshot lock") = Some(Snapshot {
-        server_database: server_database.to_string(),
-        digest,
-        checksums,
-        catalog,
-    });
+    match SNAP.lock() {
+        Ok(mut snap) => {
+            *snap = Some(Snapshot {
+                server_database: server_database.to_string(),
+                digest,
+                checksums,
+                catalog,
+            });
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "warm snapshot store skipped after poisoned mutex");
+        }
+    }
 }
 
 pub fn reuse(server_database: &str, digest: &[u8; 32]) -> Option<(ChecksumMap, CatalogState)> {
     if !reuse_enabled() {
         return None;
     }
-    let s = SNAP.lock().expect("warm snapshot lock").clone()?;
+    let s = match SNAP.lock() {
+        Ok(snap) => snap.clone()?,
+        Err(err) => {
+            tracing::warn!(error = %err, "warm snapshot reuse skipped after poisoned mutex");
+            return None;
+        }
+    };
     if s.server_database != server_database || s.digest != *digest {
         return None;
     }
@@ -54,7 +66,14 @@ pub fn reuse(server_database: &str, digest: &[u8; 32]) -> Option<(ChecksumMap, C
 
 /// Drop cached plan DB state (e.g. after migrate apply when catalog changed).
 pub fn clear() {
-    *SNAP.lock().expect("warm snapshot lock") = None;
+    match SNAP.lock() {
+        Ok(mut snap) => {
+            *snap = None;
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "warm snapshot clear skipped after poisoned mutex");
+        }
+    }
 }
 
 fn reuse_enabled() -> bool {

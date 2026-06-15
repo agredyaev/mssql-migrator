@@ -7,9 +7,10 @@ use super::Workspace;
 
 impl Workspace {
     pub fn layout_arena(&self) -> &LayoutArena {
-        self.layout_arena
-            .as_ref()
-            .expect("layout arena missing — call intern_workspace_strings first")
+        match self.layout_arena.as_ref() {
+            Some(arena) => arena,
+            None => panic!("layout arena missing; call intern_workspace_strings first"),
+        }
     }
 
     pub fn str_at(&self, off: StrOff) -> &str {

@@ -17,7 +17,7 @@ pub async fn filter_applied(
     if !need {
         return Ok(());
     }
-    let applied = audit::load_all_applied(conn.client_mut()).await?;
+    let applied = audit::load_all_applied(conn.client_mut()?).await?;
     filter_migrations::filter_applied_migrations(plan, ws, &applied);
     Ok(())
 }

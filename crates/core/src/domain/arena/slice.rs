@@ -35,7 +35,10 @@ impl StringArena {
     }
 
     pub fn str_at(&self, off: u32, len: u32) -> &str {
-        std::str::from_utf8(self.slice_bytes(off, len)).expect("arena utf-8")
+        match std::str::from_utf8(self.slice_bytes(off, len)) {
+            Ok(s) => s,
+            Err(err) => panic!("arena UTF-8 invariant violated: {err}"),
+        }
     }
 
     pub fn shared_at(&self, off: u32, len: u32) -> SharedStr {

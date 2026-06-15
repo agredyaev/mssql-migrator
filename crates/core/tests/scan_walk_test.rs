@@ -19,6 +19,30 @@ fn scan_rejects_backslash_path_component_regression() {
     assert_eq!(ws.object_count(), 0);
 }
 
+#[test]
+fn scan_rejects_backslash_transition_path_component_regression() {
+    let base = tempfile::tempdir().expect("tempdir");
+    let object = base.path().join("dactests/smoke/tables/t1.sql");
+    let transition = base
+        .path()
+        .join("dactests/bad\\schema/tables/_migrations/t1/001_deadbee_add.sql");
+    std::fs::create_dir_all(object.parent().expect("object parent")).expect("mkdir object");
+    std::fs::create_dir_all(transition.parent().expect("transition parent"))
+        .expect("mkdir transition");
+    std::fs::write(&object, "CREATE TABLE smoke.t1(id INT NOT NULL);\n").expect("write object");
+    std::fs::write(&transition, "ALTER TABLE smoke.t1 ADD name INT NULL;\n")
+        .expect("write transition");
+
+    let mut ws = Workspace::default();
+    let err = scan_root(&mut ws, base.path().to_str().expect("utf8 path"))
+        .expect_err("transition path components must be validated before metadata capture");
+
+    assert!(
+        err.to_string().contains("invalid character"),
+        "unexpected error: {err}"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn scan_skips_symlinked_sql_files() {

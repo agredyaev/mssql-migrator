@@ -61,7 +61,10 @@ impl SharedStr {
             SharedStrInner::Slice { buf, start, len } => {
                 let start = *start as usize;
                 let end = start + *len as usize;
-                std::str::from_utf8(&buf[start..end]).expect("arena utf-8")
+                match std::str::from_utf8(&buf[start..end]) {
+                    Ok(s) => s,
+                    Err(err) => panic!("arena UTF-8 invariant violated: {err}"),
+                }
             }
             SharedStrInner::Owned(s) => s,
         }
