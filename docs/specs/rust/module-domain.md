@@ -1,4 +1,4 @@
-# Technical Document: Module `domain`
+# Module `domain`
 
 Lifecycle: `Current`.
 

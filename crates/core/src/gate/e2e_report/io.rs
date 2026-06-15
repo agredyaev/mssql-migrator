@@ -5,6 +5,7 @@ use serde::Serialize;
 use crate::export::MigrationPlan;
 use crate::timings::PhaseTimings;
 
+use super::read::read_report_object;
 use super::types::{E2EApplyReport, E2EBlockedReport, E2EGateReport, E2EScenarioReport};
 use crate::gate::snapshot::PlanSnapshot;
 
@@ -47,19 +48,19 @@ pub fn build_e2e_report(
 }
 
 pub fn read_e2e_report_json(data: &str) -> Result<E2EScenarioReport, serde_json::Error> {
-    serde_json::from_str(data)
+    read_report_object(data, &["timings", "io", "snapshot", "action_counts"])
 }
 
 pub fn read_e2e_apply_json(data: &str) -> Result<E2EApplyReport, serde_json::Error> {
-    serde_json::from_str(data)
+    read_report_object(data, &["timings"])
 }
 
 pub fn read_e2e_gate_json(data: &str) -> Result<E2EGateReport, serde_json::Error> {
-    serde_json::from_str(data)
+    read_report_object(data, &["snapshot"])
 }
 
 pub fn read_e2e_blocked_json(data: &str) -> Result<E2EBlockedReport, serde_json::Error> {
-    serde_json::from_str(data)
+    read_report_object(data, &["timings"])
 }
 
 pub fn write_e2e_report_file(

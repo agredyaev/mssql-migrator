@@ -9,7 +9,7 @@ ARTIFACTS="$ROOT/ops/perf/artifacts"
 BASELINE="$ROOT/crates/core/tests/testdata/e2e"
 mkdir -p "$ARTIFACTS"
 
-export RMIG_SKIP_GIT=1
+export RM_SKIP_GIT="${RM_SKIP_GIT:-1}"
 
 run_scenario() {
   local scenario="$1"

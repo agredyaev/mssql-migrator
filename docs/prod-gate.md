@@ -1,4 +1,4 @@
-# Technical Document: Prod incremental go/no-go gate
+# Prod incremental go/no-go gate
 
 Lifecycle: `Current`.
 

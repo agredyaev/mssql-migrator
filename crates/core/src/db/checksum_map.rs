@@ -39,7 +39,7 @@ impl ChecksumMap {
     }
 
     /// Hot-path insert: digest only (no duplicate normalized key bytes).
-    /// Wire keys for L1 JSON come from [`insert_normalized`] or deserialize.
+    /// Wire keys for L1 JSON come from [`Self::insert_normalized`] or deserialize.
     pub fn insert_key(&mut self, key: &ObjectKey, cs: [u8; 32]) {
         let fp = key.fingerprint();
         self.by_fp.insert(fp, cs);
@@ -72,6 +72,8 @@ impl ChecksumMap {
     }
 }
 
+/// Serializes as `HashMap<String, [u8; 32]>` using normalized keys
+/// retained during insert.  Keys are the normalised `schema/kind/name` form.
 impl Serialize for ChecksumMap {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut wire = HashMap::with_capacity(self.by_fp.len());
@@ -83,6 +85,8 @@ impl Serialize for ChecksumMap {
     }
 }
 
+/// Deserializes from `HashMap<String, [u8; 32]>` and normalises keys
+/// on insert via [`ChecksumMap::insert_normalized`].
 impl<'de> Deserialize<'de> for ChecksumMap {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let wire = HashMap::<String, [u8; 32]>::deserialize(deserializer)?;

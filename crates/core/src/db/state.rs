@@ -1,3 +1,11 @@
+//! In-memory catalog state loaded from SQL Server inspection queries.
+//!
+//! ### Purpose
+//! [`CatalogState`] holds the set of existing schemas and objects discovered
+//! during `db::inspect_with_scope`. [`CatalogObject`] is a single row with
+//! arena-backed `SharedStr` fields. Helper functions build objects from raw
+//! wire strings and intern the entire state into the domain string arena.
+
 use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
@@ -7,30 +15,43 @@ use crate::domain::{share, ObjectKey, SharedStr};
 pub use super::ChecksumMap;
 pub use crate::domain::key_fingerprint;
 
+/// Full catalog snapshot: known schemas and objects keyed by [`ObjectKey`].
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CatalogState {
+    /// Set of schema names present in the database.
     pub schemas: HashSet<String>,
+    /// Map of object key → object metadata.
     pub objects: HashMap<ObjectKey, CatalogObject>,
 }
 
+/// A single catalog object row with arena-shared string fields.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CatalogObject {
+    /// SQL schema name (arena-backed).
     pub schema: SharedStr,
+    /// Object kind (`tables`, `views`, `procedures`, …; arena-backed).
     pub kind: SharedStr,
+    /// SQL object name (arena-backed).
     pub name: SharedStr,
+    /// Parent object name (e.g. table for an index; arena-backed, `None` for top-level).
     pub parent: Option<SharedStr>,
 }
 
 impl CatalogState {
+    /// True when the given key is present in the objects map.
     pub fn exists_key(&self, key: &ObjectKey) -> bool {
         self.objects.contains_key(key)
     }
 }
 
+/// A single table column descriptor from the SQL type/index inspect queries.
 #[derive(Clone, Debug)]
 pub struct TableColumn {
+    /// Column name.
     pub name: String,
+    /// SQL type name (e.g. `nvarchar`, `int`).
     pub type_name: String,
+    /// True when the column allows NULL.
     pub nullable: bool,
 }
 

@@ -1,4 +1,11 @@
 //! Default rmigd socket path and directory permissions.
+//!
+//! ### Non-obvious
+//! - **`restrict_socket_mode`** and **`restrict_dir_mode`** are no-ops on
+//!   non-Unix platforms (`#[cfg(not(unix))]`). On Unix, socket is `0o600`,
+//!   directory `0o700`.
+//! - Socket path defaults to `~/.rmig/rmigd.sock`, overridable via `RMIGD_SOCKET`.
+//! - Directory parents are created on resolve if they do not exist.
 
 use std::path::{Path, PathBuf};
 
@@ -39,23 +46,27 @@ pub fn resolve_socket_path() -> Result<PathBuf> {
     Ok(path)
 }
 
+/// Restrict socket to owner-only (`0o600`). No-op on non-Unix.
 #[cfg(unix)]
 pub fn restrict_socket_mode(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(Error::Io)
 }
 
+/// No-op on non-Unix — Windows does not support Unix permission bits.
 #[cfg(not(unix))]
 pub fn restrict_socket_mode(_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Restrict directory to owner-only (`0o700`). No-op on non-Unix.
 #[cfg(unix)]
 fn restrict_dir_mode(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).map_err(Error::Io)
 }
 
+/// No-op on non-Unix.
 #[cfg(not(unix))]
 fn restrict_dir_mode(_path: &Path) -> Result<()> {
     Ok(())

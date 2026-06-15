@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 
-.PHONY: all build release-build test check doc-check db-up db-down db-init \
-	arch e2e e2e-all e2e-timings check-e2e integration \
+.PHONY: all build release-build test check doc-check doc-rust db-up db-down db-init \
+	arch e2e e2e-all e2e-timings check-e2e sql-regression integration \
 	slo prod-gate plan-db-perf workflow-fast \
 	bench-footprint bench-footprint-profile bench-footprint-alloc \
 	bench-footprint-update-baseline profile-summary test-int \
@@ -23,18 +23,24 @@ test:
 	cargo test -p migrator-core --lib
 
 arch:
-	@chmod +x scripts/check-rust-arch.sh scripts/check-rust-release-deps.sh scripts/check-rust-release-profile.sh scripts/check-rust-loc.sh scripts/check-e2e-scenarios.sh
+	@chmod +x scripts/check-rust-arch.sh scripts/check-rust-release-deps.sh scripts/check-rust-release-profile.sh scripts/check-rust-loc.sh scripts/check-e2e-scenarios.sh scripts/check-prod-gate-reset.sh scripts/check-e2e-git-flag.sh scripts/check-rm-db-database-contract.sh scripts/check-advisory-lock-release.sh scripts/check-sql-regression-manifest.sh ops/perf/sql_regression.sh
 	scripts/check-rust-arch.sh
 	scripts/check-rust-release-deps.sh
 	scripts/check-rust-release-profile.sh
 	scripts/check-rust-loc.sh
 	scripts/check-e2e-scenarios.sh
+	scripts/check-prod-gate-reset.sh
+	scripts/check-e2e-git-flag.sh
+	scripts/check-rm-db-database-contract.sh
+	scripts/check-advisory-lock-release.sh
+	scripts/check-sql-regression-manifest.sh
 
 check: arch
 	cargo fmt --all -- --check
 	RUSTFLAGS="-D warnings" cargo clippy -p migrator-core -p rmig -p rmigd --lib --bins --tests -- -D warnings
 	RUSTFLAGS="-D warnings" cargo test -p migrator-core --lib --tests
-	@echo "check: PASS (SQL integration: make e2e-all)"
+	RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+	@echo "check: PASS (SQL gate: make sql-regression && make check-e2e)"
 
 doc-check:
 	python3 ops/quality/scripts/check_doc_structure.py
@@ -42,6 +48,9 @@ doc-check:
 	python3 ops/quality/scripts/check_doc_path_references.py
 	python3 ops/quality/scripts/check_doc_language.py
 	python3 ops/quality/scripts/check_doc_sync.py
+
+doc-rust:
+	RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
 db-up:
 	docker compose up -d
@@ -78,7 +87,12 @@ integration: db-up
 	@chmod +x ops/perf/integration.sh
 	ops/perf/integration.sh $(ARGS)
 
+sql-regression: db-up
+	@chmod +x ops/perf/sql_regression.sh
+	ops/perf/sql_regression.sh $(ARGS)
+
 check-e2e: db-up
+	@$(MAKE) sql-regression
 	@$(MAKE) e2e-all
 	@$(MAKE) workflow-fast
 	@$(MAKE) slo
@@ -91,6 +105,7 @@ prod-gate: db-up
 
 slo: db-up
 	@chmod +x ops/perf/cli_phase.sh
+	@printf 'make slo debug session=1200a9 run_id=%s\n' "$${RMIG_DEBUG_RUN_ID:-manual}" >&2
 	RMIG_USE_RMIGD=1 ops/perf/cli_phase.sh slo $(ARGS)
 
 plan-db-perf: db-up
@@ -121,7 +136,7 @@ profile-summary:
 	@chmod +x ops/perf/profile_summary.sh
 	ops/perf/profile_summary.sh
 
-full-check: check doc-check
+full-check: check doc-check doc-rust
 
 bump:
 	@chmod +x scripts/bump-version.py

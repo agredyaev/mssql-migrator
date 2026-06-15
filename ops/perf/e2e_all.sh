@@ -9,7 +9,7 @@ ARTIFACTS="$ROOT/ops/perf/artifacts"
 BASELINE="$ROOT/crates/core/tests/testdata/e2e"
 mkdir -p "$ARTIFACTS"
 
-export RMIG_SKIP_GIT=1
+export RM_SKIP_GIT="${RM_SKIP_GIT:-1}"
 
 REPORT="$ARTIFACTS/e2e_all_report.txt"
 : > "$REPORT"
@@ -70,11 +70,11 @@ unset RMIG_GATE_SKIP_DB_RESET
 export RMIG_CATALOG_CACHE=1
 run_scenario apply_smoke_result 0
 
-unset RMIG_SKIP_GIT
+unset RM_SKIP_GIT
 export RMIG_CATALOG_CACHE=1
 export RMIG_GATE_SKIP_DB_RESET=1
 run_scenario ddl_transition_apply 1
-export RMIG_SKIP_GIT=1
+export RM_SKIP_GIT="${RM_SKIP_GIT:-1}"
 unset RMIG_CATALOG_CACHE
 export RMIG_CATALOG_CACHE=0
 

@@ -69,16 +69,5 @@ pub fn bracket_ident(name: &str) -> Result<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn quote_escapes_bracket() {
-        assert_eq!(bracket_ident("a]b").unwrap(), "[a]]b]");
-    }
-
-    #[test]
-    fn rejects_dotdot() {
-        assert!(validate_path_component("..").is_err());
-    }
-}
+#[path = "tests/sql_ident_test.rs"]
+mod sql_ident_tests;

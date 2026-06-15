@@ -33,6 +33,8 @@ impl<'a> WireMigrationPlan<'a> {
     }
 }
 
+/// Custom `Serialize`: fields with empty/`None` values are omitted for
+/// compact JSON output (`command` when empty, `blockers` when empty).
 impl serde::Serialize for WireMigrationPlan<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
@@ -55,6 +57,8 @@ impl serde::Serialize for WireMigrationPlan<'_> {
 /// Serialize plan that already has materialized `objects` (no workspace).
 pub struct PlanJsonFromObjects<'a>(pub &'a MigrationPlan);
 
+/// Custom `Serialize`: fields with empty/`None` values are omitted for
+/// compact JSON output, matching the `WireMigrationPlan` behaviour.
 impl serde::Serialize for PlanJsonFromObjects<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;

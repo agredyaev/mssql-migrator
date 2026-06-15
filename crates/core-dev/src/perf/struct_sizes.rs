@@ -41,16 +41,17 @@ pub fn collect_struct_sizes() -> Vec<StructSizeEntry> {
     out
 }
 
-pub fn struct_sizes_json() -> String {
+pub fn struct_sizes_json() -> serde_json::Result<String> {
     let b = super::baseline::FootprintBaseline::current();
-    serde_json::to_string_pretty(&b).expect("marshal footprint baseline")
+    serde_json::to_string_pretty(&b)
 }
 
 pub fn write_struct_sizes_json(path: &Path) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, format!("{}\n", struct_sizes_json()))
+    let json = struct_sizes_json().map_err(io::Error::other)?;
+    std::fs::write(path, format!("{json}\n"))
 }
 
 fn entry(package: &str, type_name: &str, bytes: usize) -> StructSizeEntry {

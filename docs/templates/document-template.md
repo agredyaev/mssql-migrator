@@ -1,4 +1,4 @@
-# Technical Document: <Title>
+# <Title>
 
 <!-- Write this document in English. Use exact repository paths, commands, artifact names, and runtime component names. Follow the NASA-style analytical structure required by docs/specs/nasa-document-spec.md. -->
 

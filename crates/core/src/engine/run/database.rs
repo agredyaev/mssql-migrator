@@ -21,10 +21,10 @@ pub(super) async fn run_command_for_database(
     timings.scan_ms = timings::dur_ms(scan_elapsed);
 
     let t_conn = Instant::now();
-    let db_client = if !cfg.session_socket.is_empty() && !multi_db {
-        crate::session::connect_daemon(&cfg.session_socket, &cfg.database).await?
-    } else {
+    let db_client = if multi_db {
         DbClient::Direct(connect(cfg).await?.client)
+    } else {
+        crate::session::connect_session_or_direct(cfg).await?
     };
     let connect_ms = timings::dur_ms(t_conn.elapsed());
     timings.connect_ms = connect_ms;
@@ -32,7 +32,13 @@ pub(super) async fn run_command_for_database(
     let mut conn = TimingConn::new(db_client, io_arc.clone(), connect_ms);
 
     let db = crate::db::run_plan_db_phase(cfg, &mut conn, &ws).await?;
-    super::super::warm_store::store_plan_db_snapshot(&ws.layout_digest, &db.checksums, &db.catalog);
+    let server_database = format!("{}_{}", cfg.server, cfg.database);
+    super::super::warm_store::store_plan_db_snapshot(
+        &server_database,
+        &ws.layout_digest,
+        &db.checksums,
+        &db.catalog,
+    );
     timings.ensure_ms = db.ensure_ms;
     timings.checksums_ms = db.checksums_ms;
     timings.inspect_ms = db.inspect_ms;

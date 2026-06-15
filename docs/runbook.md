@@ -1,4 +1,4 @@
-# Technical Document: Runbook
+# Runbook
 
 Lifecycle: `Current`.
 
@@ -9,7 +9,7 @@ Operator steps after a failed **`rmig`** run: what to read, safe re-run, and com
 ## Scope
 
 This runbook applies to the following repository paths and components:
-- Configuration validation: dotenv inputs, environment variables (`RM_DB_SERVER`, `RM_DB_DATABASE`, `RM_SQL_ROOT`).
+- Configuration validation: dotenv inputs, environment variables (`RM_DB_SERVER`, `RM_SQL_ROOT`, SQL credentials).
 - Run failure triage: stderr logs, structured JSON log outputs, and report directories.
 - Failure recovery procedures: exit code mapping and lock containment.
 
@@ -22,7 +22,7 @@ This runbook applies to the following repository paths and components:
 - **Inputs**:
   - Console stderr logs and JSON structured output from `rmig`.
   - JSON execution reports (`.plan.json` and `.report.json`) written to the directory specified by `RM_REPORT_DIR`.
-  - Environment variables: `RM_DB_SERVER`, `RM_DB_DATABASE`, and `RM_SQL_ROOT`.
+  - Environment variables: `RM_DB_SERVER`, `RM_SQL_ROOT` (catalog layout selects target database), and SQL credentials.
 - **Outputs**:
   - Restored migration progress.
   - Active distributed locks released.
@@ -41,8 +41,9 @@ This runbook applies to the following repository paths and components:
 ## Nominal Flow
 
 1. Capture and analyze the exit code, console stdout, and stderr output from the failed `rmig` process.
-2. Verify that environment variables (`RM_DB_SERVER`, `RM_DB_DATABASE`, `RM_SQL_ROOT`) point to the correct SQL Server host and source tree.
+2. Verify that `RM_DB_SERVER` and `RM_SQL_ROOT` point to the correct SQL Server host and catalog tree (top-level directory name under `RM_SQL_ROOT` is the database name; `RM_DB_DATABASE` does not override `rmig`).
 3. If `RM_REPORT_DIR` was set, inspect the output files `.plan.json` and `.report.json` to identify where the plan halted.
+4. Re-run with `RUST_LOG=debug` or `RM_LOG_LEVEL=debug` when diagnosing SQL connection, `rmigd` fallback, catalog auto-create, or cache poisoning warnings.
 
 ## Off-Nominal Behavior and Failure Containment
 
@@ -51,7 +52,10 @@ This runbook applies to the following repository paths and components:
   - *Containment*: Inspect the auto-generated `_migrations/` scaffold files under the affected table directory. Create a valid migration SQL script or revert the layout change before retrying.
 - **Exit Code 7: Session Lock Held**
   - *Cause*: Another process is currently executing migrations or failed to clean up its distributed lock.
-  - *Containment*: Let the lock release naturally or follow the recovery steps to release the lock manually.
+  - *Containment*: Let the lock release naturally or follow the recovery steps to release the lock manually. `RM_LOCK_TIMEOUT` is clamped to SQL Server's `2147483647` millisecond limit before `sp_getapplock` is called.
+- **Cache Poisoning Warning**
+  - *Cause*: A worker panicked while holding a process-local audit or catalog inspect cache mutex.
+  - *Containment*: The cache is recovered and a structured stderr warning is emitted. Re-run with `RUST_LOG=debug` and verify the SQL-backed gate before promoting the build.
 - **Prod Gate Failure**
   - *Cause*: Schema changes fail standard verification rules.
   - *Containment*: Execute the validation script locally:
@@ -81,6 +85,7 @@ make e2e-all
 ## Open Issues and Non-Goals
 
 - **Open issues**: Automated lock cleanup when a process is forcefully terminated via `SIGKILL`.
+- **ADO release gate**: Before promoting a build to production, confirm the pipeline **Integration & E2E (MSSQL)** job passed `make check-e2e` (includes `make sql-regression`). `make check` alone does not exercise SQL-backed regression tests.
 - **Non-Goals**: This document does not cover network layer issues, credential management, or manual data backfills.
 
 ## References

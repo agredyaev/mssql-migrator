@@ -11,7 +11,7 @@ SELECT
     SYSUTCDATETIME()
 FROM OPENJSON(@p1)
 WITH (
-    normalized_key nvarchar(512) '$.normalized_key',
+    normalized_key varchar(512) '$.normalized_key',
     kind           nvarchar(16)  '$.kind',
     checksum       nvarchar(64)  '$.checksum',
     git_hash       nvarchar(40)  '$.git_hash',

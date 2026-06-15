@@ -1,4 +1,4 @@
-# Technical Document: Module `engine`
+# Module `engine`
 
 Lifecycle: `Current`.
 
@@ -17,7 +17,7 @@ Describe the **Rust orchestration engine**: connect (or session proxy), scan SQL
 
 ## System context
 
-`run_command` is the single entry used by `crates/cli`. Flow: connect → `scan::populate` → `db::run_plan_db_phase` → `plan::compute_diff` → command-specific apply (`apply_run::maybe_apply`).
+`run_command` is the single entry used by `crates/cli`. Flow: discover catalog databases → (`ensure_catalog_databases_exist` for mutate commands only) → `scan::populate` → `db::run_plan_db_phase` → `plan::compute_diff` → command-specific apply (`apply_run::maybe_apply`).
 
 ## Interfaces and boundaries
 
@@ -29,16 +29,18 @@ Describe the **Rust orchestration engine**: connect (or session proxy), scan SQL
 ## Assumptions and constraints
 
 - Plan DB wall is recorded in `timings.parallel_wall_ms` from `db::PlanDbResult`.
+- Advisory lock scope: `apply_run.rs` calls `lock::release_after_body` even when `execute_plan` fails (BG-001).
 - Catalog cache persistence after successful apply: `save_workspace_snapshot` when `applied > 0` (`apply_run.rs`).
 
 ## Nominal flow
 
-1. Connect (`driver::connect` or `session::connect_daemon`).
+1. Resolve catalog database names; call `ensure_catalog_databases_exist` only for `migrate`, `baseline`, and `repair-checksum`. `plan` and `validate` connect to existing databases and fail if a target database is missing.
 2. Scan workspace (`scan::populate`).
-3. Plan DB phase (`db::run_plan_db_phase`) - may L1-hit (zero SQL).
+3. Per database: connect (`driver::connect` or `session::connect_daemon`) and run `db::run_plan_db_phase` - may L1-hit (zero SQL).
 4. `plan::compute_diff`.
-5. **Migrate:** if `plan.blocked`, scaffold + exit 10; else lock → `apply::execute_plan` → unlock.
-6. Set `plan_wall_ms`, `cli_wall_ms`.
+5. Merge per-database plans when multiple catalog databases are present.
+6. **Migrate:** if `plan.blocked`, scaffold + exit 10; else lock → `apply::execute_plan` → unlock.
+7. Set `plan_wall_ms`, `cli_wall_ms`.
 
 ## Off-nominal behavior and failure containment
 
@@ -49,6 +51,7 @@ Describe the **Rust orchestration engine**: connect (or session proxy), scan SQL
 
 - `crates/core/tests/workflow_integration.rs`
 - `crates/core/tests/integration_plan.rs`
+- `crates/core/tests/plan_no_db_side_effect_test.rs`
 - `make check`
 
 ## Operations and recovery

@@ -1,4 +1,4 @@
-# Technical Document: CI checkout for git delta and scoped inspect
+# CI checkout for git delta and scoped inspect
 
 Lifecycle: `Current`.
 
