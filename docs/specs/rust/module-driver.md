@@ -24,6 +24,7 @@ All SQL I/O from `audit`, `db`, `apply`, `lock`, and `scaffold` flows through `T
 - Inputs: `Config` (server, port, database, credentials)
 - Outputs: query result rows, errors as `Error::Sql`
 - Must not import `plan` or `apply`
+- I/O timing counters are best-effort observability data. If their mutex is poisoned, the driver recovers existing counters instead of panicking.
 
 ## Assumptions and constraints
 
@@ -45,6 +46,8 @@ All SQL I/O from `audit`, `db`, `apply`, `lock`, and `scaffold` flows through `T
 
 - Failure mode: connection refused or login failure.
   Containment: error returned to engine; no partial plan state on conn failure.
+- Failure mode: I/O profile mutex poison after an internal panic.
+  Containment: recover the mutex contents and continue metrics aggregation.
 
 ## Operations and recovery
 

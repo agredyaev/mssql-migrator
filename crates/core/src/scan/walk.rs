@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::domain::Workspace;
 use crate::error::Result;
@@ -14,11 +14,7 @@ pub fn scan_root(ws: &mut Workspace, root: &str) -> Result<()> {
     ws.root = root.to_string_lossy().into();
     let mut schemas = HashMap::new();
     for entry in walk_sql(&root)? {
-        let rel = entry
-            .strip_prefix(&root)
-            .unwrap()
-            .to_string_lossy()
-            .replace('\\', "/");
+        let rel = relative_sql_path(&root, &entry)?;
         if rel.contains("/_migrations/") {
             parse::push_transition(ws, &rel, &entry)?;
             continue;
@@ -33,6 +29,29 @@ pub fn scan_root(ws: &mut Workspace, root: &str) -> Result<()> {
     ws.schemas.sort_by(|a, b| a.name.cmp(&b.name));
     ws.finalize_object_layout();
     Ok(())
+}
+
+fn relative_sql_path(root: &Path, entry: &Path) -> Result<String> {
+    let rel = entry.strip_prefix(root).map_err(|e| {
+        crate::error::Error::InvalidInput(format!(
+            "scan path outside root: root={} entry={} error={e}",
+            root.display(),
+            entry.display()
+        ))
+    })?;
+    let mut out = Vec::new();
+    for component in rel.components() {
+        match component {
+            Component::Normal(part) => out.push(part.to_string_lossy().into_owned()),
+            _ => {
+                return Err(crate::error::Error::InvalidInput(format!(
+                    "invalid scan path component: {}",
+                    rel.display()
+                )));
+            }
+        }
+    }
+    Ok(out.join("/"))
 }
 
 fn walk_sql(root: &Path) -> Result<Vec<PathBuf>> {

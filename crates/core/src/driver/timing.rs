@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use super::io_profile::IoProfile;
+use super::io_profile::{lock_profile, IoProfile};
 use crate::driver::db_client::DbClient;
 use crate::driver::row::RowData;
 use crate::error::Result;
@@ -35,14 +35,14 @@ impl TimingConn {
     }
 
     pub fn io_snapshot(&self) -> IoProfile {
-        self.io.lock().unwrap().clone()
+        lock_profile(&self.io).clone()
     }
 
     pub async fn exec(&mut self, sql: &str) -> Result<()> {
         let t0 = Instant::now();
         let r = self.client_mut().exec(sql).await;
         let ms = crate::timings::dur_ms(t0.elapsed());
-        let mut io = self.io.lock().unwrap();
+        let mut io = lock_profile(&self.io);
         io.exec_ms += ms;
         io.exec_calls += 1;
         r
@@ -52,7 +52,7 @@ impl TimingConn {
         let t0 = Instant::now();
         let r = self.client_mut().query(sql, params).await;
         let ms = crate::timings::dur_ms(t0.elapsed());
-        let mut io = self.io.lock().unwrap();
+        let mut io = lock_profile(&self.io);
         io.query_ms += ms;
         io.query_calls += 1;
         r
@@ -62,7 +62,7 @@ impl TimingConn {
         let t0 = Instant::now();
         let r = self.client_mut().query_all(sql, params).await;
         let ms = crate::timings::dur_ms(t0.elapsed());
-        let mut io = self.io.lock().unwrap();
+        let mut io = lock_profile(&self.io);
         io.query_ms += ms;
         io.query_calls += 1;
         r

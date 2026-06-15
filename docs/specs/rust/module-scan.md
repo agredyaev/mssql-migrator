@@ -24,12 +24,14 @@ First phase of `engine::run_command`. Populates `domain::Workspace` (`object_ent
 - Input: SQL root path, `skip_git` flag
 - Output: `scan_ms` timing; mutates `Workspace`
 - Downstream: `plan`, `gate`, `db` consume workspace keys and digests
+- Path boundary: `walk::scan_root` builds relative wire paths from `Path::components()` and joins components with `/`. It does not rewrite backslash bytes inside a Unix path component into separators.
 
 ## Assumptions and constraints
 
 - Layout follows repo SQL tree conventions (see `docs/solution.md`).
 - Catalog wire paths (`objectPath`, `transitionPaths` in plan JSON) are **`{database}/{schema}/...`** relative to `RM_SQL_ROOT`. `plan::diff_object` and `plan::transitions` normalize via `domain::with_database_prefix`.
 - Git preload is best-effort when `.git` exists at repo root.
+- Symlinked files and directories are skipped during directory walk.
 
 ## Nominal flow
 
@@ -41,10 +43,12 @@ First phase of `engine::run_command`. Populates `domain::Workspace` (`object_ent
 ## Off-nominal behavior and failure containment
 
 - Parse errors fail scan before any SQL I/O.
+- Invalid path components such as names containing `\` fail scan before any SQL I/O.
 
 ## Verification and validation
 
 - `crates/core/tests/workflow_integration.rs` (implicit scan on each command)
+- `crates/core/tests/scan_walk_test.rs` covers symlink skipping and backslash-component rejection.
 - `make check`
 
 ## Operations and recovery

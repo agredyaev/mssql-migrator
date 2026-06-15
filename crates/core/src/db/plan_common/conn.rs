@@ -10,14 +10,13 @@
 //! - The `DbClient` mutex is a *tokio* async mutex (not `std::sync::Mutex`)
 //!   because the lock is held across `.await` points during query execution.
 //! - The `IoProfile` mutex is a *std* mutex (brief lock, no `.await` held).
-//! - Every `self.io.lock().unwrap()` call risks poisoning if a task panics
-//!   while holding the IO profile lock. In practice, panics during DB queries
-//!   cascade to the task join point and are treated as fatal.
+//! - I/O profile mutex poisoning is recovered with the existing counters. A
+//!   panic in metrics bookkeeping must not turn into a later plan panic.
 
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use crate::driver::{DbClient, IoProfile, RowData, TimingConn};
+use crate::driver::{io_profile::lock_profile, DbClient, IoProfile, RowData, TimingConn};
 use crate::error::Result;
 use crate::timings;
 
@@ -34,7 +33,7 @@ impl SharedConn {
         let t0 = Instant::now();
         let r = self.client.lock().await.exec(sql).await;
         let ms = timings::dur_ms(t0.elapsed());
-        let mut io = self.io.lock().unwrap();
+        let mut io = lock_profile(&self.io);
         io.exec_ms += ms;
         io.exec_calls += 1;
         r
@@ -45,7 +44,7 @@ impl SharedConn {
         let t0 = Instant::now();
         let r = self.client.lock().await.query(sql, params).await;
         let ms = timings::dur_ms(t0.elapsed());
-        let mut io = self.io.lock().unwrap();
+        let mut io = lock_profile(&self.io);
         io.query_ms += ms;
         io.query_calls += 1;
         r
@@ -56,7 +55,7 @@ impl SharedConn {
         let t0 = Instant::now();
         let r = self.client.lock().await.query_all(sql, params).await;
         let ms = timings::dur_ms(t0.elapsed());
-        let mut io = self.io.lock().unwrap();
+        let mut io = lock_profile(&self.io);
         io.query_ms += ms;
         io.query_calls += 1;
         r
