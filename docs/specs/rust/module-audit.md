@@ -8,7 +8,7 @@ Describe **azdo_deploy_meta audit tables**: bootstrap DDL, checksum history load
 
 ## Scope
 
-- `crates/core/src/audit/load.rs` - bootstrap, checksum load, cache flags (`tables_ensured`, history probes)
+- `crates/core/src/audit/load/mod.rs` - bootstrap, checksum load, cache flags (`tables_ensured`, history probes)
 - `crates/core/src/audit/history.rs` - flush applied/adopted records, index ensure
 - `crates/core/src/audit/migrations.rs` - transition migration history
 - SQL: `sql/audit/bootstrap_tables.sql`, `bootstrap_index.sql`, `load_checksums_openjson.sql`
@@ -35,7 +35,7 @@ Plan phase loads checksums via `LOAD_CHECKSUMS` OpenJSON batch. Apply phase writ
 
 ## Verification and validation
 
-- `crates/core/src/audit/load.rs` unit tests
+- `crates/core/src/audit/load/mod.rs` unit tests
 - Workflow integration audit row counts
 
 ## Off-nominal behavior and failure containment

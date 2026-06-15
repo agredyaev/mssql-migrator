@@ -27,8 +27,8 @@ Database **drop/create** is optional and **excluded** from plan wall SLO when `R
 | Input | Source |
 |-------|--------|
 | Baseline plan | `crates/core/tests/testdata/prod_gate/plan_baseline_empty_db.json` |
-| Delta paths | **Auto:** [`gate::resolve_changed_paths`](../crates/core/src/gate/changed_paths.rs) - CI PR env or `git merge-base` (see [`docs/ci-checkout.md`](ci-checkout.md)). **Not used in prod:** `RMIG_GATE_CHANGED_FILES`, `RMIG_GATE_GIT_BASE` |
-| Scoped inspect | [`plan::build_inspect_scope`](../crates/core/src/plan/scope_build.rs) + [`db::inspect_with_scope`](../crates/core/src/db/inspector.rs): hot keys hit catalog SQL; stable keys (file checksum == audit history, outside delta) are synthetic in state. Force full: `RM_SKIP_GIT=1`, `RMIG_INSPECT_FULL=1`, or no `.git` |
+| Delta paths | **Auto:** [`gate::resolve_changed_paths`](../crates/core/src/gate/changed_paths/mod.rs) - CI PR env or `git merge-base` (see [`docs/ci-checkout.md`](ci-checkout.md)). **Not used in prod:** `RMIG_GATE_CHANGED_FILES`, `RMIG_GATE_GIT_BASE` |
+| Scoped inspect | [`plan::build_inspect_scope`](../crates/core/src/plan/scope_build.rs) + [`db::plan_common::body`](../crates/core/src/db/plan_common/body/): hot keys hit catalog SQL; stable keys (file checksum == audit history, outside delta) are synthetic in state. Force full: `RM_SKIP_GIT=1`, `RMIG_INSPECT_FULL=1`, or no `.git` |
 | SQL tree | `RM_SQL_ROOT` / `.temp/sql` in integration test |
 | Database | `RM_*` connection vars (same as `make test-int`) |
 

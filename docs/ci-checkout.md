@@ -8,7 +8,7 @@ Describe **what the CI pipeline must provide** so `rmig` can resolve SQL file de
 
 ## Scope
 
-- Git delta: [`crates/core/src/gate/changed_paths.rs`](../crates/core/src/gate/changed_paths.rs) (`resolve_changed_paths`)
+- Git delta: [`crates/core/src/gate/changed_paths/mod.rs`](../crates/core/src/gate/changed_paths/mod.rs) (`resolve_changed_paths`)
 - Scoped inspect: [`crates/core/src/plan/scope_build.rs`](../crates/core/src/plan/scope_build.rs), [`docs/prod-gate.md`](prod-gate.md)
 - Applies to: `rmig plan`, `rmig migrate`, `make prod-gate`
 
