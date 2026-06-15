@@ -12,7 +12,7 @@ Describe **incremental prod gate**: git delta resolution, plan snapshot wire for
 - `crates/core/src/gate/delta.rs` - object key closure for changed files
 - `crates/core/src/gate/snapshot.rs`, `compare.rs` - plan snapshot JSON
 - `crates/core/src/gate/evaluate.rs` - gate verdict
-- `crates/core/src/gate/e2e_report.rs` - e2e scenario report wire types
+- `crates/core/src/gate/e2e_report/` - e2e scenario report wire types and strict readers
 - `crates/core/src/gate/repo_root.rs`, `git_diff.rs` - repo discovery helpers
 - Tests: `crates/core/tests/prod_gate_integration.rs`, `scenario_e2e_integration.rs`
 
@@ -23,13 +23,14 @@ Operators run `make prod-gate` against Docker SQL and baseline JSON (`crates/cor
 ## Interfaces and boundaries
 
 - Public: `resolve_changed_paths`, `evaluate_gate`, snapshot compare helpers, e2e report builders
-- Inputs: plan JSON, baseline file, git repo at SQL root
+- Inputs: plan JSON, baseline file, e2e report JSON object, git repo at SQL root
 - Outputs: `GateResult`, compare diffs, e2e parity messages
 
 ## Assumptions and constraints
 
 - CI git delta: merge-base or PR env (see `docs/ci-checkout.md`).
 - `RMIG_GATE_MAX_PLAN_WALL_MS` optional wall SLO on gate harness.
+- E2E report readers reject non-object top-level JSON and non-object nested report sections such as `timings`, `snapshot`, `io`, and `action_counts`.
 
 ## Nominal flow
 
@@ -41,12 +42,14 @@ Operators run `make prod-gate` against Docker SQL and baseline JSON (`crates/cor
 
 - `make prod-gate`
 - `make e2e` (subset parity)
-- `crates/core/tests/gate_snapshot_test.rs`, `golden_baseline_test.rs`
+- `crates/core/tests/gate_snapshot_test.rs`, `golden_baseline_test.rs`, `e2e_report_fuzz_test.rs`
 
 ## Off-nominal behavior and failure containment
 
 - Failure mode: plan change outside git delta.
   Containment: gate NO-GO; pipeline stops promotion.
+- Failure mode: malformed e2e report JSON (`[]`, scalar, or wrong nested report shape).
+  Containment: reader returns an error before baseline comparison.
 
 ## Operations and recovery
 
