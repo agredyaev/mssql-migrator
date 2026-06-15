@@ -1,8 +1,8 @@
 //! `rmigd` — session daemon for warm SQL connection reuse.
 //!
 //! ### Purpose
-//! Listens on a Unix socket, accepts session tokens, and keeps a pool of SQL
-//! Server connections alive across multiple `rmig` invocations. Avoids the
+//! Listens on a Unix socket, accepts session tokens, and keeps one warm SQL
+//! Server connection alive across multiple `rmig` invocations. Avoids the
 //! per-invocation connection overhead of TDS login + catalog warm-up.
 //!
 //! ### Environment
@@ -13,6 +13,8 @@
 //! 1. Resolve socket path.
 //! 2. Load environment if `RMIGD_ENV` is set.
 //! 3. Enter event loop: accept connections, delegate to `run_daemon`.
+//! 4. Bound concurrent socket handlers to `MAX_DAEMON_CLIENTS`; SQL calls still
+//!    serialize through one warm TDS session.
 //!
 //! ### Off-nominal
 //! - Socket file collision: daemon fails with address-in-use.
