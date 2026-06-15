@@ -1,7 +1,15 @@
+//! Help-text constants and printer for `rmig`.
+//!
+//! ### Purpose
+//! Provides the `--help` text and short error hint used when an unknown flag
+//! or command is encountered.
+
 use std::io::Write;
 
+/// Short hint printed when the user passes an unknown flag or command.
 pub const HELP_HINT: &str = "Run 'rmig' or 'rmig --help' for usage.";
 
+/// Full help text with usage, commands, flags, env vars, and examples.
 pub const HELP: &str = "\
 rmig — plan and apply MSSQL schema migrations from a repo SQL tree
 
@@ -18,7 +26,7 @@ Commands:
 
 Flags:
   --env <path>      Load RM_* settings from a dotenv file (default: .env)
-  --json            Emit phase timings as JSON; with plan, write plan JSON to stdout
+  --json            Emit JSON output; with plan, write plan JSON to stdout and timings to stderr
   -h, --help        Show this help
 
 Setup:
@@ -43,6 +51,7 @@ Examples:
   rmig version
 ";
 
+/// Print full help text and usage examples to the given writer.
 pub fn print_help(mut w: impl Write) -> migrator_core::Result<()> {
     write!(w, "{HELP}")?;
     Ok(())
