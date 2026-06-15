@@ -12,11 +12,12 @@ use std::time::Instant;
 pub async fn run_plan_pipeline(cfg: &Config) -> Result<(MigrationPlan, PhaseTimings, IoProfile)> {
     let start_all = Instant::now();
     let mut timings = PhaseTimings::default();
+    let skip_l1_invalidate = io_debug_skip_l1_invalidate();
 
     let mut ws = Workspace::default();
     timings.scan_ms = migrator_core::scan::populate(&mut ws, &cfg.sql_root, cfg.skip_git()).await?;
 
-    if !io_debug_skip_l1_invalidate() {
+    if !skip_l1_invalidate {
         let fp = format!("{}_{}", cfg.server, cfg.database);
         let l1 = migrator_core::cache::l1::L1Cache::new(&cfg.l1_cache_dir);
         let _ = l1.invalidate_all(&fp);
