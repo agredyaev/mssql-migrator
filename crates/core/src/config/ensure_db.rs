@@ -41,9 +41,11 @@ pub async fn ensure_catalog_databases_exist(cfg: &Config, names: &[String]) -> R
             master_conn = Some(conn);
         }
 
-        let conn = master_conn
-            .as_mut()
-            .expect("master connection must exist before create fallback");
+        let Some(conn) = master_conn.as_mut() else {
+            return Err(crate::error::Error::Sql(
+                "master fallback connection missing while ensuring catalog database".into(),
+            ));
+        };
         let escaped = db.replace('\'', "''");
         let bracket = db.replace(']', "]]");
         let sql = format!("IF DB_ID(N'{escaped}') IS NULL CREATE DATABASE [{bracket}]");

@@ -4,7 +4,7 @@ use std::time::Instant;
 use super::io_profile::{lock_profile, IoProfile};
 use crate::driver::db_client::DbClient;
 use crate::driver::row::RowData;
-use crate::error::Result;
+use crate::error::{Error, Result};
 
 pub struct TimingConn {
     inner: Option<DbClient>,
@@ -21,17 +21,24 @@ impl TimingConn {
         }
     }
 
-    pub fn client_mut(&mut self) -> &mut DbClient {
-        self.inner.as_mut().expect("TimingConn client taken")
+    pub fn client_mut(&mut self) -> Result<&mut DbClient> {
+        self.inner
+            .as_mut()
+            .ok_or_else(|| Error::Sql("TimingConn client is temporarily unavailable".into()))
     }
 
-    pub fn take_client(&mut self) -> DbClient {
-        self.inner.take().expect("TimingConn client already taken")
+    pub fn take_client(&mut self) -> Result<DbClient> {
+        self.inner
+            .take()
+            .ok_or_else(|| Error::Sql("TimingConn client was already taken".into()))
     }
 
-    pub fn restore_client(&mut self, client: DbClient) {
-        assert!(self.inner.is_none(), "TimingConn client already present");
+    pub fn restore_client(&mut self, client: DbClient) -> Result<()> {
+        if self.inner.is_some() {
+            return Err(Error::Sql("TimingConn client already present".into()));
+        }
         self.inner = Some(client);
+        Ok(())
     }
 
     pub fn io_snapshot(&self) -> IoProfile {
@@ -40,7 +47,7 @@ impl TimingConn {
 
     pub async fn exec(&mut self, sql: &str) -> Result<()> {
         let t0 = Instant::now();
-        let r = self.client_mut().exec(sql).await;
+        let r = self.client_mut()?.exec(sql).await;
         let ms = crate::timings::dur_ms(t0.elapsed());
         let mut io = lock_profile(&self.io);
         io.exec_ms += ms;
@@ -50,7 +57,7 @@ impl TimingConn {
 
     pub async fn query(&mut self, sql: &str, params: &[&str]) -> Result<Vec<RowData>> {
         let t0 = Instant::now();
-        let r = self.client_mut().query(sql, params).await;
+        let r = self.client_mut()?.query(sql, params).await;
         let ms = crate::timings::dur_ms(t0.elapsed());
         let mut io = lock_profile(&self.io);
         io.query_ms += ms;
@@ -60,7 +67,7 @@ impl TimingConn {
 
     pub async fn query_all(&mut self, sql: &str, params: &[&str]) -> Result<Vec<Vec<RowData>>> {
         let t0 = Instant::now();
-        let r = self.client_mut().query_all(sql, params).await;
+        let r = self.client_mut()?.query_all(sql, params).await;
         let ms = crate::timings::dur_ms(t0.elapsed());
         let mut io = lock_profile(&self.io);
         io.query_ms += ms;

@@ -36,7 +36,6 @@ struct TransitionMeta {
 }
 
 fn parse_meta(rel: &str) -> Result<Option<TransitionMeta>> {
-    let rel = rel.replace('\\', "/");
     let parts: Vec<_> = rel.split('/').collect();
     if parts.len() < 6 {
         return Ok(None);
@@ -48,10 +47,13 @@ fn parse_meta(rel: &str) -> Result<Option<TransitionMeta>> {
     let schema = parts[n - 5].to_string();
     let table = parts[n - 2].to_string();
     let file = parts[n - 1];
+    crate::sql_ident::validate_path_component(&schema)?;
+    crate::sql_ident::validate_path_component(&table)?;
+    crate::sql_ident::validate_path_component(file)?;
     let Some((ordinal, _, _)) = parse_filename(file) else {
         return Ok(None);
     };
-    let path = rel;
+    let path = rel.to_string();
     Ok(Some(TransitionMeta {
         table_key: ObjectKey::new(&schema, "tables", &table),
         path,

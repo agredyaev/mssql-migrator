@@ -48,6 +48,9 @@ pub(super) fn parse_column_def(def: &str) -> Option<ParsedColumn> {
         return None;
     }
     let (name, rest) = parse_name_rest(def)?;
+    if rest.to_uppercase().starts_with("AS ") {
+        return None;
+    }
     let (type_part, null_part) = split_type_null(&rest);
     let nullable = !null_part.to_uppercase().contains("NOT NULL");
     Some(ParsedColumn {

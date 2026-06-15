@@ -161,6 +161,21 @@ fn auto_add_column_declines_unsafe_computed_column_regression() {
     assert!(!content.contains("ALTER TABLE"));
 }
 
+#[test]
+fn auto_add_column_declines_unbracketed_computed_column_regression() {
+    let content = scaffold_for_table(
+        "CREATE TABLE [r].[t1] (\n  [id] INT NOT NULL,\n  calc AS id + 1\n)",
+        vec![TableColumn {
+            name: "id".into(),
+            type_name: "int".into(),
+            nullable: false,
+        }],
+    );
+
+    assert!(content.contains("-- rmig: transition-scaffold"));
+    assert!(!content.contains("ALTER TABLE"));
+}
+
 fn scaffold_for_table(table_sql: &str, db_columns: Vec<TableColumn>) -> String {
     let base = tempfile::tempdir().unwrap();
     let mut cfg = Config::default();
