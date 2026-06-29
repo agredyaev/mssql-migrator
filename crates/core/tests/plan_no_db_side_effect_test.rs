@@ -77,9 +77,12 @@ async fn plan_existing_database_happy_path() {
     drop_database_if_exists("sideeffect_existing").await;
     let mut cfg = sa_cfg("sideeffect_existing", &base.path().to_string_lossy());
     validate_config(&mut cfg).expect("valid config");
-    migrator_core::config::ensure_catalog_databases_exist(&cfg, &["sideeffect_existing".to_string()])
-        .await
-        .expect("test setup creates db");
+    migrator_core::config::ensure_catalog_databases_exist(
+        &cfg,
+        &["sideeffect_existing".to_string()],
+    )
+    .await
+    .expect("test setup creates db");
 
     let out = run_command(Command::Plan, &cfg)
         .await
@@ -133,7 +136,10 @@ async fn validate_missing_database_edge_case() {
         "precondition: database must not exist"
     );
 
-    let mut cfg = sa_cfg("sideeffect_validate_missing", &base.path().to_string_lossy());
+    let mut cfg = sa_cfg(
+        "sideeffect_validate_missing",
+        &base.path().to_string_lossy(),
+    );
     validate_config(&mut cfg).expect("valid config");
     assert!(
         connect(&cfg).await.is_err(),
