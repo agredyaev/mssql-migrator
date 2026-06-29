@@ -17,6 +17,21 @@ pub struct ProxyClient {
 
 impl ProxyClient {
     pub async fn connect(socket_path: &str, cfg: Option<&Config>) -> Result<Self> {
+        // Bound the whole connect (socket + auth + ping) so a wedged daemon causes
+        // a fallback to direct SQL (see `session::client`) instead of hanging CI.
+        match cfg.map(|c| c.command_timeout).filter(|d| !d.is_zero()) {
+            Some(t) => tokio::time::timeout(t, Self::connect_inner(socket_path, cfg))
+                .await
+                .map_err(|_| {
+                    Error::Config(format!(
+                        "rmigd connect {socket_path}: timed out after {t:?}"
+                    ))
+                })?,
+            None => Self::connect_inner(socket_path, cfg).await,
+        }
+    }
+
+    async fn connect_inner(socket_path: &str, cfg: Option<&Config>) -> Result<Self> {
         let stream = UnixStream::connect(socket_path)
             .await
             .map_err(|e| Error::Config(format!("rmigd connect {}: {e}", socket_path)))?;
