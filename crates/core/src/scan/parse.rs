@@ -4,15 +4,17 @@ use std::path::Path;
 use crate::domain::{share, SchemaEntry, Workspace};
 use crate::error::Result;
 
-use super::parse_object;
+use super::parse_object::ParsedObject;
 
-pub fn ingest_object(
+/// Merge a parsed object into the workspace (sequential: assigns `script_id`,
+/// interns the database, records the schema). `parsed` is `None` for skipped files.
+pub fn insert_parsed_object(
     ws: &mut Workspace,
+    parsed: Option<ParsedObject>,
     rel: &str,
-    abs: &Path,
     schemas: &mut HashMap<String, SchemaEntry>,
 ) -> Result<()> {
-    let Some((key, mut obj, script)) = parse_object::parse_object(rel, abs)? else {
+    let Some((key, mut obj, script)) = parsed else {
         return Ok(());
     };
     let db = share(rel.split('/').next().unwrap_or(""));

@@ -5,6 +5,10 @@ use sha2::{Digest, Sha256};
 use crate::domain::{share, ObjectEntry, ObjectKey, Script, ScriptKey, ScriptKind, StrOff};
 use crate::error::Result;
 
+/// A parsed object script: key, dense entry, and script record. Built from
+/// process-local `SharedStr`, so it can cross worker threads during parallel scan.
+pub type ParsedObject = (ObjectKey, ObjectEntry, Script);
+
 const KINDS: &[&str] = &[
     "tables",
     "views",
@@ -17,7 +21,7 @@ const KINDS: &[&str] = &[
     "synonyms",
 ];
 
-pub fn parse_object(rel: &str, abs: &Path) -> Result<Option<(ObjectKey, ObjectEntry, Script)>> {
+pub fn parse_object(rel: &str, abs: &Path) -> Result<Option<ParsedObject>> {
     let parts: Vec<_> = rel.split('/').collect();
     if parts.len() < 4 {
         return Ok(None);
