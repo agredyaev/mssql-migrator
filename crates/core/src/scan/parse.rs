@@ -27,7 +27,7 @@ pub fn ingest_object(
     let script_id = ws.insert_script(script);
     obj.script_id = script_id;
     obj.db_id = ws.intern_database(db);
-    ws.push_object(key, obj);
+    ws.push_object(key, obj)?;
     Ok(())
 }
 

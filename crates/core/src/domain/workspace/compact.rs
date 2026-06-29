@@ -1,6 +1,7 @@
 use crate::domain::key::{ObjectKey, ScriptKey};
 use crate::domain::transition::TransitionEntry;
 use crate::domain::SharedStr;
+use crate::error::{Error, Result};
 
 use super::Workspace;
 
@@ -47,10 +48,23 @@ impl Workspace {
         table_key: ObjectKey,
         ordinal: SharedStr,
         script_key: ScriptKey,
-    ) {
+    ) -> Result<()> {
+        // Reject two migration files claiming the same ordinal for one table: the
+        // apply order would be ambiguous. Gaps are intentionally allowed (apply
+        // tolerates them); only duplicates are a contract violation.
+        if let Some(entries) = self.transitions_staging.get(&table_key) {
+            if entries.iter().any(|(ord, _)| *ord == ordinal) {
+                return Err(Error::InvalidInput(format!(
+                    "duplicate transition ordinal {} for {}: each migration ordinal must be unique per table",
+                    &*ordinal,
+                    table_key.as_str()
+                )));
+            }
+        }
         self.transitions_staging
             .entry(table_key)
             .or_default()
             .push((ordinal, script_key));
+        Ok(())
     }
 }

@@ -1,4 +1,5 @@
 use crate::domain::{store::finalize_sorted_entries, ObjectEntry, ObjectKey};
+use crate::error::{Error, Result};
 
 use super::super::Workspace;
 
@@ -7,19 +8,23 @@ fn entries_are_interned(entries: &[ObjectEntry]) -> bool {
 }
 
 impl Workspace {
-    pub fn push_object(&mut self, key: ObjectKey, obj: ObjectEntry) {
-        if let Some(&id) = self.ingest_key_index.get(&key) {
-            if id > 0 {
-                let idx = id as usize - 1;
-                self.object_entries[idx] = obj;
-                self.cold.ingest_keys[idx] = key;
-                return;
-            }
+    pub fn push_object(&mut self, key: ObjectKey, obj: ObjectEntry) -> Result<()> {
+        if self.ingest_key_index.contains_key(&key) {
+            // Two source files normalize to the same `<schema>/<kind>/<name>` key
+            // (the key is lowercased, so case-only variants collide too). Silently
+            // overwriting would drop one object from the migration plan, so fail
+            // closed with a clear, deterministic error instead.
+            return Err(Error::InvalidInput(format!(
+                "duplicate object {:?}: two source files map to the same normalized \
+                 <schema>/<kind>/<name> key (keys are case-insensitive); rename or remove one",
+                key.as_str()
+            )));
         }
         let idx = self.object_entries.len();
         self.object_entries.push(obj);
         self.cold.ingest_keys.push(key.clone());
         self.ingest_key_index.insert(key, (idx + 1) as u32);
+        Ok(())
     }
 
     pub fn finalize_object_layout(&mut self) {
@@ -43,5 +48,40 @@ impl Workspace {
             return;
         }
         self.apply_finalized_entries(finalize_sorted_entries(entries, keys));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_object_rejects_duplicate_normalized_key() {
+        let mut ws = Workspace::default();
+        let (k1, o1) = ObjectEntry::with_staging_key(
+            ObjectKey::new("smoke", "tables", "Foo"),
+            0,
+            [0u8; 32],
+            false,
+            0,
+        );
+        ws.push_object(k1, o1).expect("first insert succeeds");
+
+        // `Foo` and `foo` normalize to the same key. The duplicate must be a hard
+        // error, not a silent overwrite that drops one object from the plan.
+        let (k2, o2) = ObjectEntry::with_staging_key(
+            ObjectKey::new("smoke", "tables", "foo"),
+            1,
+            [0u8; 32],
+            false,
+            0,
+        );
+        let err = ws
+            .push_object(k2, o2)
+            .expect_err("duplicate normalized key must error");
+        assert!(
+            err.to_string().contains("duplicate object"),
+            "unexpected error: {err}"
+        );
     }
 }
