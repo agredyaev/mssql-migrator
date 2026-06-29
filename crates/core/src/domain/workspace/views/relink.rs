@@ -16,8 +16,8 @@ impl Workspace {
             if parent.database_name(parent.entry(idx).db_id).as_ref() != db {
                 continue;
             }
-            let table_key = parent.entry_key(idx).clone();
-            let child_row_id = self.key_index(&table_key);
+            let table_key = parent.entry_key(idx);
+            let child_row_id = self.key_index(table_key);
             if child_row_id == 0 {
                 continue;
             }
@@ -54,8 +54,8 @@ impl Workspace {
             if parent.database_name(parent.entry(cidx).db_id).as_ref() != db {
                 continue;
             }
-            let child_key = parent.entry_key(cidx).clone();
-            let child_row_id = self.key_index(&child_key);
+            let child_key = parent.entry_key(cidx);
+            let child_row_id = self.key_index(child_key);
             if child_row_id == 0 {
                 continue;
             }
@@ -63,8 +63,8 @@ impl Workspace {
             if pi == 0 || pi > parent.object_entries.len() {
                 continue;
             }
-            let parent_table_key = parent.entry_key(pi - 1).clone();
-            let child_parent_row = self.key_index(&parent_table_key);
+            let parent_table_key = parent.entry_key(pi - 1);
+            let child_parent_row = self.key_index(parent_table_key);
             if child_parent_row == 0 {
                 continue;
             }
