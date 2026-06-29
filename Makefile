@@ -4,6 +4,7 @@ SHELL := /bin/bash
 	arch e2e e2e-all e2e-timings check-e2e sql-regression integration \
 	slo prod-gate plan-db-perf workflow-fast \
 	bench-footprint bench-footprint-profile bench-footprint-alloc \
+	bench-footprint-scan bench-footprint-cache \
 	bench-footprint-update-baseline profile-summary test-int \
 	bump bump-minor bump-major
 
@@ -127,6 +128,16 @@ bench-footprint-profile:
 bench-footprint-alloc:
 	@chmod +x ops/perf/footprint_bench.sh
 	ops/perf/footprint_bench.sh alloc $(ARGS)
+
+bench-footprint-scan:
+	@chmod +x ops/perf/footprint_bench.sh
+	ops/perf/footprint_bench.sh profile-load-scan $(ARGS)
+	ops/perf/footprint_bench.sh alloc scan_root
+
+bench-footprint-cache:
+	@chmod +x ops/perf/footprint_bench.sh
+	ops/perf/footprint_bench.sh profile-load-cache $(ARGS)
+	ops/perf/footprint_bench.sh alloc cache
 
 bench-footprint-update-baseline:
 	@chmod +x ops/perf/footprint_bench.sh

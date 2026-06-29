@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::driver::RowData;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Request {
     /// First message when `RMIG_SESSION_TOKEN` is set on daemon and client.
@@ -17,6 +17,27 @@ pub enum Request {
         sql: String,
         params: Vec<String>,
     },
+}
+
+/// `Debug` is hand-written (not derived) so the `Auth` session token is never
+/// printed in panic backtraces or diagnostics; see the redacting `Debug` on
+/// `config/cold.rs`. SQL text stays visible — it is repository content, not a secret.
+impl std::fmt::Debug for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Auth { .. } => f
+                .debug_struct("Auth")
+                .field("token", &"<redacted>")
+                .finish(),
+            Self::Ping => f.write_str("Ping"),
+            Self::Exec { sql } => f.debug_struct("Exec").field("sql", sql).finish(),
+            Self::Query { sql, params } => f
+                .debug_struct("Query")
+                .field("sql", sql)
+                .field("params", params)
+                .finish(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -53,3 +74,7 @@ impl Response {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/protocol_test.rs"]
+mod protocol_tests;

@@ -1,150 +1,23 @@
-# rmig profile summary - 2026-05-21T19:30:02Z
+# rmig profile summary - 2026-06-29T22:55:36Z
 # Regenerate: make bench-footprint-profile && make bench-footprint-alloc
 
 == CPU flamegraph (5k skip-heavy diff) ==
   ~/project/mssql-reporting-migrator/ops/perf/artifacts/plan_diff_5k_flamegraph.svg
 
-== dhat summary: plan_diff_dhat.txt ==
-   Compiling migrator-core v0.1.0 (~/project/mssql-reporting-migrator/crates/core)
-   Compiling migrator-core-dev v0.1.0 (~/project/mssql-reporting-migrator/crates/core-dev)
-    Finished `profiling` profile [optimized + debuginfo] target(s) in 22.01s
-     Running benches/plan_diff_dhat.rs (target/profiling/deps/plan_diff_dhat-a2a66fc39d38e251)
-dhat: plan_diff_skip_heavy_5000 x20 complete
-dhat: Total:     10,735,992 bytes in 90,129 blocks
-dhat: At t-gmax: 6,336,160 bytes in 65,041 blocks
-dhat: At t-end:  112 bytes in 2 blocks
-dhat: The data has been saved to dhat-heap.json, and is viewable with dhat/dh_view.html
-
-== dhat summary: plan_diff_dhat_transitions.txt ==
-   Compiling migrator-core-dev v0.1.0 (~/project/mssql-reporting-migrator/crates/core-dev)
-    Finished `profiling` profile [optimized + debuginfo] target(s) in 3.45s
-     Running benches/plan_diff_dhat_transitions.rs (target/profiling/deps/plan_diff_dhat_transitions-751a8587c572e24b)
-dhat: plan_diff_table_heavy_500 x20 complete
-dhat: Total:     2,368,246 bytes in 20,170 blocks
-dhat: At t-gmax: 1,051,044 bytes in 10,042 blocks
-dhat: At t-end:  112 bytes in 2 blocks
-dhat: The data has been saved to dhat-heap.json, and is viewable with dhat/dh_view.html
-
-== dhat summary: plan_diff_dhat_scan.txt ==
-   Compiling migrator-core-dev v0.1.0 (~/project/mssql-reporting-migrator/crates/core-dev)
-    Finished `profiling` profile [optimized + debuginfo] target(s) in 0.76s
-     Running benches/plan_diff_dhat_scan.rs (target/profiling/deps/plan_diff_dhat_scan-2313d48022dc8079)
-dhat: scan_fixture_5000 x20 complete
-dhat: Total:     14,465,530 bytes in 160,195 blocks
-dhat: At t-gmax: 5,303,807 bytes in 50,034 blocks
-dhat: At t-end:  112 bytes in 2 blocks
-dhat: The data has been saved to dhat-heap.json, and is viewable with dhat/dh_view.html
-
-== alloc tree: alloc_flame.txt ==
-# Rust dhat allocation summary
-# total allocated (tb sum): 10.74 MB (10735992 B)
-# loop iterations: 20
-# setup (one-time): 10.32 MB
-# warm (first compute_diff / plan resize): 413.9 KB
-# loop (warmed compute_diff x20): 0 B (0 B/iter)
-
-## Phase totals
-Phase                 Bytes    Share
-setup              10.32 MB    96.1%
-warm               413.9 KB     3.9%
-loop                    0 B     0.0%
-
-## Top categories (loop phase only)
-Category                                    Total       B/iter   Share  CASE-*
-(no loop-phase allocations detected)
-
-## Top rmig frames (loop phase)
-Frame                                                                           Bytes   Share
-
-## Top rmig frames (deepest in stack, all phases)
-Frame                                                                           Bytes   Share
-plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)              10.32 MB   96.1%
-plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:14:5)               413.9 KB    3.9%
-plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:18:5)                   64 B    0.0%
-
-## Top leaf alloc frames (flat)
-Frame                                                                           Bytes
-plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)              10.32 MB
-plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:14:5)               413.9 KB
-
-== alloc tree: alloc_flame_transitions.txt ==
-# Rust dhat allocation summary
-# total allocated (tb sum): 2.37 MB (2368246 B)
-# loop iterations: 20
-# setup (one-time): 2.25 MB
-# warm (first compute_diff / plan resize): 118.9 KB
-# loop (warmed compute_diff x20): 0 B (0 B/iter)
-
-## Phase totals
-Phase                 Bytes    Share
-setup               2.25 MB    95.0%
-warm               118.9 KB     5.0%
-loop                    0 B     0.0%
-
-## Top categories (loop phase only)
-Category                                    Total       B/iter   Share  CASE-*
-(no loop-phase allocations detected)
-
-## Top rmig frames (loop phase)
-Frame                                                                           Bytes   Share
-
-## Top rmig frames (deepest in stack, all phases)
-Frame                                                                           Bytes   Share
-plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi      2.24 MB   94.6%
-plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi     118.9 KB    5.0%
-migrator_core::plan::transitions::paths_by_row (src/plan/transitions.rs:       8.0 KB    0.3%
-plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi         64 B    0.0%
-
-## Top leaf alloc frames (flat)
-Frame                                                                           Bytes
-plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi      2.24 MB
-
-== alloc tree: alloc_flame_scan.txt ==
-# Rust dhat allocation summary
-# total allocated (tb sum): 14.47 MB (14465530 B)
-# loop iterations: 20
-# setup (one-time): 14.05 MB
-# warm (first compute_diff / plan resize): 413.9 KB
-# loop (warmed compute_diff x20): 0 B (0 B/iter)
-
-## Phase totals
-Phase                 Bytes    Share
-setup              14.05 MB    97.1%
-warm               413.9 KB     2.9%
-loop                    0 B     0.0%
-
-## Top categories (loop phase only)
-Category                                    Total       B/iter   Share  CASE-*
-(no loop-phase allocations detected)
-
-## Top rmig frames (loop phase)
-Frame                                                                           Bytes   Share
-
-## Top rmig frames (deepest in stack, all phases)
-Frame                                                                           Bytes   Share
-plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:14:14     11.19 MB   77.4%
-plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:21:19      1.19 MB    8.2%
-plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:20:45     720.0 KB    5.0%
-plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:20:25     671.7 KB    4.6%
-plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:25:5)     413.9 KB    2.9%
-migrator_core::scan::walk::scan_root (src/scan/walk.rs:30:9)                 280.0 KB    1.9%
-plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:13:16        230 B    0.0%
-plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:16:21        108 B    0.0%
-
 == criterion bench log (tail) ==
-   Compiling migrator-core-dev v0.1.0 (~/project/mssql-reporting-migrator/crates/core-dev)
-    Finished `bench` profile [optimized + debuginfo] target(s) in 18.54s
-     Running benches/plan_diff.rs (target/release/deps/plan_diff-91bf57d507775029)
+   Compiling pprof v0.15.0
+   Compiling migrator-core v1.0.4 (~/project/mssql-reporting-migrator/crates/core)
+   Compiling migrator-core-dev v1.0.4 (~/project/mssql-reporting-migrator/crates/core-dev)
+    Finished `bench` profile [optimized + debuginfo] target(s) in 30.45s
+     Running benches/plan_diff.rs (target/release/deps/plan_diff-bfac2f11d02f0aba)
 Gnuplot not found, using plotters backend
 Benchmarking plan_diff_skip_heavy_5000
 Benchmarking plan_diff_skip_heavy_5000: Warming up for 3.0000 s
-Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.0464 s (71k iterations)
+Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.0387 s (101k iterations)
 Benchmarking plan_diff_skip_heavy_5000: Analyzing
 plan_diff_skip_heavy_5000
-                        time:   [70.175 µs 73.412 µs 78.042 µs]
-                        change: [+42.422% +53.506% +65.987%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 2 outliers among 100 measurements (2.00%)
-  2 (2.00%) high severe
+                        time:   [49.603 µs 49.645 µs 49.703 µs]
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high severe
 
 

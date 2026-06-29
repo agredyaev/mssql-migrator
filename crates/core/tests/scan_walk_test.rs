@@ -43,6 +43,34 @@ fn scan_rejects_backslash_transition_path_component_regression() {
     );
 }
 
+#[test]
+fn scan_rejects_duplicate_transition_ordinal() {
+    let base = tempfile::tempdir().expect("tempdir");
+    let mig = base.path().join("dactests/smoke/tables/_migrations/t1");
+    std::fs::create_dir_all(&mig).expect("mkdir migrations");
+    // Two distinct migration files (different sha+slug) claim the same ordinal 001
+    // for the same table. Distinct filenames so this triggers on any filesystem.
+    std::fs::write(
+        mig.join("001_deadbee_add.sql"),
+        "ALTER TABLE smoke.t1 ADD a INT NULL;\n",
+    )
+    .expect("write first transition");
+    std::fs::write(
+        mig.join("001_c0ffee0_more.sql"),
+        "ALTER TABLE smoke.t1 ADD b INT NULL;\n",
+    )
+    .expect("write second transition");
+
+    let mut ws = Workspace::default();
+    let err = scan_root(&mut ws, base.path().to_str().expect("utf8 path"))
+        .expect_err("two transitions with the same ordinal must be rejected");
+
+    assert!(
+        err.to_string().contains("duplicate transition ordinal"),
+        "unexpected error: {err}"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn scan_skips_symlinked_sql_files() {

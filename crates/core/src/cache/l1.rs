@@ -36,7 +36,11 @@ impl L1Cache {
         if data.len() > MAX_L1_CACHE_BYTES {
             return Ok(None);
         }
-        let p: L1Payload = serde_json::from_slice(&data).map_err(|e| Error::Other(e.into()))?;
+        // Stale / corrupt / legacy-format payload: treat as a miss and rebuild
+        // rather than hard-erroring — the L1 cache is regenerable and digest-keyed.
+        let Ok(p) = serde_json::from_slice::<L1Payload>(&data) else {
+            return Ok(None);
+        };
         if p.layout_digest != *digest {
             return Ok(None);
         }

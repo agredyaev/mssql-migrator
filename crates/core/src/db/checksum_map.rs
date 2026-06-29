@@ -72,27 +72,36 @@ impl ChecksumMap {
     }
 }
 
-/// Serializes as `HashMap<String, [u8; 32]>` using normalized keys
-/// retained during insert.  Keys are the normalised `schema/kind/name` form.
+/// Serializes as `HashMap<String, hex-digest>` using normalized keys retained
+/// during insert.  Each `[u8; 32]` digest is emitted as a 64-char hex string
+/// (one JSON string per entry, not a 32-element number array) — far cheaper to
+/// (de)serialize and ~half the bytes.  Keys are normalised `schema/kind/name`.
 impl Serialize for ChecksumMap {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut wire = HashMap::with_capacity(self.by_fp.len());
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(self.by_fp.len()))?;
+        let mut hex_buf = [0u8; 64];
         for (fp, cs) in &self.by_fp {
             let key = self.key_by_fp.get(fp).map(|k| k.as_ref()).unwrap_or("");
-            wire.insert(key, *cs);
+            hex::encode_to_slice(cs, &mut hex_buf).map_err(serde::ser::Error::custom)?;
+            let digest = std::str::from_utf8(&hex_buf).map_err(serde::ser::Error::custom)?;
+            map.serialize_entry(key, digest)?;
         }
-        wire.serialize(serializer)
+        map.end()
     }
 }
 
-/// Deserializes from `HashMap<String, [u8; 32]>` and normalises keys
-/// on insert via [`ChecksumMap::insert_normalized`].
+/// Deserializes from `HashMap<String, hex-digest>` and normalises keys on insert
+/// via [`ChecksumMap::insert_normalized`].
 impl<'de> Deserialize<'de> for ChecksumMap {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let wire = HashMap::<String, [u8; 32]>::deserialize(deserializer)?;
+        let wire = HashMap::<String, String>::deserialize(deserializer)?;
         let mut out = ChecksumMap::new();
+        out.reserve(wire.len());
+        let mut digest = [0u8; 32];
         for (k, v) in wire {
-            out.insert_normalized(&k, v);
+            hex::decode_to_slice(&v, &mut digest).map_err(serde::de::Error::custom)?;
+            out.insert_normalized(&k, digest);
         }
         Ok(out)
     }

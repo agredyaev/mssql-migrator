@@ -56,6 +56,11 @@ make bench-footprint
 make bench-footprint-alloc
 make bench-footprint-update-baseline   # after intentional layout change
 make profile-summary
+# phase profilers (scan_root, L1 serde) — CPU flamegraph + dhat:
+ops/perf/footprint_bench.sh profile-load-scan
+ops/perf/footprint_bench.sh profile-load-cache
+ops/perf/footprint_bench.sh alloc scan_root
+ops/perf/footprint_bench.sh alloc cache
 ```
 
 Runbook: [`docs/perf-footprint-audit.md`](../docs/perf-footprint-audit.md).
@@ -85,6 +90,8 @@ Runbook: [`docs/perf-footprint-audit.md`](../docs/perf-footprint-audit.md).
 | `plan_diff_5k_flamegraph.svg` | `make bench-footprint-profile` |
 | `plan_diff_dhat.txt` | `make bench-footprint-alloc` |
 | `alloc_flame.txt` | `dhat_alloc_tree.py` (called from alloc bench) |
+| `scan_5k_load_flamegraph.svg`, `scan_dhat.txt` | `footprint_bench.sh profile-load-scan` / `alloc scan_root` |
+| `cache_serde_load_flamegraph.svg`, `cache_serde_dhat.txt` | `footprint_bench.sh profile-load-cache` / `alloc cache` |
 | `plan_db_trace.json` | `make plan-db-perf` |
 | `prod_gate_report.json` | `make prod-gate` |
 | `cli_phase_slo.json` | `make slo` |

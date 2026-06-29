@@ -65,6 +65,13 @@ pub fn validate_filename_token(token: &str) -> Result<()> {
 /// SQL injection through malicious table or schema names.
 pub fn bracket_ident(name: &str) -> Result<String> {
     validate_bracket_name(name)?;
+    // MSSQL regular and quoted identifiers are limited to 128 characters.
+    let len = name.chars().count();
+    if len > 128 {
+        return Err(Error::InvalidInput(format!(
+            "identifier too long ({len} chars, max 128): {name:?}"
+        )));
+    }
     Ok(format!("[{}]", name.replace(']', "]]")))
 }
 

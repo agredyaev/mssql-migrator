@@ -1,11 +1,18 @@
 use crate::driver::{connect, mssql, MssqlConn};
 use crate::error::Result;
+use crate::sql_ident::bracket_ident;
 
 use super::Config;
 
 pub async fn ensure_catalog_databases_exist(cfg: &Config, names: &[String]) -> Result<()> {
     if names.is_empty() {
         return Ok(());
+    }
+    // Validate every catalog name before opening any connection so an illegal or
+    // over-long identifier fails fast with InvalidInput (exit 8) instead of an
+    // opaque SQL error mid-deploy.
+    for db in names {
+        bracket_ident(db)?;
     }
     let mut master_conn = None;
     for db in names {
@@ -17,9 +24,13 @@ pub async fn ensure_catalog_databases_exist(cfg: &Config, names: &[String]) -> R
     Ok(())
 }
 
-async fn target_database_exists(cfg: &Config, db: &str) -> bool {
+/// Probe whether catalog database `db` exists on the server by attempting a
+/// direct connect. A failed connect (e.g. SQL 4060 "cannot open database") is
+/// treated as "not present" rather than a hard error, so callers can decide
+/// whether to create it (mutating commands) or skip it (read-only multi-DB plan).
+pub async fn target_database_exists(cfg: &Config, db: &str) -> bool {
     let mut target = cfg.clone();
-    target.database = db.to_owned();
+    target.database = db.into();
     match connect(&target).await {
         Ok(_) => true,
         Err(err) => {
@@ -67,9 +78,11 @@ async fn connect_master(cfg: &Config, db: &str) -> Result<MssqlConn> {
 }
 
 async fn create_database_if_missing(conn: &mut MssqlConn, cfg: &Config, db: &str) -> Result<()> {
-    let escaped = db.replace('\'', "''");
-    let bracket = db.replace(']', "]]");
-    let sql = format!("IF DB_ID(N'{escaped}') IS NULL CREATE DATABASE [{bracket}]");
+    // `bracket_ident` validates + wraps as `[db]` (escaping `]`); the `''` escape
+    // is still needed for the `N'...'` string-literal context of the existence probe.
+    let bracket = bracket_ident(db)?;
+    let literal = db.replace('\'', "''");
+    let sql = format!("IF DB_ID(N'{literal}') IS NULL CREATE DATABASE {bracket}");
     tracing::info!(
         database = %db,
         sql_root = %cfg.sql_root,
@@ -77,3 +90,7 @@ async fn create_database_if_missing(conn: &mut MssqlConn, cfg: &Config, db: &str
     );
     mssql::exec(&mut conn.client, &sql).await
 }
+
+#[cfg(test)]
+#[path = "../tests/ensure_db_test.rs"]
+mod ensure_db_tests;
