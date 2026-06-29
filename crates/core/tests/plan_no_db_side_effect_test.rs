@@ -72,12 +72,12 @@ async fn plan_existing_database_happy_path() {
     }
 
     let base = tempfile::tempdir().expect("tempdir");
-    write_sql_layout(base.path(), "sideeffectplan");
+    write_sql_layout(base.path(), "sideeffect_existing");
 
-    drop_database_if_exists("sideeffectplan").await;
-    let mut cfg = sa_cfg("sideeffectplan", &base.path().to_string_lossy());
+    drop_database_if_exists("sideeffect_existing").await;
+    let mut cfg = sa_cfg("sideeffect_existing", &base.path().to_string_lossy());
     validate_config(&mut cfg).expect("valid config");
-    migrator_core::config::ensure_catalog_databases_exist(&cfg, &["sideeffectplan".to_string()])
+    migrator_core::config::ensure_catalog_databases_exist(&cfg, &["sideeffect_existing".to_string()])
         .await
         .expect("test setup creates db");
 
@@ -96,15 +96,15 @@ async fn plan_missing_database_fails_without_create_negative_path() {
     }
 
     let base = tempfile::tempdir().expect("tempdir");
-    write_sql_layout(base.path(), "sideeffectplan");
+    write_sql_layout(base.path(), "sideeffect_missing_neg");
 
-    drop_database_if_exists("sideeffectplan").await;
+    drop_database_if_exists("sideeffect_missing_neg").await;
     assert!(
-        !database_exists("sideeffectplan").await,
+        !database_exists("sideeffect_missing_neg").await,
         "precondition: database must not exist"
     );
 
-    let mut cfg = sa_cfg("sideeffectplan", &base.path().to_string_lossy());
+    let mut cfg = sa_cfg("sideeffect_missing_neg", &base.path().to_string_lossy());
     validate_config(&mut cfg).expect("valid config");
 
     let err = match run_command(Command::Plan, &cfg).await {
@@ -112,8 +112,8 @@ async fn plan_missing_database_fails_without_create_negative_path() {
         Err(err) => err,
     };
     assert!(
-        !database_exists("sideeffectplan").await,
-        "plan must not create database, but sideeffectplan now exists: {err}"
+        !database_exists("sideeffect_missing_neg").await,
+        "plan must not create database, but sideeffect_missing_neg now exists: {err}"
     );
 }
 
@@ -125,15 +125,15 @@ async fn validate_missing_database_edge_case() {
     }
 
     let base = tempfile::tempdir().expect("tempdir");
-    write_sql_layout(base.path(), "sideeffectmissing");
+    write_sql_layout(base.path(), "sideeffect_validate_missing");
 
-    drop_database_if_exists("sideeffectmissing").await;
+    drop_database_if_exists("sideeffect_validate_missing").await;
     assert!(
-        !database_exists("sideeffectmissing").await,
+        !database_exists("sideeffect_validate_missing").await,
         "precondition: database must not exist"
     );
 
-    let mut cfg = sa_cfg("sideeffectmissing", &base.path().to_string_lossy());
+    let mut cfg = sa_cfg("sideeffect_validate_missing", &base.path().to_string_lossy());
     validate_config(&mut cfg).expect("valid config");
     assert!(
         connect(&cfg).await.is_err(),
@@ -145,7 +145,7 @@ async fn validate_missing_database_edge_case() {
         Err(err) => err,
     };
     assert!(
-        !database_exists("sideeffectmissing").await,
+        !database_exists("sideeffect_validate_missing").await,
         "validate must not create missing db: {err}"
     );
 }
@@ -158,17 +158,17 @@ async fn plan_multi_db_layout_only_targets_catalog_directories_edge_case() {
     }
 
     let base = tempfile::tempdir().expect("tempdir");
-    write_sql_layout(base.path(), "sideeffectplan");
-    write_sql_layout(base.path(), "sideeffectmissing");
+    write_sql_layout(base.path(), "sideeffect_multi_present");
+    write_sql_layout(base.path(), "sideeffect_multi_absent");
 
     let dbs = discover_catalog_databases(&base.path().to_string_lossy()).expect("discover");
     assert_eq!(dbs.len(), 2);
 
-    drop_database_if_exists("sideeffectplan").await;
-    drop_database_if_exists("sideeffectmissing").await;
+    drop_database_if_exists("sideeffect_multi_present").await;
+    drop_database_if_exists("sideeffect_multi_absent").await;
     migrator_core::config::ensure_catalog_databases_exist(
-        &sa_cfg("sideeffectplan", &base.path().to_string_lossy()),
-        &["sideeffectplan".to_string()],
+        &sa_cfg("sideeffect_multi_present", &base.path().to_string_lossy()),
+        &["sideeffect_multi_present".to_string()],
     )
     .await
     .expect("setup existing db only");
@@ -183,9 +183,9 @@ async fn plan_multi_db_layout_only_targets_catalog_directories_edge_case() {
     let _ = run_command(Command::Plan, &cfg)
         .await
         .expect("plan may succeed for reachable catalog databases only");
-    assert!(database_exists("sideeffectplan").await);
+    assert!(database_exists("sideeffect_multi_present").await);
     assert!(
-        !database_exists("sideeffectmissing").await,
+        !database_exists("sideeffect_multi_absent").await,
         "plan must not auto-create the missing catalog database"
     );
 }
@@ -198,15 +198,15 @@ async fn plan_missing_database_does_not_create_regression() {
     }
 
     let base = tempfile::tempdir().expect("tempdir");
-    write_sql_layout(base.path(), "sideeffectplan");
+    write_sql_layout(base.path(), "sideeffect_regression");
 
-    drop_database_if_exists("sideeffectplan").await;
+    drop_database_if_exists("sideeffect_regression").await;
     migrator_core::audit::invalidate_audit_cache_all(&db_fingerprint(
         &std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into()),
-        "sideeffectplan",
+        "sideeffect_regression",
     ));
 
-    let mut cfg = sa_cfg("sideeffectplan", &base.path().to_string_lossy());
+    let mut cfg = sa_cfg("sideeffect_regression", &base.path().to_string_lossy());
     validate_config(&mut cfg).expect("valid config");
 
     // Before BG-006 fix, sa-backed plan auto-created the catalog database here.
@@ -223,7 +223,7 @@ async fn plan_missing_database_does_not_create_regression() {
     };
 
     assert!(
-        !database_exists("sideeffectplan").await,
+        !database_exists("sideeffect_regression").await,
         "regression: plan still creates database on sa login: {err}"
     );
 }
