@@ -30,7 +30,7 @@ pub async fn ensure_catalog_databases_exist(cfg: &Config, names: &[String]) -> R
 /// whether to create it (mutating commands) or skip it (read-only multi-DB plan).
 pub async fn target_database_exists(cfg: &Config, db: &str) -> bool {
     let mut target = cfg.clone();
-    target.database = db.to_owned();
+    target.database = db.into();
     match connect(&target).await {
         Ok(_) => true,
         Err(err) => {
