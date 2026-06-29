@@ -19,7 +19,10 @@ pub struct WorkspaceCold {
     pub script_key_index: HashMap<ScriptKey, u32>,
     pub key_index: HashMap<ObjectKey, u32>,
     pub fp_index: HashMap<u64, u32>,
-    pub ingest_key_index: HashMap<ObjectKey, u32>,
+    /// Keyed by `(db_id, key)` so identical `<schema>/<kind>/<name>` objects in
+    /// different catalog databases (multi-DB layout) do not collide; only a true
+    /// in-database duplicate is rejected.
+    pub ingest_key_index: HashMap<(u16, ObjectKey), u32>,
     /// Parallel to `object_entries` until layout finalize / intern.
     pub ingest_keys: Vec<ObjectKey>,
     /// Parallel to `script_rows` until script path intern.

@@ -9,21 +9,27 @@ fn entries_are_interned(entries: &[ObjectEntry]) -> bool {
 
 impl Workspace {
     pub fn push_object(&mut self, key: ObjectKey, obj: ObjectEntry) -> Result<()> {
-        if self.ingest_key_index.contains_key(&key) {
-            // Two source files normalize to the same `<schema>/<kind>/<name>` key
-            // (the key is lowercased, so case-only variants collide too). Silently
-            // overwriting would drop one object from the migration plan, so fail
-            // closed with a clear, deterministic error instead.
+        let db_id = obj.db_id;
+        let idx_key = (db_id, key.clone());
+        if self.ingest_key_index.contains_key(&idx_key) {
+            // Two source files in the same catalog database normalize to the same
+            // `<schema>/<kind>/<name>` key (the key is lowercased, so case-only
+            // variants collide too). Identical keys in *different* databases are
+            // legitimate in a multi-DB layout and are kept distinct by `db_id`.
+            // Silently overwriting would drop one object from the migration plan,
+            // so fail closed with a clear, deterministic error instead.
             return Err(Error::InvalidInput(format!(
-                "duplicate object {:?}: two source files map to the same normalized \
-                 <schema>/<kind>/<name> key (keys are case-insensitive); rename or remove one",
-                key.as_str()
+                "duplicate object {:?} in database {:?}: two source files map to the same \
+                 normalized <schema>/<kind>/<name> key (keys are case-insensitive); \
+                 rename or remove one",
+                key.as_str(),
+                self.database_name(db_id).as_ref(),
             )));
         }
         let idx = self.object_entries.len();
         self.object_entries.push(obj);
         self.cold.ingest_keys.push(key.clone());
-        self.ingest_key_index.insert(key, (idx + 1) as u32);
+        self.ingest_key_index.insert(idx_key, (idx + 1) as u32);
         Ok(())
     }
 
