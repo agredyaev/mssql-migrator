@@ -19,6 +19,9 @@ pub async fn apply_transitions(
         }
         for path in &obj.transition_paths {
             apply_one_transition(conn, ws, obj, path, result).await?;
+            if result.failed > 0 {
+                return Ok(());
+            }
         }
     }
     Ok(())
@@ -37,7 +40,9 @@ async fn apply_one_transition(
     };
     let sql = wrap_transaction(&body);
     if let Err(e) = conn.exec(&sql).await {
-        let _ = conn.exec(crate::sql::apply::ROLLBACK).await;
+        if let Err(re) = conn.exec(crate::sql::apply::ROLLBACK).await {
+            result.push_error(format!("{path}: rollback failed: {re}"));
+        }
         result.push_error(format!("{path}: {e}"));
         return Ok(());
     }
