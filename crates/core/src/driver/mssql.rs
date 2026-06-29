@@ -33,39 +33,49 @@ pub async fn connect(cfg: &Config) -> Result<MssqlConn> {
         tds.encryption(tiberius::EncryptionLevel::NotSupported);
     }
     let addr = format!("{}:{}", cfg.server, cfg.port);
-    let tcp = match TcpStream::connect(&addr).await {
+    let timeout = cfg.command_timeout;
+    let tcp = match with_connect_timeout(timeout, &addr, "tcp connect", TcpStream::connect(&addr))
+        .await?
+    {
         Ok(tcp) => tcp,
         Err(e) => {
-            tracing::debug!(
-                operation = "tcp_connect",
-                server = %cfg.server,
-                port = %cfg.port,
-                database = %cfg.database,
-                db_auth = %cfg.db_auth,
-                error = %e,
-                "sql server tcp connect failed"
-            );
+            tracing::debug!(operation = "tcp_connect", server = %cfg.server, port = %cfg.port, database = %cfg.database, db_auth = %cfg.db_auth, error = %e, "sql server tcp connect failed");
             return Err(Error::Sql(format!("connect {addr}: {e}")));
         }
     };
     tcp.set_nodelay(true).ok();
-    let mut client = match Client::connect(tds, tcp.compat_write()).await {
+    let handshake = Client::connect(tds, tcp.compat_write());
+    let mut client = match with_connect_timeout(timeout, &addr, "tds handshake", handshake).await? {
         Ok(client) => client,
         Err(e) => {
-            tracing::debug!(
-                operation = "tds_handshake",
-                server = %cfg.server,
-                port = %cfg.port,
-                database = %cfg.database,
-                db_auth = %cfg.db_auth,
-                error = %e,
-                "sql server tds handshake failed"
-            );
+            tracing::debug!(operation = "tds_handshake", server = %cfg.server, port = %cfg.port, database = %cfg.database, db_auth = %cfg.db_auth, error = %e, "sql server tds handshake failed");
             return Err(Error::Sql(format!("connect {addr}: tds handshake: {e}")));
         }
     };
     init_session(&mut client).await?;
     Ok(MssqlConn { client })
+}
+
+/// Bound a connect step (TCP dial / TDS handshake) by `timeout` so an unreachable
+/// or wedged SQL Server fails fast instead of hanging CI. `Duration::ZERO` disables
+/// the bound. On success the step's own result is returned unchanged.
+async fn with_connect_timeout<F, T>(
+    timeout: std::time::Duration,
+    addr: &str,
+    what: &str,
+    fut: F,
+) -> Result<T>
+where
+    F: std::future::Future<Output = T>,
+{
+    if timeout.is_zero() {
+        return Ok(fut.await);
+    }
+    tokio::time::timeout(timeout, fut).await.map_err(|_| {
+        Error::Sql(format!(
+            "connect {addr}: {what} timed out after {timeout:?}"
+        ))
+    })
 }
 
 async fn init_session(client: &mut RawClient) -> Result<()> {
