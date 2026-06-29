@@ -23,8 +23,8 @@ pub struct ApplyResult {
 
 impl ApplyResult {
     /// Record a failure: increment counter and append the error message.
-    pub fn push_error(&mut self, msg: String) {
+    pub fn push_error(&mut self, msg: impl Into<String>) {
         self.failed += 1;
-        self.errors.push(msg);
+        self.errors.push(msg.into());
     }
 }
