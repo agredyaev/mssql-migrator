@@ -40,10 +40,18 @@ pub fn apply_checksums_if_needed(ws: &mut Workspace, checksums: &ChecksumMap) {
 }
 
 pub fn build_scope_json(scope: &InspectScope) -> String {
-    let refs: Vec<_> = scope
+    // `hot_keys` is a `HashSet`, so iteration order is non-deterministic. This JSON
+    // is used as the inspect-cache key (`db::catalog_inspect_cache`), so it must be
+    // stable across runs or the same logical scope produces cache misses. Sort the
+    // parsed parts before serializing to make the output order deterministic.
+    let mut parts: Vec<(String, String, String)> = scope
         .hot_keys
         .iter()
         .filter_map(|k| scope_key_parts(k))
+        .collect();
+    parts.sort();
+    let refs: Vec<_> = parts
+        .into_iter()
         .map(|(schema, kind, object)| json!({"schema": schema, "kind": kind, "object": object}))
         .collect();
     serde_json::to_string(&refs).unwrap_or_else(|_| "[]".into())
@@ -82,3 +90,7 @@ pub fn apply_catalog(ws: &mut Workspace, catalog: &crate::db::CatalogState) {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/scope_test.rs"]
+mod scope_tests;
