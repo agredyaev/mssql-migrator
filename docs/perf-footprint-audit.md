@@ -12,6 +12,7 @@ Measure in-process memory and CPU of the Rust plan pipeline (scan, diff, plan ou
 - Scripts: [`ops/perf/footprint_bench.sh`](../ops/perf/footprint_bench.sh), [`ops/perf/dhat_alloc_tree.py`](../ops/perf/dhat_alloc_tree.py)
 - Baseline: [`crates/core/tests/testdata/perf/footprint_baseline.json`](../crates/core/tests/testdata/perf/footprint_baseline.json)
 - Bench: `plan_diff_skip_heavy_5000` in [`crates/core-dev/benches/plan_diff.rs`](../crates/core-dev/benches/plan_diff.rs)
+- Phase profilers: [`scan_load.rs`](../crates/core-dev/benches/scan_load.rs) / [`scan_dhat.rs`](../crates/core-dev/benches/scan_dhat.rs) (filesystem scan), [`cache_serde_load.rs`](../crates/core-dev/benches/cache_serde_load.rs) / [`cache_serde_dhat.rs`](../crates/core-dev/benches/cache_serde_dhat.rs) (L1 serde). These start the profiler after warmup, so dhat **Total** ÷ 20 is the per-iteration cost (the loop/setup phase split does not apply).
 
 **Out of scope:** SQL Server tuning, `cli_wall_ms` SLO (`make slo`), CI hard perf gates.
 
@@ -52,6 +53,10 @@ make bench-footprint-profile            # CPU flamegraph (5k skip-heavy diff)
 make bench-footprint-alloc              # dhat + alloc call-tree (default: skip_heavy)
 make bench-footprint-alloc ARGS=transitions
 make bench-footprint-alloc ARGS=scan
+ops/perf/footprint_bench.sh profile-load-scan    # CPU flamegraph: scan_root (5k files)
+ops/perf/footprint_bench.sh profile-load-cache   # CPU flamegraph: L1 serde round-trip
+ops/perf/footprint_bench.sh alloc scan_root      # dhat: scan_root loop-only
+ops/perf/footprint_bench.sh alloc cache          # dhat: L1 serde loop-only
 make bench-footprint-update-baseline    # maintainer: refresh committed JSON
 make profile-summary                    # text rollup of artifacts/
 cargo test -p migrator-core-dev --test footprint_baseline footprint_baseline_match -q
@@ -67,6 +72,8 @@ cargo test -p migrator-core-dev --test footprint_baseline footprint_baseline_mat
 | `artifacts/plan_diff_dhat.txt` | dhat summary (skip-heavy) |
 | `artifacts/dhat_heap.json` | raw dhat heap (input to Python tree) |
 | `artifacts/alloc_flame.txt` | human alloc tree from `dhat_alloc_tree.py` |
+| `artifacts/scan_5k_load_flamegraph.svg`, `artifacts/scan_dhat.txt` | scan_root CPU + heap |
+| `artifacts/cache_serde_load_flamegraph.svg`, `artifacts/cache_serde_dhat.txt` | L1 serde CPU + heap |
 
 dhat phases (`dhat_alloc_tree.py`):
 
