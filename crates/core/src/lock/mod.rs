@@ -49,7 +49,7 @@ pub async fn acquire(conn: &mut TimingConn, cfg: &Config) -> Result<()> {
 }
 
 pub async fn release(conn: &mut TimingConn) -> Result<()> {
-    let _ = conn.query(sql::lock::RELEASE, &[]).await?;
+    conn.query(sql::lock::RELEASE, &[]).await?;
     Ok(())
 }
 
