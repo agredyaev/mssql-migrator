@@ -25,6 +25,18 @@ pub fn parse_object(rel: &str, abs: &Path) -> Result<Option<(ObjectKey, ObjectEn
     let name = parts[parts.len() - 1].trim_end_matches(".sql");
     let kind = parts[parts.len() - 2];
     if !KINDS.contains(&kind) {
+        // A file sitting exactly at `<db>/<schema>/<kind>/<name>.sql` whose `<kind>`
+        // is not recognized is almost certainly a typo'd object-type folder. Warn so
+        // it is not silently dropped from the plan. Deeper paths are left silent
+        // (they may be intentional non-object content).
+        if parts.len() == 4 {
+            tracing::warn!(
+                path = rel,
+                kind = kind,
+                "skipping file under unsupported object-type folder; expected one of: \
+                 tables, views, procedures, functions, triggers, indexes, types, sequences, synonyms"
+            );
+        }
         return Ok(None);
     }
     let schema = parts[parts.len() - 3];
