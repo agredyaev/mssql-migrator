@@ -59,6 +59,9 @@ pub async fn execute_plan(
         return finish(cfg, conn, result).await;
     }
     objects::apply_objects(conn, ws, plan, &mut result).await?;
+    if result.failed > 0 {
+        return finish(cfg, conn, result).await;
+    }
     transitions::apply_transitions(conn, ws, plan, &mut result).await?;
     finish(cfg, conn, result).await
 }

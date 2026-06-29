@@ -32,8 +32,14 @@ pub async fn apply_objects(
     }
 
     flush_tx(conn, ws, &mut tx_batch, result).await?;
+    if result.failed > 0 {
+        return Ok(());
+    }
     for obj in module_batch {
         exec_one(conn, ws, obj, result).await?;
+        if result.failed > 0 {
+            break;
+        }
     }
     Ok(())
 }
@@ -67,6 +73,9 @@ async fn flush_tx(
     sort_tx_batch(batch);
     for obj in batch.drain(..) {
         exec_one_wrapped(conn, ws, obj, result).await?;
+        if result.failed > 0 {
+            break;
+        }
     }
     Ok(())
 }
