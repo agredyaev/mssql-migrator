@@ -21,16 +21,37 @@
 //! - `RMIGD_ENV` points to missing file: daemon starts but all sessions use ambient env.
 
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> ExitCode {
     init_tracing();
-    let socket = migrator_core::session::resolve_socket_path()?;
+    match run().await {
+        Ok(()) => ExitCode::from(migrator_core::error::EXIT_OK as u8),
+        Err(code) => ExitCode::from(code as u8),
+    }
+}
+
+/// Resolve the socket, load env, and serve. Errors print via `Display` (not the
+/// `Termination` `Debug` dump) and map to the documented exit-code scheme
+/// (`crates/core/src/error.rs`) so CI can classify daemon startup failures:
+/// socket/env resolution keeps its classified code; an opaque serve failure is
+/// `EXIT_GENERAL`.
+async fn run() -> Result<(), i32> {
+    let socket = migrator_core::session::resolve_socket_path().map_err(|e| {
+        eprintln!("rmigd: {e}");
+        e.exit_code()
+    })?;
     let env_required = std::env::var("RMIGD_ENV").is_ok();
     let env = std::env::var("RMIGD_ENV").unwrap_or_else(|_| ".env".into());
-    migrator_core::session::run_daemon(&socket, PathBuf::from(env).as_path(), env_required).await
+    migrator_core::session::run_daemon(&socket, PathBuf::from(env).as_path(), env_required)
+        .await
+        .map_err(|e| {
+            eprintln!("rmigd: {e:#}");
+            migrator_core::error::EXIT_GENERAL
+        })
 }
 
 fn init_tracing() {

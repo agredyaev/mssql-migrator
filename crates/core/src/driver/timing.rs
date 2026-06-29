@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::io_profile::{lock_profile, IoProfile};
 use crate::driver::db_client::DbClient;
@@ -10,6 +10,9 @@ pub struct TimingConn {
     inner: Option<DbClient>,
     pub io: Arc<Mutex<IoProfile>>,
     _connect_done: Instant,
+    /// Per-command execution timeout. `Duration::ZERO` disables it (the default,
+    /// so test connections constructed via `new` run unbounded).
+    command_timeout: Duration,
 }
 
 impl TimingConn {
@@ -18,7 +21,14 @@ impl TimingConn {
             inner: Some(client),
             io,
             _connect_done: Instant::now(),
+            command_timeout: Duration::ZERO,
         }
+    }
+
+    /// Bound every `exec`/`query` call to `timeout`. `Duration::ZERO` disables it.
+    /// Without this a hung SQL Server would block the CLI forever in CI.
+    pub fn set_command_timeout(&mut self, timeout: Duration) {
+        self.command_timeout = timeout;
     }
 
     pub fn client_mut(&mut self) -> Result<&mut DbClient> {
@@ -47,7 +57,15 @@ impl TimingConn {
 
     pub async fn exec(&mut self, sql: &str) -> Result<()> {
         let t0 = Instant::now();
-        let r = self.client_mut()?.exec(sql).await;
+        let timeout = self.command_timeout;
+        let r = if timeout.is_zero() {
+            self.client_mut()?.exec(sql).await
+        } else {
+            match tokio::time::timeout(timeout, self.client_mut()?.exec(sql)).await {
+                Ok(r) => r,
+                Err(_) => Err(Error::Sql(format!("exec timed out after {timeout:?}"))),
+            }
+        };
         let ms = crate::timings::dur_ms(t0.elapsed());
         let mut io = lock_profile(&self.io);
         io.exec_ms += ms;
@@ -57,7 +75,15 @@ impl TimingConn {
 
     pub async fn query(&mut self, sql: &str, params: &[&str]) -> Result<Vec<RowData>> {
         let t0 = Instant::now();
-        let r = self.client_mut()?.query(sql, params).await;
+        let timeout = self.command_timeout;
+        let r = if timeout.is_zero() {
+            self.client_mut()?.query(sql, params).await
+        } else {
+            match tokio::time::timeout(timeout, self.client_mut()?.query(sql, params)).await {
+                Ok(r) => r,
+                Err(_) => Err(Error::Sql(format!("query timed out after {timeout:?}"))),
+            }
+        };
         let ms = crate::timings::dur_ms(t0.elapsed());
         let mut io = lock_profile(&self.io);
         io.query_ms += ms;
@@ -67,7 +93,15 @@ impl TimingConn {
 
     pub async fn query_all(&mut self, sql: &str, params: &[&str]) -> Result<Vec<Vec<RowData>>> {
         let t0 = Instant::now();
-        let r = self.client_mut()?.query_all(sql, params).await;
+        let timeout = self.command_timeout;
+        let r = if timeout.is_zero() {
+            self.client_mut()?.query_all(sql, params).await
+        } else {
+            match tokio::time::timeout(timeout, self.client_mut()?.query_all(sql, params)).await {
+                Ok(r) => r,
+                Err(_) => Err(Error::Sql(format!("query timed out after {timeout:?}"))),
+            }
+        };
         let ms = crate::timings::dur_ms(t0.elapsed());
         let mut io = lock_profile(&self.io);
         io.query_ms += ms;

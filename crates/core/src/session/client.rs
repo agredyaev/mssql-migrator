@@ -6,8 +6,8 @@ use crate::error::Result;
 pub async fn connect_daemon(socket_path: &str, cfg: &Config) -> Result<DbClient> {
     let mut proxy = super::proxy::ProxyClient::connect(socket_path, Some(cfg)).await?;
     if !cfg.database.is_empty() {
-        let escaped = cfg.database.replace(']', "]]");
-        proxy.exec(&format!("USE [{escaped}]")).await?;
+        let quoted = crate::sql_ident::bracket_ident(&cfg.database)?;
+        proxy.exec(&format!("USE {quoted}")).await?;
     }
     Ok(DbClient::Proxy(proxy))
 }

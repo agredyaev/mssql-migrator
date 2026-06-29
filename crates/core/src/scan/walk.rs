@@ -5,7 +5,7 @@ use std::path::{Component, Path, PathBuf};
 use crate::domain::Workspace;
 use crate::error::Result;
 
-use super::parse;
+use super::{parse, parse_parallel};
 
 pub fn scan_root(ws: &mut Workspace, root: &str) -> Result<()> {
     ws.reset_layout();
@@ -14,17 +14,23 @@ pub fn scan_root(ws: &mut Workspace, root: &str) -> Result<()> {
         .map_err(crate::error::Error::Io)?;
     ws.root = path_to_utf8(&root)?.into();
     let mut schemas = HashMap::new();
+    let mut objects: Vec<(String, PathBuf)> = Vec::new();
     for entry in walk_sql(&root)? {
         let rel = relative_sql_path(&root, &entry)?;
         if rel.contains("/_migrations/") {
             parse::push_transition(ws, &rel, &entry)?;
-            continue;
-        }
-        if rel.contains("/checks/") {
+        } else if rel.contains("/checks/") {
             parse::push_check(ws, &rel, &entry)?;
-            continue;
+        } else {
+            objects.push((rel, entry));
         }
-        parse::ingest_object(ws, &rel, &entry, &mut schemas)?;
+    }
+    // Read + checksum object files in parallel, then merge sequentially in order.
+    for (i, parsed) in parse_parallel::parse_objects(&objects)?
+        .into_iter()
+        .enumerate()
+    {
+        parse::insert_parsed_object(ws, parsed, &objects[i].0, &mut schemas)?;
     }
     ws.schemas = schemas.into_values().collect();
     ws.schemas.sort_by(|a, b| a.name.cmp(&b.name));

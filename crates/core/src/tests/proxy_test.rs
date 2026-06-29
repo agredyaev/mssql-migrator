@@ -87,3 +87,35 @@ async fn call_rejects_oversized_response_regression() {
         "unexpected error: {err}"
     );
 }
+
+#[tokio::test]
+async fn timing_conn_exec_times_out_when_server_stalls() {
+    use crate::driver::{DbClient, IoProfile, TimingConn};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    let (client_stream, server_stream) = UnixStream::pair().expect("unix pair");
+    let server = tokio::spawn(async move {
+        let (read_half, _write_half) = server_stream.into_split();
+        let mut reader = BufReader::new(read_half);
+        let mut line = String::new();
+        // Read the exec request, then never reply (simulates a wedged daemon / SQL Server).
+        let _ = reader.read_line(&mut line).await;
+        tokio::time::sleep(Duration::from_secs(30)).await;
+    });
+
+    let proxy = proxy_client(client_stream);
+    let io = Arc::new(Mutex::new(IoProfile::default()));
+    let mut conn = TimingConn::new(DbClient::Proxy(proxy), io, 0);
+    conn.set_command_timeout(Duration::from_millis(50));
+
+    let err = conn
+        .exec("SELECT 1")
+        .await
+        .expect_err("a stalled server must hit the command timeout");
+    assert!(
+        err.to_string().contains("timed out"),
+        "unexpected error: {err}"
+    );
+    server.abort();
+}

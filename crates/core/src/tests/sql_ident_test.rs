@@ -73,3 +73,22 @@ proptest! {
         prop_assert!(validate_filename_token(&token).is_ok());
     }
 }
+
+#[test]
+fn bracket_ident_accepts_128_char_identifier() {
+    let name = "a".repeat(128);
+    assert!(
+        bracket_ident(&name).is_ok(),
+        "128 chars is the MSSQL maximum"
+    );
+}
+
+#[test]
+fn bracket_ident_rejects_overlong_identifier() {
+    let name = "a".repeat(129);
+    let err = bracket_ident(&name).expect_err("129 chars exceeds the MSSQL maximum");
+    assert!(
+        err.to_string().contains("identifier too long"),
+        "unexpected error: {err}"
+    );
+}

@@ -27,7 +27,21 @@ pub fn validate_config(cfg: &mut Config) -> Result<()> {
             missing.join(", ")
         )));
     }
+    // Reject control characters (NUL, newlines, etc.) in connection identity so they
+    // cannot corrupt diagnostics/logs. Backslashes are allowed: SQL Server named
+    // instances use `host\INSTANCE`.
+    reject_control_chars("RM_DB_SERVER", &cfg.server)?;
+    reject_control_chars("database name", &cfg.database)?;
     normalize_catalog_paths(cfg)?;
+    Ok(())
+}
+
+fn reject_control_chars(field: &str, value: &str) -> Result<()> {
+    if value.chars().any(|c| c.is_control()) {
+        return Err(Error::Config(format!(
+            "{field} contains control characters"
+        )));
+    }
     Ok(())
 }
 

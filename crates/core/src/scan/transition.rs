@@ -23,7 +23,7 @@ pub fn ingest(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
         scaffold,
     });
     if !scaffold {
-        ws.push_transition_staging(meta.table_key.clone(), share(&meta.ordinal), sk);
+        ws.push_transition_staging(meta.table_key.clone(), share(&meta.ordinal), sk)?;
         ws.invalidate_transition_paths();
     }
     Ok(())

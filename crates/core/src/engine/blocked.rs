@@ -14,6 +14,6 @@ pub async fn handle_blocked_migrate(
 ) -> Result<()> {
     let columns: std::collections::HashMap<String, Vec<TableColumn>> =
         load_table_columns(conn, ws).await?;
-    let _ = scaffold::ensure(cfg, ws, plan, &columns)?;
+    scaffold::ensure(cfg, ws, plan, &columns)?;
     Err(Error::PlanBlocked)
 }

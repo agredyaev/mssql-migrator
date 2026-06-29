@@ -37,7 +37,7 @@ pub use auth_mode::{sql_credentials_required, uses_integrated_auth};
 pub use catalog::discover_catalog_databases;
 pub use catalog_paths::{normalize_catalog_paths, resolve_single_database};
 pub use cold::ConfigCold;
-pub use ensure_db::ensure_catalog_databases_exist;
+pub use ensure_db::{ensure_catalog_databases_exist, target_database_exists};
 pub use env::{load_env_file, load_env_file_required};
 pub use env_build::build_config;
 pub use validate::validate_config;

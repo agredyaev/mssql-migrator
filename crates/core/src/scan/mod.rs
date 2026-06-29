@@ -25,6 +25,7 @@ mod git_preload;
 mod git_repo;
 mod parse;
 mod parse_object;
+mod parse_parallel;
 pub mod transition;
 mod walk;
 

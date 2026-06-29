@@ -44,7 +44,12 @@ pub async fn exec_one_wrapped(
     };
     let sql = wrap_transaction(&body);
     if let Err(e) = conn.exec(&sql).await {
-        let _ = conn.exec(crate::sql::apply::ROLLBACK).await;
+        if let Err(re) = conn.exec(crate::sql::apply::ROLLBACK).await {
+            // A failed rollback means the connection's transaction state is
+            // unknown; surface it so the apply aborts rather than running the
+            // next object inside a zombie transaction.
+            result.push_error(format!("{}: rollback failed: {re}", obj.normalized_key));
+        }
         result.push_error(format!("{}: {e}", obj.normalized_key));
         return Ok(());
     }
