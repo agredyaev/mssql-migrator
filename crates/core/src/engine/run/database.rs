@@ -7,6 +7,7 @@ use crate::driver::{connect, DbClient, TimingConn};
 use crate::error::{Error, Result};
 use crate::timings::{self, PhaseTimings};
 
+use super::planned_at::resolved_planned_at;
 use super::types::{command_label, Command, RunOutput};
 
 pub(super) async fn run_command_for_database(
@@ -30,6 +31,7 @@ pub(super) async fn run_command_for_database(
     timings.connect_ms = connect_ms;
     let io_arc = Arc::new(Mutex::new(crate::driver::IoProfile::default()));
     let mut conn = TimingConn::new(db_client, io_arc.clone(), connect_ms);
+    conn.set_command_timeout(cfg.command_timeout);
 
     let db = crate::db::run_plan_db_phase(cfg, &mut conn, &ws).await?;
     let server_database = format!("{}_{}", cfg.server, cfg.database);
@@ -64,7 +66,7 @@ pub(super) async fn run_command_for_database(
 
     let (mut plan, diff_ms) = crate::plan::compute_diff(&mut ws, &db.catalog, &db.checksums)?;
     plan.command = command_label(cmd).into();
-    plan.planned_at = chrono::Utc::now().to_rfc3339();
+    plan.planned_at = resolved_planned_at();
     timings.diff_ms = diff_ms;
     if plan.uses_slim_rows() {
         plan.ensure_objects_materialized(&ws);
