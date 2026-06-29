@@ -1,5 +1,6 @@
 mod database;
 mod merge;
+pub(super) mod plan_phase;
 mod planned_at;
 mod types;
 
@@ -16,11 +17,17 @@ use crate::timings::{self, PhaseTimings};
 use database::run_command_for_database;
 use merge::{merge_plan, merge_timings};
 
-fn command_ensures_catalog_databases(cmd: types::Command) -> bool {
+/// Commands that mutate the database: they run inside the advisory lock and
+/// require their catalog databases to exist first.
+pub(super) fn command_mutates(cmd: types::Command) -> bool {
     matches!(
         cmd,
         types::Command::Migrate | types::Command::Baseline | types::Command::RepairChecksum
     )
+}
+
+fn command_ensures_catalog_databases(cmd: types::Command) -> bool {
+    command_mutates(cmd)
 }
 
 pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput> {
@@ -63,6 +70,22 @@ pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput>
         if ws.object_count() == 0 && multi {
             continue;
         }
+        // In a multi-DB layout the catalog list is discovered from the folder
+        // structure, so a directory may name a database that does not exist on
+        // the server yet. Read-only commands cannot inspect a missing database
+        // and must not create it, so plan the reachable catalogs only and skip
+        // the rest. Mutating commands already created their catalogs above via
+        // `ensure_catalog_databases_exist`, so this probe is skipped for them.
+        if multi
+            && !command_ensures_catalog_databases(cmd)
+            && !crate::config::target_database_exists(cfg, db).await
+        {
+            tracing::warn!(
+                database = %db,
+                "skipping catalog database that does not exist on server"
+            );
+            continue;
+        }
         let out =
             run_command_for_database(cmd, &cfg_db, ws, scan_elapsed, cli_start, multi).await?;
         exit_code = exit_code.max(out.exit_code);
@@ -83,3 +106,7 @@ pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput>
     };
     Ok(out)
 }
+
+#[cfg(test)]
+#[path = "../../tests/command_mutates_test.rs"]
+mod command_mutates_tests;
