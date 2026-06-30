@@ -33,7 +33,7 @@ mod validate;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-pub use auth_mode::{sql_credentials_required, uses_integrated_auth};
+pub use auth_mode::sql_credentials_required;
 pub use catalog::discover_catalog_databases;
 pub use catalog_paths::{normalize_catalog_paths, resolve_single_database};
 pub use cold::ConfigCold;

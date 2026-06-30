@@ -8,11 +8,9 @@ name = "rmig"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1.0"
 migrator-core = { path = "../core" }
 serde_json = "1"
 tokio = { workspace = true }
-tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [features]
