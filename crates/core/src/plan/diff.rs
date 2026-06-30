@@ -13,6 +13,7 @@ use super::diff_object::fill_plan_row;
 use super::diff_plan::{ensure_plan_rows, ensure_plan_schemas};
 use super::path_cache::ensure_path_caches;
 
+/// Computes a structural diff of the workspace against the live catalog and returns the plan.
 pub fn compute_diff(
     ws: &mut Workspace,
     catalog: &CatalogState,
@@ -23,6 +24,7 @@ pub fn compute_diff(
     Ok((plan, ms))
 }
 
+/// Fills `plan` in place with a structural diff of the workspace against the live catalog.
 pub fn compute_diff_into(
     ws: &mut Workspace,
     catalog: &CatalogState,

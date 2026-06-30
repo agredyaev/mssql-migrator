@@ -10,14 +10,19 @@ use crate::config::Config;
 use crate::domain::Workspace;
 use crate::error::{Error, Result};
 
+/// Summary record written to the run report file.
 #[derive(Debug, Serialize)]
 pub struct RunFinished {
+    /// Name of the command that was executed.
     pub command: String,
+    /// Human-readable outcome label ("success" or "failure").
     pub result: String,
+    /// Process exit code produced by the run.
     #[serde(rename = "exitCode")]
     pub exit_code: i32,
 }
 
+/// Writes plan and run-finished report files to the configured report directory.
 pub fn write_reports(
     cfg: &Config,
     command: &str,

@@ -2,6 +2,7 @@ use super::super::cold::WorkspaceCold;
 use super::super::Workspace;
 use crate::domain::share;
 impl Workspace {
+    /// Returns a new `Workspace` containing only the entries scoped to `db`.
     pub fn for_catalog_database(&self, db: &str) -> Workspace {
         let prefix = format!("{db}/");
         let mut out = Workspace {

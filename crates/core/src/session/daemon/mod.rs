@@ -33,6 +33,7 @@ mod serve;
 use super::socket::{resolve_socket_path, restrict_socket_mode};
 use serve::serve;
 
+/// Starts the rmigd Unix-socket daemon, accepting connections until the process exits.
 pub async fn run_daemon(socket: &Path, env_path: &Path, env_required: bool) -> anyhow::Result<()> {
     let env = if env_required {
         load_env_file_required(env_path)?

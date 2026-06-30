@@ -6,13 +6,18 @@ use std::env;
 use super::changed_paths_ci;
 use super::git_diff;
 
+/// Outcome of changed-paths resolution, including the paths list and the source that produced it.
 #[derive(Debug, Clone)]
 pub struct ChangedPathsResult {
+    /// SQL-root-relative paths of files that changed.
     pub paths: Vec<String>,
+    /// Whether the resolver fell back to a full inspection (all files).
     pub full_inspect: bool,
+    /// Label identifying which resolution strategy was used.
     pub source: &'static str,
 }
 
+/// Resolves the set of changed SQL paths using environment variables, git, or CI metadata.
 pub fn resolve_changed_paths(sql_root: &str) -> ChangedPathsResult {
     if env::var("RMIG_INSPECT_FULL").as_deref() == Ok("1") {
         return normalize::full("env-full-inspect");

@@ -45,13 +45,20 @@ pub use validate::validate_config;
 /// Hot run flags + layout paths; connection block in [`ConfigCold`] behind `Arc`.
 #[derive(Clone)]
 pub struct Config {
+    /// Root directory of the SQL source tree.
     pub sql_root: String,
+    /// Base SQL layout path used for diff comparisons.
     pub sql_base: String,
+    /// Directory where run reports are written.
     pub report_dir: String,
+    /// Active log verbosity level.
     pub log_level: String,
+    /// Target database name.
     pub database: String,
+    /// Wall-clock SLO ceiling for CLI runs, in milliseconds.
     pub slo_max_cli_wall_ms: i64,
     pub(crate) cold: Arc<ConfigCold>,
+    /// Bitfield of run-mode flags.
     pub flags: u8,
 }
 

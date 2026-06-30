@@ -43,6 +43,7 @@ impl Workspace {
         }
     }
 
+    /// Appends a transition script to the staging map for `table_key`.
     pub fn push_transition_staging(
         &mut self,
         table_key: ObjectKey,

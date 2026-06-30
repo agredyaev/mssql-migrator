@@ -2,6 +2,7 @@ use crate::domain::{Action, ObjectEntry};
 
 use super::scenario::PlanScenario;
 
+/// Resolves the planned action for an object given its `PlanScenario`, appending blocker messages as needed.
 pub fn apply_scenario(
     scenario: PlanScenario,
     obj: &ObjectEntry,

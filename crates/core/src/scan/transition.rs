@@ -1,3 +1,5 @@
+//! Transition script ingestion: parses `_migrations/` paths into [`Workspace`](crate::domain) entries.
+
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
@@ -7,6 +9,7 @@ use crate::error::Result;
 
 const SCAFFOLD: &str = "-- rmig: transition-scaffold";
 
+/// Parses and registers one transition script file into `ws`.
 pub fn ingest(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
     let Some(meta) = parse_meta(rel)? else {
         return Ok(());

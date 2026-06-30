@@ -17,6 +17,7 @@ impl Workspace {
         )
     }
 
+    /// Returns a map from script path string to object key for all workspace entries.
     pub fn objects_by_path(&self) -> HashMap<String, ObjectKey> {
         let mut out = HashMap::with_capacity(self.object_entries.len());
         for (i, obj) in self.object_entries.iter().enumerate() {
@@ -25,6 +26,7 @@ impl Workspace {
         out
     }
 
+    /// Returns a map from transition script path to owner table key.
     pub fn transition_paths_by_script(&self) -> HashMap<String, String> {
         let mut out = HashMap::new();
         for (&row_id, entries) in self.transitions_by_row.iter() {

@@ -1,3 +1,5 @@
+//! [`InspectScope`] and catalog / checksum application helpers for the diff phase.
+
 use serde_json::json;
 
 use std::collections::{HashMap, HashSet};
@@ -8,15 +10,20 @@ use crate::domain::{ObjectKey, ParentRef, Workspace};
 
 pub use super::scope_build::build_inspect_scope;
 
+/// Parameters controlling which objects are inspected during a catalog scan.
 #[derive(Clone, Debug)]
 pub struct InspectScope {
+    /// Whether every object is inspected regardless of cache state.
     pub full_inspect: bool,
+    /// Normalized `schema/kind/name` keys targeted for live DB inspection.
     pub hot_keys: HashSet<String>,
     /// Objects with file digest == audit history; merged into catalog without SQL lookup.
     pub stable_objects: HashMap<crate::domain::ObjectKey, CatalogObject>,
+    /// Permits skipping the L1 cache lookup when all objects are stable.
     pub allow_l1_skip: bool,
 }
 
+/// Applies catalog state to the workspace if it has not been applied yet.
 pub fn apply_catalog_if_needed(ws: &mut Workspace, catalog: &crate::db::CatalogState) {
     if ws.catalog_applied() {
         return;
@@ -25,6 +32,7 @@ pub fn apply_catalog_if_needed(ws: &mut Workspace, catalog: &crate::db::CatalogS
     ws.mark_catalog_applied();
 }
 
+/// Populates the prior-checksum column from `checksums` if not already applied.
 pub fn apply_checksums_if_needed(ws: &mut Workspace, checksums: &ChecksumMap) {
     if ws.checksums_applied() {
         return;
@@ -39,6 +47,7 @@ pub fn apply_checksums_if_needed(ws: &mut Workspace, checksums: &ChecksumMap) {
     ws.mark_checksums_applied();
 }
 
+/// Serializes `scope.hot_keys` to a deterministic JSON string for use as an inspect-cache key.
 pub fn build_scope_json(scope: &InspectScope) -> String {
     // `hot_keys` is a `HashSet`, so iteration order is non-deterministic. This JSON
     // is used as the inspect-cache key (`db::catalog_inspect_cache`), so it must be
@@ -65,6 +74,7 @@ fn scope_key_parts(key: &str) -> Option<(String, String, String)> {
     Some((schema, kind, object))
 }
 
+/// Stamps DB-existence flags and parent references onto workspace entries from `catalog`.
 pub fn apply_catalog(ws: &mut Workspace, catalog: &crate::db::CatalogState) {
     let n = ws.object_count();
     ws.catalog_row.resize(n, 0);

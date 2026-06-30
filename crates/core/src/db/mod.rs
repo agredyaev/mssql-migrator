@@ -49,6 +49,7 @@ pub use state::{
     catalog_object, catalog_object_parts, intern_catalog_state, CatalogState, TableColumn,
 };
 
+/// Drops the in-process inspect cache for the given database fingerprint.
 pub fn invalidate_inspect_cache(db_fp: &str) {
     catalog_inspect_cache::invalidate_db(db_fp);
 }

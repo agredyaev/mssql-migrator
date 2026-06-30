@@ -3,6 +3,7 @@ use crate::domain::{ObjectEntry, ObjectKey};
 use super::super::Workspace;
 
 impl Workspace {
+    /// Returns the object key at index `i`.
     pub fn entry_key(&self, i: usize) -> &ObjectKey {
         if i < self.object_keys.len() {
             &self.object_keys[i]
@@ -11,14 +12,17 @@ impl Workspace {
         }
     }
 
+    /// Returns a reference to the object entry at index `i`.
     pub fn entry(&self, i: usize) -> &ObjectEntry {
         &self.object_entries[i]
     }
 
+    /// Returns a mutable reference to the object entry at index `i`.
     pub fn entry_mut(&mut self, i: usize) -> &mut ObjectEntry {
         &mut self.object_entries[i]
     }
 
+    /// Rebuilds the fingerprint-to-index map from the current object keys.
     pub fn rebuild_fp_index(&mut self) {
         let n = self.object_keys.len();
         self.cold.fp_index.clear();
@@ -28,6 +32,7 @@ impl Workspace {
         }
     }
 
+    /// Returns the entry for `key`, or `None` if the key is not present.
     pub fn object_by_key(&self, key: &ObjectKey) -> Option<&ObjectEntry> {
         let id = self.key_index(key);
         if id > 0 {
@@ -36,6 +41,7 @@ impl Workspace {
         None
     }
 
+    /// Calls `f` for each object entry in the workspace.
     pub fn for_each_entry<F>(&self, mut f: F)
     where
         F: FnMut(&ObjectEntry),
@@ -45,6 +51,7 @@ impl Workspace {
         }
     }
 
+    /// Calls `f` mutably for each object entry in the workspace.
     pub fn for_each_entry_mut<F>(&mut self, mut f: F)
     where
         F: FnMut(&mut ObjectEntry),

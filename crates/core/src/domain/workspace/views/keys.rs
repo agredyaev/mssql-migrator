@@ -1,6 +1,7 @@
 use super::super::Workspace;
 
 impl Workspace {
+    /// Returns all normalized object keys (`schema/kind/name`) in workspace order.
     pub fn normalized_keys(&self) -> Vec<String> {
         self.object_entries
             .iter()

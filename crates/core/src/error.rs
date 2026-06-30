@@ -24,32 +24,53 @@
 
 use std::fmt;
 
+/// Top-level error type for all crate operations.
 #[derive(Debug)]
 pub enum Error {
+    /// Invalid or missing configuration value.
     Config(String),
+    /// Malformed input, bad repository structure, or invalid identifier.
     InvalidInput(String),
+    /// Underlying I/O failure.
     Io(std::io::Error),
+    /// SQL execution or driver exception.
     Sql(String),
+    /// Migration plan is structurally blocked and cannot proceed.
     PlanBlocked,
+    /// Advisory lock could not be acquired within the timeout.
     LockTimeout,
+    /// Uncategorized error from a dependency.
     Other(anyhow::Error),
 }
 
+/// Convenience alias for `std::result::Result<T, Error>`.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Exit code returned on success (0).
 pub const EXIT_OK: i32 = 0;
+/// Exit code returned on uncategorized or I/O errors (1).
 pub const EXIT_GENERAL: i32 = 1;
+/// Exit code returned on configuration errors (2).
 pub const EXIT_CONFIG: i32 = 2;
+/// Exit code returned on database connection failure (3).
 pub const EXIT_CONN: i32 = 3;
+/// Exit code reserved for checksum failures (4).
 pub const EXIT_CHECKSUM: i32 = 4;
+/// Exit code returned on SQL execution errors (5).
 pub const EXIT_SQL: i32 = 5;
+/// Exit code reserved for validation failures (6).
 pub const EXIT_VALIDATION: i32 = 6;
+/// Exit code returned when the advisory lock times out (7).
 pub const EXIT_LOCK_TIMEOUT: i32 = 7;
+/// Exit code returned on invalid input or bad repository structure (8).
 pub const EXIT_INVALID_INPUT: i32 = 8;
+/// Exit code reserved for critical internal failures (9).
 pub const EXIT_CRITICAL: i32 = 9;
+/// Exit code returned when the migration plan is blocked (10).
 pub const EXIT_PLAN_BLOCKED: i32 = 10;
 
 impl Error {
+    /// Returns the process exit code that corresponds to this error variant.
     pub fn exit_code(&self) -> i32 {
         match self {
             Self::Config(_) => EXIT_CONFIG,

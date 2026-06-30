@@ -6,6 +6,7 @@ use crate::error::Result;
 
 use super::types::{MigrationPlan, MigrationPlanWire};
 
+/// Serializes `plan` as pretty-printed JSON and writes it to `w`.
 pub fn write_plan_json(
     plan: &MigrationPlan,
     ws: Option<&Workspace>,
@@ -30,6 +31,7 @@ pub fn write_plan_json(
     Ok(())
 }
 
+/// Deserializes a `MigrationPlan` from JSON.
 pub fn read_plan_json(s: &str) -> Result<MigrationPlan> {
     let wire: MigrationPlanWire =
         serde_json::from_str(s).map_err(|e| crate::error::Error::InvalidInput(e.to_string()))?;

@@ -1,3 +1,5 @@
+//! SQL Server authentication method selection from [`Config`](crate::config).
+
 use tiberius::AuthMethod;
 
 use crate::config::Config;
