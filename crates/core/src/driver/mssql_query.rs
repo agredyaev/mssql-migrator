@@ -1,6 +1,9 @@
+//! Low-level query helpers: [`ping`], [`exec`], and [`query_tiberius`].
+
 use crate::driver::mssql::RawClient;
 use crate::error::{Error, Result};
 
+/// Sends a trivial query to verify the connection is alive.
 pub async fn ping(client: &mut RawClient) -> Result<()> {
     client
         .simple_query("SELECT 1")
@@ -9,6 +12,7 @@ pub async fn ping(client: &mut RawClient) -> Result<()> {
     Ok(())
 }
 
+/// Executes a SQL statement and discards all result sets.
 pub async fn exec(client: &mut RawClient, sql: &str) -> Result<()> {
     client
         .simple_query(sql)
@@ -20,6 +24,7 @@ pub async fn exec(client: &mut RawClient, sql: &str) -> Result<()> {
     Ok(())
 }
 
+/// Executes a parameterized query and returns rows from the first result set.
 pub async fn query_tiberius(
     client: &mut RawClient,
     sql: &str,

@@ -17,4 +17,5 @@
 //! ### Off-Nominal & Failure Containment
 //! - **Corrupted Snapshots**: Automatically disregards unparseable snapshot files, logs the warning, and falls back to a full database catalog rebuild.
 
+/// L1 filesystem cache for database catalog metadata.
 pub mod l1;

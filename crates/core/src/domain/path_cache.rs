@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use super::{object_path_for_entry, with_database_prefix, StrOff, Workspace};
 
+/// Builds a map from row ID to ordered transition path offsets for all rows in `ws`.
 pub fn paths_by_row(ws: &Workspace) -> HashMap<u32, Vec<StrOff>> {
     let arena = ws.layout_arena();
     let mut out = HashMap::new();
@@ -34,6 +35,7 @@ pub fn paths_by_row(ws: &Workspace) -> HashMap<u32, Vec<StrOff>> {
     out
 }
 
+/// Rebuilds the workspace's transition-path cache and per-row presence flags.
 pub fn rebuild_transition_path_cache(ws: &mut Workspace) {
     if ws.transitions_by_row.is_empty() || ws.layout_arena.is_none() {
         ws.transition_path_cache = None;
@@ -56,6 +58,7 @@ pub fn rebuild_transition_path_cache(ws: &mut Workspace) {
     ws.transition_path_cache = Some(cache);
 }
 
+/// Rebuilds the workspace's object-path cache from the current entries.
 pub fn rebuild_object_path_cache(ws: &mut Workspace) {
     let n = ws.object_entries.len();
     if n == 0 || ws.layout_arena.is_none() {
@@ -73,11 +76,13 @@ pub fn rebuild_object_path_cache(ws: &mut Workspace) {
     ws.object_path_cache = Some(paths);
 }
 
+/// Rebuilds both the transition-path cache and the object-path cache.
 pub fn rebuild_path_caches(ws: &mut Workspace) {
     rebuild_transition_path_cache(ws);
     rebuild_object_path_cache(ws);
 }
 
+/// Rebuilds whichever path caches are stale, if any.
 pub fn ensure_path_caches(ws: &mut Workspace) {
     if !ws.object_entries.is_empty() && ws.object_path_cache.is_none() {
         rebuild_path_caches(ws);

@@ -10,6 +10,7 @@ impl Workspace {
             .unwrap_or_else(empty_str)
     }
 
+    /// Registers `name` in the database name list and returns its position; returns `0` for an empty name.
     pub fn intern_database(&mut self, name: SharedStr) -> u16 {
         if name.is_empty() {
             return 0;

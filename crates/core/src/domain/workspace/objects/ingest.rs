@@ -8,6 +8,7 @@ fn entries_are_interned(entries: &[ObjectEntry]) -> bool {
 }
 
 impl Workspace {
+    /// Inserts `obj` keyed by `key` into the workspace; errors on a duplicate normalized key within the same database.
     pub fn push_object(&mut self, key: ObjectKey, obj: ObjectEntry) -> Result<()> {
         let db_id = obj.db_id;
         let idx_key = (db_id, key.clone());
@@ -33,6 +34,7 @@ impl Workspace {
         Ok(())
     }
 
+    /// Sorts and indexes all staged object entries, rebuilding layout caches.
     pub fn finalize_object_layout(&mut self) {
         if entries_are_interned(&self.object_entries) {
             self.rebuild_layout_from_interned();
@@ -43,6 +45,7 @@ impl Workspace {
         self.apply_finalized_entries(finalize_sorted_entries(entries, keys));
     }
 
+    /// Replaces workspace object entries with a pre-sorted dense set.
     pub fn adopt_dense_entries(&mut self, pairs: Vec<(ObjectKey, ObjectEntry)>) {
         let (keys, entries): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
         if entries_are_interned(&entries) {

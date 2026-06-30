@@ -16,6 +16,7 @@ pub fn default_socket_path() -> PathBuf {
     rmig_dir().join("rmigd.sock")
 }
 
+/// Returns the path to the `~/.rmig` directory.
 pub fn rmig_dir() -> PathBuf {
     if let Ok(home) = std::env::var("HOME") {
         PathBuf::from(home).join(".rmig")

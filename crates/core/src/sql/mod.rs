@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Embedded T-SQL query scripts compile-time bindings.
 //!
 //! ### Purpose

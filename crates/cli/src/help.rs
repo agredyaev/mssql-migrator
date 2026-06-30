@@ -20,7 +20,7 @@ Commands:
   plan              Scan SQL layout, diff against the database, write plan report
   migrate           Plan, scaffold blocked transitions, apply changes
   validate          Run checks without applying
-  baseline          Mark all catalog objects as adopted (initial baseline)
+  baseline          Adopt repository objects already present in the DB (initial baseline)
   repair-checksum   Repair audit checksum mismatches
   version           Print release version and git commit
 

@@ -7,6 +7,7 @@ use crate::db::state::{CatalogState, ChecksumMap};
 use crate::error::{Error, Result};
 use crate::session::limits::MAX_L1_CACHE_BYTES;
 
+/// Loaded L1 cache entry: checksum map paired with catalog state.
 pub type L1Hit = (ChecksumMap, CatalogState);
 
 #[derive(Serialize, Deserialize, Default)]
@@ -16,17 +17,20 @@ struct L1Payload {
     catalog: CatalogState,
 }
 
+/// On-disk L1 cache that stores pre-computed checksums and catalog state keyed by layout digest.
 pub struct L1Cache {
     root: PathBuf,
 }
 
 impl L1Cache {
+    /// Creates a new `L1Cache` rooted at `root`.
     pub fn new(root: &str) -> Self {
         Self {
             root: PathBuf::from(root),
         }
     }
 
+    /// Loads a cached entry for `fingerprint` / `digest`, returning `None` on miss, corruption, or size overflow.
     pub fn try_load(&self, fingerprint: &str, digest: &[u8; 32]) -> Result<Option<L1Hit>> {
         let path = self.path(fingerprint, digest);
         if !path.is_file() {
@@ -47,6 +51,7 @@ impl L1Cache {
         Ok(Some((p.checksums, p.catalog)))
     }
 
+    /// Persists `checksums` and `catalog` under `fingerprint` / `digest`.
     pub fn save(
         &self,
         fingerprint: &str,
@@ -68,6 +73,7 @@ impl L1Cache {
         Ok(())
     }
 
+    /// Removes all cached entries for `fingerprint`.
     pub fn invalidate_all(&self, fingerprint: &str) -> Result<()> {
         let dir = self.root.join(fingerprint);
         if dir.is_dir() {

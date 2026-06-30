@@ -1,3 +1,5 @@
+//! Tiberius TDS client setup and [`MssqlConn`] connection wrapper.
+
 use tiberius::{Client, Config as TdsConfig};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
@@ -7,15 +9,19 @@ use crate::error::{Error, Result};
 
 use super::mssql_auth::select_auth_method;
 
+/// Tiberius client over a Tokio-compatible TCP stream.
 pub type RawClient = Client<Compat<TcpStream>>;
 
+/// Active MSSQL connection wrapping a Tiberius client.
 pub struct MssqlConn {
+    /// The underlying Tiberius client.
     pub client: RawClient,
 }
 
 // Re-export query helpers so crate::driver::mssql::exec etc still resolve.
 pub use super::mssql_query::{exec, ping, query_all_results, query_tiberius};
 
+/// Opens a new MSSQL connection using the settings from `cfg`.
 pub async fn connect(cfg: &Config) -> Result<MssqlConn> {
     let mut tds = TdsConfig::new();
     tds.host(&cfg.server);

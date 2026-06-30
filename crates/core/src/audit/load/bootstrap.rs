@@ -4,6 +4,7 @@ use crate::sql;
 
 use super::cache::{invalidate_audit_cache_all, mark_tables_ensured, tables_ensured};
 
+/// Creates audit schema tables on `client` if they have not been created for `db_fp` this process run.
 pub async fn ensure_tables_on(client: &mut DbClient, db_fp: &str) -> Result<()> {
     if tables_ensured(db_fp) {
         return Ok(());
@@ -13,6 +14,7 @@ pub async fn ensure_tables_on(client: &mut DbClient, db_fp: &str) -> Result<()> 
     Ok(())
 }
 
+/// Creates audit schema tables via `conn` if they have not been created for `db_fp` this process run.
 pub async fn ensure_tables(conn: &mut TimingConn, db_fp: &str) -> Result<()> {
     ensure_tables_on(conn.client_mut()?, db_fp).await
 }
@@ -26,6 +28,7 @@ pub async fn probe_audit_tables_exist(conn: &mut TimingConn) -> Result<bool> {
     Ok(rows.first().and_then(|r| r.get_i32(0)).unwrap_or(0) != 0)
 }
 
+/// Probes the database and updates the in-process bootstrap cache to match.
 pub async fn sync_tables_ensured(conn: &mut TimingConn, db_fp: &str) -> Result<()> {
     let exists = probe_audit_tables_exist(conn).await?;
     if exists {

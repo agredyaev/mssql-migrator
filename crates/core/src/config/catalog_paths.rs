@@ -3,6 +3,7 @@ use crate::error::Result;
 use super::catalog::discover_catalog_databases;
 use super::Config;
 
+/// Fills `cfg.sql_base` from `sql_root` if empty, and sets `cfg.database` when the catalog has exactly one database.
 pub fn normalize_catalog_paths(cfg: &mut Config) -> Result<()> {
     if cfg.sql_base.is_empty() {
         cfg.sql_base = cfg.sql_root.clone();
@@ -14,6 +15,7 @@ pub fn normalize_catalog_paths(cfg: &mut Config) -> Result<()> {
     Ok(())
 }
 
+/// Resolves and validates a single target database from the catalog layout.
 pub fn resolve_single_database(cfg: &mut Config) -> Result<()> {
     normalize_catalog_paths(cfg)?;
     let dbs = discover_catalog_databases(&cfg.sql_root)?;

@@ -5,6 +5,7 @@ use crate::domain::Workspace;
 use super::ws_apply::apply_workspace_strings;
 use super::ws_register::register_workspace_strings;
 
+/// Interns all string data from `ws` into a single compacted `StringArena`.
 pub fn intern_workspace_strings(ws: &mut Workspace) {
     let n = ws.object_entries.len();
     let mut builder = StringArenaBuilder::with_capacity(

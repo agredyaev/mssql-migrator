@@ -58,6 +58,7 @@ impl MigrationPlan {
         }
     }
 
+    /// Returns the number of planned rows (slim rows take precedence over materialized objects).
     pub fn row_count(&self) -> usize {
         if !self.rows.is_empty() {
             self.rows.len()
@@ -66,10 +67,12 @@ impl MigrationPlan {
         }
     }
 
+    /// Returns the slim plan row at index `i`, or `None` if out of bounds.
     pub fn row(&self, i: usize) -> Option<&PlanRow> {
         self.rows.get(i)
     }
 
+    /// Returns true when the plan holds compact binary rows instead of fully materialized objects.
     pub fn uses_slim_rows(&self) -> bool {
         !self.rows.is_empty()
     }
