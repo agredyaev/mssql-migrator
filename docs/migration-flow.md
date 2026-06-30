@@ -23,6 +23,11 @@ the `rmigd` daemon for a warm connection. It is stateless and idempotent: it
 reads the catalog, computes a diff, and applies only what changed. Re-running a
 clean migration is a safe no-op.
 
+The diff is repository-bounded: it enumerates only the repository objects in the
+workspace, never the full catalog. Objects present in the live database but absent
+from the repository tree are therefore never created, altered, or dropped — see
+`docs/repository-contract.md` for the managed/unmanaged/orphaned model.
+
 ## Interfaces And Boundaries
 
 - Inputs: the normalized workspace from scan, plus the live catalog state.
@@ -38,6 +43,8 @@ clean migration is a safe no-op.
   - Transactional object kinds and table transitions run inside `SET XACT_ABORT ON; BEGIN TRANSACTION ... COMMIT TRANSACTION`.
   - Mutating commands acquire the `sp_getapplock` advisory lock before inspecting the catalog, so planning and apply observe one consistent, locked database state; read-only commands do not lock.
   - `CREATE SCHEMA` is idempotent and batch-safe: it is guarded by `IF SCHEMA_ID(N'...') IS NULL EXEC('CREATE SCHEMA [...]')`.
+  - The diff iterates only workspace objects (`crates/core/src/plan/diff.rs`), never the full catalog, so an object's absence from the tree cannot generate a `DROP` or `ALTER`. There is no drop action in the plan model.
+  - `baseline` (first adoption) records a checksum only for repository objects already present in the database; database-only objects are not recorded or managed.
 
 ## Nominal Flow
 
@@ -62,10 +69,13 @@ clean migration is a safe no-op.
   Containment: the advisory lock serializes them; the second blocks until the first releases, then plans against the now-current catalog (the plan is computed under the lock), so it cannot apply a stale plan. A lock-acquisition timeout returns exit 7 (`EXIT_LOCK_TIMEOUT`).
 - Failure mode: a schema in the plan already exists (cache drift).
   Containment: `CREATE SCHEMA` is guarded by `IF SCHEMA_ID(...) IS NULL`, so re-creating an existing schema is a safe no-op rather than an aborting error 2714.
+- Failure mode: the database contains objects not represented in the repository (an existing database adopted by a partial tree).
+  Containment: planning never enumerates them, so `plan`, `migrate`, and `baseline` leave them untouched; no code path drops or alters an object based on its absence from the tree.
 
 ## Verification And Validation
 
 - Contracts and checks: `crates/core/src/apply/tx.rs` test (XACT_ABORT wrapping), `crates/core/src/tests/proxy_test.rs` (command timeout), `crates/core/src/tests/schema_sql_test.rs` (idempotent, injection-safe `CREATE SCHEMA`), `crates/core/src/tests/command_mutates_test.rs` (only mutating commands lock), and the SQL integration suite under `ops/perf/sql_regression.sh`.
+- Existing-database safety: `crates/core/tests/unmanaged_objects_test.rs` (offline diff guards — absence never drops; the production gate is fail-closed on blocked plans) and `crates/core/tests/existing_db_adoption_integration.rs` (real-database preservation across `migrate` and read-only `plan`).
 - Evidence artifacts: plan JSON, audit history rows, and `make check-e2e` output.
 - Exit criteria: a clean apply succeeds; a failing apply stops at the first error, reports it, and leaves a clear (non-hanging) state.
 

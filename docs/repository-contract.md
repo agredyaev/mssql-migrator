@@ -23,6 +23,15 @@ Each top-level directory under the root is a database name. The tool scans the
 tree once, builds a normalized in-memory workspace, and diffs it against the
 catalog.
 
+Object ownership has three states. A *managed* object is represented by a `.sql`
+file in the tree; it is the only kind any command acts on. An *unmanaged* object
+exists in the live catalog but has no file in the tree; the diff never enumerates
+it, so it is never created, altered, or dropped. An *orphaned* object was managed
+previously but its file has since been removed from the tree; it is treated
+exactly like an unmanaged object and preserved. Because the diff iterates only
+workspace (repository) objects, an object's absence from the tree can never
+produce a destructive operation.
+
 ## Interfaces And Boundaries
 
 - Inputs: a directory tree of `.sql` files under `RM_SQL_ROOT`.
@@ -31,6 +40,7 @@ catalog.
 - Transition (table migration) path: `<database>/<schema>/tables/_migrations/<table>/<ordinal>_<commit>_<slug>.sql`.
 - Check scripts: any path containing `checks/` is ingested as a non-deploying check.
 - Outputs: a deterministic migration plan (see `docs/migration-flow.md`).
+- Managed scope: only objects with a `.sql` file under `RM_SQL_ROOT` are managed. Catalog objects without a corresponding file are out of scope for every command and are never created, altered, or dropped.
 - Ownership boundary: path/identifier validity is owned by `crates/core/src/sql_ident.rs`; SQL correctness is owned by the script author.
 
 ## Assumptions And Constraints
@@ -44,6 +54,9 @@ catalog.
   - Generated T-SQL identifiers (schema, database) are limited to 128 characters.
   - Transition filename: `<ordinal>` is exactly 3 digits, `<commit>` is at least 7 hex digits, `<slug>` is non-empty.
   - Symbolic links are skipped during the walk.
+  - Safe default: only objects explicitly represented in the repository are managed. Existing database objects not represented in the repository are treated as unmanaged and preserved.
+  - Deletion is not supported: removing a file from the tree never drops its database object, and the tool never infers a drop from absence. An intentional drop must be authored explicitly as a table transition script under `_migrations/`.
+  - First adoption: `baseline` (and the first `migrate`) record a checksum only for repository objects that already exist in the database; database-only objects are left unmanaged, not adopted.
 
 ## Nominal Flow
 
@@ -62,10 +75,13 @@ catalog.
   Containment: a `tracing::warn!` is emitted and the file is skipped, not silently ignored (`crates/core/src/scan/parse_object.rs`).
 - Failure mode: invalid path component or non-UTF-8 path.
   Containment: scan returns `Error::InvalidInput`; nothing is deployed.
+- Failure mode: a database object has no corresponding file in the tree (unmanaged, or orphaned after a file removal).
+  Containment: the diff enumerates only workspace objects (`crates/core/src/plan/diff.rs`), so the object is never planned — it is a safe no-op, preserved and never dropped or altered. Deletion requires an explicit transition script.
 
 ## Verification And Validation
 
 - Contracts and checks: `crates/core/tests/scan_walk_test.rs` (duplicate ordinal, backslash, symlink), `crates/core/src/tests/sql_ident_test.rs` (path/identifier rules, 128-char limit), `crates/core/src/domain/workspace/objects/ingest.rs` tests (duplicate key).
+- Safety guards: `crates/core/tests/unmanaged_objects_test.rs` (unmanaged objects are never planned, partial repositories leave others untouched, removal does not drop) and `crates/core/tests/existing_db_adoption_integration.rs` (real-database preservation across `migrate`).
 - Evidence artifacts: test output from `cargo test -p migrator-core --lib --tests`.
 - Exit criteria: every invalid layout above produces a clear error; every valid layout produces an identical plan across runs.
 
