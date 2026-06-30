@@ -8,8 +8,6 @@ name = "rmigd"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1.0"
 migrator-core = { path = "../core", features = ["session-daemon"] }
 tokio = { workspace = true }
-tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

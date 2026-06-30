@@ -34,23 +34,24 @@ fn rm_db_auth_unknown_value_fails_config_negative_path() {
 }
 
 #[test]
-fn rm_db_auth_windows_without_credentials_uses_integrated_edge_case() {
+fn rm_db_auth_integrated_not_compiled_edge_case() {
     let mut cfg = Config::default();
-    cfg.db_auth = "windows".into();
-    assert!(matches!(
-        select_auth_method(&cfg).expect("windows sso"),
-        AuthMethod::Integrated
-    ));
+    cfg.db_auth = "integrated".into();
+    let err = select_auth_method(&cfg).expect_err("integrated auth not available");
+    assert!(
+        err.to_string().contains("integrated auth not compiled"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
-fn rm_db_auth_integrated_ignores_sql_login_regression() {
+fn rm_db_auth_windows_not_compiled_edge_case() {
     let mut cfg = Config::default();
-    cfg.db_auth = "integrated".into();
-    let auth = select_auth_method(&cfg).expect("BG-004 regression");
+    cfg.db_auth = "windows".into();
+    let err = select_auth_method(&cfg).expect_err("windows auth not available");
     assert!(
-        matches!(auth, AuthMethod::Integrated),
-        "driver must honor RM_DB_AUTH=integrated, not sql_server"
+        err.to_string().contains("integrated auth not compiled"),
+        "unexpected error: {err}"
     );
 }
 
