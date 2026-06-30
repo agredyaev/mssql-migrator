@@ -4,19 +4,29 @@ use crate::driver::TimingConn;
 use crate::error::Result;
 use crate::sql;
 
+/// Audit record written to the history index after an object is applied.
 #[derive(Clone, Debug, Serialize)]
 pub struct HistoryRecord {
+    /// Normalized object key identifying the migration target.
     pub normalized_key: String,
+    /// Object kind label (e.g. `"procedure"`, `"view"`).
     pub kind: String,
+    /// Hex-encoded SHA-256 checksum of the applied script.
     pub checksum: String,
+    /// Git commit hash of the applied revision.
     pub git_hash: String,
+    /// Git author string from the applied commit.
     pub git_author: String,
+    /// Git commit date string from the applied revision.
     pub git_date: String,
+    /// Lifecycle event label (e.g. `"applied"`).
     pub event: String,
+    /// Error message captured when the apply failed; empty on success.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub error_text: String,
 }
 
+/// Builds a `HistoryRecord` representing a successful apply event.
 pub fn record_applied(
     key: &str,
     _object_kind: &str,
@@ -38,10 +48,12 @@ pub fn record_applied(
     }
 }
 
+/// Creates the audit history index table in the database if it does not exist.
 pub async fn ensure_history_index(conn: &mut TimingConn) -> Result<()> {
     conn.exec(sql::audit::BOOTSTRAP_INDEX).await
 }
 
+/// Inserts `records` into the audit history index in a single batch.
 pub async fn flush_history(conn: &mut TimingConn, records: &[HistoryRecord]) -> Result<()> {
     if records.is_empty() {
         return Ok(());

@@ -1,6 +1,7 @@
 use crate::db::ChecksumMap;
 use crate::driver::RowData;
 
+/// Builds a checksum map from audit history query rows.
 pub fn checksum_map_from_rows(rows: &[RowData]) -> ChecksumMap {
     let mut out = ChecksumMap::new();
     for row in rows {
@@ -26,6 +27,7 @@ pub fn checksum_map_from_rows_ws(rows: &[RowData]) -> ChecksumMap {
     out
 }
 
+/// Returns true when `rows` have the two-column shape expected from a checksum query.
 pub fn looks_like_checksum_rows(rows: &[RowData]) -> bool {
     rows.first().is_some_and(|r| r.cells.len() == 2)
 }

@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::fs::File;
 use std::os::raw::c_int;
 use std::path::Path;

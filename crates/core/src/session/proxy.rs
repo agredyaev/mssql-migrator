@@ -10,12 +10,14 @@ use super::limits::MAX_SESSION_LINE_BYTES;
 use super::protocol::{Request, Response};
 use crate::config::Config;
 
+/// Client for communicating with the `rmigd` daemon over a Unix-domain socket.
 pub struct ProxyClient {
     reader: BufReader<OwnedReadHalf>,
     writer: OwnedWriteHalf,
 }
 
 impl ProxyClient {
+    /// Connects to the daemon at `socket_path`, performing auth and a ping handshake.
     pub async fn connect(socket_path: &str, cfg: Option<&Config>) -> Result<Self> {
         // Bound the whole connect (socket + auth + ping) so a wedged daemon causes
         // a fallback to direct SQL (see `session::client`) instead of hanging CI.
@@ -58,6 +60,7 @@ impl ProxyClient {
         Ok(client)
     }
 
+    /// Sends a SQL exec request to the daemon and waits for acknowledgement.
     pub async fn exec(&mut self, sql: &str) -> Result<()> {
         self.call(Request::Exec {
             sql: sql.to_string(),
@@ -67,6 +70,7 @@ impl ProxyClient {
         .map(|_| ())
     }
 
+    /// Sends a SQL query request to the daemon and returns the resulting rows.
     pub async fn query(&mut self, sql: &str, params: &[&str]) -> Result<Vec<RowData>> {
         self.call(Request::Query {
             sql: sql.to_string(),

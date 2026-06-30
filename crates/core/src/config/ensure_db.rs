@@ -4,6 +4,7 @@ use crate::sql_ident::bracket_ident;
 
 use super::Config;
 
+/// Ensures all catalog database names in `names` exist on the server, creating them if absent.
 pub async fn ensure_catalog_databases_exist(cfg: &Config, names: &[String]) -> Result<()> {
     if names.is_empty() {
         return Ok(());

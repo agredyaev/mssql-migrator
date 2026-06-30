@@ -23,6 +23,7 @@ struct Snapshot {
 
 static SNAP: Mutex<Option<Snapshot>> = Mutex::new(None);
 
+/// Saves a catalog snapshot for later reuse by `reuse`.
 pub fn store(
     server_database: &str,
     digest: [u8; 32],
@@ -47,6 +48,7 @@ pub fn store(
     }
 }
 
+/// Returns the cached catalog if `server_database` and `digest` match the stored snapshot.
 pub fn reuse(server_database: &str, digest: &[u8; 32]) -> Option<(ChecksumMap, CatalogState)> {
     if !reuse_enabled() {
         return None;

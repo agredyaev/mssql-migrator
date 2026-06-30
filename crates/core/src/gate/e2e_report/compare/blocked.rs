@@ -1,6 +1,7 @@
 use super::super::timing_compare::compare_workflow_timings;
 use super::super::types::E2EBlockedReport;
 
+/// Compares two `E2EBlockedReport` values and returns a list of mismatch descriptions.
 pub fn compare_e2e_blocked_reports(
     baseline: &E2EBlockedReport,
     actual: &E2EBlockedReport,

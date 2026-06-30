@@ -28,6 +28,7 @@ pub use flags::{
 };
 pub use phase::PhaseTimings;
 
+/// Converts `d` to whole milliseconds as an `i64`.
 pub fn dur_ms(d: std::time::Duration) -> i64 {
     d.as_millis() as i64
 }

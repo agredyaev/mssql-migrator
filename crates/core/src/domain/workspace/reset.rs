@@ -1,6 +1,7 @@
 use super::Workspace;
 
 impl Workspace {
+    /// Clears all object, key, row, and staging data to prepare for a fresh scan.
     pub fn reset_layout(&mut self) {
         self.object_entries.clear();
         self.object_keys.clear();

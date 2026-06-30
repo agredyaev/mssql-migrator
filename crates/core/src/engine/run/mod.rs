@@ -30,6 +30,7 @@ fn command_ensures_catalog_databases(cmd: types::Command) -> bool {
     command_mutates(cmd)
 }
 
+/// Runs `cmd` for all configured catalog databases and returns the merged output.
 pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput> {
     if cmd == types::Command::Version {
         return Ok(types::RunOutput {

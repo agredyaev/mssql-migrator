@@ -37,6 +37,7 @@ pub async fn release_after_body<T>(conn: &mut TimingConn, body_result: Result<T>
     body_result
 }
 
+/// Acquires the SQL Server advisory lock, blocking for up to the configured timeout.
 pub async fn acquire(conn: &mut TimingConn, cfg: &Config) -> Result<()> {
     let ms = lock_timeout_millis_i32(cfg.lock_timeout);
     let ms_str = ms.to_string();
@@ -48,6 +49,7 @@ pub async fn acquire(conn: &mut TimingConn, cfg: &Config) -> Result<()> {
     Ok(())
 }
 
+/// Releases the SQL Server advisory lock.
 pub async fn release(conn: &mut TimingConn) -> Result<()> {
     conn.query(sql::lock::RELEASE, &[]).await?;
     Ok(())

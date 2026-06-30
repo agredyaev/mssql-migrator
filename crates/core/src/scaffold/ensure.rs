@@ -11,6 +11,7 @@ use super::auto;
 use super::dir;
 use super::git;
 
+/// Creates scaffold migration files for all blocked objects that lack non-scaffold scripts.
 pub fn ensure(
     cfg: &Config,
     ws: &Workspace,

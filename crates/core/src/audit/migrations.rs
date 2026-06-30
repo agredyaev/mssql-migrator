@@ -4,6 +4,7 @@ use crate::driver::DbClient;
 use crate::error::Result;
 use crate::sql;
 
+/// Loads all applied transition keys from the audit history, mapped to `true`.
 pub async fn load_all_applied(client: &mut DbClient) -> Result<HashMap<String, bool>> {
     let rows = client.query(sql::audit::LOAD_ALL_MIGRATIONS, &[]).await?;
     let mut out = HashMap::new();

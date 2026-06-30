@@ -4,6 +4,7 @@ use crate::driver::TimingConn;
 use crate::error::{Error, Result};
 use crate::sql;
 
+/// Attempts to load cached catalog state from the DB; returns `None` on miss or when cache is disabled.
 pub async fn try_load(
     conn: &mut TimingConn,
     layout_digest: &[u8; 32],
@@ -72,6 +73,7 @@ fn merge_row(state: &mut CatalogState, row: &crate::driver::RowData) -> Result<(
     Ok(())
 }
 
+/// Marks the catalog cache stale by executing the invalidation SQL statement.
 pub async fn invalidate(conn: &mut TimingConn) -> Result<()> {
     if !cache_enabled() {
         return Ok(());

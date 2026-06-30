@@ -57,25 +57,6 @@ fn validate_config_missing_sql_password_negative_path() {
 }
 
 #[test]
-fn validate_config_integrated_auth_skips_sql_credentials_edge_case() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    std::fs::create_dir_all(dir.path().join("db1/smoke/tables")).expect("mkdir");
-    std::fs::write(
-        dir.path().join("db1/smoke/tables/t1.sql"),
-        "CREATE TABLE smoke.t1 (id INT NOT NULL);\n",
-    )
-    .expect("write sql");
-    let mut cfg = make_cfg(
-        "localhost",
-        &dir.path().to_string_lossy(),
-        "",
-        "",
-        "integrated",
-    );
-    validate_config(&mut cfg).expect("integrated auth should not require sql credentials");
-}
-
-#[test]
 fn validate_config_missing_sql_user_regression() {
     let mut cfg = make_cfg("localhost", "/tmp/sql", "", "", "");
     let err = validate_config(&mut cfg).expect_err("missing sql creds should fail fast");

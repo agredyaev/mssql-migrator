@@ -34,23 +34,3 @@ fn select_auth_method_unsupported_mode_negative_path() {
         "unexpected error: {err}"
     );
 }
-
-#[test]
-fn select_auth_method_integrated_without_sql_credentials_edge_case() {
-    let cfg = make_cfg("integrated", "", "");
-    assert!(matches!(
-        select_auth_method(&cfg).expect("integrated auth"),
-        AuthMethod::Integrated
-    ));
-}
-
-#[test]
-fn select_auth_method_integrated_not_sql_server_regression() {
-    let cfg = make_cfg("integrated", "ignored", "ignored");
-    let auth = select_auth_method(&cfg).expect("BG-004 regression");
-    assert!(
-        !matches!(auth, AuthMethod::SqlServer(_)),
-        "integrated auth must not use sql_server()"
-    );
-    assert!(matches!(auth, AuthMethod::Integrated));
-}

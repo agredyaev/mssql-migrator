@@ -28,6 +28,7 @@ pub fn token_required() -> bool {
     !resolve_session_token(None).is_empty()
 }
 
+/// Returns the session token from the process environment.
 pub fn session_token_from_env() -> String {
     resolve_session_token(None)
 }
@@ -47,6 +48,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
+/// Returns `Ok` when `provided` matches the configured session token, or errors otherwise.
 #[cfg(feature = "session-daemon")]
 pub fn verify_token(provided: &str) -> Result<()> {
     let expected = resolve_session_token(None);

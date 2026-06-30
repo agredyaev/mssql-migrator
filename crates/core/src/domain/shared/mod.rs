@@ -23,6 +23,7 @@ pub(crate) enum SharedStrInner {
     Owned(Arc<str>),
 }
 
+/// Reference-counted string that avoids heap allocation for arena-backed slices.
 #[derive(Clone, Debug)]
 pub struct SharedStr(pub(crate) Arc<SharedStrInner>);
 
@@ -32,6 +33,7 @@ impl SharedStr {
         subslice::subslice_of(base, part)
     }
 
+    /// Creates a new `SharedStr` from any string value; returns the empty sentinel for `""`.
     pub fn new(s: impl AsRef<str>) -> Self {
         let s = s.as_ref();
         if s.is_empty() {
@@ -47,14 +49,17 @@ impl SharedStr {
         Self(Arc::new(SharedStrInner::Slice { buf, start, len }))
     }
 
+    /// Returns the canonical empty `SharedStr` singleton.
     pub fn empty() -> Self {
         empty_str()
     }
 
+    /// Returns `true` if the string is empty.
     pub fn is_empty(&self) -> bool {
         self.as_str().is_empty()
     }
 
+    /// Returns the underlying string slice, validating arena bytes on first access.
     pub fn as_str(&self) -> &str {
         match &*self.0 {
             SharedStrInner::Empty => "",
@@ -70,6 +75,7 @@ impl SharedStr {
         }
     }
 
+    /// Returns the byte length of the string.
     pub fn len(&self) -> usize {
         self.as_str().len()
     }
@@ -93,6 +99,7 @@ impl SharedStr {
     }
 }
 
+/// Creates a `SharedStr` from a string value; convenience wrapper for [`SharedStr::new`].
 pub fn share(s: impl AsRef<str>) -> SharedStr {
     SharedStr::new(s)
 }

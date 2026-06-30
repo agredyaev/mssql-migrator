@@ -8,6 +8,7 @@ use crate::driver::{RowData, TimingConn};
 use crate::error::Result;
 use crate::sql;
 
+/// Loads column metadata for all tables in `ws` from the catalog.
 pub async fn load_table_columns(
     conn: &mut TimingConn,
     ws: &Workspace,

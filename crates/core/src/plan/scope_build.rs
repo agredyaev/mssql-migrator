@@ -7,6 +7,7 @@ use crate::gate::{expand_delta_closure, keys_for_changed_paths};
 use super::scope::InspectScope;
 use super::scope_spot_check::promote_spot_check_keys;
 
+/// Builds an inspect scope classifying workspace objects as hot (needs re-inspection) or stable.
 pub fn build_inspect_scope(
     ws: &Workspace,
     changed_paths: &[String],

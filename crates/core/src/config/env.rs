@@ -21,10 +21,12 @@ fn warn_env_file_permissions(path: &Path) {
 #[cfg(not(unix))]
 fn warn_env_file_permissions(_path: &Path) {}
 
+/// Parses `path` as a dotenv file and returns key/value pairs; returns an empty map when the file is absent.
 pub fn load_env_file(path: &Path) -> Result<HashMap<String, String>> {
     load_env_file_inner(path, false)
 }
 
+/// Parses `path` as a dotenv file and errors when the file is absent.
 pub fn load_env_file_required(path: &Path) -> Result<HashMap<String, String>> {
     load_env_file_inner(path, true)
 }

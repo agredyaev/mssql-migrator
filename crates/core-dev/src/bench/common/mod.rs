@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use migrator_core::domain::{
     install_layout_arena, ObjectEntry, SchemaEntry, Script, ScriptKey, ScriptKind, SharedStr,
     StringArena, Workspace,

@@ -17,11 +17,13 @@ pub use ws_intern::{install_layout_arena, intern_workspace_strings};
 pub type LayoutArena = StringArena;
 
 /// Single backing buffer for deduplicated strings.
+/// Builder that accumulates strings into a contiguous byte buffer before sealing as a `StringArena`.
 pub struct StringArenaBuilder {
     pub(super) buf: Vec<u8>,
     pub(super) index: HashMap<Box<str>, u32>,
 }
 
+/// Immutable deduplicated string store backed by a shared byte slice.
 #[derive(Clone)]
 pub struct StringArena {
     pub(super) buf: std::sync::Arc<[u8]>,
