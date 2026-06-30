@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 mod append;
 
 use serde::{Deserialize, Serialize};

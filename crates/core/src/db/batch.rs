@@ -1,3 +1,5 @@
+//! Batch catalog operations: bootstrap SQL generation for plan-phase DB setup.
+
 use crate::db::catalog;
 use crate::sql;
 

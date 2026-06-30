@@ -1,14 +1,19 @@
 use std::process::Command;
 
+/// Git commit metadata for a single file.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GitMeta {
+    /// Full commit hash.
     pub hash: String,
+    /// Commit author name.
     pub author: String,
+    /// Author date in ISO 8601 format.
     pub date: String,
 }
 
 const COMMIT_PREFIX: &str = "COMMIT|";
 
+/// Runs `git log --name-only` in `root` and returns the raw output bytes.
 pub fn batched_git_log(root: &str) -> Option<Vec<u8>> {
     let out = Command::new("git")
         .args([
@@ -27,6 +32,7 @@ pub fn batched_git_log(root: &str) -> Option<Vec<u8>> {
     }
 }
 
+/// Parses a `COMMIT|hash|author|date` formatted line into a `GitMeta`.
 pub fn parse_commit_line(line: &str) -> Option<GitMeta> {
     let rest = line.strip_prefix(COMMIT_PREFIX)?;
     let (hash, rest) = rest.split_once('|')?;
@@ -41,10 +47,12 @@ pub fn parse_commit_line(line: &str) -> Option<GitMeta> {
     })
 }
 
+/// Normalises a git path by converting backslashes to forward slashes.
 pub fn normalize_git_path(p: &str) -> String {
     p.replace('\\', "/")
 }
 
+/// Returns `GitMeta` for the most recent commit that touched `abs_path`.
 pub fn git_info_file(abs_path: &str) -> Option<GitMeta> {
     let path = std::path::Path::new(abs_path);
     let dir = path.parent()?.to_str()?;

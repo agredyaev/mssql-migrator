@@ -37,6 +37,7 @@ use crate::domain::Workspace;
 use crate::error::Result;
 use crate::timings;
 
+/// Scans `root`, interns strings, rebuilds path caches, and returns elapsed milliseconds.
 pub async fn populate(ws: &mut Workspace, root: &str, skip_git: bool) -> Result<i64> {
     let t0 = Instant::now();
     walk::scan_root(ws, root)?;

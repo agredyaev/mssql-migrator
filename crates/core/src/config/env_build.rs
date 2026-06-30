@@ -23,6 +23,7 @@ pub(crate) fn parse_duration(s: &str) -> Result<Duration> {
     Err(Error::Config(format!("invalid duration: {s}")))
 }
 
+/// Builds a `Config` from environment variables, consulting `env` as a fallback for each key.
 pub fn build_config(env: &HashMap<String, String>, json_logs: bool) -> Config {
     let mut cfg = Config::default();
     let get = |k: &str| -> String {

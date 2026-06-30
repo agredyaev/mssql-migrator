@@ -4,6 +4,7 @@ use crate::domain::{Action, Workspace};
 
 use crate::export::plan_json::MigrationPlan;
 
+/// Removes already-applied transition paths from `plan`, updating either slim rows or legacy objects.
 pub fn filter_applied_migrations_on_plan(
     plan: &mut MigrationPlan,
     ws: &Workspace,

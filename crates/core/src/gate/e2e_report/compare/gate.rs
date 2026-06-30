@@ -1,5 +1,6 @@
 use super::super::types::E2EGateReport;
 
+/// Compares two `E2EGateReport` values and returns a list of mismatch descriptions.
 pub fn compare_e2e_gate_reports(baseline: &E2EGateReport, actual: &E2EGateReport) -> Vec<String> {
     let mut msgs = Vec::new();
     if baseline.scenario != actual.scenario {

@@ -13,6 +13,7 @@ impl std::fmt::Debug for StringArena {
 }
 
 impl super::StringArenaBuilder {
+    /// Creates a `StringArenaBuilder` with a pre-allocated buffer of `byte_hint` bytes and `unique_hint` index slots.
     pub fn with_capacity(byte_hint: usize, unique_hint: usize) -> Self {
         Self {
             buf: Vec::with_capacity(byte_hint),
@@ -20,6 +21,7 @@ impl super::StringArenaBuilder {
         }
     }
 
+    /// Appends `s` to the buffer if not already present; no-op for empty strings or duplicates.
     pub fn register(&mut self, s: &str) {
         if s.is_empty() || self.index.contains_key(s) {
             return;
@@ -29,6 +31,7 @@ impl super::StringArenaBuilder {
         self.index.insert(s.into(), off);
     }
 
+    /// Seals the builder and returns an immutable `StringArena`.
     pub fn finish(self) -> StringArena {
         StringArena {
             buf: Arc::from(self.buf.into_boxed_slice()),

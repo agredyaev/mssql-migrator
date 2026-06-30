@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::fmt::Write;
 
 use migrator_core::domain::{StringArena, StringArenaBuilder};

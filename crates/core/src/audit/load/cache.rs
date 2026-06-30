@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Process-local audit caches: ensured-DB set, history-empty/nonempty probes.
 //!
 //! ### Purpose

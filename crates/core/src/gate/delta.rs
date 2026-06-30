@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::domain::Workspace;
 
+/// Returns the set of normalized object keys that match any of the changed file paths.
 pub fn keys_for_changed_paths(ws: &Workspace, changed_paths: &[String]) -> HashSet<String> {
     let mut keys = HashSet::new();
     if changed_paths.is_empty() {
@@ -36,6 +37,7 @@ pub fn keys_for_changed_paths(ws: &Workspace, changed_paths: &[String]) -> HashS
     keys
 }
 
+/// Expands `delta` to include parent tables and transition tables reachable from the initial set.
 pub fn expand_delta_closure(ws: &Workspace, mut delta: HashSet<String>) -> HashSet<String> {
     if delta.is_empty() {
         return delta;

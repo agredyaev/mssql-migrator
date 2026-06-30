@@ -11,15 +11,21 @@ pub struct ParentRef {
     pub parent_row_id: u32,
 }
 
+/// Flag bit indicating the object exists in the target database (1).
 pub const OBJECT_FLAG_DB_EXISTS: u8 = 1 << 0;
 
 /// Dense object row: codes and indices; strings via key / side tables.
 #[derive(Clone, Debug)]
 pub struct ObjectEntry {
+    /// File digest of the source script.
     pub checksum: [u8; 32],
+    /// Offset into the layout arena for the normalized object key string.
     pub key_off: StrOff,
+    /// 1-based script row id; `0` = no associated script.
     pub script_id: u32,
+    /// Database slot index.
     pub db_id: u16,
+    /// Bitfield of `OBJECT_FLAG_*` values.
     pub flags: u8,
 }
 
@@ -48,10 +54,12 @@ impl ObjectEntry {
         )
     }
 
+    /// Returns `true` if the object exists in the target database.
     pub fn db_exists(&self) -> bool {
         self.flags & OBJECT_FLAG_DB_EXISTS != 0
     }
 
+    /// Sets or clears the `OBJECT_FLAG_DB_EXISTS` flag.
     pub fn set_db_exists(&mut self, exists: bool) {
         if exists {
             self.flags |= OBJECT_FLAG_DB_EXISTS;

@@ -7,6 +7,7 @@ use crate::error::Result;
 
 use super::{parse, parse_parallel};
 
+/// Walks `root`, parses all SQL schema files, and populates `ws`.
 pub fn scan_root(ws: &mut Workspace, root: &str) -> Result<()> {
     ws.reset_layout();
     let root = Path::new(root)

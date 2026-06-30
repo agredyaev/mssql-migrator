@@ -9,17 +9,27 @@ use crate::error::Result;
 use super::plan_batch::run_batch;
 use super::plan_parallel::run_parallel;
 
+/// Output of the plan DB phase containing catalog state, checksums, and timing data.
 pub struct PlanDbResult {
+    /// Object checksum map loaded from audit history.
     pub checksums: ChecksumMap,
+    /// Live catalog state for all objects in the workspace.
     pub catalog: crate::db::state::CatalogState,
+    /// Milliseconds spent ensuring audit tables exist.
     pub ensure_ms: i64,
+    /// Milliseconds spent loading checksum history.
     pub checksums_ms: i64,
+    /// Milliseconds spent inspecting catalog object definitions.
     pub inspect_ms: i64,
+    /// Wall-clock milliseconds for the parallel catalog inspect phase.
     pub parallel_wall_ms: i64,
+    /// True when results were served from the L1 filesystem cache.
     pub l1_hit: bool,
+    /// Structured trace of the DB phase execution path.
     pub trace: PlanDbTrace,
 }
 
+/// Loads catalog state and checksums, serving from L1 cache or warm snapshot when available.
 pub async fn run_plan_db_phase(
     cfg: &Config,
     conn: &mut TimingConn,

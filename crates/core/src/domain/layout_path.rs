@@ -19,6 +19,7 @@ pub fn object_path_for_entry(database: &str, script_path: SharedStr) -> SharedSt
     }
 }
 
+/// Returns candidate path strings for looking up `path` with and without the database prefix.
 pub fn path_lookup_candidates(database: &str, path: &str) -> Vec<String> {
     let mut out = vec![path.to_string()];
     if database.is_empty() {

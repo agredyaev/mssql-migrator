@@ -4,19 +4,31 @@ use crate::domain::{is_module_kind_code, ObjectEntry, KIND_TABLES, KIND_TRIGGERS
 use super::diff_prepare::prior_digest_present;
 use super::scenario::PlanScenario;
 
+/// Input bundle passed to `resolve_plan_scenario`.
 pub struct ScenarioInput<'a> {
+    /// Whether the object currently exists in the database.
     pub exists: bool,
+    /// Prior checksum recorded in the catalog, if any.
     pub prior: Option<[u8; 32]>,
+    /// Current on-disk checksum of the script.
     pub checksum: [u8; 32],
+    /// Numeric kind code for the object type.
     pub kind_code: u8,
+    /// Object entry describing the migration target.
     pub obj: &'a ObjectEntry,
+    /// Workspace containing the full object registry.
     pub ws: &'a crate::domain::Workspace,
+    /// Current catalog state loaded from the database.
     pub catalog: &'a CatalogState,
+    /// Slice of prior digests indexed by catalog row.
     pub prior_digests: &'a [Option<[u8; 32]>],
+    /// Catalog row identifier for the child object.
     pub child_row_id: u32,
+    /// Whether the object has at least one transition-path row.
     pub has_transition_paths: bool,
 }
 
+/// Resolves the `PlanScenario` to apply for a single object given `input`.
 pub fn resolve_plan_scenario(input: ScenarioInput<'_>) -> PlanScenario {
     let ScenarioInput {
         exists,

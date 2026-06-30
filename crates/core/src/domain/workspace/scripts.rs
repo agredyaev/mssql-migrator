@@ -25,11 +25,13 @@ impl Workspace {
         id
     }
 
+    /// Returns the script reference for `key`, or `None` if not present.
     pub fn script_by_key(&self, key: &ScriptKey) -> Option<crate::domain::ScriptRef<'_>> {
         let id = self.script_key_index.get(key).copied()?;
         Some(self.script(id))
     }
 
+    /// Rebuilds the script key index from the current script rows.
     pub fn rebuild_script_key_index(&mut self) {
         self.script_key_index.clear();
         let n = self.script_rows.len();

@@ -41,6 +41,7 @@ use crate::driver::TimingConn;
 use crate::error::{Error, Result};
 use crate::export::MigrationPlan;
 
+/// Executes all planned schema mutations against the target database and returns apply statistics.
 pub async fn execute_plan(
     cfg: &Config,
     conn: &mut TimingConn,

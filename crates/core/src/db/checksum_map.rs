@@ -13,6 +13,7 @@ pub struct ChecksumMap {
 }
 
 impl ChecksumMap {
+    /// Creates an empty `ChecksumMap`.
     pub fn new() -> Self {
         Self {
             by_fp: HashMap::new(),
@@ -20,18 +21,22 @@ impl ChecksumMap {
         }
     }
 
+    /// Returns `true` if the map contains no digests.
     pub fn is_empty(&self) -> bool {
         self.by_fp.is_empty()
     }
 
+    /// Returns the number of stored digests.
     pub fn len(&self) -> usize {
         self.by_fp.len()
     }
 
+    /// Reserves capacity for at least `additional` more entries.
     pub fn reserve(&mut self, additional: usize) {
         self.by_fp.reserve(additional);
     }
 
+    /// Inserts a digest for the normalized key string, recording both fingerprint and wire key.
     pub fn insert_normalized(&mut self, key: &str, cs: [u8; 32]) {
         let fp = key_fingerprint(key.as_bytes());
         self.by_fp.insert(fp, cs);
@@ -48,14 +53,17 @@ impl ChecksumMap {
             .or_insert_with(|| key.as_str().into());
     }
 
+    /// Returns the digest for the normalized key string, if present.
     pub fn get_normalized(&self, key: &str) -> Option<&[u8; 32]> {
         self.by_fp.get(&key_fingerprint(key.as_bytes()))
     }
 
+    /// Returns the digest for an `ObjectKey`, if present.
     pub fn get_key(&self, key: &ObjectKey) -> Option<&[u8; 32]> {
         self.by_fp.get(&key.fingerprint())
     }
 
+    /// Returns the digest for a raw fingerprint value, if present.
     pub fn get_fingerprint(&self, fp: u64) -> Option<&[u8; 32]> {
         self.by_fp.get(&fp)
     }

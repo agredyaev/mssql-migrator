@@ -4,13 +4,18 @@ use super::key::ObjectKey;
 use super::kind_code::kind_code;
 use super::object::ObjectEntry;
 
+/// Compact per-object metadata row stored parallel to `object_entries`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ObjectRow {
+    /// Index into the workspace schema list (0 = no schema).
     pub schema_id: u16,
+    /// Numeric kind code derived from the object kind path segment.
     pub kind_code: u8,
+    /// Reserved bit flags for future use.
     pub flags: u8,
 }
 
+/// Output tuple produced by `finalize_sorted_entries`.
 pub type FinalizeSortedResult = (
     Vec<ObjectRow>,
     HashMap<ObjectKey, u32>,
@@ -19,6 +24,7 @@ pub type FinalizeSortedResult = (
     Vec<ObjectKey>,
 );
 
+/// Sorts entries by key, assigns schema IDs, and returns parallel row and index structures.
 pub fn finalize_sorted_entries(
     mut entries: Vec<ObjectEntry>,
     mut keys: Vec<ObjectKey>,

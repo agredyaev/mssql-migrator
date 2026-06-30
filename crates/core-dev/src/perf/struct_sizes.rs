@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::io;
 use std::mem::size_of;
 use std::path::Path;

@@ -4,19 +4,27 @@ use serde::Serialize;
 
 use crate::gate::snapshot::{PlanSnapshot, SnapshotObject};
 
+/// Options controlling snapshot comparison behaviour.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct CompareOptions {
+    /// Set of object keys permitted to carry plan differences in this comparison.
     pub delta_keys: HashSet<String>,
+    /// Fail the comparison when plan changes appear outside the permitted delta set.
     pub strict_unexpected: bool,
 }
 
+/// Outcome of a snapshot comparison.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct CompareResult {
+    /// Whether the comparison passed with no blocking differences detected.
     pub passed: bool,
+    /// Human-readable descriptions of each detected problem.
     pub messages: Vec<String>,
+    /// Keys with plan changes outside the permitted delta set.
     pub unexpected: Vec<String>,
 }
 
+/// Compares `baseline` and `current` snapshots and returns a result indicating pass/fail and any detected differences.
 pub fn compare_snapshots(
     baseline: &PlanSnapshot,
     current: &PlanSnapshot,

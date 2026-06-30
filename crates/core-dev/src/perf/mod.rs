@@ -1,3 +1,5 @@
+//! Performance footprint helpers: struct-size reports, baseline snapshots, and layout audits.
+
 mod baseline;
 mod layout_report;
 mod struct_sizes;

@@ -1,21 +1,30 @@
+//! [`RowData`] and [`Cell`] — typed SQL row and column value types.
+
 use serde::{Deserialize, Serialize};
 
+/// Single column value from a database result row.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Cell {
+    /// Null column value.
     #[serde(rename = "n")]
     Null,
+    /// String column value.
     #[serde(rename = "s")]
     Str(String),
+    /// Binary column value.
     #[serde(rename = "b")]
     Bytes(Vec<u8>),
 }
 
+/// Ordered column cells from a single database row.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct RowData {
+    /// Ordered column cells corresponding to the query result columns.
     pub cells: Vec<Cell>,
 }
 
 impl RowData {
+    /// Returns the string value at column `idx`, or `None` if absent or not a string cell.
     pub fn get_str(&self, idx: usize) -> Option<&str> {
         match self.cells.get(idx)? {
             Cell::Str(s) => Some(s.as_str()),
@@ -23,6 +32,7 @@ impl RowData {
         }
     }
 
+    /// Returns the byte slice at column `idx`, or `None` if absent or not a bytes cell.
     pub fn get_bytes(&self, idx: usize) -> Option<&[u8]> {
         match self.cells.get(idx)? {
             Cell::Bytes(b) => Some(b.as_slice()),
@@ -30,6 +40,7 @@ impl RowData {
         }
     }
 
+    /// Returns the integer value at column `idx`, or `None` if absent or unparseable.
     pub fn get_i32(&self, idx: usize) -> Option<i32> {
         if let Some(s) = self.get_str(idx) {
             return s.trim().parse().ok();
@@ -39,6 +50,7 @@ impl RowData {
     }
 }
 
+/// Converts a `tiberius::Row` into a `RowData` by extracting each column cell.
 pub fn from_tiberius(row: &tiberius::Row) -> RowData {
     let n = row.columns().len();
     let mut cells = Vec::with_capacity(n);

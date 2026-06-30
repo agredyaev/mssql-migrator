@@ -8,7 +8,7 @@
 //! - `plan`         — scan SQL layout, diff against DB, write plan report
 //! - `migrate`      — plan + scaffold + apply
 //! - `validate`     — checks without applying
-//! - `baseline`     — adopt all catalog objects as baseline
+//! - `baseline`     — adopt repository objects already present in the DB (baseline)
 //! - `repair-checksum` — fix audit checksum mismatches
 //! - `version`      — print release + git commit
 //!
