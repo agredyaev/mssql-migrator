@@ -12,6 +12,7 @@ impl EnvGuard {
     fn new() -> Self {
         let lock = TEST_LOCK.lock().expect("session auth test lock");
         std::env::remove_var("RMIG_SESSION_TOKEN");
+        super::reset_session_token_for_test();
         Self { _lock: lock }
     }
 }
@@ -19,6 +20,7 @@ impl EnvGuard {
 impl Drop for EnvGuard {
     fn drop(&mut self) {
         std::env::remove_var("RMIG_SESSION_TOKEN");
+        super::reset_session_token_for_test();
     }
 }
 
@@ -71,10 +73,10 @@ fn apply_session_token_from_config_publishes_token_for_daemon() {
     let _guard = EnvGuard::new();
     let cfg = cfg_with_token("daemon-token");
     apply_session_token_from_config(&cfg);
-    assert_eq!(
-        std::env::var("RMIG_SESSION_TOKEN").expect("token exported"),
-        "daemon-token"
-    );
+    // Published for later auth checks without touching the process environment
+    // (no `set_var`): resolvable with no config and no env var set.
+    assert_eq!(resolve_session_token(None), "daemon-token");
+    assert!(std::env::var("RMIG_SESSION_TOKEN").is_err());
 }
 
 #[cfg(feature = "session-daemon")]

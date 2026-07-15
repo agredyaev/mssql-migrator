@@ -20,6 +20,8 @@ pub(super) struct GitDeltaWarmup {
     pub checksums_ms: i64,
     pub loaded: CatalogState,
     pub partial_cache: bool,
+    /// Cache rows came from the count-only (digest-inexact) relaxed load.
+    pub relaxed: bool,
     pub round_trips: i64,
     pub local_trace: PlanDbTrace,
 }
@@ -34,6 +36,7 @@ pub(super) async fn warmup_git_delta(
     let mut local_trace = PlanDbTrace::default();
     let want_cache = ctx.cfg.catalog_cache() && audit::tables_ensured(ctx.db_fp);
     let mut loaded = ctx.catalog_base.take().unwrap_or_default();
+    let mut relaxed = false;
     let partial_cache;
 
     if ctx.need_checksums {
@@ -60,6 +63,7 @@ pub(super) async fn warmup_git_delta(
             for set in sets {
                 if catalog::looks_like_cache_load_rows(&set) {
                     crate::db::catalog_cache::merge_load_rows(&mut loaded, &set)?;
+                    relaxed = true;
                 }
             }
         }
@@ -81,6 +85,7 @@ pub(super) async fn warmup_git_delta(
         checksums_ms,
         loaded,
         partial_cache,
+        relaxed,
         round_trips,
         local_trace,
     })

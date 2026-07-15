@@ -31,6 +31,16 @@ on:
       - 'AGENTS.md'
       - '.github/pull_request_template.md'
 
+# Least privilege: the CI pipeline only reads the repo. Inherited by the
+# reusable lint/test/build workflows, which cannot exceed the caller's scope.
+permissions:
+  contents: read
+
+# Cancel superseded runs on a PR branch; never cancel main (release gate).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # --- Stage 1: Lint + Test (parallel) ---
   lint:

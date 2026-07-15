@@ -88,13 +88,18 @@ fn walk_dir(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
     for entry in std::fs::read_dir(dir).map_err(crate::error::Error::Io)? {
         let entry = entry.map_err(crate::error::Error::Io)?;
         let ft = entry.file_type().map_err(crate::error::Error::Io)?;
+        let path = entry.path();
         if ft.is_symlink() {
+            tracing::warn!(path = %path.display(), "skipping symlink (symlinks are not followed)");
             continue;
         }
-        let path = entry.path();
         if path.is_dir() {
             walk_dir(&path, out)?;
-        } else if path.extension().and_then(|e| e.to_str()) == Some("sql") {
+        } else if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("sql"))
+        {
             out.push(path);
         }
     }

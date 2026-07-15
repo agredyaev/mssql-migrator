@@ -4,8 +4,6 @@
 //! Tracks the number of objects applied, skipped, and failed, along with
 //! error messages and audit history records generated during the apply.
 
-use crate::audit::HistoryRecord;
-
 /// Aggregate apply outcome: row counts, errors, and audit history.
 #[derive(Debug, Default)]
 pub struct ApplyResult {
@@ -17,8 +15,8 @@ pub struct ApplyResult {
     pub failed: usize,
     /// Error messages from failed applies.
     pub errors: Vec<String>,
-    /// Audit history records written during this apply.
-    pub history: Vec<HistoryRecord>,
+    /// True once any history record has been flushed to the database.
+    pub wrote_history: bool,
 }
 
 impl ApplyResult {

@@ -1,7 +1,9 @@
+use std::time::Duration;
+
 use crate::audit;
 use crate::domain::{Action, Workspace};
 use crate::driver::TimingConn;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::export::MigrationPlan;
 use crate::plan::filter_migrations;
 
@@ -9,6 +11,7 @@ pub async fn filter_applied(
     conn: &mut TimingConn,
     ws: &Workspace,
     plan: &mut MigrationPlan,
+    timeout: Duration,
 ) -> Result<()> {
     let need = plan
         .objects
@@ -17,7 +20,14 @@ pub async fn filter_applied(
     if !need {
         return Ok(());
     }
-    let applied = audit::load_all_applied(conn.client_mut()?).await?;
+    let fut = audit::load_all_applied(conn.client_mut()?);
+    let applied = if timeout.is_zero() {
+        fut.await?
+    } else {
+        tokio::time::timeout(timeout, fut)
+            .await
+            .map_err(|_| Error::Sql(format!("history load timed out after {timeout:?}")))??
+    };
     filter_migrations::filter_applied_migrations(plan, ws, &applied);
     Ok(())
 }

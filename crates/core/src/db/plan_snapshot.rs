@@ -29,32 +29,41 @@ pub struct PlanDbResult {
     pub trace: PlanDbTrace,
 }
 
-/// Loads catalog state and checksums, serving from L1 cache or warm snapshot when available.
+/// Loads catalog state and checksums, serving from L1 cache or warm snapshot when
+/// available. When `bypass_cache` is set (mutating commands running under the
+/// advisory lock), the local caches are skipped so the plan always reflects live
+/// DB state — a restore/external change since the cache was written must not let
+/// migrate believe the database is already at the target.
 pub async fn run_plan_db_phase(
     cfg: &Config,
     conn: &mut TimingConn,
     ws: &Workspace,
+    bypass_cache: bool,
 ) -> Result<PlanDbResult> {
-    let fp = format!("{}_{}", cfg.server, cfg.database);
+    let fp = crate::audit::db_fingerprint(&cfg.server, &cfg.database);
     let l1 = L1Cache::new(&cfg.l1_cache_dir);
 
-    if let Some((checksums, catalog)) = l1.try_load(&fp, &ws.layout_digest)? {
-        return Ok(PlanDbResult {
-            checksums,
-            catalog,
-            ensure_ms: 0,
-            checksums_ms: 0,
-            inspect_ms: 0,
-            parallel_wall_ms: 0,
-            l1_hit: true,
-            trace: PlanDbTrace {
-                path: Some(PlanDbPath::CacheHit),
-                ..PlanDbTrace::default()
-            },
-        });
+    if !bypass_cache {
+        if let Some((checksums, catalog)) = l1.try_load(&fp, &ws.layout_digest)? {
+            return Ok(PlanDbResult {
+                checksums,
+                catalog,
+                ensure_ms: 0,
+                checksums_ms: 0,
+                inspect_ms: 0,
+                parallel_wall_ms: 0,
+                l1_hit: true,
+                trace: PlanDbTrace {
+                    path: Some(PlanDbPath::CacheHit),
+                    ..PlanDbTrace::default()
+                },
+            });
+        }
     }
 
-    if let Some((checksums, catalog)) = super::warm_snapshot::reuse(&fp, &ws.layout_digest) {
+    if let Some((checksums, catalog)) =
+        super::warm_snapshot::reuse(&fp, &ws.layout_digest).filter(|_| !bypass_cache)
+    {
         l1.save(&fp, &ws.layout_digest, &checksums, &catalog)?;
         return Ok(PlanDbResult {
             checksums,

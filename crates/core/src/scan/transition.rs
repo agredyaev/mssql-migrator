@@ -12,6 +12,10 @@ const SCAFFOLD: &str = "-- rmig: transition-scaffold";
 /// Parses and registers one transition script file into `ws`.
 pub fn ingest(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
     let Some(meta) = parse_meta(rel)? else {
+        tracing::warn!(
+            path = rel,
+            "ignoring file under _migrations/: expected <schema>/tables/_migrations/<table>/<3-digit-ordinal>_<commit>_<slug>.sql"
+        );
         return Ok(());
     };
     let data = std::fs::read(abs).map_err(crate::error::Error::Io)?;
@@ -79,6 +83,10 @@ fn parse_filename(file: &str) -> Option<(String, String, String)> {
     }
     Some((ordinal.into(), commit.into(), slug.into()))
 }
+
+#[cfg(test)]
+#[path = "../tests/scan_transition_test.rs"]
+mod scan_transition_tests;
 
 fn is_scaffold(path: &Path) -> bool {
     let Ok(data) = std::fs::read(path) else {

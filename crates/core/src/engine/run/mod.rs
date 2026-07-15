@@ -77,22 +77,35 @@ pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput>
         // and must not create it, so plan the reachable catalogs only and skip
         // the rest. Mutating commands already created their catalogs above via
         // `ensure_catalog_databases_exist`, so this probe is skipped for them.
-        if multi
-            && !command_ensures_catalog_databases(cmd)
-            && !crate::config::target_database_exists(cfg, db).await
-        {
-            tracing::warn!(
-                database = %db,
-                "skipping catalog database that does not exist on server"
-            );
-            continue;
+        if multi && !command_ensures_catalog_databases(cmd) {
+            // Absent database → skip; a server outage/auth failure must NOT be
+            // silently treated as "absent" (that would exit 0 having validated
+            // nothing), so propagate it.
+            match crate::config::target_database_exists(cfg, db).await? {
+                true => {}
+                false => {
+                    tracing::warn!(database = %db, "skipping catalog database that does not exist on server");
+                    continue;
+                }
+            }
         }
-        let out =
-            run_command_for_database(cmd, &cfg_db, ws, scan_elapsed, cli_start, multi).await?;
-        exit_code = exit_code.max(out.exit_code);
-        merge_timings(&mut merged, &out.timings);
-        if let Some(plan) = out.plan {
-            merge_plan(&mut last_plan, plan);
+        match run_command_for_database(cmd, &cfg_db, ws, scan_elapsed, cli_start, multi).await {
+            Ok(out) => {
+                exit_code = exit_code.max(out.exit_code);
+                merge_timings(&mut merged, &out.timings);
+                if let Some(plan) = out.plan {
+                    merge_plan(&mut last_plan, plan);
+                }
+            }
+            // In a multi-DB run the databases are independent; don't let one
+            // failure discard the databases already processed. Record its exit
+            // code, log which database failed, and continue. Single-DB runs keep
+            // propagating the error unchanged.
+            Err(e) if multi => {
+                tracing::error!(database = %db, error = %e, "catalog database failed; continuing");
+                exit_code = exit_code.max(e.exit_code());
+            }
+            Err(e) => return Err(e),
         }
     }
 

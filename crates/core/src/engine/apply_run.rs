@@ -56,7 +56,7 @@ async fn apply_plan(
             if plan.blocked {
                 return super::blocked::handle_blocked_migrate(conn, cfg, ws, plan).await;
             }
-            filter::filter_applied(conn, ws, plan).await?;
+            filter::filter_applied(conn, ws, plan, cfg.command_timeout).await?;
         }
         Command::Baseline | Command::RepairChecksum => {
             if plan.blocked {
@@ -76,7 +76,9 @@ async fn apply_plan(
     );
     if apply.failed == 0 && apply.applied > 0 {
         super::warm_store::clear_plan_db_snapshot();
-        let _ = crate::db::save_workspace_snapshot(conn, &ws.layout_digest, ws).await;
+        let _ =
+            crate::db::save_workspace_snapshot(conn, &ws.layout_digest, ws, cfg.catalog_cache())
+                .await;
     }
     Ok(())
 }

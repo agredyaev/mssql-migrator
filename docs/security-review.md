@@ -32,6 +32,8 @@ without escaping.
 ## Assumptions And Constraints
 
 - Assumptions: operators supply credentials via a secret store, not committed files.
+- Assumption: repository `.sql` script bodies are TRUSTED input. The migrator executes them verbatim (wrapped only in a transaction) with the deploy credentials, so write access to the migrations repository is equivalent to arbitrary SQL execution against the target server. Only identifiers and catalog reads are treated as untrusted; script contents are not sandboxed.
+- Assumption: `rmigd` token auth is OPT-IN. An empty configured token disables authentication entirely (`crates/core/src/session/auth.rs`); in that mode the Unix-socket file permissions (`0600` socket in a `0700` directory) are the only access control, so the socket path must never be placed in a group/world-accessible directory.
 - Constraints:
   - Do not print secrets; do not log connection strings or credentials; do not include credentials in error messages.
   - `password` and `session_token` are redacted in all `Debug` output; `Config`, `ConfigCold`, and the session `Request` (`crates/core/src/session/protocol.rs`) implement redacting `Debug` by hand.

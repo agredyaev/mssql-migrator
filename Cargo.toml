@@ -6,10 +6,13 @@ default-members = ["crates/cli", "crates/rmigd"]
 [workspace.package]
 version = "1.0.7"
 edition = "2021"
+# MSRV == the pinned CI toolchain: these are binaries with no downstream library
+# consumers, so "supported Rust" is simply what we build and test on.
+rust-version = "1.96"
 license = "MIT"
 
 [workspace.dependencies]
-tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "tracing"] }
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "tracing", "signal"] }
 tokio-util = { version = "0.7.18", features = ["compat"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "registry"] }

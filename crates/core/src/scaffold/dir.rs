@@ -22,10 +22,27 @@ pub fn migration_dir_checked(base: &Path, db: &str, schema: &str, table: &str) -
     let dir = migration_dir(base, db, schema, table);
     if base.exists() {
         let base_canon = base.canonicalize().map_err(Error::Io)?;
-        let dir_canon = dir.canonicalize().or_else(|_| {
-            fs::create_dir_all(&dir).map_err(Error::Io)?;
-            dir.canonicalize().map_err(Error::Io)
-        })?;
+        // Verify the deepest already-existing ancestor stays under base BEFORE
+        // creating anything, so a symlinked ancestor (e.g. base/db -> elsewhere)
+        // cannot materialize directory trees outside base and only then error.
+        let mut existing = dir.as_path();
+        while !existing.exists() {
+            match existing.parent() {
+                Some(p) => existing = p,
+                None => break,
+            }
+        }
+        if !existing
+            .canonicalize()
+            .map_err(Error::Io)?
+            .starts_with(&base_canon)
+        {
+            return Err(Error::InvalidInput(
+                "migration path escapes sql_base".into(),
+            ));
+        }
+        fs::create_dir_all(&dir).map_err(Error::Io)?;
+        let dir_canon = dir.canonicalize().map_err(Error::Io)?;
         if !dir_canon.starts_with(&base_canon) {
             return Err(Error::InvalidInput(format!(
                 "migration path escapes sql_base: {}",

@@ -1,5 +1,4 @@
 use super::save::save_batched;
-use crate::db::catalog_cache::cache_enabled;
 use crate::db::state::{catalog_object_parts, CatalogState};
 use crate::domain::{share, Workspace};
 use crate::driver::TimingConn;
@@ -11,8 +10,9 @@ pub async fn save_workspace_snapshot(
     conn: &mut TimingConn,
     layout_digest: &[u8; 32],
     ws: &Workspace,
+    enabled: bool,
 ) -> Result<()> {
-    if !cache_enabled() || ws.object_count() == 0 {
+    if !enabled || ws.object_count() == 0 {
         return Ok(());
     }
     let mut state = CatalogState::default();

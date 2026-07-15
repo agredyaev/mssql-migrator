@@ -75,3 +75,7 @@ pub fn git_info_file(abs_path: &str) -> Option<GitMeta> {
         date: lines[2].to_string(),
     })
 }
+
+#[cfg(test)]
+#[path = "../tests/git_log_test.rs"]
+mod git_log_tests;

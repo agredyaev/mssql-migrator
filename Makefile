@@ -21,7 +21,8 @@ release-build:
 	cp -f target/release-dist/rmig $(RELEASE_BIN)
 
 test:
-	cargo test -p migrator-core --lib
+	cargo test -p migrator-core --lib --tests
+	cargo test -p rmigd
 
 arch:
 	@chmod +x scripts/check-rust-arch.sh scripts/check-rust-release-deps.sh scripts/check-rust-release-profile.sh scripts/check-rust-loc.sh scripts/check-e2e-scenarios.sh scripts/check-prod-gate-reset.sh scripts/check-e2e-git-flag.sh scripts/check-rm-db-database-contract.sh scripts/check-advisory-lock-release.sh scripts/check-sql-regression-manifest.sh ops/perf/sql_regression.sh

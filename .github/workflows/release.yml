@@ -31,6 +31,12 @@ on:
 permissions:
   contents: write
 
+# Serialize publishes so two near-simultaneous merges cannot race the version
+# bump/tag push (the loser would fail non-fast-forward and drop its release).
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   publish:
     name: Bump & publish release
@@ -46,10 +52,13 @@ jobs:
       )
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Release the exact commit CI validated, not whatever is at branch tip
+          # now (a later merge could otherwise be tagged/published untested).
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
       - name: Configure git identity
         run: |
@@ -123,7 +132,7 @@ jobs:
       - uses: ./.github/actions/setup
         if: steps.filter.outputs.skip != 'true'
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         if: steps.filter.outputs.skip != 'true'
         with:
           path: |
@@ -140,7 +149,10 @@ jobs:
       - name: Commit & push version bump
         if: steps.filter.outputs.skip != 'true'
         run: |
-          git add VERSION Cargo.toml
+          # Stage Cargo.lock too: `make release-build` above re-synced the
+          # workspace-member versions, so omitting it leaves the committed lock
+          # stale and breaks `cargo install --locked` from the release tag.
+          git add VERSION Cargo.toml Cargo.lock
           git commit -m "chore: bump ${{ steps.version.outputs.old }} → ${{ steps.version.outputs.new }} [skip ci]"
           git push
 
@@ -152,7 +164,7 @@ jobs:
 
       - name: Publish GitHub Release
         if: steps.filter.outputs.skip != 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: "${{ steps.version.outputs.tag }}"

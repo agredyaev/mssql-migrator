@@ -27,7 +27,7 @@ pub(super) async fn query_git_delta_catalog(
 
     let t_cat = Instant::now();
     let mut loaded = mem::take(&mut warm.loaded);
-    if query_catalog && !cache_covers_hot(warm.partial_cache, &scope, &loaded) {
+    if query_catalog && !cache_covers_hot(warm.partial_cache && !warm.relaxed, &scope, &loaded) {
         loaded = load_git_delta_catalog(
             ctx,
             conn,

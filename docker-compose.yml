@@ -19,7 +19,7 @@ services:
     container_name: rmig-mssql
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "yourStrong(!)Password"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-yourStrong(!)Password}"
       MSSQL_PID: Developer
       MSSQL_LCK_MEMORY_CLERK_ENABLED: "0"
       MSSQL_MEMORY_LIMIT_MB: "2048"

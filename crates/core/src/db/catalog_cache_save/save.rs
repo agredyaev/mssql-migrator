@@ -1,4 +1,4 @@
-use crate::db::catalog_cache::{cache_enabled, missing_catalog_table};
+use crate::db::catalog_cache::missing_catalog_table;
 use crate::db::state::CatalogState;
 use crate::domain::Workspace;
 use crate::driver::TimingConn;
@@ -29,7 +29,7 @@ pub async fn save_batched(
     state: &CatalogState,
 ) -> Result<()> {
     let object_count = ws.object_count();
-    if !cache_enabled() || object_count == 0 {
+    if object_count == 0 {
         return Ok(());
     }
     let filtered = filter_for_layout(ws, state);
