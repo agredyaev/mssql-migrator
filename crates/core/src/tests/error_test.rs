@@ -12,16 +12,17 @@ fn classified_errors_map_to_documented_codes() {
 }
 
 #[test]
-fn sql_errors_split_connect_from_execution() {
-    // Connection-phase failures are surfaced as a distinct exit code so CI can
-    // retry infrastructure issues separately from genuine SQL errors.
+fn conn_and_sql_errors_map_to_distinct_codes() {
+    // Connection-phase failures carry a dedicated variant/exit code so CI can
+    // retry infrastructure issues separately from genuine SQL errors — no more
+    // brittle substring sniffing of the message.
     assert_eq!(
-        Error::Sql("connect timed out".into()).exit_code(),
+        Error::Conn("connect timed out".into()).exit_code(),
         EXIT_CONN
     );
     assert_eq!(
-        Error::Sql("TDS handshake failed".into()).exit_code(),
-        EXIT_CONN
+        Error::Sql("connect_users proc failed".into()).exit_code(),
+        EXIT_SQL
     );
     assert_eq!(
         Error::Sql("Invalid column name 'foo'".into()).exit_code(),

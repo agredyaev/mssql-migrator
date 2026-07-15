@@ -37,6 +37,30 @@ fn validate_config_sql_auth_happy_path() {
 }
 
 #[test]
+fn validate_config_rejects_non_numeric_port_negative_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("db1/smoke/tables")).expect("mkdir");
+    std::fs::write(
+        dir.path().join("db1/smoke/tables/t1.sql"),
+        "CREATE TABLE smoke.t1 (id INT NOT NULL);\n",
+    )
+    .expect("write sql");
+    let mut cfg = make_cfg(
+        "localhost",
+        &dir.path().to_string_lossy(),
+        "svc",
+        "secret",
+        "",
+    );
+    cfg.port = "70000".into();
+    let err = validate_config(&mut cfg).expect_err("out-of-range port should fail");
+    assert!(
+        err.to_string().contains("RM_DB_PORT"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn validate_config_missing_sql_user_negative_path() {
     let mut cfg = make_cfg("localhost", "/tmp/sql", "", "secret", "");
     let err = validate_config(&mut cfg).expect_err("empty user should fail");
