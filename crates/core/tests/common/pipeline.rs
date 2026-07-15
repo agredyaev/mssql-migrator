@@ -34,7 +34,7 @@ pub async fn run_plan_pipeline(cfg: &Config) -> Result<(MigrationPlan, PhaseTimi
     );
     timings.connect_ms = timings::dur_ms(t_conn.elapsed());
 
-    let db = migrator_core::db::run_plan_db_phase(cfg, &mut conn, &ws).await?;
+    let db = migrator_core::db::run_plan_db_phase(cfg, &mut conn, &ws, false).await?;
     timings.ensure_ms = db.ensure_ms;
     timings.checksums_ms = db.checksums_ms;
     timings.inspect_ms = db.inspect_ms;

@@ -85,6 +85,9 @@ async fn rmigd_with_advisory_lock_releases_after_success_happy_path() {
     with_advisory_lock(&mut holder, &cfg, async { Ok(()) })
         .await
         .expect("guard success");
+    // Disconnect the holder so its exclusive daemon session (and the lock) is
+    // released before the next client connects.
+    drop(holder);
     let mut other = timing_conn(&cfg).await;
     acquire(&mut other, &cfg)
         .await
@@ -107,6 +110,7 @@ async fn rmigd_with_advisory_lock_releases_after_body_error_negative_path() {
         err.to_string().contains("simulated rmigd apply failure"),
         "unexpected error: {err}"
     );
+    drop(holder);
     let mut other = timing_conn(&cfg).await;
     acquire(&mut other, &cfg)
         .await
@@ -114,17 +118,37 @@ async fn rmigd_with_advisory_lock_releases_after_body_error_negative_path() {
 }
 
 #[tokio::test]
-async fn rmigd_with_advisory_lock_same_session_reacquire_edge_case() {
+async fn rmigd_serializes_concurrent_clients_no_reentrant_lock_edge_case() {
     if skip_unless_rmigd() {
         return;
     }
     let cfg = parity_cfg("master");
+    // Holder connects and acquires; its daemon session now holds the exclusive
+    // client lock for its lifetime.
     let mut holder = timing_conn(&cfg).await;
     acquire(&mut holder, &cfg).await.expect("first acquire");
-    let mut contender = timing_conn(&cfg).await;
-    with_advisory_lock(&mut contender, &cfg, async { Ok(()) })
+    // A second client must NOT be able to reenter the shared session's advisory
+    // lock while the holder is active — it blocks on the exclusive daemon session
+    // (and would fall back to a direct connection that then contends on the real
+    // DB applock). Prove it does not complete quickly.
+    let blocked = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        let mut contender = timing_conn(&cfg).await;
+        with_advisory_lock(&mut contender, &cfg, async { Ok(()) }).await
+    })
+    .await;
+    assert!(
+        blocked.is_err(),
+        "second client must be serialized behind the active session, not reenter the lock"
+    );
+    // After the holder releases and disconnects, the lock is free again.
+    release_after_body(&mut holder, Ok::<(), Error>(()))
         .await
-        .expect("rmigd shares one SQL session; re-acquire succeeds when session already owns lock");
+        .expect("release holder");
+    drop(holder);
+    let mut other = timing_conn(&cfg).await;
+    acquire(&mut other, &cfg)
+        .await
+        .expect("lock free after holder releases and disconnects");
 }
 
 #[tokio::test]
@@ -139,6 +163,7 @@ async fn rmigd_with_advisory_lock_releases_after_failed_body_regression() {
     })
     .await
     .expect_err("BG-001 rmigd regression body");
+    drop(holder);
     let mut other = timing_conn(&cfg).await;
     acquire(&mut other, &cfg)
         .await

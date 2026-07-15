@@ -125,6 +125,8 @@ CORE_TESTS=(
   session_fallback_test
   db_auth_test
   apply_e2e_integration
+  existing_db_adoption_integration
+  chaos_kill_mid_apply_test
 )
 
 CORE_ARGS=()
