@@ -6,6 +6,9 @@ use crate::driver::TimingConn;
 use crate::error::Result;
 use crate::export::PlannedObject;
 
+use crate::audit::HistoryRecord;
+
+use super::history_write::{apply_in_tx, commit_history};
 use super::result::ApplyResult;
 use super::tx::wrap_transaction;
 
@@ -28,7 +31,7 @@ pub async fn exec_one(
         result.push_error(format!("{}: {e}", obj.normalized_key));
         return Ok(());
     }
-    push_applied(result, obj);
+    record_object(conn, ws, obj, result).await;
     Ok(())
 }
 
@@ -42,23 +45,17 @@ pub async fn exec_one_wrapped(
         result.push_error(format!("{}: script not found", obj.normalized_key));
         return Ok(());
     };
-    let sql = wrap_transaction(&body);
-    if let Err(e) = conn.exec(&sql).await {
-        if let Err(re) = conn.exec(crate::sql::apply::ROLLBACK).await {
-            // A failed rollback means the connection's transaction state is
-            // unknown; surface it so the apply aborts rather than running the
-            // next object inside a zombie transaction.
-            result.push_error(format!("{}: rollback failed: {re}", obj.normalized_key));
-        }
-        result.push_error(format!("{}: {e}", obj.normalized_key));
-        return Ok(());
+    // Script body + its history row commit atomically: no window where the
+    // object is applied but unrecorded (which would replay it on re-run).
+    let recs = object_records(ws, obj);
+    if apply_in_tx(conn, &body, &recs, result, &obj.normalized_key).await {
+        result.applied += 1;
     }
-    push_applied(result, obj);
     Ok(())
 }
 
-pub fn push_applied(result: &mut ApplyResult, obj: &PlannedObject) {
-    result.history.push(audit::record_applied(
+fn object_records(ws: &Workspace, obj: &PlannedObject) -> Vec<HistoryRecord> {
+    let mut recs = vec![audit::record_applied(
         &obj.normalized_key,
         &obj.kind,
         obj.checksum,
@@ -66,8 +63,24 @@ pub fn push_applied(result: &mut ApplyResult, obj: &PlannedObject) {
         obj.git_author(),
         obj.git_date(),
         "object",
-    ));
-    result.applied += 1;
+    )];
+    if obj.planned_action == crate::domain::Action::CreateObject {
+        recs.extend(super::history_write::create_table_transition_records(
+            ws, obj,
+        ));
+    }
+    recs
+}
+
+async fn record_object(
+    conn: &mut TimingConn,
+    ws: &Workspace,
+    obj: &PlannedObject,
+    result: &mut ApplyResult,
+) {
+    if commit_history(conn, result, &object_records(ws, obj)).await {
+        result.applied += 1;
+    }
 }
 
 pub fn read_script(ws: &Workspace, obj: &PlannedObject) -> Option<String> {

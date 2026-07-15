@@ -35,6 +35,9 @@ pub enum Error {
     Io(std::io::Error),
     /// SQL execution or driver exception.
     Sql(String),
+    /// Connection-phase failure (TCP dial, TDS handshake) — a transport/auth
+    /// problem distinct from a SQL execution error, mapped to `EXIT_CONN`.
+    Conn(String),
     /// Migration plan is structurally blocked and cannot proceed.
     PlanBlocked,
     /// Advisory lock could not be acquired within the timeout.
@@ -77,17 +80,8 @@ impl Error {
             Self::InvalidInput(_) => EXIT_INVALID_INPUT,
             Self::PlanBlocked => EXIT_PLAN_BLOCKED,
             Self::LockTimeout => EXIT_LOCK_TIMEOUT,
-            Self::Sql(m) => {
-                let lower = m.to_lowercase();
-                if lower.contains("connect ")
-                    || lower.starts_with("connect")
-                    || lower.contains("tds handshake")
-                {
-                    EXIT_CONN
-                } else {
-                    EXIT_SQL
-                }
-            }
+            Self::Conn(_) => EXIT_CONN,
+            Self::Sql(_) => EXIT_SQL,
             Self::Io(_) => EXIT_GENERAL,
             Self::Other(_) => EXIT_GENERAL,
         }
@@ -101,6 +95,7 @@ impl fmt::Display for Error {
             Self::InvalidInput(m) => write!(f, "{m}"),
             Self::Io(e) => write!(f, "{e}"),
             Self::Sql(m) => write!(f, "{m}"),
+            Self::Conn(m) => write!(f, "{m}"),
             Self::PlanBlocked => write!(f, "plan is blocked"),
             Self::LockTimeout => write!(f, "lock timeout"),
             Self::Other(e) => write!(f, "{e}"),

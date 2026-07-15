@@ -64,6 +64,13 @@ impl TimingConn {
         lock_profile(&self.io).clone()
     }
 
+    /// A timed-out call left the TDS stream mid-protocol; drop the client so any
+    /// later use fails fast instead of reading a stale response.
+    fn timeout_err(&mut self, op: &str, timeout: Duration) -> Error {
+        self.inner = None;
+        Error::Sql(format!("{op} timed out after {timeout:?}"))
+    }
+
     /// Executes a non-returning SQL statement and records execution time.
     pub async fn exec(&mut self, sql: &str) -> Result<()> {
         let t0 = Instant::now();
@@ -73,7 +80,7 @@ impl TimingConn {
         } else {
             match tokio::time::timeout(timeout, self.client_mut()?.exec(sql)).await {
                 Ok(r) => r,
-                Err(_) => Err(Error::Sql(format!("exec timed out after {timeout:?}"))),
+                Err(_) => Err(self.timeout_err("exec", timeout)),
             }
         };
         let ms = crate::timings::dur_ms(t0.elapsed());
@@ -92,7 +99,7 @@ impl TimingConn {
         } else {
             match tokio::time::timeout(timeout, self.client_mut()?.query(sql, params)).await {
                 Ok(r) => r,
-                Err(_) => Err(Error::Sql(format!("query timed out after {timeout:?}"))),
+                Err(_) => Err(self.timeout_err("query", timeout)),
             }
         };
         let ms = crate::timings::dur_ms(t0.elapsed());
@@ -111,7 +118,7 @@ impl TimingConn {
         } else {
             match tokio::time::timeout(timeout, self.client_mut()?.query_all(sql, params)).await {
                 Ok(r) => r,
-                Err(_) => Err(Error::Sql(format!("query timed out after {timeout:?}"))),
+                Err(_) => Err(self.timeout_err("query", timeout)),
             }
         };
         let ms = crate::timings::dur_ms(t0.elapsed());

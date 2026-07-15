@@ -21,6 +21,17 @@ fn warn_env_file_permissions(path: &Path) {
 #[cfg(not(unix))]
 fn warn_env_file_permissions(_path: &Path) {}
 
+/// Strips at most ONE matching surrounding quote pair, so a credential whose
+/// value legitimately begins or ends with a quote is not silently mangled.
+fn strip_one_quote_pair(v: &str) -> &str {
+    for q in ['"', '\''] {
+        if v.len() >= 2 && v.starts_with(q) && v.ends_with(q) {
+            return &v[1..v.len() - 1];
+        }
+    }
+    v
+}
+
 /// Parses `path` as a dotenv file and returns key/value pairs; returns an empty map when the file is absent.
 pub fn load_env_file(path: &Path) -> Result<HashMap<String, String>> {
     load_env_file_inner(path, false)
@@ -51,9 +62,10 @@ fn load_env_file_inner(path: &Path, required: bool) -> Result<HashMap<String, St
             continue;
         }
         let Some((k, v)) = line.split_once('=') else {
+            eprintln!("warning: ignoring malformed env line (no '='): {line}");
             continue;
         };
-        let v = v.trim().trim_matches(|c| c == '"' || c == '\'');
+        let v = strip_one_quote_pair(v.trim());
         env.insert(k.trim().to_string(), v.to_string());
     }
     Ok(env)

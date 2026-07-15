@@ -14,10 +14,10 @@
 //!   panic in metrics bookkeeping must not turn into a later plan panic.
 
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::driver::{io_profile::lock_profile, DbClient, IoProfile, RowData, TimingConn};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::timings;
 
 pub(crate) struct SharedConn {
@@ -25,13 +25,32 @@ pub(crate) struct SharedConn {
     pub client: Arc<tokio::sync::Mutex<DbClient>>,
     /// Shared IO profile counters (std mutex — no `.await` held).
     pub io: Arc<Mutex<IoProfile>>,
+    /// Per-call timeout; `Duration::ZERO` disables it.
+    pub timeout: Duration,
+}
+
+/// Bound `fut` by `t` after the connection lock is already held, so lock-wait
+/// time does not count against the command timeout.
+pub(crate) async fn bounded<T>(
+    t: Duration,
+    what: &str,
+    fut: impl std::future::Future<Output = Result<T>>,
+) -> Result<T> {
+    if t.is_zero() {
+        return fut.await;
+    }
+    match tokio::time::timeout(t, fut).await {
+        Ok(r) => r,
+        Err(_) => Err(Error::Sql(format!("{what} timed out after {t:?}"))),
+    }
 }
 
 impl SharedConn {
     /// Execute a SQL statement, recording timing in the shared IO profile.
     pub async fn exec(&self, sql: &str) -> Result<()> {
         let t0 = Instant::now();
-        let r = self.client.lock().await.exec(sql).await;
+        let mut c = self.client.lock().await;
+        let r = bounded(self.timeout, "exec", c.exec(sql)).await;
         let ms = timings::dur_ms(t0.elapsed());
         let mut io = lock_profile(&self.io);
         io.exec_ms += ms;
@@ -42,7 +61,8 @@ impl SharedConn {
     /// Run a SQL query with params, recording timing in the shared IO profile.
     pub async fn query(&self, sql: &str, params: &[&str]) -> Result<Vec<RowData>> {
         let t0 = Instant::now();
-        let r = self.client.lock().await.query(sql, params).await;
+        let mut c = self.client.lock().await;
+        let r = bounded(self.timeout, "query", c.query(sql, params)).await;
         let ms = timings::dur_ms(t0.elapsed());
         let mut io = lock_profile(&self.io);
         io.query_ms += ms;
@@ -53,7 +73,8 @@ impl SharedConn {
     /// Run a batched SQL query with params, recording timing.
     pub async fn query_all(&self, sql: &str, params: &[&str]) -> Result<Vec<Vec<RowData>>> {
         let t0 = Instant::now();
-        let r = self.client.lock().await.query_all(sql, params).await;
+        let mut c = self.client.lock().await;
+        let r = bounded(self.timeout, "query", c.query_all(sql, params)).await;
         let ms = timings::dur_ms(t0.elapsed());
         let mut io = lock_profile(&self.io);
         io.query_ms += ms;

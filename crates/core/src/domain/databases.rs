@@ -10,15 +10,25 @@ impl Workspace {
             .unwrap_or_else(empty_str)
     }
 
+    /// Number of interned database names (callers gate on this before interning
+    /// user-controlled names; see `scan::parse`).
+    pub fn database_count(&self) -> usize {
+        self.database_names.len()
+    }
+
     /// Registers `name` in the database name list and returns its position; returns `0` for an empty name.
     pub fn intern_database(&mut self, name: SharedStr) -> u16 {
         if name.is_empty() {
             return 0;
         }
+        // SQL Server database identifiers are case-insensitive, so two top-level
+        // directories differing only in case ("Sales"/"sales") target the same
+        // database and must intern to the same id (first-seen casing wins),
+        // letting the duplicate-object guard catch collisions across them.
         if let Some(i) = self
             .database_names
             .iter()
-            .position(|d| d.as_str() == name.as_str())
+            .position(|d| d.as_str().eq_ignore_ascii_case(name.as_str()))
         {
             return i as u16;
         }
@@ -26,5 +36,20 @@ impl Workspace {
         assert!(id < u16::MAX as usize, "too many distinct database names");
         self.database_names.push(name);
         id as u16
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Workspace;
+    use crate::domain::share;
+
+    #[test]
+    fn intern_database_folds_case_variants_to_one_id() {
+        let mut ws = Workspace::default();
+        let a = ws.intern_database(share("Sales"));
+        let b = ws.intern_database(share("sales"));
+        assert_eq!(a, b, "case-variant db directories must share one id");
+        assert_ne!(a, ws.intern_database(share("Other")));
     }
 }

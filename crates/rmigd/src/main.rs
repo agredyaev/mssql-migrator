@@ -17,9 +17,11 @@
 //!    serialize through one warm TDS session.
 //!
 //! ### Off-nominal
-//! - Socket file collision: daemon fails with address-in-use.
+//! - Socket file collision: if a live daemon answers on the socket, startup is
+//!   refused; a stale socket file is removed and replaced.
 //! - `RMIGD_ENV` points to missing file: daemon starts but all sessions use ambient env.
 
+#![forbid(unsafe_code)]
 use std::path::PathBuf;
 use std::process::ExitCode;
 

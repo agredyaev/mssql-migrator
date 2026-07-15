@@ -28,6 +28,11 @@ pub fn insert_parsed_object(
         });
     let script_id = ws.insert_script(script);
     obj.script_id = script_id;
+    if ws.database_count() >= u16::MAX as usize - 1 {
+        return Err(crate::error::Error::InvalidInput(
+            "too many distinct database directories under RM_SQL_ROOT (max 65534)".into(),
+        ));
+    }
     obj.db_id = ws.intern_database(db);
     ws.push_object(key, obj)?;
     Ok(())

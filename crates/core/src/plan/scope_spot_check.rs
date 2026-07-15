@@ -25,7 +25,7 @@ fn spot_check_count_from_env() -> usize {
     std::env::var("RMIG_CATALOG_SPOTCHECK")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(0)
+        .unwrap_or(8)
 }
 
 fn spot_check_rank(key: &str, layout_digest: &str) -> u64 {
