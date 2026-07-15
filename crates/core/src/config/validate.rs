@@ -33,6 +33,13 @@ pub fn validate_config(cfg: &mut Config) -> Result<()> {
     // instances use `host\INSTANCE`.
     reject_control_chars("RM_DB_SERVER", &cfg.server)?;
     reject_control_chars("database name", &cfg.database)?;
+    // Empty means "use the driver default"; a non-empty value must be a real port.
+    if !cfg.port.is_empty() && cfg.port.parse::<u16>().is_err() {
+        return Err(Error::Config(format!(
+            "RM_DB_PORT is not a valid TCP port (1-65535): {}",
+            cfg.port
+        )));
+    }
     normalize_catalog_paths(cfg)?;
     Ok(())
 }

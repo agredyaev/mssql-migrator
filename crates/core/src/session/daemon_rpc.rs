@@ -1,29 +1,18 @@
-use std::sync::Arc;
-
-use tokio::sync::Mutex;
-
 use crate::driver::{row::from_tiberius, RawClient, RowData};
 use crate::error::Result;
 
 use super::protocol::{Request, Response};
 
-pub async fn handle(client: &Arc<Mutex<RawClient>>, req: Request) -> Response {
+/// Dispatch one request against the (already exclusively held) session client.
+pub async fn handle(client: &mut RawClient, req: Request) -> Response {
     match req {
         Request::Auth { .. } => Response::err("auth must be handled before rpc dispatch"),
-        Request::Ping => match ping(client).await {
-            Ok(()) => Response {
-                ok: true,
-                error: String::new(),
-                rows: Vec::new(),
-            },
+        Request::Ping => match crate::driver::mssql::ping(client).await {
+            Ok(()) => Response::ok_empty(),
             Err(e) => Response::err(e.to_string()),
         },
-        Request::Exec { sql } => match exec(client, &sql).await {
-            Ok(()) => Response {
-                ok: true,
-                error: String::new(),
-                rows: Vec::new(),
-            },
+        Request::Exec { sql } => match crate::driver::mssql::exec(client, &sql).await {
+            Ok(()) => Response::ok_empty(),
             Err(e) => Response::err(e.to_string()),
         },
         Request::Query { sql, params } => match query(client, &sql, &params).await {
@@ -37,25 +26,20 @@ pub async fn handle(client: &Arc<Mutex<RawClient>>, req: Request) -> Response {
     }
 }
 
-async fn ping(client: &Arc<Mutex<RawClient>>) -> Result<()> {
-    let mut c = client.lock().await;
-    crate::driver::mssql::ping(&mut c).await
-}
-
-async fn exec(client: &Arc<Mutex<RawClient>>, sql: &str) -> Result<()> {
-    let mut c = client.lock().await;
-    crate::driver::mssql::exec(&mut c, sql).await
-}
-
-async fn query(
-    client: &Arc<Mutex<RawClient>>,
-    sql: &str,
-    params: &[String],
-) -> Result<Vec<RowData>> {
-    let mut c = client.lock().await;
+async fn query(client: &mut RawClient, sql: &str, params: &[String]) -> Result<Vec<RowData>> {
     let refs: Vec<&str> = params.iter().map(|s| s.as_str()).collect();
     let param_refs: Vec<&dyn tiberius::ToSql> =
         refs.iter().map(|s| s as &dyn tiberius::ToSql).collect();
-    let rows = crate::driver::mssql::query_tiberius(&mut c, sql, &param_refs).await?;
+    let rows = crate::driver::mssql::query_tiberius(client, sql, &param_refs).await?;
     Ok(rows.iter().map(from_tiberius).collect())
+}
+
+/// Best-effort release of the session advisory lock when a client disconnects,
+/// so a client that died mid-deploy without releasing does not leave the shared
+/// daemon session holding `reporting_layer_migration` forever. Releases ONLY if
+/// the session currently holds it, so a read-only client that never acquired the
+/// lock does not log a spurious "not currently held" error.
+pub async fn release_session_lock(client: &mut RawClient) {
+    const RELEASE_IF_HELD: &str = "IF APPLOCK_MODE('public', 'reporting_layer_migration', 'Session') <> 'NoLock' EXEC sp_releaseapplock @Resource = 'reporting_layer_migration', @LockOwner = 'Session';";
+    let _ = crate::driver::mssql::exec(client, RELEASE_IF_HELD).await;
 }

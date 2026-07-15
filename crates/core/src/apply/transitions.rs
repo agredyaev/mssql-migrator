@@ -5,7 +5,6 @@ use crate::error::Result;
 use crate::export::{MigrationPlan, PlannedObject};
 
 use super::result::ApplyResult;
-use super::tx::wrap_transaction;
 
 pub async fn apply_transitions(
     conn: &mut TimingConn,
@@ -38,16 +37,8 @@ async fn apply_one_transition(
         result.push_error(format!("{path}: transition script not found"));
         return Ok(());
     };
-    let sql = wrap_transaction(&body);
-    if let Err(e) = conn.exec(&sql).await {
-        if let Err(re) = conn.exec(crate::sql::apply::ROLLBACK).await {
-            result.push_error(format!("{path}: rollback failed: {re}"));
-        }
-        result.push_error(format!("{path}: {e}"));
-        return Ok(());
-    }
     let cs = transition_checksum(ws, obj, path).unwrap_or(obj.checksum);
-    result.history.push(audit::record_applied(
+    let rec = audit::record_applied(
         path,
         &obj.kind,
         cs,
@@ -55,8 +46,13 @@ async fn apply_one_transition(
         obj.git_author(),
         obj.git_date(),
         "migration",
-    ));
-    result.applied += 1;
+    );
+    // Migration body + its history row commit atomically (no replay window).
+    if super::history_write::apply_in_tx(conn, &body, std::slice::from_ref(&rec), result, path)
+        .await
+    {
+        result.applied += 1;
+    }
     Ok(())
 }
 

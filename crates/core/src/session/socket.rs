@@ -62,13 +62,13 @@ pub fn restrict_socket_mode(_path: &Path) -> Result<()> {
 
 /// Restrict directory to owner-only (`0o700`). No-op on non-Unix.
 #[cfg(unix)]
-fn restrict_dir_mode(path: &Path) -> Result<()> {
+pub(crate) fn restrict_dir_mode(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).map_err(Error::Io)
 }
 
 /// No-op on non-Unix.
 #[cfg(not(unix))]
-fn restrict_dir_mode(_path: &Path) -> Result<()> {
+pub(crate) fn restrict_dir_mode(_path: &Path) -> Result<()> {
     Ok(())
 }

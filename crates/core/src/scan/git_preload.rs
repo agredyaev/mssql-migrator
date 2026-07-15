@@ -49,7 +49,10 @@ fn apply_batched(
     ws: &mut Workspace,
 ) {
     let mut cur: Option<GitMeta> = None;
-    for line in std::str::from_utf8(out).unwrap_or("").lines() {
+    // Lossy decode: one non-UTF-8 byte (e.g. a latin-1 author name) must not
+    // discard the whole git-log batch and force per-script fallback spawns.
+    let text = String::from_utf8_lossy(out);
+    for line in text.lines() {
         let line = line.trim();
         if line.is_empty() {
             continue;

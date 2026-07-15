@@ -4,15 +4,12 @@ use crate::driver::TimingConn;
 use crate::error::{Error, Result};
 use crate::sql;
 
-/// Attempts to load cached catalog state from the DB; returns `None` on miss or when cache is disabled.
+/// Attempts to load cached catalog state from the DB; returns `None` on miss.
 pub async fn try_load(
     conn: &mut TimingConn,
     layout_digest: &[u8; 32],
     object_count: usize,
 ) -> Result<Option<CatalogState>> {
-    if !cache_enabled() {
-        return Ok(None);
-    }
     let digest_hex = hex::encode(layout_digest);
     let count = object_count.to_string();
     let rows = match conn
@@ -73,9 +70,9 @@ fn merge_row(state: &mut CatalogState, row: &crate::driver::RowData) -> Result<(
     Ok(())
 }
 
-/// Marks the catalog cache stale by executing the invalidation SQL statement.
-pub async fn invalidate(conn: &mut TimingConn) -> Result<()> {
-    if !cache_enabled() {
+/// Marks the catalog cache stale when `enabled` (`cfg.catalog_cache()`).
+pub async fn invalidate(conn: &mut TimingConn, enabled: bool) -> Result<()> {
+    if !enabled {
         return Ok(());
     }
     if let Err(e) = conn.exec(sql::catalog::CACHE_INVALIDATE).await {
@@ -85,13 +82,6 @@ pub async fn invalidate(conn: &mut TimingConn) -> Result<()> {
         return Err(e);
     }
     Ok(())
-}
-
-pub(crate) fn cache_enabled() -> bool {
-    !matches!(
-        std::env::var("RMIG_CATALOG_CACHE").as_deref(),
-        Ok("0") | Ok("false")
-    ) && std::env::var("RMIG_INSPECT_FULL").as_deref() != Ok("1")
 }
 
 pub(crate) fn missing_catalog_table(err: &Error) -> bool {

@@ -36,6 +36,47 @@ pub fn record_applied(
     git_date: &str,
     record_kind: &str,
 ) -> HistoryRecord {
+    record_event(
+        key,
+        checksum,
+        git_hash,
+        git_author,
+        git_date,
+        record_kind,
+        "applied",
+    )
+}
+
+/// Builds a `HistoryRecord` recording adoption of a pre-existing object as
+/// baseline (event `adopted`), so later edits to it are detected as changes.
+pub fn record_adopted(
+    key: &str,
+    checksum: [u8; 32],
+    git_hash: &str,
+    git_author: &str,
+    git_date: &str,
+    record_kind: &str,
+) -> HistoryRecord {
+    record_event(
+        key,
+        checksum,
+        git_hash,
+        git_author,
+        git_date,
+        record_kind,
+        "adopted",
+    )
+}
+
+fn record_event(
+    key: &str,
+    checksum: [u8; 32],
+    git_hash: &str,
+    git_author: &str,
+    git_date: &str,
+    record_kind: &str,
+    event: &str,
+) -> HistoryRecord {
     HistoryRecord {
         normalized_key: key.to_string(),
         kind: record_kind.to_string(),
@@ -43,7 +84,7 @@ pub fn record_applied(
         git_hash: git_hash.to_string(),
         git_author: git_author.to_string(),
         git_date: git_date.to_string(),
-        event: "applied".into(),
+        event: event.to_string(),
         error_text: String::new(),
     }
 }

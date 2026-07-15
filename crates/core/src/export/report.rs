@@ -37,8 +37,7 @@ pub fn write_reports(
     fs::create_dir_all(dir)?;
     if let Some(plan) = plan {
         let path = dir.join(".plan.json");
-        let mut f = File::create(&path)?;
-        write_plan_json(plan, ws, &mut f)?;
+        write_atomic(&path, |f| write_plan_json(plan, ws, f))?;
     }
     let result = if exit_code == 0 { "success" } else { "failure" };
     let report = RunFinished {
@@ -46,12 +45,25 @@ pub fn write_reports(
         result: result.into(),
         exit_code,
     };
-    write_json_file(&dir.join(".report.json"), &report, cfg.report_sync())?;
+    let sync = cfg.report_sync();
+    write_atomic(&dir.join(".report.json"), |f| write_json(f, &report, sync))?;
     Ok(())
 }
 
-fn write_json_file(path: &Path, v: &impl Serialize, sync: bool) -> Result<()> {
-    let f = File::create(path)?;
+/// Writes via a sibling `.tmp` file then renames over `path`, so a crash or a
+/// concurrent reader never observes a truncated report.
+fn write_atomic(path: &Path, write: impl FnOnce(&mut File) -> Result<()>) -> Result<()> {
+    let tmp = path.with_extension("tmp");
+    {
+        let mut f = File::create(&tmp)?;
+        write(&mut f)?;
+        f.sync_all().map_err(Error::Io)?;
+    }
+    fs::rename(&tmp, path).map_err(Error::Io)?;
+    Ok(())
+}
+
+fn write_json(f: &mut File, v: &impl Serialize, sync: bool) -> Result<()> {
     let mut w = BufWriter::new(f);
     serde_json::to_writer_pretty(&mut w, v).map_err(|e| Error::Other(e.into()))?;
     w.write_all(b"\n").map_err(Error::Io)?;
