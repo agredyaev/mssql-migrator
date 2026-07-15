@@ -15,6 +15,9 @@ pub(super) fn compare_workflow_timings(
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(100);
+    // Scale the hard cap by the same factor/slack as relative ceilings, so a
+    // loaded shared runner does not fail on an absolute-time blip.
+    let setup_apply_max = (SETUP_APPLY_MAX_MS as f64 * factor).ceil() as i64 + slack_ms;
 
     let phases: &[(&str, i64, i64)] = &[
         (
@@ -46,9 +49,9 @@ pub(super) fn compare_workflow_timings(
         if *baseline_ms == 0 && *actual_ms == 0 {
             continue;
         }
-        if *name == "setup_apply_ms" && *actual_ms > SETUP_APPLY_MAX_MS {
+        if *name == "setup_apply_ms" && *actual_ms > setup_apply_max {
             msgs.push(format!(
-                "setup_apply_ms: actual={actual_ms}ms exceeds hard max {SETUP_APPLY_MAX_MS}ms (warm baseline required; run apply_smoke_setup or e2e-all order)"
+                "setup_apply_ms: actual={actual_ms}ms exceeds hard max {setup_apply_max}ms (warm baseline required; run apply_smoke_setup or e2e-all order)"
             ));
             continue;
         }

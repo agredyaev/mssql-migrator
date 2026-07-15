@@ -36,7 +36,9 @@ pub async fn execute(
 
     if cfg.catalog_cache() && !catalog.objects.is_empty() && (setup.need_catalog || setup.git_delta)
     {
-        let _ = crate::db::save_batched(conn, &ws.layout_digest, ws, &catalog).await;
+        if let Err(e) = crate::db::save_batched(conn, &ws.layout_digest, ws, &catalog).await {
+            tracing::warn!(error = %e, "catalog cache save failed");
+        }
     }
 
     l1.save(fp, &ws.layout_digest, &body.checksums, &catalog)?;

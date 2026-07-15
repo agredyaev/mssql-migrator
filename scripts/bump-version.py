@@ -64,7 +64,11 @@ def main():
                 f.write(new_content)
             print(f"Updated {cargo_path}")
         else:
-            print("Warning: Could not find version inside [workspace.package] block in Cargo.toml.", file=sys.stderr)
+            print(
+                "Error: Could not find version inside [workspace.package] block in Cargo.toml.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     print(f"Successfully bumped version to {new_version}")
 

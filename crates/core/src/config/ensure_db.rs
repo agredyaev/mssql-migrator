@@ -17,7 +17,7 @@ pub async fn ensure_catalog_databases_exist(cfg: &Config, names: &[String]) -> R
     }
     let mut master_conn = None;
     for db in names {
-        if target_database_exists(cfg, db).await {
+        if target_database_exists(cfg, db).await? {
             continue;
         }
         ensure_database_from_master(cfg, db, &mut master_conn).await?;
@@ -26,23 +26,24 @@ pub async fn ensure_catalog_databases_exist(cfg: &Config, names: &[String]) -> R
 }
 
 /// Probe whether catalog database `db` exists on the server by attempting a
-/// direct connect. A failed connect (e.g. SQL 4060 "cannot open database") is
-/// treated as "not present" rather than a hard error, so callers can decide
-/// whether to create it (mutating commands) or skip it (read-only multi-DB plan).
-pub async fn target_database_exists(cfg: &Config, db: &str) -> bool {
+/// direct connect. `Ok(false)` means the database is absent (SQL 4060 "cannot
+/// open database"); any other failure (TCP refused, timeout, auth) is an
+/// infrastructure problem and propagates as `Err` rather than being silently
+/// reported as "not present" (which would let an outage pass as exit 0).
+pub async fn target_database_exists(cfg: &Config, db: &str) -> Result<bool> {
     let mut target = cfg.clone();
     target.database = db.into();
     match connect(&target).await {
-        Ok(_) => true,
+        Ok(_) => Ok(true),
         Err(err) => {
-            tracing::debug!(
-                database = %db,
-                sql_root = %cfg.sql_root,
-                db_auth = %cfg.db_auth,
-                error = %err,
-                "target database probe failed"
-            );
-            false
+            let msg = err.to_string().to_lowercase();
+            if msg.contains("cannot open database") || msg.contains("4060") {
+                tracing::debug!(database = %db, "target database absent");
+                Ok(false)
+            } else {
+                tracing::warn!(database = %db, error = %err, "target database probe failed (infrastructure)");
+                Err(err)
+            }
         }
     }
 }

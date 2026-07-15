@@ -9,7 +9,9 @@ use crate::common::{config, integration_enabled};
 static DB_WARM: OnceCell<()> = OnceCell::const_new();
 
 pub fn l1_fingerprint(cfg: &Config) -> String {
-    format!("{}_{}", cfg.server, cfg.database)
+    // Must match the production L1 key exactly (see `audit::db_fingerprint`),
+    // otherwise cache invalidation in the SLO test clears the wrong directory.
+    migrator_core::audit::db_fingerprint(&cfg.server, &cfg.database)
 }
 
 /// One `plan` run per test process: audit ensure + catalog + L1 populate (no DROP DATABASE).

@@ -17,11 +17,19 @@ impl Workspace {
         for (key, entries) in staging {
             let row_id = self.key_index(&key);
             if row_id == 0 {
+                tracing::warn!(
+                    table = key.as_str(),
+                    "dropping staged transitions: no matching table object (table .sql removed or renamed while _migrations/ remains?)"
+                );
                 continue;
             }
             let mut row_entries = Vec::with_capacity(entries.len());
             for (ord, sk) in entries {
                 let Some(script_id) = self.script_key_index.get(&sk).copied() else {
+                    tracing::warn!(
+                        table = key.as_str(),
+                        "dropping transition: script key not registered"
+                    );
                     continue;
                 };
                 row_entries.push(TransitionEntry::new_staging(ord, script_id));

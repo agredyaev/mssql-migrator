@@ -23,7 +23,9 @@ mod history;
 mod load;
 mod migrations;
 
-pub use history::{ensure_history_index, flush_history, record_applied, HistoryRecord};
+pub use history::{
+    ensure_history_index, flush_history, record_adopted, record_applied, HistoryRecord,
+};
 pub use load::{
     cache_history_empty, checksum_map_from_rows, checksum_map_from_rows_ws, db_fingerprint,
     empty_checksums_from_keys_json, ensure_tables, ensure_tables_on, history_empty_cached,

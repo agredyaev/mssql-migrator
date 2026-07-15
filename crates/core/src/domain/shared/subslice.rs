@@ -2,12 +2,6 @@ use std::sync::Arc;
 
 use super::{empty_str, share, SharedStr, SharedStrInner};
 
-fn arc_str_as_bytes(s: Arc<str>) -> Arc<[u8]> {
-    // SAFETY: `str` and `[u8]` use the same slice metadata and allocation
-    // layout, and every `str` is valid UTF-8 bytes for the lifetime of the Arc.
-    unsafe { Arc::from_raw(Arc::into_raw(s) as *const [u8]) }
-}
-
 pub fn subslice_of(base: &SharedStr, part: &str) -> SharedStr {
     if part.is_empty() {
         return empty_str();
@@ -26,7 +20,9 @@ pub fn subslice_of(base: &SharedStr, part: &str) -> SharedStr {
             len: part.len() as u32,
         })),
         SharedStrInner::Owned(s) => SharedStr(Arc::new(SharedStrInner::Slice {
-            buf: arc_str_as_bytes(s.clone()),
+            // `Arc<str>` -> `Arc<[u8]>` reuses the same allocation (std `From`),
+            // no copy and no `unsafe`.
+            buf: Arc::from(s.clone()),
             start: off as u32,
             len: part.len() as u32,
         })),

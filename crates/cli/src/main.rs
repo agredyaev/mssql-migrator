@@ -20,9 +20,11 @@
 //! - 0 — success
 //! - non-zero — see [`migrator_core::error::Error::exit_code`]
 
+#![forbid(unsafe_code)]
 mod args;
 mod help;
 mod logging;
+mod signals;
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -36,6 +38,7 @@ use migrator_core::export::write_reports;
 use args::{parse_args, parse_command, ParsedArgs};
 use help::print_help;
 use logging::init_tracing;
+use signals::shutdown_signal;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -79,7 +82,17 @@ async fn run_command_line(
     let mut cfg = build_config(&env, json);
     init_tracing(&cfg.log_level);
     validate_config(&mut cfg)?;
-    match run_command(command, &cfg).await {
+    let outcome = tokio::select! {
+        out = run_command(command, &cfg) => out,
+        sig = shutdown_signal() => {
+            // Dropping the run future closes the TDS connection: the server
+            // rolls back any open transaction and frees the session applock.
+            eprintln!("rmig: interrupted by {sig}; aborted at a safe statement boundary");
+            let _ = write_reports(&cfg, cmd, None, None, 130);
+            return Ok(130);
+        }
+    };
+    match outcome {
         Ok(out) => {
             if command == Command::Plan && json {
                 if let Some(plan) = &out.plan {
@@ -98,7 +111,9 @@ async fn run_command_line(
         }
         Err(e) => {
             let code = e.exit_code();
-            let _ = write_reports(&cfg, cmd, None, None, code);
+            if let Err(werr) = write_reports(&cfg, cmd, None, None, code) {
+                eprintln!("warning: failed to write failure report: {werr}");
+            }
             Err(e)
         }
     }

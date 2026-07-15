@@ -6,8 +6,12 @@ pub fn checksum_map_from_rows(rows: &[RowData]) -> ChecksumMap {
     let mut out = ChecksumMap::new();
     for row in rows {
         let key = row.get_str(0).unwrap_or("");
-        if let Some(arr) = parse_history_checksum(row, 1) {
-            out.insert_normalized(key, arr);
+        match parse_history_checksum(row, 1) {
+            Some(arr) => out.insert_normalized(key, arr),
+            None => tracing::warn!(
+                key,
+                "audit history row has an undecodable checksum; object omitted from the snapshot"
+            ),
         }
     }
     out
@@ -20,8 +24,12 @@ pub fn checksum_map_from_rows_ws(rows: &[RowData]) -> ChecksumMap {
     out.reserve(rows.len());
     for row in rows {
         let key = row.get_str(0).unwrap_or("");
-        if let Some(arr) = parse_history_checksum(row, 1) {
-            out.insert_key(&ObjectKey::from_normalized(key), arr);
+        match parse_history_checksum(row, 1) {
+            Some(arr) => out.insert_key(&ObjectKey::from_normalized(key), arr),
+            None => tracing::warn!(
+                key,
+                "audit history row has an undecodable checksum; object omitted from the snapshot"
+            ),
         }
     }
     out

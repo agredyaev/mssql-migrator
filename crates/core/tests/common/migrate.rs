@@ -110,13 +110,19 @@ pub async fn run_apply_smoke(cfg: &Config) -> Result<ApplySmokeOut> {
     let mut conn = TimingConn::new(DbClient::Direct(connect(cfg).await?.client), io_arc, 0);
     ensure_tables(&mut conn, &db_fp).await?;
 
-    let db = migrator_core::db::run_plan_db_phase(cfg, &mut conn, &ws).await?;
+    let db = migrator_core::db::run_plan_db_phase(cfg, &mut conn, &ws, false).await?;
     let (mut plan, _) = migrator_core::plan::compute_diff(&mut ws, &db.catalog, &db.checksums)?;
     plan.ensure_objects_materialized(&ws);
 
     let apply = execute_plan(cfg, &mut conn, &ws, &mut plan).await?;
     if apply.failed == 0 && apply.applied > 0 {
-        migrator_core::db::save_workspace_snapshot(&mut conn, &ws.layout_digest, &ws).await?;
+        migrator_core::db::save_workspace_snapshot(
+            &mut conn,
+            &ws.layout_digest,
+            &ws,
+            cfg.catalog_cache(),
+        )
+        .await?;
     }
 
     let snap = snapshot_audit_db(&mut conn).await?;
