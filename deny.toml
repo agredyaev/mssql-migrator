@@ -1,0 +1,46 @@
+# cargo-deny configuration — supply-chain gate.
+# Run: cargo deny check
+
+[advisories]
+# quick-xml is reachable ONLY from dev/profiling tooling (inferno flamegraph
+# SVG generation), never the production binary (enforced separately by
+# scripts/check-rust-release-deps.sh), and inferno 0.11 pins quick-xml ^0.26 so
+# the >=0.41 fix is not reachable without a major inferno bump. The advisories
+# are DoS in XML parsing of locally-generated flamegraphs — no production risk.
+ignore = [
+    "RUSTSEC-2026-0195", # quick-xml unbounded namespace alloc (via inferno)
+    "RUSTSEC-2026-0194", # quick-xml quadratic attribute check (via inferno)
+]
+
+[bans]
+multiple-versions = "warn"
+# The only wildcards here are the binaries' internal path deps on migrator-core;
+# pinning them would drift against the release version bump, so allow.
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+
+[licenses]
+# Permissive licenses present in the dependency tree; extend as deps change.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+    "0BSD",
+    "Unlicense",
+]
+confidence-threshold = 0.8
+# The workspace crates are private (publish = false) and carry no license field.
+private = { ignore = true }
+# inferno is CDDL-1.0 and reachable only from dev/profiling tooling.
+exceptions = [{ name = "inferno", allow = ["CDDL-1.0"] }]
