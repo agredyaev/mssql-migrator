@@ -154,7 +154,11 @@ jobs:
           # stale and breaks `cargo install --locked` from the release tag.
           git add VERSION Cargo.toml Cargo.lock
           git commit -m "chore: bump ${{ steps.version.outputs.old }} → ${{ steps.version.outputs.new }} [skip ci]"
-          git push
+          # Checkout above is detached at the CI-validated head_sha (see `ref:`),
+          # so a bare `git push` has no branch. Push HEAD onto main explicitly;
+          # this also keeps the non-fast-forward safety the concurrency group
+          # relies on if another commit raced onto main after CI ran.
+          git push origin HEAD:main
 
       - name: Create git tag
         if: steps.filter.outputs.skip != 'true'
