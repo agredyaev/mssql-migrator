@@ -72,7 +72,12 @@ pub async fn prepare_blocked_table_change(cfg: &Config) -> Result<(BlockedSetup,
     blocked_cfg.session_socket.clear();
     blocked_cfg.set_skip_git(false);
 
-    let fp = format!("{}_{}", blocked_cfg.server, blocked_cfg.database);
+    let fp = migrator_core::audit::db_fingerprint(
+        &blocked_cfg.server,
+        &blocked_cfg.port,
+        &blocked_cfg.user,
+        &blocked_cfg.database,
+    );
     invalidate_audit_cache(&fp);
     let l1 = migrator_core::cache::l1::L1Cache::new(&blocked_cfg.l1_cache_dir);
     let _ = l1.invalidate_all(&fp);
@@ -205,6 +210,7 @@ pub async fn run_ddl_transition_apply(cfg: &Config) -> Result<migrator_core::gat
         &["commit", "-m", "test: e2e track transition migration"],
     )?;
 
+    let mig_before = super::migrate::count_audit_rows(&mut conn, "migration").await?;
     let apply = run_command(Command::Migrate, &blocked_cfg).await?;
     if apply.exit_code != 0 {
         return Err(Error::Other(anyhow::anyhow!(
@@ -215,6 +221,14 @@ pub async fn run_ddl_transition_apply(cfg: &Config) -> Result<migrator_core::gat
 
     let snap =
         e2e_verify::verify_ddl_transition_applied(&blocked_cfg, &mut conn, &sql_root).await?;
+    // Counters derive from the observed run: applied = new migration audit
+    // rows; skipped from the plan summary; failed guarded by exit_code above.
+    let applied = snap.audit_migration_rows - mig_before;
+    let skipped = apply
+        .plan
+        .as_ref()
+        .map(|p| p.summary.skip_count as i32)
+        .unwrap_or(0);
 
     drop(guard);
 
@@ -227,9 +241,9 @@ pub async fn run_ddl_transition_apply(cfg: &Config) -> Result<migrator_core::gat
             "commit_transition".into(),
             "migrate_transition".into(),
         ],
-        applied: 1,
+        applied,
         failed: 0,
-        skipped: 0,
+        skipped,
         errors: Vec::new(),
         audit_object_rows: snap.audit_object_rows,
         audit_migration_rows: snap.audit_migration_rows,

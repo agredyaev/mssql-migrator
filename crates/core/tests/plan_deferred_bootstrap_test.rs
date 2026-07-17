@@ -31,6 +31,13 @@ fn plan_cfg(database: &str, sql_root: &str) -> Config {
     cfg.sql_root = sql_root.into();
     cfg.sql_base = sql_root.into();
     cfg.set_skip_git(true);
+    // The SAME per-database directory recreate_empty_database clears: with the
+    // default .rmig/cache a prior run's L1 entry could satisfy the plan and
+    // skip the bootstrap path this suite exists to exercise.
+    cfg.l1_cache_dir = std::env::temp_dir()
+        .join(format!("rmig-deferred-bootstrap-{database}"))
+        .to_string_lossy()
+        .into_owned();
     validate_config(&mut cfg).expect("valid cfg");
     cfg
 }
@@ -139,16 +146,12 @@ async fn plan_fresh_database_no_history_table_error_regression() {
     recreate_empty_database(db).await;
     let cfg = plan_cfg(db, base.path().to_str().unwrap());
 
-    let err_msg = match run_command(Command::Plan, &cfg).await {
-        Ok(out) => {
-            let count = out.plan.expect("plan").summary.object_count;
-            assert_eq!(count, 1);
-            return;
-        }
-        Err(err) => err.to_string(),
-    };
-    assert!(
-        !err_msg.contains("azdo_deploy_meta.history"),
-        "BG-016 regression: deferred bootstrap must not query history before bootstrap: {err_msg}"
-    );
+    // Any failure here (connection, permission, bootstrap, history probe) is a
+    // regression: the fresh database must plan successfully, period.
+    let out = run_command(Command::Plan, &cfg)
+        .await
+        .unwrap_or_else(|err| panic!("plan on a fresh database must succeed: {err}"));
+    assert_eq!(out.exit_code, 0, "fresh-database plan exits clean");
+    let count = out.plan.expect("plan").summary.object_count;
+    assert_eq!(count, 1, "the one-object layout plans exactly one object");
 }

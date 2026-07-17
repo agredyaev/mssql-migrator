@@ -58,13 +58,14 @@ fn write_table(root: &Path, rev: u32) {
     std::fs::write(base.join("chaos.sql"), table_sql(rev)).expect("table sql");
 }
 
-/// Write transition `001` (`waitfor_secs`=0 ⇒ fast). A long WAITFOR gives a kill
-/// window before the transition transaction commits.
+/// Write transition `001` (`waitfor_secs`=0 ⇒ fast). With a delay, the INSERT
+/// runs FIRST so its uncommitted row is a database-visible (NOLOCK) barrier
+/// proving the transaction started, then WAITFOR holds it open for the kill.
 fn write_transition(root: &Path, waitfor_secs: u32) {
     let migr = tables_dir(root).join("_migrations").join("chaos");
     std::fs::create_dir_all(&migr).expect("mkdir");
     let body = if waitfor_secs > 0 {
-        format!("WAITFOR DELAY '00:00:{waitfor_secs:02}';\n{INS}")
+        format!("{INS}WAITFOR DELAY '00:00:{waitfor_secs:02}';\n")
     } else {
         INS.to_string()
     };
@@ -157,11 +158,27 @@ async fn kill_mid_apply_no_partial_commit_and_reruns_exactly_once() {
     let mut child = migrate_cmd(&bin, dir.path())
         .spawn()
         .expect("spawn migrate");
-    tokio::time::sleep(Duration::from_millis(4000)).await;
+    // Barrier: wait until the transition transaction has demonstrably started
+    // (its uncommitted INSERT is visible under NOLOCK) before killing. A fixed
+    // sleep could kill during connect/planning, leaving the rollback guarantee
+    // untested while every later assertion passes vacuously.
+    let mut conn = state_smoke_conn::open_conn(&cfg).await.expect("connect");
+    let started = std::time::Instant::now();
+    loop {
+        let uncommitted = count(&mut conn, "SELECT COUNT(*) FROM smoke.chaos WITH (NOLOCK)")
+            .await
+            .unwrap_or(0);
+        if uncommitted > 0 {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "transition transaction never became observable; cannot prove mid-transaction kill"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     child.kill().expect("kill migrate");
     let _ = child.wait();
-
-    let mut conn = state_smoke_conn::open_conn(&cfg).await.expect("connect");
     let rows_after_kill = count(&mut conn, "SELECT COUNT(*) FROM smoke.chaos")
         .await
         .expect("count rows");

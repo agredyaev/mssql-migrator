@@ -102,9 +102,8 @@ pub async fn run_apply_smoke(cfg: &Config) -> Result<ApplySmokeOut> {
     let db_fp = db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     invalidate_audit_cache(&db_fp);
 
-    let fp = format!("{}_{}", cfg.server, cfg.database);
     let l1 = migrator_core::cache::l1::L1Cache::new(&cfg.l1_cache_dir);
-    let _ = l1.invalidate_all(&fp);
+    let _ = l1.invalidate_all(&db_fp);
 
     let io_arc = Arc::new(Mutex::new(IoProfile::default()));
     let mut conn = TimingConn::new(DbClient::Direct(connect(cfg).await?.client), io_arc, 0);

@@ -32,10 +32,12 @@ use migrator_core::export::MigrationPlan;
 const VIEW_KEY: &str = "smoke/views/smoke_view";
 const BOGUS_CHECKSUM: &str = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
 
-/// Out-of-band DROP is healed by re-create; out-of-band MODIFY is silently
-/// skipped (known blindness: live bodies are never compared).
+/// Out-of-band DROP is healed by re-create; out-of-band MODIFY survives —
+/// a KNOWN LIMITATION pinned on purpose: plan compares repo checksums against
+/// recorded history only and never hashes the live module body (documented in
+/// docs/operational-contract.md, Open Issues).
 #[tokio::test(flavor = "current_thread")]
-async fn oob_drop_recreated_and_oob_modify_silently_skipped() {
+async fn oob_drop_recreated_and_oob_modify_survival_known_limitation() {
     if !integration_enabled::enabled() {
         eprintln!("skip: RMIG_RUN_SQLSERVER_INTEGRATION not set");
         return;
@@ -99,7 +101,26 @@ async fn failed_apply_halts_batch_no_history_then_retry_applies_once() {
         .await
         .expect("create colliding table");
 
-    assert_ne!(migrate(&cfg).await, 0, "migrate must fail on the collision");
+    // Preserve the real error: only the DDL name-collision class may satisfy
+    // this assertion — a lock/connect/cache failure must not impersonate it.
+    oob_barrier(&cfg).await;
+    let err = match engine_smoke::baseline_migrate(&cfg).await {
+        Ok(out) => panic!(
+            "migrate must fail on the collision (exit {})",
+            out.exit_code
+        ),
+        Err(err) => err.to_string(),
+    };
+    assert!(
+        err.contains("smoke_view"),
+        "collision error names the object: {err}"
+    );
+    // CREATE OR ALTER VIEW against a TABLE of the same name is SQL error 2010
+    // ("incompatible object type"); a plain CREATE collision is 2714.
+    assert!(
+        err.contains("incompatible object type") || err.contains("2714") || err.contains("2010"),
+        "collision error is the object-kind-collision class: {err}"
+    );
     assert_eq!(
         count_key_rows(&mut conn, VIEW_KEY, "applied").await,
         0,

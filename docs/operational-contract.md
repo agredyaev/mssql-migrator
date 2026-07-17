@@ -108,6 +108,8 @@ Azure DevOps / production release: the CI **Integration & E2E (MSSQL)** job (`.g
 ## Open Issues and Non-Goals
 
 - **Non-Goals**: Env variable validation does not actively sanitize database passwords or check user authorization levels prior to connecting.
+- **Known limitation — live-definition drift**: plan compares repository checksums against recorded audit history only; it never hashes the live module body. An out-of-band `CREATE OR ALTER` on a view, function, procedure, or trigger therefore survives a clean `plan`/`migrate` (pinned by `oob_drop_recreated_and_oob_modify_survival_known_limitation` in the drift E2E suite). Detecting it requires definition digests in the catalog model, which is out of scope for the current release.
+- **Known limitation — module apply order**: modules apply in a fixed kind order (views before functions) with no dependency graph. A new view that calls a new function in the same change set fails on first apply; stage such changes across two commits (function first), or pre-create the prerequisite.
 
 ---
 
