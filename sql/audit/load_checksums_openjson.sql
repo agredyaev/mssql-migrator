@@ -1,5 +1,5 @@
 WITH checksum_keys AS (
-    SELECT DISTINCT CONVERT(varchar(512), [value]) COLLATE DATABASE_DEFAULT AS normalized_key
+    SELECT DISTINCT CONVERT(nvarchar(512), [value]) COLLATE DATABASE_DEFAULT AS normalized_key
     FROM OPENJSON(@p1)
 )
 SELECT h.normalized_key, h.checksum

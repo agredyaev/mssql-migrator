@@ -16,6 +16,10 @@
 //! - **`apply`**: Structural schema generation and explicit transactional controls.
 //! - **`lock`**: Distributed app advisory lock acquisition and releases.
 
+#[cfg(test)]
+#[path = "../tests/sql_assets_test.rs"]
+mod sql_assets_tests;
+
 pub mod audit {
     pub const BOOTSTRAP_TABLES: &str = include_str!("../../../../sql/audit/bootstrap_tables.sql");
     pub const BOOTSTRAP_INDEX: &str = include_str!("../../../../sql/audit/bootstrap_index.sql");

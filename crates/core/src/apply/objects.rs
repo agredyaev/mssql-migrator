@@ -6,7 +6,7 @@ use crate::export::{MigrationPlan, PlannedObject};
 
 use super::history_write::commit_history;
 use super::kind::sort_tx_batch;
-use super::objects_exec::{exec_one, exec_one_wrapped};
+use super::objects_exec::exec_object;
 use super::result::ApplyResult;
 
 pub async fn apply_objects(
@@ -60,7 +60,7 @@ pub async fn apply_objects(
     }
     sort_tx_batch(&mut module_batch);
     for obj in module_batch {
-        exec_one(conn, ws, obj, result).await?;
+        exec_object(conn, ws, obj, result).await?;
         if result.failed > 0 {
             break;
         }
@@ -104,7 +104,7 @@ async fn flush_tx(
     }
     sort_tx_batch(batch);
     for obj in batch.drain(..) {
-        exec_one_wrapped(conn, ws, obj, result).await?;
+        exec_object(conn, ws, obj, result).await?;
         if result.failed > 0 {
             break;
         }

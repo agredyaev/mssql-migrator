@@ -11,7 +11,10 @@ pub struct GitMeta {
     pub date: String,
 }
 
-const COMMIT_PREFIX: &str = "COMMIT|";
+// Fields are separated by the ASCII unit separator (0x1f): Git permits `|`
+// in author names, which would corrupt author/date attribution in audit rows.
+const FIELD_SEP: char = '\u{1f}';
+const COMMIT_PREFIX: &str = "COMMIT\u{1f}";
 
 /// Runs `git log --name-only` in `root` and returns the raw output bytes.
 pub fn batched_git_log(root: &str) -> Option<Vec<u8>> {
@@ -21,7 +24,7 @@ pub fn batched_git_log(root: &str) -> Option<Vec<u8>> {
             root,
             "log",
             "--name-only",
-            "--format=COMMIT|%H|%an|%aI",
+            "--format=COMMIT%x1f%H%x1f%an%x1f%aI",
         ])
         .output()
         .ok()?;
@@ -32,11 +35,11 @@ pub fn batched_git_log(root: &str) -> Option<Vec<u8>> {
     }
 }
 
-/// Parses a `COMMIT|hash|author|date` formatted line into a `GitMeta`.
+/// Parses a `COMMIT<US>hash<US>author<US>date` formatted line into a `GitMeta`.
 pub fn parse_commit_line(line: &str) -> Option<GitMeta> {
     let rest = line.strip_prefix(COMMIT_PREFIX)?;
-    let (hash, rest) = rest.split_once('|')?;
-    let (author, date) = rest.split_once('|')?;
+    let (hash, rest) = rest.split_once(FIELD_SEP)?;
+    let (author, date) = rest.split_once(FIELD_SEP)?;
     if hash.is_empty() {
         return None;
     }

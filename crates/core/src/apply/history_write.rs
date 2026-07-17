@@ -30,6 +30,10 @@ pub(super) async fn commit_history(
 /// Run `body` and write `records` in ONE transaction, then commit — so an
 /// interrupted run can never leave a committed script without its history row.
 /// Returns `false` (and records a failure) on any step, rolling back.
+///
+/// `BEGIN` and the body execute as separate batches: module DDL such as
+/// `CREATE OR ALTER VIEW` must be the first statement of its batch, and the
+/// explicit transaction spans batches on the same connection anyway.
 pub(super) async fn apply_in_tx(
     conn: &mut TimingConn,
     body: &str,
@@ -37,8 +41,11 @@ pub(super) async fn apply_in_tx(
     result: &mut ApplyResult,
     label: &str,
 ) -> bool {
-    let open = format!("{}\n{}", crate::sql::apply::BEGIN_TX, body);
-    if let Err(e) = conn.exec(&open).await {
+    if let Err(e) = conn.exec(crate::sql::apply::BEGIN_TX).await {
+        rollback(conn, result, label, &e.to_string()).await;
+        return false;
+    }
+    if let Err(e) = conn.exec(body).await {
         rollback(conn, result, label, &e.to_string()).await;
         return false;
     }

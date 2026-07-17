@@ -2,12 +2,14 @@
 
 use std::path::Path;
 
-use sha2::{Digest, Sha256};
-
 use crate::domain::{share, ObjectKey, Script, ScriptKey, ScriptKind, Workspace};
 use crate::error::Result;
 
 const SCAFFOLD: &str = "-- rmig: transition-scaffold";
+
+/// `history.normalized_key` is NVARCHAR(512): a longer key would be silently
+/// truncated by SQL Server and the full path re-executed on every run.
+const MAX_KEY_UTF16_UNITS: usize = 512;
 
 /// Parses and registers one transition script file into `ws`.
 pub fn ingest(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
@@ -19,7 +21,7 @@ pub fn ingest(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
         return Ok(());
     };
     let data = std::fs::read(abs).map_err(crate::error::Error::Io)?;
-    let cs: [u8; 32] = Sha256::digest(&data).into();
+    let cs: [u8; 32] = super::content_checksum(&data);
     let scaffold = is_scaffold(abs);
     let sk = ScriptKey::from_path(&meta.path);
     ws.insert_script(Script {
@@ -60,6 +62,12 @@ fn parse_meta(rel: &str) -> Result<Option<TransitionMeta>> {
     let Some((ordinal, _, _)) = parse_filename(file) else {
         return Ok(None);
     };
+    if rel.encode_utf16().count() > MAX_KEY_UTF16_UNITS {
+        return Err(crate::error::Error::InvalidInput(format!(
+            "transition path exceeds {MAX_KEY_UTF16_UNITS} characters and cannot be \
+             recorded exactly in audit history: {rel}"
+        )));
+    }
     let path = rel.to_string();
     Ok(Some(TransitionMeta {
         table_key: ObjectKey::new(&schema, "tables", &table),

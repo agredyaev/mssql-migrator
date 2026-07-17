@@ -16,8 +16,9 @@ pub async fn apply_transitions(
         if obj.planned_action != Action::ReprocessChanged || obj.transition_paths.is_empty() {
             continue;
         }
-        for path in &obj.transition_paths {
-            apply_one_transition(conn, ws, obj, path, result).await?;
+        let last = obj.transition_paths.len() - 1;
+        for (i, path) in obj.transition_paths.iter().enumerate() {
+            apply_one_transition(conn, ws, obj, path, i == last, result).await?;
             if result.failed > 0 {
                 return Ok(());
             }
@@ -31,6 +32,7 @@ async fn apply_one_transition(
     ws: &Workspace,
     obj: &PlannedObject,
     path: &str,
+    is_last: bool,
     result: &mut ApplyResult,
 ) -> Result<()> {
     let Some(script) = find_transition(ws, obj, path) else {
@@ -45,19 +47,33 @@ async fn apply_one_transition(
             return Ok(());
         }
     };
-    let rec = audit::record_applied(
+    // Audit provenance belongs to the transition SCRIPT's commit, not the
+    // parent table file's.
+    let mut recs = vec![audit::record_applied(
         path,
         &obj.kind,
         cs,
-        obj.git_hash(),
-        obj.git_author(),
-        obj.git_date(),
+        script.git_hash().as_ref(),
+        script.git_author().as_ref(),
+        script.git_date().as_ref(),
         "migration",
-    );
-    // Migration body + its history row commit atomically (no replay window).
-    if super::history_write::apply_in_tx(conn, &body, std::slice::from_ref(&rec), result, path)
-        .await
-    {
+    )];
+    if is_last {
+        // The final pending transition brings the live table up to the current
+        // repository definition: advance the table's object baseline in the
+        // SAME transaction, or every later plan stays ReprocessChanged forever.
+        recs.push(audit::record_applied(
+            &obj.normalized_key,
+            &obj.kind,
+            obj.checksum,
+            obj.git_hash(),
+            obj.git_author(),
+            obj.git_date(),
+            "object",
+        ));
+    }
+    // Migration body + its history rows commit atomically (no replay window).
+    if super::history_write::apply_in_tx(conn, &body, &recs, result, path).await {
         result.applied += 1;
     }
     Ok(())

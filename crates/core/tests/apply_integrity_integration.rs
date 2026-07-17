@@ -26,6 +26,7 @@ use migrator_core::Config;
 const DB: &str = "applyintegrity";
 const TABLE_V1: &str = "CREATE TABLE smoke.guarded (id INT NOT NULL);\n";
 const TABLE_V2: &str = "CREATE TABLE smoke.guarded (id INT NOT NULL, extra INT);\n";
+const TABLE_V3: &str = "CREATE TABLE smoke.guarded (id INT NOT NULL, extra INT, extra2 INT);\n";
 const VIEW_V1: &str = "CREATE OR ALTER VIEW smoke.v_guard AS SELECT CAST(1 AS INT) AS original;\n";
 const VIEW_V2: &str = "CREATE OR ALTER VIEW smoke.v_guard AS SELECT CAST(2 AS INT) AS changed;\n";
 
@@ -77,6 +78,20 @@ async fn run(cfg: &Config, cmd: Command) -> migrator_core::error::Result<i32> {
         .await
         .expect("invalidate caches");
     run_command(cmd, cfg).await.map(|o| o.exit_code)
+}
+
+async fn plan_action(cfg: &Config, key: &str) -> Action {
+    db_reset::invalidate_process_caches(cfg, true)
+        .await
+        .expect("invalidate caches");
+    let out = run_command(Command::Plan, cfg).await.expect("plan");
+    out.plan
+        .expect("plan present")
+        .objects
+        .iter()
+        .find(|o| o.normalized_key.as_ref() == key)
+        .map(|o| o.planned_action)
+        .expect("key in plan")
 }
 
 async fn migration_rows(conn: &mut TimingConn, path_like: &str) -> i32 {
@@ -137,6 +152,41 @@ async fn transition_rollback_body_cannot_commit_history_regression() {
         migration_rows(&mut conn, "%001_abcdef1_add.sql").await,
         1,
         "fixed transition applies exactly once"
+    );
+
+    // The completed transition also advanced the table's object baseline:
+    // the next plan converges to SkipUnchanged instead of ReprocessChanged.
+    assert_eq!(
+        plan_action(&cfg, "smoke/tables/guarded").await,
+        Action::SkipUnchanged,
+        "table baseline advances with its final transition"
+    );
+
+    // Editing an already-applied transition script is audit tampering: the
+    // next migrate touching this table must fail closed naming the script.
+    write(root, &format!("{DB}/smoke/tables/guarded.sql"), TABLE_V3);
+    let trans2 = format!("{DB}/smoke/tables/_migrations/guarded/002_abcdef2_more.sql");
+    write(root, &trans2, "ALTER TABLE smoke.guarded ADD extra2 INT;\n");
+    write(
+        root,
+        &trans,
+        "ALTER TABLE smoke.guarded ADD tampered INT;\n",
+    );
+    let err = run(&cfg, Command::Migrate)
+        .await
+        .expect_err("edited applied transition must fail closed");
+    assert!(
+        err.to_string().contains("modified after apply") && err.to_string().contains("001_"),
+        "error names the tampered script: {err}"
+    );
+
+    // Restoring the original body clears the tamper and 002 applies.
+    write(root, &trans, "ALTER TABLE smoke.guarded ADD extra INT;\n");
+    assert_eq!(run(&cfg, Command::Migrate).await.expect("after restore"), 0);
+    assert_eq!(
+        migration_rows(&mut conn, "%002_abcdef2_more.sql").await,
+        1,
+        "second transition applies once after the restore"
     );
 }
 

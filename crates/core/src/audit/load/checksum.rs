@@ -8,10 +8,17 @@ pub fn checksum_map_from_rows(rows: &[RowData]) -> ChecksumMap {
         let key = row.get_str(0).unwrap_or("");
         match parse_history_checksum(row, 1) {
             Some(arr) => out.insert_normalized(key, arr),
-            None => tracing::warn!(
-                key,
-                "audit history row has an undecodable checksum; object omitted from the snapshot"
-            ),
+            // Fail closed: a corrupt checksum becomes a zero baseline, which
+            // plans as AdoptExisting — and adoption is refused by migrate
+            // unless RMIG_ALLOW_ADOPT is set (baseline/repair stay explicit).
+            None => {
+                tracing::warn!(
+                    key,
+                    "audit history checksum is undecodable; treating as no baseline \
+                     (requires explicit adoption or repair-checksum)"
+                );
+                out.insert_normalized(key, [0; 32]);
+            }
         }
     }
     out
@@ -26,10 +33,15 @@ pub fn checksum_map_from_rows_ws(rows: &[RowData]) -> ChecksumMap {
         let key = row.get_str(0).unwrap_or("");
         match parse_history_checksum(row, 1) {
             Some(arr) => out.insert_key(&ObjectKey::from_normalized(key), arr),
-            None => tracing::warn!(
-                key,
-                "audit history row has an undecodable checksum; object omitted from the snapshot"
-            ),
+            // Same fail-closed contract as `checksum_map_from_rows` above.
+            None => {
+                tracing::warn!(
+                    key,
+                    "audit history checksum is undecodable; treating as no baseline \
+                     (requires explicit adoption or repair-checksum)"
+                );
+                out.insert_key(&ObjectKey::from_normalized(key), [0; 32]);
+            }
         }
     }
     out
@@ -77,6 +89,21 @@ pub(super) fn parse_history_checksum(row: &RowData, idx: usize) -> Option<[u8; 3
 mod tests {
     use super::*;
     use crate::driver::row::{Cell, RowData};
+
+    /// An undecodable stored checksum becomes a ZERO baseline (adopt-gated),
+    /// never a silent omission that would re-adopt without any control.
+    #[test]
+    fn undecodable_checksum_maps_to_zero_baseline_regression() {
+        let mut row = RowData::default();
+        row.cells.push(Cell::Str("dbo/views/v".into()));
+        row.cells.push(Cell::Str("not-hex!".into()));
+        let map = checksum_map_from_rows(std::slice::from_ref(&row));
+        assert_eq!(
+            map.get_normalized("dbo/views/v"),
+            Some(&[0u8; 32]),
+            "corrupt checksum must surface as a zero baseline"
+        );
+    }
 
     #[test]
     fn parse_history_checksum_hex_string() {

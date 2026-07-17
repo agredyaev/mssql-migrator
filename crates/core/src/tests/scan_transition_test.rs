@@ -26,6 +26,27 @@ fn parse_filename_rejects_contract_violations_negative_path() {
     }
 }
 
+/// `history.normalized_key` is NVARCHAR(512): an overlong transition path
+/// would be truncated on insert and replayed forever, so the scanner rejects it.
+#[test]
+fn parse_meta_rejects_overlong_path_regression() {
+    let long = format!(
+        "db/{}/tables/_migrations/{}/001_abcdef1_{}.sql",
+        "s".repeat(120),
+        "t".repeat(120),
+        "x".repeat(260),
+    );
+    assert!(long.len() > 512, "fixture must exceed the column width");
+    let err = match parse_meta(&long) {
+        Err(e) => e,
+        Ok(_) => panic!("overlong path must be rejected"),
+    };
+    assert!(
+        err.to_string().contains("512"),
+        "error names the limit: {err}"
+    );
+}
+
 #[test]
 fn parse_meta_requires_tables_migrations_shape_edge_case() {
     let ok = parse_meta("db/smoke/tables/_migrations/t1/001_abcdef1_s.sql").expect("no err");

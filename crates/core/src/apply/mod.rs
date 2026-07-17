@@ -31,7 +31,6 @@ mod schemas;
 mod script_read;
 mod table_records;
 mod transitions;
-mod tx;
 
 pub use metadata::{execute_metadata_plan, MetadataMode};
 pub use result::ApplyResult;

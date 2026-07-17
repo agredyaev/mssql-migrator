@@ -23,20 +23,31 @@ pub(super) fn create_table_transition_records(
         .iter()
         .map(|off| {
             let path = ws.str_at(*off);
-            let cs = path_lookup_candidates(obj.database_name.as_ref(), path)
+            let script = path_lookup_candidates(obj.database_name.as_ref(), path)
                 .into_iter()
-                .find_map(|key| {
-                    ws.script_by_key(&ScriptKey::from_path(&key))
-                        .and_then(|s| s.checksum().copied())
-                })
+                .find_map(|key| ws.script_by_key(&ScriptKey::from_path(&key)));
+            let cs = script
+                .as_ref()
+                .and_then(|s| s.checksum().copied())
                 .unwrap_or(obj.checksum);
+            // Provenance belongs to the transition script's own commit.
+            let (hash, author, date) = script
+                .as_ref()
+                .map(|s| (s.git_hash(), s.git_author(), s.git_date()))
+                .unwrap_or_else(|| {
+                    (
+                        obj.git_hash().into(),
+                        obj.git_author().into(),
+                        obj.git_date().into(),
+                    )
+                });
             audit::record_applied(
                 path,
                 &obj.kind,
                 cs,
-                obj.git_hash(),
-                obj.git_author(),
-                obj.git_date(),
+                hash.as_ref(),
+                author.as_ref(),
+                date.as_ref(),
                 "migration",
             )
         })

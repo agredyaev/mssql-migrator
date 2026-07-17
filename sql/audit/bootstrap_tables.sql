@@ -4,11 +4,11 @@ IF SCHEMA_ID('azdo_deploy_meta') IS NULL
 IF OBJECT_ID('azdo_deploy_meta.history') IS NULL
 CREATE TABLE azdo_deploy_meta.history (
     id              BIGINT IDENTITY(1,1) PRIMARY KEY,
-    normalized_key  VARCHAR(512) NOT NULL,
+    normalized_key  NVARCHAR(512) NOT NULL,
     kind            VARCHAR(16)  NOT NULL,
     checksum        VARCHAR(64)  NOT NULL,
-    git_hash        CHAR(40)     NOT NULL,
-    git_author      VARCHAR(256) NOT NULL,
+    git_hash        VARCHAR(64)  NOT NULL,
+    git_author      NVARCHAR(256) NOT NULL,
     git_date        DATETIME2    NOT NULL,
     event           VARCHAR(16)  NOT NULL,
     error_text      NVARCHAR(MAX) NULL,
@@ -25,7 +25,7 @@ CREATE TABLE azdo_deploy_meta.catalog_meta (
 
 IF OBJECT_ID('azdo_deploy_meta.catalog_cache') IS NULL
 CREATE TABLE azdo_deploy_meta.catalog_cache (
-    normalized_key  VARCHAR(512)  NOT NULL CONSTRAINT PK_catalog_cache PRIMARY KEY,
+    normalized_key  NVARCHAR(512) NOT NULL CONSTRAINT PK_catalog_cache PRIMARY KEY,
     schema_name     NVARCHAR(128) NOT NULL,
     kind            VARCHAR(32)   NOT NULL,
     object_name     NVARCHAR(256) NOT NULL,
