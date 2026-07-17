@@ -30,14 +30,14 @@ pub fn ensure_started() -> Option<String> {
         let _ = std::fs::create_dir_all(parent);
     }
     let bin = root.join("target/release/rmigd");
-    if !bin.exists() {
-        let status = Command::new("cargo")
-            .args(["build", "--release", "-p", "rmigd"])
-            .current_dir(&root)
-            .status()
-            .expect("cargo build rmigd");
-        assert!(status.success(), "rmigd build failed");
-    }
+    // Always build: an existence-only check can run a stale binary against
+    // current sources; cargo no-ops when the build is fresh.
+    let status = Command::new("cargo")
+        .args(["build", "--release", "-p", "rmigd"])
+        .current_dir(&root)
+        .status()
+        .expect("cargo build rmigd");
+    assert!(status.success(), "rmigd build failed");
     let _ = std::fs::remove_file(&socket);
     let mut cmd = Command::new(&bin);
     cmd.env("RMIGD_SOCKET", &socket)
@@ -46,6 +46,7 @@ pub fn ensure_started() -> Option<String> {
     if env_path.is_file() {
         cmd.env("RMIGD_ENV", &env_path);
     }
+    register_exit_cleanup();
     let child = cmd
         .env(
             "RM_DB_SERVER",
@@ -84,19 +85,60 @@ pub fn ensure_started() -> Option<String> {
 }
 
 /// Drop orphaned daemons left by prior test runs so advisory locks are not held.
+/// Kills ONLY processes whose command name is `rmigd`: a mistyped or reused
+/// RMIGD_SOCKET must never terminate an unrelated socket owner.
 fn kill_stale_socket_holder(socket: &str) {
     #[cfg(unix)]
     {
         if let Ok(out) = Command::new("lsof").args(["-t", socket]).output() {
             for line in std::str::from_utf8(&out.stdout).unwrap_or("").lines() {
                 let pid = line.trim();
-                if !pid.is_empty() {
-                    let _ = Command::new("kill").arg(pid).status();
+                if pid.is_empty() {
+                    continue;
                 }
+                if !is_rmigd_process(pid) {
+                    panic!(
+                        "socket {socket} is held by non-rmigd pid {pid}; \
+                         refusing to kill it — check RMIGD_SOCKET"
+                    );
+                }
+                let _ = Command::new("kill").arg(pid).status();
             }
         }
     }
     let _ = std::fs::remove_file(socket);
+}
+
+#[cfg(unix)]
+fn is_rmigd_process(pid: &str) -> bool {
+    Command::new("ps")
+        .args(["-o", "comm=", "-p", pid])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).contains("rmigd"))
+        .unwrap_or(false)
+}
+
+/// Kill + reap the spawned daemon when the test process exits: statics are
+/// never dropped, so without this every run leaks an rmigd with a live SQL
+/// session. Registered once, on first spawn.
+fn register_exit_cleanup() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    extern "C" fn cleanup() {
+        if let Ok(mut guard) = CHILD.lock() {
+            if let Some(mut child) = guard.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
+    ONCE.call_once(|| unsafe {
+        extern "C" {
+            fn atexit(cb: extern "C" fn()) -> std::os::raw::c_int;
+        }
+        let _ = atexit(cleanup);
+    });
 }
 
 fn use_rmigd() -> bool {

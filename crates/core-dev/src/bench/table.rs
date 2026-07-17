@@ -64,7 +64,8 @@ pub fn table_heavy_workspace(n_tables: usize) -> (Workspace, CatalogState, Check
                 checksum: Some([ord.as_ref().as_bytes()[0]; 32]),
                 scaffold: false,
             });
-            ws.push_transition_staging(key.clone(), ord.clone(), tsk);
+            ws.push_transition_staging(key.clone(), ord.clone(), tsk)
+                .expect("bench fixture ordinals are unique per table");
         }
         catalog
             .objects

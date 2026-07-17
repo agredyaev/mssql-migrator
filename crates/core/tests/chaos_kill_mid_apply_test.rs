@@ -36,17 +36,16 @@ fn repo_root() -> PathBuf {
 }
 
 fn rmig_bin() -> PathBuf {
-    let bin = repo_root().join("target/release/rmig");
-    if !bin.exists() {
-        let ok = Command::new("cargo")
-            .args(["build", "--release", "-p", "rmig"])
-            .current_dir(repo_root())
-            .status()
-            .expect("build rmig")
-            .success();
-        assert!(ok, "rmig build failed");
-    }
-    bin
+    // Always build: an existence-only check can run a stale binary against
+    // current sources; cargo no-ops when the build is fresh.
+    let ok = Command::new("cargo")
+        .args(["build", "--release", "-p", "rmig"])
+        .current_dir(repo_root())
+        .status()
+        .expect("build rmig")
+        .success();
+    assert!(ok, "rmig build failed");
+    repo_root().join("target/release/rmig")
 }
 
 fn tables_dir(root: &Path) -> PathBuf {
