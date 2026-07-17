@@ -56,13 +56,19 @@ fn load_env_file_inner(path: &Path, required: bool) -> Result<HashMap<String, St
     let content = std::fs::read_to_string(path)
         .map_err(|e| Error::Config(format!("env file unreadable: {}: {e}", path.display())))?;
     let mut env = HashMap::new();
-    for line in content.lines() {
+    for (line_no, line) in content.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
         let Some((k, v)) = line.split_once('=') else {
-            eprintln!("warning: ignoring malformed env line (no '='): {line}");
+            // Never echo the line itself: dotenv files hold credentials, and a
+            // one-character assignment typo would leak the secret to CI logs.
+            eprintln!(
+                "warning: ignoring malformed env line (no '=') at {}:{}",
+                path.display(),
+                line_no + 1
+            );
             continue;
         };
         let v = strip_one_quote_pair(v.trim());

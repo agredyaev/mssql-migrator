@@ -93,7 +93,17 @@ async fn create_database_if_missing(conn: &mut MssqlConn, cfg: &Config, db: &str
         sql_root = %cfg.sql_root,
         "creating missing catalog database via master fallback"
     );
-    mssql::exec(&mut conn.client, &sql).await
+    // First-deployment recovery must stay inside RM_COMMAND_TIMEOUT: this exec
+    // runs on a raw master connection with no TimingConn bound around it.
+    let t = cfg.command_timeout;
+    let fut = mssql::exec(&mut conn.client, &sql);
+    if t.is_zero() {
+        fut.await
+    } else {
+        tokio::time::timeout(t, fut).await.map_err(|_| {
+            crate::error::Error::Sql(format!("CREATE DATABASE {db} timed out after {t:?}"))
+        })?
+    }
 }
 
 #[cfg(test)]

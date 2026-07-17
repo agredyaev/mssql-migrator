@@ -26,16 +26,12 @@ impl FootprintBaseline {
     pub fn current() -> Self {
         Self {
             version: BASELINE_VERSION,
-            rustc_version: rustc_version(),
-            target: std::env::var("TARGET").unwrap_or_else(|_| "unknown".into()),
+            // Stamped by build.rs at compile time: runtime env vars are unset
+            // under `cargo test`, which is how "unknown" baselines happened.
+            rustc_version: env!("RMIG_RUSTC_VERSION").to_string(),
+            target: env!("RMIG_BUILD_TARGET").to_string(),
             threshold_bytes: THRESHOLD_BYTES,
             struct_sizes: super::struct_sizes::collect_struct_sizes(),
         }
     }
-}
-
-fn rustc_version() -> String {
-    option_env!("RUSTC_VERSION")
-        .unwrap_or("unknown")
-        .to_string()
 }

@@ -42,11 +42,15 @@ pub fn parse_args(args: &[String]) -> migrator_core::Result<ParsedArgs> {
         match args[i].as_str() {
             "--env" => {
                 i += 1;
-                env_file = Some(
-                    args.get(i)
-                        .ok_or_else(|| Error::InvalidInput("--env requires path".into()))?
-                        .clone(),
-                );
+                // A following flag is NOT a path: swallowing it would both
+                // lose that flag and skip the missing-value diagnostic.
+                let val = args.get(i).filter(|v| !v.starts_with('-')).ok_or_else(|| {
+                    Error::InvalidInput(format!(
+                        "--env requires a path argument\n\n{}",
+                        super::help::HELP_HINT
+                    ))
+                })?;
+                env_file = Some(val.clone());
             }
             "--json" => json = true,
             "-h" | "--help" => return Ok(ParsedArgs::Help),

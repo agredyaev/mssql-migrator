@@ -2,6 +2,7 @@
 name = "migrator-core-dev"
 version.workspace = true
 edition.workspace = true
+build = "build.rs"
 description = "Benches, footprint baselines, and profilers for migrator-core (not linked in production binaries)."
 publish = false
 

@@ -32,7 +32,8 @@ use crate::session::limits::MAX_DAEMON_CLIENTS;
 mod endpoint;
 mod reply;
 mod serve;
-use super::socket::{resolve_socket_path, restrict_dir_mode, restrict_socket_mode};
+mod serve_loop;
+use super::socket::{resolve_socket_path, restrict_socket_mode};
 use serve::serve;
 
 /// Starts the rmigd Unix-socket daemon, accepting connections until the process exits.
@@ -71,11 +72,10 @@ pub async fn run_daemon(socket: &Path, env_path: &Path, env_required: bool) -> a
     }
     if let Some(parent) = socket.parent() {
         if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-            // Harden the parent for explicit socket paths too (resolve_socket_path
-            // does this for the default path); a group/world-traversable parent
-            // would expose the socket regardless of its own 0600 mode.
-            restrict_dir_mode(parent)?;
+            // Same contract as resolve_socket_path: create privately, or
+            // require an existing parent to already be private — never chmod
+            // a caller-owned directory.
+            super::socket::ensure_private_parent(parent)?;
         }
     }
     let listener = UnixListener::bind(&socket)?;

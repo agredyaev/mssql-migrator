@@ -34,6 +34,15 @@ async fn query(client: &mut RawClient, sql: &str, params: &[String]) -> Result<V
     Ok(rows.iter().map(from_tiberius).collect())
 }
 
+/// Full session cleanup when a client disconnects on ANY path: roll back any
+/// transaction the dying client left open, then release its advisory lock —
+/// the shared connection must hand the next socket a neutral session.
+pub async fn cleanup_session(client: &mut RawClient) {
+    const ROLLBACK_IF_OPEN: &str = "IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;";
+    let _ = crate::driver::mssql::exec(client, ROLLBACK_IF_OPEN).await;
+    release_session_lock(client).await;
+}
+
 /// Best-effort release of the session advisory lock when a client disconnects,
 /// so a client that died mid-deploy without releasing does not leave the shared
 /// daemon session holding `reporting_layer_migration` forever. Releases ONLY if

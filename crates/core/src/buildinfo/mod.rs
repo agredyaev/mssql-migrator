@@ -57,12 +57,10 @@ pub fn write_json(mut w: impl Write) -> Result<()> {
 }
 
 fn short_rev(s: &str) -> &str {
-    let s = s.strip_prefix("vcs:").unwrap_or(s).trim();
-    if s.len() <= 7 {
-        s
-    } else {
-        &s[..7]
-    }
+    // `git rev-parse --short` already chose a collision-free abbreviation
+    // (which can exceed 7 in large repos); truncating further would alias
+    // distinct commits in version output.
+    s.strip_prefix("vcs:").unwrap_or(s).trim()
 }
 
 #[cfg(test)]
@@ -104,8 +102,12 @@ mod tests {
         );
     }
 
+    /// Git's own `--short` abbreviation is collision-free at whatever length
+    /// Git chose; further truncation would alias distinct commits.
     #[test]
-    fn short_rev_truncates_long_hash() {
-        assert_eq!(short_rev("abcdef1234567890"), "abcdef1");
+    fn short_rev_preserves_git_abbreviation_regression() {
+        assert_eq!(short_rev("abcdef1"), "abcdef1");
+        assert_eq!(short_rev("abcdef123456"), "abcdef123456");
+        assert_eq!(short_rev("vcs:abcdef123456 "), "abcdef123456");
     }
 }

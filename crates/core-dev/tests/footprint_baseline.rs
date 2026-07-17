@@ -39,6 +39,16 @@ fn footprint_baseline_match() {
     });
     let baseline: FootprintBaseline =
         serde_json::from_str(&data).expect("parse footprint baseline");
+    // Struct sizes are ABI-specific: a baseline recorded for another target or
+    // compiler must not be compared (legacy "unknown" baselines are exempt
+    // until regenerated).
+    let current = FootprintBaseline::current();
+    if baseline.target != "unknown" {
+        assert_eq!(
+            baseline.target, current.target,
+            "baseline recorded for a different target; regenerate it"
+        );
+    }
     let got = collect_struct_sizes();
     assert_eq!(
         got.len(),
@@ -67,4 +77,18 @@ fn update_footprint_baseline() {
     let data = serde_json::to_string_pretty(&b).expect("marshal");
     std::fs::write(&path, format!("{data}\n")).expect("write baseline");
     eprintln!("updated baseline at {}", path.display());
+}
+
+/// Provenance must be real: "unknown" baselines cannot be interpreted across
+/// platforms.
+#[test]
+fn current_baseline_has_real_provenance_regression() {
+    let cur = FootprintBaseline::current();
+    assert_ne!(cur.target, "unknown", "build.rs must stamp TARGET");
+    assert_ne!(cur.rustc_version, "unknown", "build.rs must stamp rustc");
+    assert!(
+        cur.target.contains('-'),
+        "target triple expected: {}",
+        cur.target
+    );
 }

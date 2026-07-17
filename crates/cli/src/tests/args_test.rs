@@ -55,7 +55,7 @@ fn parse_args_missing_env_path_negative_path() {
         Err(err) => err,
     };
     assert!(
-        err.to_string().contains("--env requires path"),
+        err.to_string().contains("--env requires a path"),
         "unexpected error: {err}"
     );
 }
@@ -78,5 +78,28 @@ fn parse_command_rejects_unknown_command_negative_path() {
     assert!(
         err.to_string().contains("unknown command: deploy"),
         "unexpected error: {err}"
+    );
+}
+
+/// `--env` must not swallow a following flag as its value: `--json` would be
+/// silently lost and the missing path never diagnosed.
+#[test]
+fn parse_args_env_rejects_flag_as_value_regression() {
+    let err = match parse_args(&argv(&["--env", "--json", "version"])) {
+        Err(e) => e,
+        Ok(_) => panic!("--env followed by a flag must be rejected"),
+    };
+    assert!(
+        err.to_string().contains("--env requires a path"),
+        "error: {err}"
+    );
+
+    let err = match parse_args(&argv(&["version", "--env"])) {
+        Err(e) => e,
+        Ok(_) => panic!("trailing --env without a value must be rejected"),
+    };
+    assert!(
+        err.to_string().contains("--env requires a path"),
+        "error: {err}"
     );
 }

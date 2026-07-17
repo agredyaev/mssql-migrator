@@ -7,7 +7,22 @@ pub async fn connect_daemon(socket_path: &str, cfg: &Config) -> Result<DbClient>
     let mut proxy = super::proxy::ProxyClient::connect(socket_path, Some(cfg)).await?;
     if !cfg.database.is_empty() {
         let quoted = crate::sql_ident::bracket_ident(&cfg.database)?;
-        proxy.exec(&format!("USE {quoted}")).await?;
+        let use_stmt = format!("USE {quoted}");
+        // The USE runs after ProxyClient::connect's bounded handshake but
+        // before TimingConn's per-command timeout exists — an unbounded await
+        // here lets a wedged daemon hang every CLI run.
+        let t = cfg.command_timeout;
+        if t.is_zero() {
+            proxy.exec(&use_stmt).await?;
+        } else {
+            tokio::time::timeout(t, proxy.exec(&use_stmt))
+                .await
+                .map_err(|_| {
+                    crate::error::Error::Config(format!(
+                        "rmigd session init (USE) timed out after {t:?}"
+                    ))
+                })??;
+        }
     }
     Ok(DbClient::Proxy(proxy))
 }

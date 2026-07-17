@@ -1,4 +1,4 @@
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::unix::OwnedReadHalf;
 use tokio::net::{unix::OwnedWriteHalf, UnixStream};
 
@@ -99,7 +99,11 @@ impl ProxyClient {
             .await
             .map_err(|e| Error::Other(e.into()))?;
         let mut resp_line = String::new();
-        self.reader
+        // Cap the read itself (limit + 1 detects overflow): checking length
+        // only AFTER read_line lets a hostile/wedged endpoint grow the buffer
+        // without bound before the check runs.
+        let mut limited = (&mut self.reader).take(MAX_SESSION_LINE_BYTES as u64 + 1);
+        limited
             .read_line(&mut resp_line)
             .await
             .map_err(|e| Error::Other(e.into()))?;

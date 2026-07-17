@@ -19,7 +19,9 @@
 //! ### Off-nominal
 //! - Socket file collision: if a live daemon answers on the socket, startup is
 //!   refused; a stale socket file is removed and replaced.
-//! - `RMIGD_ENV` points to missing file: daemon starts but all sessions use ambient env.
+//! - `RMIGD_ENV` points to a missing file: startup fails — an explicitly
+//!   configured env file must exist. Without `RMIGD_ENV`, a missing default
+//!   `.env` falls back to the ambient process environment.
 
 #![forbid(unsafe_code)]
 use std::path::PathBuf;
@@ -56,8 +58,22 @@ async fn run() -> Result<(), i32> {
         })
 }
 
+fn log_level_from_env_file() -> Option<String> {
+    let path = std::env::var("RMIGD_ENV").unwrap_or_else(|_| ".env".into());
+    migrator_core::config::load_env_file(std::path::Path::new(&path))
+        .ok()?
+        .get("RM_LOG_LEVEL")
+        .cloned()
+}
+
 fn init_tracing() {
-    let default_level = std::env::var("RM_LOG_LEVEL").unwrap_or_else(|_| "info".into());
+    // RM_LOG_LEVEL may live in the RMIGD_ENV file rather than the ambient
+    // environment; the tracing filter is built before run_daemon loads that
+    // file, so consult it here too.
+    let default_level = std::env::var("RM_LOG_LEVEL")
+        .ok()
+        .or_else(log_level_from_env_file)
+        .unwrap_or_else(|| "info".into());
     let filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new(default_log_filter(&default_level)))
         .unwrap_or_else(|_| EnvFilter::new(default_log_filter("info")));

@@ -38,7 +38,7 @@ Setup:
 Common environment variables (.env):
   RM_DB_SERVER              SQL Server host (required)
   RM_SQL_ROOT               Root of <database>/<schema>/<kind>/<object>.sql tree (required)
-  RM_DB_USER / RM_DB_PASSWORD   SQL authentication (required unless integrated auth)
+  RM_DB_USER / RM_DB_PASSWORD   SQL authentication (required; only SQL logins are supported)
   RM_SQL_BASE               Migrations/scaffold path (defaults to RM_SQL_ROOT)
   RM_REPORT_DIR             Directory for .plan.json / .report.json artifacts
   RM_SKIP_GIT=1             Full catalog inspect without git delta preload

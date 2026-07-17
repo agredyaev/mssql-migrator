@@ -76,7 +76,7 @@ async fn connect_once(cfg: &Config) -> Result<MssqlConn> {
             return Err(Error::Conn(format!("connect {addr}: tds handshake: {e}")));
         }
     };
-    init_session(&mut client).await?;
+    with_connect_timeout(timeout, &addr, "session init", init_session(&mut client)).await??;
     Ok(MssqlConn { client })
 }
 
