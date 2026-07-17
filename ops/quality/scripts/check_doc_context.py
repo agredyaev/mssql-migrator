@@ -24,7 +24,9 @@ def main() -> int:
         rel = C.rel_to_root(root, path)
         if rel in C.CONTEXT_EXEMPT:
             continue
-        head = "\n".join(path.read_text(encoding="utf-8").splitlines()[:120])
+        head = C.strip_fenced_blocks(
+            "\n".join(path.read_text(encoding="utf-8").splitlines()[:120])
+        )
         if not LIFECYCLE_RE.search(head):
             failures.append(f"{rel}: expected line like: Lifecycle: `Current`.")
     if failures:

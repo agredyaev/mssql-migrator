@@ -49,7 +49,7 @@ Repository root is detected from `Path(__file__).resolve().parents[3]` unless **
 
 ## Operations and recovery
 
-- When adding a new `docs/specs/rust/module-*.md`, add a table row in [`docs/specs/rust/README.md`](../../docs/specs/rust/README.md) so `check_doc_sync.py` stays green.
+- When adding a new `docs/specs/rust/module-*.md`, add a table row in [`docs/specs/rust/README.md`](../../../docs/specs/rust/README.md) so `check_doc_sync.py` stays green.
 
 ## Open issues and non-goals
 

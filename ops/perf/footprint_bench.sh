@@ -30,15 +30,18 @@ case "$MODE" in
     cargo test -p "$PKG" --test footprint_baseline footprint_baseline_match -q
     ;;
   profile)
+    # Clear previous Criterion output first: a stale flamegraph from another
+    # benchmark or binary must never be republished as this run's evidence.
+    rm -rf target/criterion
     cargo bench -p "$PKG" --bench plan_diff --features bench-skip -- --profile-time=5 "$@"
-    FG="$(find target/criterion -name 'flamegraph.svg' 2>/dev/null | head -1 || true)"
-    if [ -n "$FG" ]; then
-      cp -f "$FG" "$ARTIFACTS/plan_diff_5k_flamegraph.svg"
-      echo "CPU flamegraph: $ARTIFACTS/plan_diff_5k_flamegraph.svg (source: $FG)"
-    else
-      echo "warning: flamegraph.svg not found under target/criterion (RmigPprofProfiler / --profile-time)" >&2
+    FG="$(find target/criterion/plan_diff* -name 'flamegraph.svg' 2>/dev/null | head -1 || true)"
+    if [ -z "$FG" ]; then
+      echo "ERROR: no flamegraph produced under target/criterion/plan_diff* — profiling evidence missing" >&2
+      exit 1
     fi
-    "$ROOT/ops/perf/profile_summary.sh" 2>/dev/null || true
+    cp -f "$FG" "$ARTIFACTS/plan_diff_5k_flamegraph.svg"
+    echo "CPU flamegraph: $ARTIFACTS/plan_diff_5k_flamegraph.svg (source: $FG)"
+    "$ROOT/ops/perf/profile_summary.sh"
     ;;
   profile-load)
     RMIG_REPO_ROOT="$ROOT" \
@@ -87,11 +90,17 @@ case "$MODE" in
       scan_root)     DHAT_BENCH=scan_dhat; DHAT_OUT=scan_dhat.txt ;;
       cache)         DHAT_BENCH=cache_serde_dhat; DHAT_OUT=cache_serde_dhat.txt ;;
     esac
+    # Remove every stale heap first: succeeding without a NEW heap must fail,
+    # not silently republish an old binary's allocation evidence.
+    rm -f dhat-heap.json "$ROOT/crates/core-dev/dhat-heap.json" "$ARTIFACTS/dhat_heap.json"
     cargo bench -p "$PKG" --bench "$DHAT_BENCH" --features "$FEAT" --profile profiling 2>&1 | tee "$ARTIFACTS/$DHAT_OUT"
     if [ -f dhat-heap.json ]; then
       cp -f dhat-heap.json "$ARTIFACTS/dhat_heap.json"
     elif [ -f "$ROOT/crates/core-dev/dhat-heap.json" ]; then
       cp -f "$ROOT/crates/core-dev/dhat-heap.json" "$ARTIFACTS/dhat_heap.json"
+    else
+      echo "ERROR: benchmark produced no dhat-heap.json — allocation evidence missing" >&2
+      exit 1
     fi
     if [ -f "$ARTIFACTS/dhat_heap.json" ]; then
       FLAME="$ARTIFACTS/alloc_flame.txt"

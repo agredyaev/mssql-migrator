@@ -51,12 +51,9 @@ pub mod catalog {
         include_str!("../../../../sql/catalog/catalog_cache_delete_all.sql");
     pub const CACHE_INSERT: &str =
         include_str!("../../../../sql/catalog/catalog_cache_insert_openjson.sql");
-    pub const CACHE_SAVE_META: &str =
-        include_str!("../../../../sql/catalog/catalog_cache_save_meta.sql");
 }
 
 pub mod apply {
-    pub const CREATE_SCHEMA: &str = include_str!("../../../../sql/apply/create_schema.sql");
     pub const BEGIN_TX: &str = include_str!("../../../../sql/apply/begin_transaction.sql");
     pub const ASSERT_OPEN_TX: &str =
         include_str!("../../../../sql/apply/assert_open_transaction.sql");

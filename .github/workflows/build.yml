@@ -28,11 +28,14 @@ jobs:
       - name: Build release-dist binaries
         run: make release-build
 
+      # upload-artifact zips files and normalizes modes to 0644; tar first so
+      # the 0755 executable bits survive download + extraction.
+      - name: Archive executables (preserve exec bits)
+        run: tar -czf rmig-executables.tar.gz bin/rmig -C target/release-dist rmigd
+
       - name: Upload executables
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: rmig-executables-${{ runner.os }}
-          path: |
-            bin/rmig
-            target/release-dist/rmigd
+          path: rmig-executables.tar.gz
           if-no-files-found: error

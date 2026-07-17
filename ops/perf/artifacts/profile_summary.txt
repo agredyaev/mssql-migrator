@@ -1,23 +1,296 @@
-# rmig profile summary - 2026-06-29T22:55:36Z
+# rmig profile summary - 2026-07-17T13:04:42Z
 # Regenerate: make bench-footprint-profile && make bench-footprint-alloc
 
 == CPU flamegraph (5k skip-heavy diff) ==
-  ~/project/mssql-reporting-migrator/ops/perf/artifacts/plan_diff_5k_flamegraph.svg
+  ops/perf/artifacts/plan_diff_5k_flamegraph.svg
+
+== dhat summary: plan_diff_dhat.txt ==
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 0.22s
+     Running benches/plan_diff_dhat.rs (target/profiling/deps/plan_diff_dhat-8a504ca5c92a9210)
+dhat: plan_diff_skip_heavy_5000 x20 complete
+dhat: Total:     10,735,992 bytes in 90,129 blocks
+dhat: At t-gmax: 6,336,160 bytes in 65,041 blocks
+dhat: At t-end:  112 bytes in 2 blocks
+dhat: The data has been saved to dhat-heap.json, and is viewable with dhat/dh_view.html
+
+== dhat summary: plan_diff_dhat_scan.txt ==
+   Compiling migrator-core-dev v1.0.4 (~/project/mssql-reporting-migrator/crates/core-dev)
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 1.79s
+     Running benches/plan_diff_dhat_scan.rs (target/profiling/deps/plan_diff_dhat_scan-ff88d6e41f30b439)
+dhat: scan_fixture_5000 x20 complete
+dhat: Total:     15,121,224 bytes in 185,195 blocks
+dhat: At t-gmax: 5,330,141 bytes in 50,034 blocks
+dhat: At t-end:  112 bytes in 2 blocks
+dhat: The data has been saved to dhat-heap.json, and is viewable with dhat/dh_view.html
+
+== dhat summary: rust_plan_diff_dhat.txt ==
+   Compiling migrator-core-dev v0.1.0 (~/project/mssql-reporting-migrator/rust/crates/core-dev)
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 0.60s
+     Running benches/plan_diff_dhat.rs (target/profiling/deps/plan_diff_dhat-a2a66fc39d38e251)
+dhat: plan_diff_skip_heavy_5000 x20 complete
+dhat: Total:     8,329,494 bytes in 70,083 blocks
+dhat: At t-gmax: 5,321,730 bytes in 45,035 blocks
+dhat: At t-end:  112 bytes in 2 blocks
+dhat: The data has been saved to dhat-heap.json, and is viewable with dhat/dh_view.html
+
+== dhat summary: rust_plan_diff_dhat_transitions.txt ==
+warning: fields `schema` and `table` are never read
+  --> crates/core/src/scan/transition.rs:33:5
+   |
+32 | struct TransitionMeta {
+   |        -------------- fields in this struct
+33 |     schema: String,
+   |     ^^^^^^
+34 |     table: String,
+   |     ^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `migrator-core` (lib) generated 1 warning
+warning: unused import: `empty_str`
+ --> crates/core/benches/bench_table.rs:4:5
+  |
+4 |     empty_str, share, ObjectKey, Script, ScriptKind, ScriptKey, StringInterner, Workspace,
+  |     ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `scan_fixture_workspace` and `temp_scan_root`
+  --> crates/core/benches/bench_support.rs:14:22
+   |
+14 | pub use bench_scan::{scan_fixture_workspace, temp_scan_root};
+   |                      ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+
+warning: unused import: `bench_skip::skip_heavy_workspace`
+  --> crates/core/benches/bench_support.rs:15:9
+   |
+15 | pub use bench_skip::skip_heavy_workspace;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: this lint expectation is unfulfilled
+ --> crates/core/benches/bench_support.rs:3:11
+  |
+3 | #![expect(dead_code)]
+  |           ^^^^^^^^^
+  |
+  = note: `#[warn(unfulfilled_lint_expectations)]` on by default
+
+== dhat summary: rust_plan_diff_dhat_scan.txt ==
+warning: fields `schema` and `table` are never read
+  --> crates/core/src/scan/transition.rs:33:5
+   |
+32 | struct TransitionMeta {
+   |        -------------- fields in this struct
+33 |     schema: String,
+   |     ^^^^^^
+34 |     table: String,
+   |     ^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `migrator-core` (lib) generated 1 warning
+warning: unused import: `empty_str`
+ --> crates/core/benches/bench_table.rs:4:5
+  |
+4 |     empty_str, share, ObjectKey, Script, ScriptKind, ScriptKey, StringInterner, Workspace,
+  |     ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `bench_skip::skip_heavy_workspace`
+  --> crates/core/benches/bench_support.rs:15:9
+   |
+15 | pub use bench_skip::skip_heavy_workspace;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `bench_table::table_heavy_workspace`
+  --> crates/core/benches/bench_support.rs:16:9
+   |
+16 | pub use bench_table::table_heavy_workspace;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `migrator_core::domain::share`
+ --> crates/core/benches/plan_diff_dhat_scan.rs:6:5
+  |
+6 | use migrator_core::domain::share;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: this lint expectation is unfulfilled
+
+== alloc tree: alloc_flame.txt ==
+# Rust dhat allocation summary
+# total allocated (tb sum): 10.74 MB (10735992 B)
+# loop iterations: 20
+# setup (one-time): 10.32 MB
+# warm (first compute_diff / plan resize): 413.9 KB
+# loop (warmed compute_diff x20): 0 B (0 B/iter)
+
+## Phase totals
+Phase                 Bytes    Share
+setup              10.32 MB    96.1%
+warm               413.9 KB     3.9%
+loop                    0 B     0.0%
+
+## Top categories (loop phase only)
+Category                                    Total       B/iter   Share  CASE-*
+(no loop-phase allocations detected)
+
+## Top rmig frames (loop phase)
+Frame                                                                           Bytes   Share
+
+## Top rmig frames (deepest in stack, all phases)
+Frame                                                                           Bytes   Share
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)              10.32 MB   96.1%
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:14:5)               413.9 KB    3.9%
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:18:5)                   64 B    0.0%
+
+## Top leaf alloc frames (flat)
+Frame                                                                           Bytes
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)              10.32 MB
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:14:5)               413.9 KB
+
+== alloc tree: alloc_flame_scan.txt ==
+# Rust dhat allocation summary
+# total allocated (tb sum): 15.12 MB (15121224 B)
+# loop iterations: 20
+# setup (one-time): 14.71 MB
+# warm (first compute_diff / plan resize): 413.9 KB
+# loop (warmed compute_diff x20): 0 B (0 B/iter)
+
+## Phase totals
+Phase                 Bytes    Share
+setup              14.71 MB    97.3%
+warm               413.9 KB     2.7%
+loop                    0 B     0.0%
+
+## Top categories (loop phase only)
+Category                                    Total       B/iter   Share  CASE-*
+(no loop-phase allocations detected)
+
+## Top rmig frames (loop phase)
+Frame                                                                           Bytes   Share
+
+## Top rmig frames (deepest in stack, all phases)
+Frame                                                                           Bytes   Share
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:14:14     11.85 MB   78.4%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:23:19      1.19 MB    7.8%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:22:34     720.0 KB    4.8%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:22:14     671.7 KB    4.4%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:27:5)     413.9 KB    2.7%
+migrator_core::scan::walk::scan_root (src/scan/walk.rs:27:9)                 280.0 KB    1.9%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:13:16        230 B    0.0%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:16:21        108 B    0.0%
+
+== alloc tree: rust_alloc_flame.txt ==
+# Rust dhat allocation summary
+# total allocated (tb sum): 8.33 MB (8329494 B)
+# loop iterations: 20
+# setup (one-time): 7.92 MB
+# warm (first compute_diff / plan resize): 413.9 KB
+# loop (warmed compute_diff x20): 0 B (0 B/iter)
+
+## Phase totals
+Phase                 Bytes    Share
+setup               7.92 MB    95.0%
+warm               413.9 KB     5.0%
+loop                    0 B     0.0%
+
+## Top categories (loop phase only)
+Category                                    Total       B/iter   Share  CASE-*
+(no loop-phase allocations detected)
+
+## Top rmig frames (loop phase)
+Frame                                                                           Bytes   Share
+
+## Top rmig frames (deepest in stack, all phases)
+Frame                                                                           Bytes   Share
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)               7.92 MB   95.0%
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:14:5)               413.9 KB    5.0%
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:18:5)                   64 B    0.0%
+
+## Top leaf alloc frames (flat)
+Frame                                                                           Bytes
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)               7.92 MB
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:14:5)               413.9 KB
+
+== alloc tree: rust_alloc_flame_transitions.txt ==
+# Rust dhat allocation summary
+# total allocated (tb sum): 2.76 MB (2757634 B)
+# loop iterations: 20
+# setup (one-time): 2.72 MB
+# warm (first compute_diff / plan resize): 33.6 KB
+# loop (warmed compute_diff x20): 0 B (0 B/iter)
+
+## Phase totals
+Phase                 Bytes    Share
+setup               2.72 MB    98.8%
+warm                33.6 KB     1.2%
+loop                    0 B     0.0%
+
+## Top categories (loop phase only)
+Category                                    Total       B/iter   Share  CASE-*
+(no loop-phase allocations detected)
+
+## Top rmig frames (loop phase)
+Frame                                                                           Bytes   Share
+
+## Top rmig frames (deepest in stack, all phases)
+Frame                                                                           Bytes   Share
+plan_diff_dhat_transitions::main (core/benches/plan_diff_dhat_transition      2.72 MB   98.5%
+plan_diff_dhat_transitions::main (core/benches/plan_diff_dhat_transition      33.6 KB    1.2%
+migrator_core::plan::transitions::paths_by_row (src/plan/transitions.rs:       8.0 KB    0.3%
+plan_diff_dhat_transitions::main (core/benches/plan_diff_dhat_transition         64 B    0.0%
+
+## Top leaf alloc frames (flat)
+Frame                                                                           Bytes
+plan_diff_dhat_transitions::main (core/benches/plan_diff_dhat_transition      2.72 MB
+
+== alloc tree: rust_alloc_flame_scan.txt ==
+# Rust dhat allocation summary
+# total allocated (tb sum): 13.93 MB (13932130 B)
+# loop iterations: 20
+# setup (one-time): 13.60 MB
+# warm (first compute_diff / plan resize): 335.1 KB
+# loop (warmed compute_diff x20): 0 B (0 B/iter)
+
+## Phase totals
+Phase                 Bytes    Share
+setup              13.60 MB    97.6%
+warm               335.1 KB     2.4%
+loop                    0 B     0.0%
+
+## Top categories (loop phase only)
+Category                                    Total       B/iter   Share  CASE-*
+(no loop-phase allocations detected)
+
+## Top rmig frames (loop phase)
+Frame                                                                           Bytes   Share
+
+## Top rmig frames (deepest in stack, all phases)
+Frame                                                                           Bytes   Share
+plan_diff_dhat_scan::main (core/benches/plan_diff_dhat_scan.rs:58:40)        13.60 MB   97.6%
+plan_diff_dhat_scan::main (core/benches/plan_diff_dhat_scan.rs:60:5)         335.1 KB    2.4%
+plan_diff_dhat_scan::main (core/benches/plan_diff_dhat_scan.rs:62:5)             64 B    0.0%
+
+## Top leaf alloc frames (flat)
+Frame                                                                           Bytes
+plan_diff_dhat_scan::main (core/benches/plan_diff_dhat_scan.rs:58:40)        13.60 MB
+plan_diff_dhat_scan::main (core/benches/plan_diff_dhat_scan.rs:60:5)         335.1 KB
 
 == criterion bench log (tail) ==
-   Compiling pprof v0.15.0
-   Compiling migrator-core v1.0.4 (~/project/mssql-reporting-migrator/crates/core)
-   Compiling migrator-core-dev v1.0.4 (~/project/mssql-reporting-migrator/crates/core-dev)
-    Finished `bench` profile [optimized + debuginfo] target(s) in 30.45s
+    Finished `bench` profile [optimized + debuginfo] target(s) in 14.47s
      Running benches/plan_diff.rs (target/release/deps/plan_diff-bfac2f11d02f0aba)
 Gnuplot not found, using plotters backend
 Benchmarking plan_diff_skip_heavy_5000
 Benchmarking plan_diff_skip_heavy_5000: Warming up for 3.0000 s
-Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.0387 s (101k iterations)
+Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.2477 s (91k iterations)
 Benchmarking plan_diff_skip_heavy_5000: Analyzing
 plan_diff_skip_heavy_5000
-                        time:   [49.603 µs 49.645 µs 49.703 µs]
-Found 1 outliers among 100 measurements (1.00%)
-  1 (1.00%) high severe
+                        time:   [57.693 µs 58.053 µs 58.687 µs]
+                        change: [+16.010% +16.560% +17.361%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) high mild
+  2 (2.00%) high severe
 
 

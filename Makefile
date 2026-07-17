@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 
 .PHONY: all build release-build test check doc-check doc-rust db-up db-down db-init \
-	arch e2e e2e-all e2e-timings check-e2e sql-regression integration \
+	arch e2e e2e-all e2e-timings check-e2e sql-regression integration script-tests \
 	slo prod-gate plan-db-perf workflow-fast \
 	bench-footprint bench-footprint-profile bench-footprint-alloc \
 	bench-footprint-scan bench-footprint-cache \
@@ -37,7 +37,11 @@ arch:
 	scripts/check-advisory-lock-release.sh
 	scripts/check-sql-regression-manifest.sh
 
-check: arch
+script-tests:
+	@chmod +x ops/quality/scripts/tests/run.sh
+	ops/quality/scripts/tests/run.sh
+
+check: arch script-tests
 	cargo fmt --all -- --check
 	RUSTFLAGS="-D warnings" cargo clippy -p migrator-core -p rmig -p rmigd --lib --bins --tests -- -D warnings
 	RUSTFLAGS="-D warnings" cargo test -p migrator-core --lib --tests
@@ -58,12 +62,17 @@ db-up:
 	docker compose up -d
 	@echo "Waiting for MSSQL to be ready..."
 	@export ROOT="$(CURDIR)" && set -a && . ops/perf/e2e_env.sh && set +a && \
+	ready=0; \
 	for i in 1 2 3 4 5 6 7 8 9 10; do \
 		docker compose exec -T mssql /opt/mssql-tools18/bin/sqlcmd \
 			-S "$$RM_DB_SERVER" -U "$$RM_DB_USER" -P "$$RM_DB_PASSWORD" -C \
-			-Q "SELECT 1" >/dev/null 2>&1 && break; \
+			-Q "SELECT 1" >/dev/null 2>&1 && { ready=1; break; }; \
 		sleep 3; \
-	done
+	done; \
+	if [ "$$ready" -ne 1 ]; then \
+		echo "ERROR: MSSQL did not become ready after 10 probes" >&2; \
+		exit 1; \
+	fi
 	@echo "Catalog databases are created on first rmig run (from directories under RM_SQL_ROOT)."
 
 db-down:

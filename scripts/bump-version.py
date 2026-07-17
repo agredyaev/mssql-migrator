@@ -47,29 +47,30 @@ def main():
     new_version = f"{major}.{minor}.{patch}{suffix}"
     print(f"Bumping to: {new_version}")
 
-    # Write new version to VERSION file
+    # Validate EVERY target before writing ANY file: a failure must never
+    # leave VERSION and Cargo.toml disagreeing.
+    if not os.path.isfile(cargo_path):
+        print(f"Error: Cargo.toml not found at {cargo_path}", file=sys.stderr)
+        sys.exit(1)
+    with open(cargo_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Bounded to the [workspace.package] table: `(?!\[)` stops the crawl at the
+    # next table header so a version key in an unrelated table can never match.
+    pattern = r"(\[workspace\.package\]\s*\n(?:(?!\[).*\n)*?version\s*=\s*\")[^\"]+(\")"
+    new_content, count = re.subn(pattern, rf"\g<1>{new_version}\g<2>", content, count=1)
+    if count == 0:
+        print(
+            "Error: Could not find version inside [workspace.package] block in Cargo.toml.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     with open(version_path, "w", encoding="utf-8") as f:
         f.write(new_version + "\n")
-
-    # Update Cargo.toml
-    if os.path.isfile(cargo_path):
-        with open(cargo_path, "r", encoding="utf-8") as f:
-            content = f.read()
-
-        # We want to replace `version = "..."` under `[workspace.package]`
-        pattern = r"(\[workspace\.package\]\s*\n(?:.*\n)*?version\s*=\s*\")[^\"]+(\")"
-        new_content, count = re.subn(pattern, rf"\g<1>{new_version}\g<2>", content, count=1)
-        if count > 0:
-            with open(cargo_path, "w", encoding="utf-8") as f:
-                f.write(new_content)
-            print(f"Updated {cargo_path}")
-        else:
-            print(
-                "Error: Could not find version inside [workspace.package] block in Cargo.toml.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
+    with open(cargo_path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    print(f"Updated {cargo_path}")
     print(f"Successfully bumped version to {new_version}")
 
 if __name__ == "__main__":

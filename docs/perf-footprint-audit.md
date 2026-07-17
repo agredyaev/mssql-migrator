@@ -32,7 +32,7 @@ Footprint work validates layout policy under [`data-oriented-layout-policy.md`](
 
 - Skip-heavy 5k workspace is the headline diff benchmark.
 - dhat **loop** phase B/iter is the allocation regression signal (target **0 B/iter** after warmup).
-- Struct sizes are platform-dependent; committed baseline is checked on maintainer platforms via `make check` / local bench.
+- Struct sizes are platform-dependent; the committed baseline is validated by `make bench-footprint` (which runs `footprint_baseline_match` in `migrator-core-dev`); `make check` does not select that crate.
 
 ## Nominal flow
 

@@ -10,7 +10,7 @@ Describe **DDL/DML apply execution**: schemas, objects, transitions, transaction
 
 - `crates/core/src/apply/mod.rs` - `execute_plan` orchestration
 - `crates/core/src/apply/schemas.rs`, `objects.rs`, `objects_exec.rs`, `transitions.rs`
-- `crates/core/src/apply/tx.rs`, `kind.rs`, `result.rs`
+- `crates/core/src/apply/history_write.rs`, `kind.rs`, `result.rs`
 
 ## System context
 

@@ -7,21 +7,30 @@ cd "$ROOT"
 CARGO_TOML="$ROOT/Cargo.toml"
 fail=0
 
+# Extract exactly one TOML table's body: keys found in UNRELATED tables must
+# never satisfy this gate.
+section() {
+  awk -v s="[$1]" 'index($0, s) == 1 { f = 1; next } /^\[/ { f = 0 } f' "$CARGO_TOML"
+}
+
+DIST="$(section profile.release-dist)"
+RELEASE="$(section profile.release)"
+
 require() {
   local key="$1"
   local expected="$2"
-  if ! rg -q "^\s*${key}\s*=\s*${expected}\s*$" "$CARGO_TOML"; then
+  if ! printf '%s\n' "$DIST" | rg -q "^\s*${key}\s*=\s*${expected}\s*$"; then
     echo "release-profile: [profile.release-dist] must set ${key} = ${expected}" >&2
     fail=1
   fi
 }
 
-if ! rg -q '^\[profile\.release-dist\]' "$CARGO_TOML"; then
-  echo "release-profile: missing [profile.release-dist] in Cargo.toml" >&2
+if [[ -z "$DIST" ]]; then
+  echo "release-profile: missing or empty [profile.release-dist] in Cargo.toml" >&2
   fail=1
 fi
 
-if ! rg -q '^\s*lto\s*=\s*("fat"|true)\s*$' "$CARGO_TOML"; then
+if ! printf '%s\n' "$DIST" | rg -q '^\s*lto\s*=\s*("fat"|true)\s*$'; then
   echo "release-profile: [profile.release-dist] must set lto = true or lto = \"fat\"" >&2
   fail=1
 fi
@@ -32,12 +41,12 @@ require debug false
 require panic \"abort\"
 require incremental false
 
-if ! rg -q '^\[profile\.release\]' "$CARGO_TOML"; then
-  echo "release-profile: missing [profile.release]" >&2
+if [[ -z "$RELEASE" ]]; then
+  echo "release-profile: missing or empty [profile.release]" >&2
   fail=1
 fi
 
-if ! rg -q '^\s*debug\s*=\s*true\s*$' "$CARGO_TOML"; then
+if ! printf '%s\n' "$RELEASE" | rg -q '^\s*debug\s*=\s*true\s*$'; then
   echo "release-profile: [profile.release] should keep debug = true for flamegraphs" >&2
   fail=1
 fi

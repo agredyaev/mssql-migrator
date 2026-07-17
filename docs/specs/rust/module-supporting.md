@@ -105,7 +105,7 @@ graph TD
 ### 2. Dynamic Integration Checks
 - Verify CLI version output formats:
   ```bash
-  ./bin/rmig --version
+  ./bin/rmig version
   ./bin/rmig version --json
   ```
 
@@ -115,7 +115,7 @@ graph TD
 
 ### 1. Lock Cleanup
 - In the event of a crash during a locked migrate run, the distributed lock might remain active.
-- **Recovery**: Operators can run the recovery SQL embedded in `sql/lock/release.sql` from an external SQL terminal. In practice this is rarely needed: the lock is session-scoped (`@LockOwner = 'Session'`), so it auto-releases when the crashed connection closes. (`repair-checksum` repairs audit checksums only and does not touch locks.)
+- **Recovery**: The lock is session-scoped (`@LockOwner = 'Session'`), so it auto-releases when the crashed connection closes — this covers almost every crash. If a wedged-but-alive session still holds it, `sql/lock/release.sql` only works ON that owning session; from another session, identify and kill the owner instead: `SELECT request_session_id FROM sys.dm_tran_locks WHERE resource_type = 'APPLICATION';` then `KILL <spid>;`. (`repair-checksum` repairs audit checksums only and does not touch locks.)
 
 ### 2. Re-compiling Static Assets
 - Modifying T-SQL code inside `sql/` does not require database migration; it only requires running:

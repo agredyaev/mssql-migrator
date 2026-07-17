@@ -23,12 +23,12 @@ Lifecycle: `Current`.
 
 ## E2e scenario matrix (`make e2e-all`)
 
-Baselines: [`crates/core/tests/testdata/e2e/`](../crates/core/tests/testdata/e2e/). Harness: [`scenario_e2e_integration.rs`](../crates/core/tests/scenario_e2e_integration.rs).
+Baselines: [`crates/core/tests/testdata/e2e/`](../../crates/core/tests/testdata/e2e/). Harness: [`scenario_e2e_integration.rs`](../../crates/core/tests/scenario_e2e_integration.rs).
 
 | Scenario | Behavior |
 |----------|----------|
 | `empty_db_plan` | 6x `create_object`; DB reset |
-| `prod_gate_cold` | Gate GO vs [`plan_baseline_empty_db.json`](../crates/core/tests/testdata/prod_gate/plan_baseline_empty_db.json) |
+| `prod_gate_cold` | Gate GO vs [`plan_baseline_empty_db.json`](../../crates/core/tests/testdata/prod_gate/plan_baseline_empty_db.json) |
 | `warm_db_plan` | 6x `skip_unchanged` after apply setup |
 | `skip_unchanged_plan` | unchanged adopt path |
 | `catalog_cache_plan` | `RMIG_CATALOG_CACHE=1` |
@@ -49,7 +49,7 @@ After `make e2e-all`, inspect `azdo_deploy_meta.history`: expect `kind=migration
 
 ## Footprint
 
-Committed baseline: [`crates/core/tests/testdata/perf/footprint_baseline.json`](../crates/core/tests/testdata/perf/footprint_baseline.json).
+Committed baseline: [`crates/core/tests/testdata/perf/footprint_baseline.json`](../../crates/core/tests/testdata/perf/footprint_baseline.json).
 
 ```bash
 make bench-footprint
@@ -63,7 +63,7 @@ ops/perf/footprint_bench.sh alloc scan_root
 ops/perf/footprint_bench.sh alloc cache
 ```
 
-Runbook: [`docs/perf-footprint-audit.md`](../docs/perf-footprint-audit.md).
+Runbook: [`docs/perf-footprint-audit.md`](../../docs/perf-footprint-audit.md).
 
 ## Environment (common)
 

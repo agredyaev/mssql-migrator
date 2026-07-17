@@ -74,7 +74,7 @@ from the repository tree are therefore never created, altered, or dropped — se
 
 ## Verification And Validation
 
-- Contracts and checks: `crates/core/src/apply/tx.rs` test (XACT_ABORT wrapping), `crates/core/src/tests/proxy_test.rs` (command timeout), `crates/core/src/tests/schema_sql_test.rs` (idempotent, injection-safe `CREATE SCHEMA`), `crates/core/src/tests/command_mutates_test.rs` (only mutating commands lock), and the SQL integration suite under `ops/perf/sql_regression.sh`.
+- Contracts and checks: `crates/core/src/apply/history_write.rs` test (XACT_ABORT wrapping), `crates/core/src/tests/proxy_test.rs` (command timeout), `crates/core/src/tests/schema_sql_test.rs` (idempotent, injection-safe `CREATE SCHEMA`), `crates/core/src/tests/command_mutates_test.rs` (only mutating commands lock), and the SQL integration suite under `ops/perf/sql_regression.sh`.
 - Existing-database safety: `crates/core/tests/unmanaged_objects_test.rs` (offline diff guards — absence never drops; the production gate is fail-closed on blocked plans) and `crates/core/tests/existing_db_adoption_integration.rs` (real-database preservation across `migrate` and read-only `plan`).
 - Evidence artifacts: plan JSON, audit history rows, and `make check-e2e` output.
 - Exit criteria: a clean apply succeeds; a failing apply stops at the first error, reports it, and leaves a clear (non-hanging) state.

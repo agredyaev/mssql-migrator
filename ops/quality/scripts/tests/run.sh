@@ -1,0 +1,267 @@
+#!/usr/bin/env bash
+# Regression tests for shell/python gates and harness scripts.
+# Each case replays the reproduction of a fixed bug against the CURRENT
+# scripts, so the gate itself has a gate. Offline; no Docker, no SQL.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
+# ROOT resolves to repo root: tests/ -> scripts/ -> quality/ -> ops/ -> repo
+[[ -f "$ROOT/Makefile" ]] || { echo "script-tests: bad ROOT $ROOT" >&2; exit 1; }
+
+PASS=0
+FAIL=0
+
+ok()   { PASS=$((PASS + 1)); echo "ok   - $1"; }
+bad()  { FAIL=$((FAIL + 1)); echo "FAIL - $1" >&2; }
+check() { # check <name> <expected_rc> cmd...
+  local name="$1" want="$2"; shift 2
+  local rc=0
+  "$@" >/dev/null 2>&1 || rc=$?
+  if [[ "$rc" -eq "$want" ]]; then ok "$name"; else bad "$name (rc=$rc want=$want)"; fi
+}
+
+tmp_root() { mktemp -d "${TMPDIR:-/tmp}/rmig-script-tests.XXXXXX"; }
+
+# --- bump-version: validate-first, table-bounded regex ---------------------
+t="$(tmp_root)"
+mkdir -p "$t/scripts"
+cp "$ROOT/scripts/bump-version.py" "$t/scripts/"
+printf '1.2.3\n' > "$t/VERSION"
+cat > "$t/Cargo.toml" <<'EOF'
+[workspace.package]
+edition = "2021"
+
+[unrelated]
+version = "9.9.9"
+EOF
+rc=0; (cd "$t" && python3 scripts/bump-version.py patch) >/dev/null 2>&1 || rc=$?
+if [[ "$rc" -ne 0 && "$(cat "$t/VERSION")" == "1.2.3" ]] \
+    && grep -q '9\.9\.9' "$t/Cargo.toml"; then
+  ok "bump-version leaves both files untouched when workspace version is missing"
+else
+  bad "bump-version consistency (rc=$rc VERSION=$(cat "$t/VERSION"))"
+fi
+rm -rf "$t"
+
+# --- release-deps: a failing cargo must fail the gate ----------------------
+t="$(tmp_root)"
+mkdir -p "$t/bin"
+printf '#!/bin/sh\nexit 42\n' > "$t/bin/cargo"; chmod +x "$t/bin/cargo"
+check "release-deps fails when cargo tree fails" 1 \
+  env PATH="$t/bin:$PATH" bash "$ROOT/scripts/check-rust-release-deps.sh"
+rm -rf "$t"
+
+# --- release-profile: keys in unrelated tables must not satisfy the gate ---
+t="$(tmp_root)"
+mkdir -p "$t/scripts"
+cp "$ROOT/scripts/check-rust-release-profile.sh" "$t/scripts/"
+cat > "$t/Cargo.toml" <<'EOF'
+[profile.release-dist]
+inherits = "release"
+
+[profile.unused]
+lto = "fat"
+strip = true
+codegen-units = 1
+debug = false
+panic = "abort"
+incremental = false
+
+[profile.release]
+debug = true
+EOF
+check "release-profile rejects keys parked in an unrelated table" 1 \
+  bash "$t/scripts/check-rust-release-profile.sh"
+rm -rf "$t"
+
+# --- check-rust-arch: nested CLI modules are scanned -----------------------
+t="$(tmp_root)"
+mkdir -p "$t/scripts" "$t/crates/cli/src/nested" "$t/crates/rmigd/src" "$t/crates/core/src"
+cp "$ROOT/scripts/check-rust-arch.sh" "$t/scripts/"
+echo 'use migrator_core::session::connect_daemon;' > "$t/crates/cli/src/nested/forbidden.rs"
+cat > "$t/crates/rmigd/src/main.rs" <<'EOF'
+use migrator_core::session;
+fn main() { migrator_core::session::run_daemon(); }
+EOF
+check "arch gate catches forbidden imports in nested CLI modules" 1 \
+  bash "$t/scripts/check-rust-arch.sh"
+rm -rf "$t"
+
+# --- check-e2e-scenarios: gutted orchestrator must fail --------------------
+t="$(tmp_root)"
+mkdir -p "$t/scripts" "$t/crates/core/tests/testdata/e2e" "$t/ops/perf"
+cp "$ROOT/scripts/check-e2e-scenarios.sh" "$t/scripts/"
+for s in empty_db_plan warm_db_plan skip_unchanged_plan catalog_cache_plan; do
+  echo '{}' > "$t/crates/core/tests/testdata/e2e/e2e_baseline_${s}.json"
+done
+# Names only in a COMMENT; orchestrator invokes nothing.
+cat > "$t/crates/core/tests/scenario_e2e_integration.rs" <<'EOF'
+// empty_db_plan warm_db_plan skip_unchanged_plan catalog_cache_plan
+EOF
+echo 'echo matrix removed' > "$t/ops/perf/e2e_all.sh"
+check "e2e-scenarios gate fails when the orchestrator invokes nothing" 1 \
+  bash "$t/scripts/check-e2e-scenarios.sh"
+rm -rf "$t"
+
+# --- doc path gate: crates/ refs are existence-checked ---------------------
+t="$(tmp_root)"
+mkdir -p "$t/docs" "$t/ops/quality/scripts"
+cp "$ROOT"/ops/quality/scripts/*.py "$t/ops/quality/scripts/"
+printf 'See `crates/does-not-exist.rs` for details.\n' > "$t/docs/probe.md"
+check "doc path gate fails on a missing crates/ path" 1 \
+  env REPO_ROOT="$t" python3 "$t/ops/quality/scripts/check_doc_path_references.py"
+rm -rf "$t"
+
+# --- doc structure/context: fenced examples cannot satisfy the contract ----
+t="$(tmp_root)"
+mkdir -p "$t/docs" "$t/ops/quality/scripts"
+cp "$ROOT"/ops/quality/scripts/*.py "$t/ops/quality/scripts/"
+cat > "$t/docs/fenced.md" <<'EOF'
+# Fenced probe
+
+```markdown
+Lifecycle: `Current`.
+
+## Purpose
+## Scope
+## System Context
+## Interfaces And Boundaries
+## Assumptions And Constraints
+## Nominal Flow
+## Off-Nominal Behavior And Failure Containment
+## Verification And Validation
+## Operations And Recovery
+## Open Issues And Non-Goals
+## References
+```
+EOF
+check "doc structure gate ignores headings inside fences" 1 \
+  env REPO_ROOT="$t" python3 "$t/ops/quality/scripts/check_doc_structure.py"
+check "doc context gate ignores lifecycle inside fences" 1 \
+  env REPO_ROOT="$t" python3 "$t/ops/quality/scripts/check_doc_context.py"
+rm -rf "$t"
+
+# --- doc sync: a prose TODO is not an index entry --------------------------
+t="$(tmp_root)"
+mkdir -p "$t/docs/specs/rust" "$t/ops/quality/scripts"
+cp "$ROOT"/ops/quality/scripts/*.py "$t/ops/quality/scripts/"
+touch "$t/docs/specs/rust/module-hidden.md"
+cat > "$t/docs/specs/rust/README.md" <<'EOF'
+# Index
+
+TODO: `module-hidden.md` must be added to the index.
+EOF
+check "doc sync gate rejects filename mentions outside index rows/links" 1 \
+  env REPO_ROOT="$t" python3 "$t/ops/quality/scripts/check_doc_sync.py"
+rm -rf "$t"
+
+# --- e2e_timings: typed deltas, no ms arithmetic on strings/bools ----------
+if python3 - "$ROOT" <<'EOF'
+import sys
+sys.path.insert(0, sys.argv[1] + "/ops/perf")
+import e2e_timings as t
+assert t.delta_str("cold_full", "git_delta") == "cold_full -> git_delta"
+assert t.delta_str("cold_full", "cold_full") == "="
+assert "ms" not in t.delta_str(False, True), t.delta_str(False, True)
+assert t.delta_str(100, 150).startswith("+50ms")
+EOF
+then ok "e2e_timings renders categorical/bool deltas as transitions"; else bad "e2e_timings delta typing"; fi
+
+# --- dhat_alloc_tree: zero iterations rejected at the CLI ------------------
+t="$(tmp_root)"
+echo '{}' > "$t/heap.json"
+check "dhat_alloc_tree rejects --iterations 0" 2 \
+  python3 "$ROOT/ops/perf/dhat_alloc_tree.py" "$t/heap.json" --iterations 0
+rm -rf "$t"
+
+# --- e2e_all finalizer preserves scenario rows (no same-path tee) ----------
+if grep -q 'mktemp' "$ROOT/ops/perf/e2e_all.sh" \
+    && ! grep -q 'cat "\$REPORT"$' <(grep -A2 'e2e ALL: PASS' "$ROOT/ops/perf/e2e_all.sh" | grep 'tee'); then
+  ok "e2e_all finalizes via temp+rename, not a same-path tee"
+else
+  bad "e2e_all finalizer structure"
+fi
+
+# --- sql_regression: injection guard + identity-checked lock/cleanup -------
+if grep -q 'A-Za-z0-9_' "$ROOT/ops/perf/sql_regression.sh" \
+    && grep -q 'lstart' "$ROOT/ops/perf/sql_regression.sh" \
+    && grep -q 'RMIGD_SOCKET must live under' "$ROOT/ops/perf/sql_regression.sh"; then
+  ok "sql_regression guards db names, lock identity, and socket cleanup"
+else
+  bad "sql_regression guard structure"
+fi
+
+# claim_lock runtime: an unrelated LIVE pid must not impersonate the owner
+t="$(tmp_root)"
+sleep 60 & DUMMY=$!
+mkdir -p "$t/.rmig/sql-regression.lock"
+printf '%s\nnot-the-real-start-time\n' "$DUMMY" > "$t/.rmig/sql-regression.lock/pid"
+if env ROOT="$t" bash -c '
+  set -euo pipefail
+  LOCK_DIR="$ROOT/.rmig/sql-regression.lock"
+  LOCK_PID="$LOCK_DIR/pid"
+  '"$(sed -n '/^proc_start()/,/^}/p;/^write_lock_owner()/,/^}/p;/^claim_lock()/,/^}/p' "$ROOT/ops/perf/sql_regression.sh")"'
+  claim_lock
+' >/dev/null 2>&1; then
+  ok "claim_lock reclaims a lock held by a reused unrelated PID"
+else
+  bad "claim_lock PID-reuse reclamation"
+fi
+kill "$DUMMY" 2>/dev/null || true
+rm -rf "$t"
+
+# --- footprint_bench alloc: stale heap must not be republished -------------
+t="$(tmp_root)"
+mkdir -p "$t/ops/perf/artifacts" "$t/bin" "$t/crates/core-dev"
+cp "$ROOT/ops/perf/footprint_bench.sh" "$t/ops/perf/"
+echo '{"old": true}' > "$t/ops/perf/artifacts/dhat_heap.json"
+printf '#!/bin/sh\nexit 0\n' > "$t/bin/cargo"; chmod +x "$t/bin/cargo"
+printf '#!/bin/sh\nexit 0\n' > "$t/bin/python3"; chmod +x "$t/bin/python3"
+check "footprint alloc fails without a FRESH dhat heap" 1 \
+  env PATH="$t/bin:$PATH" bash "$t/ops/perf/footprint_bench.sh" alloc skip_heavy
+if [[ ! -f "$t/ops/perf/artifacts/dhat_heap.json" ]]; then
+  ok "footprint alloc removed the stale heap instead of republishing it"
+else
+  bad "footprint alloc stale heap still present"
+fi
+rm -rf "$t"
+
+# --- plan_db_perf: success requires a fresh trace --------------------------
+t="$(tmp_root)"
+mkdir -p "$t/ops/perf/artifacts" "$t/bin"
+cp "$ROOT/ops/perf/plan_db_perf.sh" "$t/ops/perf/"
+printf '#!/bin/sh\nexit 0\n' > "$t/bin/cargo"; chmod +x "$t/bin/cargo"
+check "plan_db_perf fails when no trace artifact was produced" 1 \
+  env PATH="$t/bin:$PATH" RMIG_PLAN_DB_TRACE=0 bash "$t/ops/perf/plan_db_perf.sh"
+rm -rf "$t"
+
+# --- compose/Makefile invariants -------------------------------------------
+if grep -q '\$\$MSSQL_SA_PASSWORD' "$ROOT/docker-compose.yml" \
+    && grep -q '127\.0\.0\.1:' "$ROOT/docker-compose.yml" \
+    && ! grep -q 'container_name:' "$ROOT/docker-compose.yml"; then
+  ok "compose: healthcheck env password, loopback bind, no fixed container name"
+else
+  bad "compose invariants"
+fi
+
+# db-up: all probes failing must fail the target
+t="$(tmp_root)"
+mkdir -p "$t/ops/perf" "$t/bin"
+cp "$ROOT/Makefile" "$t/"
+cp "$ROOT/ops/perf/e2e_env.sh" "$t/ops/perf/"
+cat > "$t/bin/docker" <<'EOF'
+#!/bin/sh
+case "$1 $2" in
+  "compose up") exit 0 ;;
+  "compose exec") exit 1 ;;
+esac
+exit 0
+EOF
+chmod +x "$t/bin/docker"
+printf '#!/bin/sh\nexit 0\n' > "$t/bin/sleep"; chmod +x "$t/bin/sleep"
+check "make db-up fails when SQL Server never becomes ready" 2 \
+  env PATH="$t/bin:/usr/bin:/bin" make -C "$t" db-up
+rm -rf "$t"
+
+echo ""
+echo "script-tests: $PASS passed, $FAIL failed"
+[[ "$FAIL" -eq 0 ]]

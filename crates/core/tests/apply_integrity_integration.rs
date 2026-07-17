@@ -328,3 +328,41 @@ async fn validate_blocked_plan_exits_nonzero_regression() {
     let code = run(&cfg, Command::Validate).await.expect("validate runs");
     assert_eq!(code, EXIT_PLAN_BLOCKED, "blocked validate must exit 10");
 }
+
+/// A table change + its transition + a NEW view depending on the added column
+/// must deploy in ONE migrate: transitions run before dependent objects.
+#[tokio::test(flavor = "current_thread")]
+async fn transition_runs_before_dependent_objects_regression() {
+    if !integration_enabled::enabled() {
+        eprintln!("skip: RMIG_RUN_SQLSERVER_INTEGRATION not set");
+        return;
+    }
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path();
+    write(root, &format!("{DB}/smoke/tables/guarded.sql"), TABLE_V1);
+    let (mut cfg, mut conn) = fresh(root).await;
+    cfg.set_allow_adopt(true);
+    assert_eq!(run(&cfg, Command::Migrate).await.expect("cold"), 0);
+
+    // One change set: table gains `extra`, a transition adds it, and a NEW
+    // view selects it. The old apply order ran the view first and failed.
+    write(root, &format!("{DB}/smoke/tables/guarded.sql"), TABLE_V2);
+    write(
+        root,
+        &format!("{DB}/smoke/tables/_migrations/guarded/001_abcdef1_add.sql"),
+        "ALTER TABLE smoke.guarded ADD extra INT;\n",
+    );
+    write(
+        root,
+        &format!("{DB}/smoke/views/v_extra.sql"),
+        "CREATE OR ALTER VIEW smoke.v_extra AS SELECT extra FROM smoke.guarded;\n",
+    );
+    assert_eq!(
+        run(&cfg, Command::Migrate).await.expect("one-shot migrate"),
+        0,
+        "dependent view must deploy in the same run as its transition"
+    );
+    conn.query("SELECT extra FROM smoke.v_extra", &[])
+        .await
+        .expect("view sees the transition-added column");
+}

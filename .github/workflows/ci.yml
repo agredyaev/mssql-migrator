@@ -16,20 +16,13 @@
 # ---------------------------------------------------------------------------
 name: CI
 
+# No paths-ignore: the documentation quality gate (make doc-check) is only
+# reachable through this workflow, so docs-only changes must trigger CI too.
 on:
   push:
     branches: [main, master]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'AGENTS.md'
   pull_request:
     branches: [main, master]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'AGENTS.md'
-      - '.github/pull_request_template.md'
 
 # Least privilege: the CI pipeline only reads the repo. Inherited by the
 # reusable lint/test/build workflows, which cannot exceed the caller's scope.

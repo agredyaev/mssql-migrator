@@ -11,20 +11,24 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import doc_checks_common as C  # noqa: E402
 
-REF_RE = re.compile(r"`((?:internal|cmd|docs|ops)/[^`]+|Makefile)`")
+REF_RE = re.compile(
+    r"`((?:internal|cmd|docs|ops|crates|scripts|sql|\.github)/[^`]+|Makefile)`"
+)
 
 
 def should_skip_path(raw: str) -> bool:
-    if "*" in raw or "?" in raw or "(" in raw or ")" in raw:
+    # Globs, alternations, ellipses, and free text are not exact paths.
+    if any(ch in raw for ch in "*?() ") or "..." in raw:
         return True
-    parts = raw.split("/")
-    if not parts:
-        return True
-    last = parts[-1]
-    # Skip type-like segments (e.g. crates/core/src/engine/run.rs types).
-    if "." in last and not last.endswith((".go", ".md", ".sql", ".yml", ".yaml")):
-        return True
-    return False
+    return not raw.split("/")
+
+
+def normalize(raw: str) -> str:
+    # `path.rs:123` line references point at the file.
+    head, _, tail = raw.rpartition(":")
+    if head and tail.replace("-", "").isdigit():
+        return head
+    return raw
 
 
 def main() -> int:
@@ -36,7 +40,7 @@ def main() -> int:
             continue
         text = path.read_text(encoding="utf-8")
         for m in REF_RE.finditer(text):
-            raw = m.group(1).strip().rstrip("/")
+            raw = normalize(m.group(1).strip().rstrip("/"))
             if should_skip_path(raw):
                 continue
             target = root / raw

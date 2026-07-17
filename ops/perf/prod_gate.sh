@@ -23,6 +23,12 @@ if [ "${RMIG_GATE_SKIP_DB_RESET:-}" != "1" ]; then
     [ -d "$db" ] || continue
     name="$(basename "$db")"
     [[ "$name" == .* ]] && continue
+    # Directory names reach privileged T-SQL: refuse anything that could
+    # escape the literal/identifier context.
+    if ! [[ "$name" =~ ^[A-Za-z0-9_]+$ ]]; then
+      echo "ERROR: unsafe catalog directory name (allowed: [A-Za-z0-9_]+): $name" >&2
+      exit 1
+    fi
     docker compose -f "$ROOT/docker-compose.yml" exec -T mssql /opt/mssql-tools18/bin/sqlcmd \
       -S "$RM_DB_SERVER" -U "$RM_DB_USER" -P "$RM_DB_PASSWORD" -C \
       -Q "IF DB_ID('${name}') IS NOT NULL BEGIN ALTER DATABASE [${name}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${name}]; END; CREATE DATABASE [${name}];"
