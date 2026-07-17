@@ -111,18 +111,19 @@ pub async fn verify_ddl_transition_applied(
     }
     if cfg.catalog_cache() {
         verify_catalog_index_parents(conn).await?;
+        // Object history is an event log: a transition apply appends an extra
+        // baseline record for its parent table, so compare distinct keys.
+        let distinct_objects = count_distinct_object_keys(conn).await?;
         let meta_count = catalog_meta_object_count(conn).await?;
-        if meta_count != snap.audit_object_rows {
+        if meta_count != distinct_objects {
             return Err(Error::Other(anyhow::anyhow!(
-                "catalog_meta.object_count={meta_count} != audit object rows {}",
-                snap.audit_object_rows
+                "catalog_meta.object_count={meta_count} != distinct audit object keys {distinct_objects}"
             )));
         }
-        if snap.catalog_cache_rows != snap.audit_object_rows {
+        if snap.catalog_cache_rows != distinct_objects {
             return Err(Error::Other(anyhow::anyhow!(
-                "catalog_cache rows {} != audit object rows {}",
-                snap.catalog_cache_rows,
-                snap.audit_object_rows
+                "catalog_cache rows {} != distinct audit object keys {distinct_objects}",
+                snap.catalog_cache_rows
             )));
         }
     }
@@ -168,6 +169,17 @@ async fn verify_migration_row_content(conn: &mut TimingConn, keys: &[String]) ->
         }
     }
     Ok(())
+}
+
+async fn count_distinct_object_keys(conn: &mut TimingConn) -> Result<i32> {
+    let rows = conn
+        .query(
+            "SELECT COUNT(DISTINCT normalized_key) FROM azdo_deploy_meta.history \
+             WHERE kind = 'object'",
+            &[],
+        )
+        .await?;
+    Ok(rows.first().and_then(|r| r.get_i32(0)).unwrap_or(0))
 }
 
 async fn catalog_meta_object_count(conn: &mut TimingConn) -> Result<i32> {

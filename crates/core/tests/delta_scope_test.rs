@@ -51,3 +51,17 @@ fn scope_git_delta_marks_hot() {
     let scope = build_inspect_scope(&ws, &["db/smoke/triggers/tr.sql".into()], false, &checksums);
     assert!(scope.hot_keys.contains("smoke/triggers/tr"));
 }
+
+/// The git-delta catalog query is scoped by this JSON: if changed objects do
+/// not appear here, a git-delta migrate inspects nothing and misreads every
+/// existing object as absent.
+#[test]
+fn git_hot_scope_json_targets_changed_objects_regression() {
+    let ws = sample_ws();
+    let json = migrator_core::plan::git_hot_scope_json(&ws, &["db/smoke/triggers/tr.sql".into()]);
+    assert!(json.contains("\"object\":\"tr\""), "scope json={json}");
+    assert!(
+        json.contains("\"object\":\"t1\""),
+        "delta closure parent must be inspected too: {json}"
+    );
+}

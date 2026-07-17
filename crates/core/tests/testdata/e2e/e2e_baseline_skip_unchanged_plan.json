@@ -1,28 +1,39 @@
 {
   "scenario": "skip_unchanged_plan",
-  "setup_steps": [
-    "apply_baseline",
-    "plan_pipeline_after_audit"
-  ],
   "timings": {
-    "scan_ms": 1,
-    "inspect_ms": 125,
-    "checksums_ms": 13,
-    "parallel_wall_ms": 138,
-    "audit_ms": 13,
-    "plan_wall_ms": 140
+    "connect_ms": 6,
+    "plan_wall_ms": 7,
+    "engine_ms": 1,
+    "l1_cache_hit": true
   },
   "io": {
-    "query_ms": 138,
-    "query_calls": 3,
-    "fetch_calls": 18,
-    "exec_ms": 22,
-    "exec_calls": 1
+    "query_ms": 0,
+    "query_calls": 0,
+    "exec_ms": 0,
+    "exec_calls": 0,
+    "extra_connects": 0,
+    "extra_connect_ms": 0
   },
   "snapshot": {
-    "version": "2",
-    "blocked": false,
     "objects": {
+      "dactests/smoke/tables/smoke_table": {
+        "object_path": "dactests/smoke/tables/smoke_table.sql",
+        "planned_action": "skip_unchanged",
+        "checksum_hex": "75fdafa30d217c791047a3d8bd5f36dd62548e04a5154e758355a51525b2f973",
+        "exists": true
+      },
+      "dactests/smoke/procedures/refresh_smoke": {
+        "object_path": "dactests/smoke/procedures/refresh_smoke.sql",
+        "planned_action": "skip_unchanged",
+        "checksum_hex": "7c2a5c4e06dfce6443298b95e9fdb4096b74d7129dfbbcafa2b3179aba71783d",
+        "exists": true
+      },
+      "dactests/smoke/views/smoke_view": {
+        "object_path": "dactests/smoke/views/smoke_view.sql",
+        "planned_action": "skip_unchanged",
+        "checksum_hex": "0866904090688283ba7b385de540f69f1cdaeab548e32f1f3885b5d33a91e850",
+        "exists": true
+      },
       "dactests/smoke/functions/get_smoke_rows": {
         "object_path": "dactests/smoke/functions/get_smoke_rows.sql",
         "planned_action": "skip_unchanged",
@@ -40,26 +51,10 @@
         "planned_action": "skip_unchanged",
         "checksum_hex": "f9a6c8571766b182ff2924ebdd46366a0cb672c38e3749d286bae7ea1e860c57",
         "exists": true
-      },
-      "dactests/smoke/procedures/refresh_smoke": {
-        "object_path": "dactests/smoke/procedures/refresh_smoke.sql",
-        "planned_action": "skip_unchanged",
-        "checksum_hex": "7c2a5c4e06dfce6443298b95e9fdb4096b74d7129dfbbcafa2b3179aba71783d",
-        "exists": true
-      },
-      "dactests/smoke/tables/smoke_table": {
-        "object_path": "dactests/smoke/tables/smoke_table.sql",
-        "planned_action": "skip_unchanged",
-        "checksum_hex": "75fdafa30d217c791047a3d8bd5f36dd62548e04a5154e758355a51525b2f973",
-        "exists": true
-      },
-      "dactests/smoke/views/smoke_view": {
-        "object_path": "dactests/smoke/views/smoke_view.sql",
-        "planned_action": "skip_unchanged",
-        "checksum_hex": "0866904090688283ba7b385de540f69f1cdaeab548e32f1f3885b5d33a91e850",
-        "exists": true
       }
-    }
+    },
+    "version": "2",
+    "blocked": false
   },
   "action_counts": {
     "skip_unchanged": 6

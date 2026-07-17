@@ -95,3 +95,41 @@ fn apply_compare_flags_missing_timing_regression() {
         "zero-vs-nonzero timing must fail: {msgs:?}"
     );
 }
+
+/// Scaffold file names embed the git short rev and reports may record them
+/// relative or absolute; identity must survive both while content drift stays
+/// visible.
+#[test]
+fn blocked_compare_scaffold_rev_and_path_insensitive_regression() {
+    let baseline = E2EBlockedReport {
+        scaffold_paths: vec![
+            "../../.temp/sql/d/smoke/tables/_migrations/t/001_e33e3aa_auto_add_columns.sql".into(),
+        ],
+        ..Default::default()
+    };
+    let actual = E2EBlockedReport {
+        scaffold_paths: vec![
+            "/abs/repo/.temp/sql/d/smoke/tables/_migrations/t/001_b0128e3_auto_add_columns.sql"
+                .into(),
+        ],
+        ..Default::default()
+    };
+    let msgs = compare_e2e_blocked_reports(&baseline, &actual);
+    assert!(
+        !msgs.iter().any(|m| m.contains("scaffold_paths")),
+        "rev/base-dir churn is not scaffold drift: {msgs:?}"
+    );
+
+    let renamed = E2EBlockedReport {
+        scaffold_paths: vec![
+            "/abs/repo/.temp/sql/d/smoke/tables/_migrations/t/001_b0128e3_auto_drop_columns.sql"
+                .into(),
+        ],
+        ..Default::default()
+    };
+    let msgs = compare_e2e_blocked_reports(&baseline, &renamed);
+    assert!(
+        msgs.iter().any(|m| m.contains("scaffold_paths")),
+        "different scaffold content must stay visible: {msgs:?}"
+    );
+}

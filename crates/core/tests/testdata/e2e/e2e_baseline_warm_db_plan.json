@@ -1,38 +1,40 @@
 {
   "scenario": "warm_db_plan",
-  "setup_steps": [
-    "apply_baseline",
-    "plan_pipeline"
-  ],
   "timings": {
-    "scan_ms": 1,
-    "inspect_ms": 770,
-    "checksums_ms": 7,
-    "parallel_wall_ms": 778,
-    "audit_ms": 7,
-    "plan_wall_ms": 779
+    "connect_ms": 7,
+    "inspect_ms": 4,
+    "checksums_ms": 20,
+    "parallel_wall_ms": 25,
+    "audit_ms": 20,
+    "plan_wall_ms": 121,
+    "engine_ms": 114
   },
   "io": {
-    "query_ms": 777,
-    "query_calls": 3,
-    "fetch_calls": 18,
-    "exec_ms": 8,
-    "exec_calls": 1
+    "query_ms": 25,
+    "query_calls": 4,
+    "exec_ms": 0,
+    "exec_calls": 0,
+    "extra_connects": 0,
+    "extra_connect_ms": 0
   },
   "snapshot": {
-    "version": "2",
-    "blocked": false,
     "objects": {
+      "dactests/smoke/procedures/refresh_smoke": {
+        "object_path": "dactests/smoke/procedures/refresh_smoke.sql",
+        "planned_action": "skip_unchanged",
+        "checksum_hex": "7c2a5c4e06dfce6443298b95e9fdb4096b74d7129dfbbcafa2b3179aba71783d",
+        "exists": true
+      },
       "dactests/smoke/functions/get_smoke_rows": {
         "object_path": "dactests/smoke/functions/get_smoke_rows.sql",
         "planned_action": "skip_unchanged",
         "checksum_hex": "fc3135148b76ad803ba7d3c2f7359c9b96aec0dd641c23ce4ac86c239f8414b9",
         "exists": true
       },
-      "dactests/smoke/functions/smoke_count": {
-        "object_path": "dactests/smoke/functions/smoke_count.sql",
+      "dactests/smoke/views/smoke_view": {
+        "object_path": "dactests/smoke/views/smoke_view.sql",
         "planned_action": "skip_unchanged",
-        "checksum_hex": "1684481a2efedf2bb772b2d8a6ea939ca86029f1cc3aa37816373b7a8fefbe2f",
+        "checksum_hex": "0866904090688283ba7b385de540f69f1cdaeab548e32f1f3885b5d33a91e850",
         "exists": true
       },
       "dactests/smoke/indexes/ix_smoke_table_value": {
@@ -41,25 +43,21 @@
         "checksum_hex": "f9a6c8571766b182ff2924ebdd46366a0cb672c38e3749d286bae7ea1e860c57",
         "exists": true
       },
-      "dactests/smoke/procedures/refresh_smoke": {
-        "object_path": "dactests/smoke/procedures/refresh_smoke.sql",
-        "planned_action": "skip_unchanged",
-        "checksum_hex": "7c2a5c4e06dfce6443298b95e9fdb4096b74d7129dfbbcafa2b3179aba71783d",
-        "exists": true
-      },
       "dactests/smoke/tables/smoke_table": {
         "object_path": "dactests/smoke/tables/smoke_table.sql",
         "planned_action": "skip_unchanged",
         "checksum_hex": "75fdafa30d217c791047a3d8bd5f36dd62548e04a5154e758355a51525b2f973",
         "exists": true
       },
-      "dactests/smoke/views/smoke_view": {
-        "object_path": "dactests/smoke/views/smoke_view.sql",
+      "dactests/smoke/functions/smoke_count": {
+        "object_path": "dactests/smoke/functions/smoke_count.sql",
         "planned_action": "skip_unchanged",
-        "checksum_hex": "0866904090688283ba7b385de540f69f1cdaeab548e32f1f3885b5d33a91e850",
+        "checksum_hex": "1684481a2efedf2bb772b2d8a6ea939ca86029f1cc3aa37816373b7a8fefbe2f",
         "exists": true
       }
-    }
+    },
+    "version": "2",
+    "blocked": false
   },
   "action_counts": {
     "skip_unchanged": 6

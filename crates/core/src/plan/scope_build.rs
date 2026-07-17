@@ -31,7 +31,10 @@ pub fn build_inspect_scope(
         let obj = ws.entry(i);
         let key = ws.entry_key(i);
         let k = key.as_str();
-        if delta.contains(k) {
+        // Delta keys are database-qualified (`db/schema/kind/name`) to match
+        // snapshot identities; workspace keys carry the database separately.
+        let qualified = format!("{}/{k}", ws.database_name(obj.db_id));
+        if delta.contains(&qualified) {
             hot.insert(k.to_string());
             continue;
         }

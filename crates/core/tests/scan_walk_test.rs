@@ -232,3 +232,27 @@ fn scan_control_char_names_serialize_as_valid_json_regression() {
     let scope = ws.object_scope_json();
     serde_json::from_str::<serde_json::Value>(&scope).expect("scope JSON must be valid");
 }
+
+/// Check scripts live directly under `checks/` at either contract position;
+/// both are skipped silently without becoming deployable objects.
+#[test]
+fn scan_checks_under_schema_position_is_skipped_regression() {
+    let base = tempfile::tempdir().expect("tempdir");
+    write_sql(
+        base.path(),
+        "db/smoke/checks/smoke_has_rows.sql",
+        "SELECT COUNT(*) FROM smoke.t;\n",
+    );
+    write_sql(
+        base.path(),
+        "db/smoke/tables/t.sql",
+        "CREATE TABLE smoke.t(id INT);\n",
+    );
+    let ws = scan_ok(base.path());
+    assert_eq!(
+        ws.object_count(),
+        1,
+        "check script must not become an object"
+    );
+    assert_eq!(ws.entry_key(0).as_str(), "smoke/tables/t");
+}

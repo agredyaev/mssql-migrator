@@ -57,14 +57,14 @@ pub fn push_check(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
     Ok(())
 }
 
-/// True only for `<db>/checks/<file>.sql` — the contract position of check
-/// scripts. Deeper paths (for example a schema literally named `checks`)
-/// stay ordinary objects.
+/// True only for files directly inside a `checks/` folder at its contract
+/// positions: `<db>/checks/<file>.sql` or `<db>/<schema>/checks/<file>.sql`.
+/// Deeper paths (for example a schema literally named `checks` holding kind
+/// folders) stay ordinary objects.
 pub fn is_check_path(rel: &str) -> bool {
-    let mut parts = rel.split('/');
-    let _db = parts.next();
-    parts.next() == Some("checks")
-        && parts
-            .next()
-            .is_some_and(|f| parts.next().is_none() && !f.is_empty())
+    let parts: Vec<&str> = rel.split('/').collect();
+    matches!(
+        parts.as_slice(),
+        [_, "checks", f] | [_, _, "checks", f] if !f.is_empty()
+    )
 }

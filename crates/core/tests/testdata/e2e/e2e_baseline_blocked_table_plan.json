@@ -8,15 +8,15 @@
   "exit_code": 10,
   "blocked": true,
   "scaffold_paths": [
-    "../../.temp/sql/dactests/smoke/tables/_migrations/smoke_table/001_e33e3aa_auto_add_columns.sql"
+    "../../.temp/sql/dactests/smoke/tables/_migrations/smoke_table/001_633299e_auto_add_columns.sql"
   ],
   "timings": {
     "setup_apply_ms": 0,
-    "plan_wall_ms": 1489,
-    "plan_parallel_wall_ms": 241,
-    "plan_db_path": "git_delta",
-    "migrate_wall_ms": 1489,
-    "migrate_parallel_wall_ms": 241,
-    "total_ms": 2420
+    "plan_wall_ms": 200,
+    "plan_parallel_wall_ms": 8,
+    "plan_db_path": "incremental",
+    "migrate_wall_ms": 200,
+    "migrate_parallel_wall_ms": 8,
+    "total_ms": 324
   }
 }

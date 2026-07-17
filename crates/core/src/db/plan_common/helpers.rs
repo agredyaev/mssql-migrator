@@ -46,7 +46,9 @@ pub(crate) fn kinds_for_git_delta<'a>(ws: &'a Workspace, changed_paths: &[String
     let delta = expand_delta_closure(ws, keys_for_changed_paths(ws, changed_paths));
     let mut kinds = Vec::new();
     for (i, o) in ws.object_entries.iter().enumerate() {
-        if delta.contains(o.key_str(ws, i)) {
+        // Delta keys are database-qualified; workspace keys are not.
+        let qualified = format!("{}/{}", ws.database_name(o.db_id), o.key_str(ws, i));
+        if delta.contains(&qualified) {
             kinds.push(o.kind_part(ws, i));
         }
     }
