@@ -40,7 +40,7 @@ pub async fn run_plan_db_phase(
     ws: &Workspace,
     bypass_cache: bool,
 ) -> Result<PlanDbResult> {
-    let fp = crate::audit::db_fingerprint(&cfg.server, &cfg.database);
+    let fp = crate::audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     let l1 = L1Cache::new(&cfg.l1_cache_dir);
 
     if !bypass_cache {
@@ -83,8 +83,8 @@ pub async fn run_plan_db_phase(
     let keys_json = ws.normalized_keys_json();
 
     if cfg.session_socket.is_empty() {
-        run_parallel(cfg, conn, ws, &keys_json, &fp, &l1).await
+        run_parallel(cfg, conn, ws, &keys_json, &fp, &l1, bypass_cache).await
     } else {
-        run_batch(cfg, conn, ws, &keys_json, &fp, &l1).await
+        run_batch(cfg, conn, ws, &keys_json, &fp, &l1, bypass_cache).await
     }
 }

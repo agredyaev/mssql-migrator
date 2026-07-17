@@ -41,7 +41,7 @@ pub(super) async fn warmup_git_delta(
 
     if ctx.need_checksums {
         let t_cs = Instant::now();
-        checksums = load_checksums_plan(conn, ctx.db_fp, ctx.keys_json).await?;
+        checksums = load_checksums_plan(conn, ctx.db_fp, ctx.keys_json, ctx.bypass).await?;
         checksums_ms = timings::dur_ms(t_cs.elapsed());
         set_checksum_trace(&mut local_trace, ctx.db_fp, ctx.keys_json);
         round_trips += checksum_query_round_trips(ctx.db_fp, ctx.keys_json);

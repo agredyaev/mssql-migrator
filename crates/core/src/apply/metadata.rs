@@ -35,7 +35,7 @@ pub async fn execute_metadata_plan(
     }
     plan.ensure_objects_materialized(ws);
     let mut result = ApplyResult::default();
-    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.database);
+    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     ensure_tables(conn, &db_fp).await?;
     ensure_history_index(conn).await?;
     let mut recs = Vec::new();

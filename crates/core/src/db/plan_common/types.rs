@@ -20,6 +20,7 @@ pub(super) struct RunParallelContext<'a> {
     pub need_checksums: bool,
     pub need_catalog: bool,
     pub catalog_base: Option<CatalogState>,
+    pub bypass: bool,
 }
 
 pub(super) struct RunBodyContext<'a> {
@@ -35,6 +36,7 @@ pub(super) struct RunBodyContext<'a> {
     pub catalog_base: Option<CatalogState>,
     pub round_trips_start: i64,
     pub bootstrap_in_sql: bool,
+    pub bypass: bool,
 }
 
 pub(crate) struct BodyOutput {

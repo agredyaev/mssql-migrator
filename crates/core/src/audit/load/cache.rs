@@ -81,11 +81,15 @@ pub fn mark_history_nonempty(db_fp: &str) {
     lock_cache(history_empty_cache(), "history_empty").insert(db_fp.to_string(), false);
 }
 
-pub fn db_fingerprint(server: &str, database: &str) -> String {
+pub fn db_fingerprint(server: &str, port: &str, user: &str, database: &str) -> String {
     // Length-prefix the server so `server="s1"/db="a_b"` cannot collide with
     // `server="s1_a"/db="b"` (both were previously `s1_a_b`). Safe as a cache
     // key and as an L1 directory name.
-    format!("{}~{server}~{database}", server.len())
+    //
+    // Port and user are part of the identity: two instances on one host that
+    // differ only by port serve different catalogs, and SQL Server metadata
+    // visibility is principal-dependent — neither may share cached plan state.
+    format!("{}~{server}~{port}~{user}~{database}", server.len())
 }
 
 /// Drop cached history probes (after audit writes). Does not clear bootstrap cache.
@@ -99,6 +103,10 @@ pub fn invalidate_audit_cache_all(db_fp: &str) {
     invalidate_audit_cache(db_fp);
     lock_cache(ensured_dbs(), "ensured_dbs").remove(db_fp);
 }
+
+#[cfg(test)]
+#[path = "../../tests/cache_identity_test.rs"]
+mod cache_identity_tests;
 
 #[cfg(test)]
 mod tests {

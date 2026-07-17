@@ -9,7 +9,7 @@ use crate::db::intern_catalog_state;
 use crate::db::plan_db_trace::PlanDbTrace;
 use crate::db::state::{CatalogState, ChecksumMap};
 use crate::error::Result;
-use crate::plan::scope::{build_inspect_scope, build_scope_json};
+use crate::plan::scope::build_scope_and_json;
 use crate::timings;
 
 use super::super::conn::PlanDbConn;
@@ -39,12 +39,11 @@ pub(super) async fn run_standard_body(
 
     if ctx.need_catalog {
         let t_insp = Instant::now();
-        let scope = build_inspect_scope(ctx.ws, &ctx.git.paths, ctx.full, &checksums);
-        let scope_json = if ctx.full {
-            ctx.ws.object_scope_json()
-        } else {
-            build_scope_json(&scope)
-        };
+        // Mutating commands (bypass) must live-check every managed object:
+        // synthesized presence + a fixed spot-check sample can miss the same
+        // externally dropped object forever.
+        let (scope, scope_json) =
+            build_scope_and_json(ctx.ws, &ctx.git.paths, ctx.full || ctx.bypass, &checksums);
         let schemas_json = schemas_json(ctx.ws);
         let query_catalog = should_query_catalog(ctx.full, &scope, &scope_json, &checksums).await?;
         local_trace.flags.catalog_queried = query_catalog;
@@ -52,9 +51,12 @@ pub(super) async fn run_standard_body(
         let mut catalog_sql_ms = 0i64;
         let mut loaded = CatalogState::default();
         if query_catalog {
-            if let Some(cached) =
-                catalog_inspect_cache::try_get(ctx.db_fp, &ctx.ws.layout_digest, &scope_json)
-            {
+            if let Some(cached) = catalog_inspect_cache::try_get_unless_bypassed(
+                ctx.bypass,
+                ctx.db_fp,
+                &ctx.ws.layout_digest,
+                &scope_json,
+            ) {
                 loaded = cached;
                 local_trace.flags.scoped_hit = true;
             } else if ctx.full {

@@ -8,7 +8,7 @@ use crate::db::state::CatalogObject;
 use crate::db::state::ChecksumMap;
 use crate::domain::{ObjectKey, ParentRef, Workspace};
 
-pub use super::scope_build::build_inspect_scope;
+pub use super::scope_build::{build_inspect_scope, build_scope_and_json};
 
 /// Parameters controlling which objects are inspected during a catalog scan.
 #[derive(Clone, Debug)]

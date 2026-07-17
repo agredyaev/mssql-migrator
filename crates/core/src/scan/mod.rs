@@ -26,6 +26,7 @@ mod git_repo;
 mod parse;
 mod parse_object;
 pub(crate) use parse_object::content_checksum;
+pub(crate) use parse_object::strip_sql_ext;
 mod parse_parallel;
 pub mod transition;
 mod walk;

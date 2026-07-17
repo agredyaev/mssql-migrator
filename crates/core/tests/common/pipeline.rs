@@ -21,7 +21,8 @@ pub async fn run_plan_pipeline(cfg: &Config) -> Result<(MigrationPlan, PhaseTimi
         let fp = format!("{}_{}", cfg.server, cfg.database);
         let l1 = migrator_core::cache::l1::L1Cache::new(&cfg.l1_cache_dir);
         let _ = l1.invalidate_all(&fp);
-        let db_fp = migrator_core::audit::db_fingerprint(&cfg.server, &cfg.database);
+        let db_fp =
+            migrator_core::audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
         migrator_core::db::invalidate_inspect_cache(&db_fp);
     }
 

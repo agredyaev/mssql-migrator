@@ -38,3 +38,12 @@ pub(super) fn command_label(cmd: Command) -> &'static str {
         Command::Version => "version",
     }
 }
+
+/// Read-only commands must fail when the repository names databases that do
+/// not exist on the server (silently skipping them validates nothing).
+pub(super) fn missing_databases_error(dbs: &[String]) -> crate::error::Error {
+    crate::error::Error::Config(format!(
+        "catalog database(s) named by the repository do not exist on the server: {}",
+        dbs.join(", ")
+    ))
+}

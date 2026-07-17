@@ -23,13 +23,7 @@ impl Workspace {
                 buf.push(',');
             }
             buf.push('"');
-            let k = entry.key_str(self, i);
-            for c in k.chars() {
-                if c == '"' || c == '\\' {
-                    buf.push('\\');
-                }
-                buf.push(c);
-            }
+            push_json_str(&mut buf, entry.key_str(self, i));
             buf.push('"');
         }
         buf.push(']');
@@ -62,10 +56,18 @@ impl Workspace {
 }
 
 fn push_json_str(buf: &mut String, s: &str) {
+    use std::fmt::Write;
     for c in s.chars() {
-        if c == '"' || c == '\\' {
-            buf.push('\\');
+        match c {
+            '"' => buf.push_str("\\\""),
+            '\\' => buf.push_str("\\\\"),
+            // Path validation admits C0 controls like tab/newline in Unix
+            // filenames; raw controls are invalid JSON and OPENJSON rejects
+            // the whole document.
+            c if (c as u32) < 0x20 => {
+                let _ = write!(buf, "\\u{:04x}", c as u32);
+            }
+            c => buf.push(c),
         }
-        buf.push(c);
     }
 }

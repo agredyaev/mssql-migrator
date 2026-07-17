@@ -32,7 +32,7 @@ CREATE DATABASE [{db}]
 }
 
 pub(crate) async fn invalidate_process_caches(cfg: &Config, full: bool) -> Result<()> {
-    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.database);
+    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     if full {
         invalidate_audit_cache_all(&db_fp);
         invalidate_inspect_cache(&db_fp);
@@ -53,7 +53,7 @@ pub(crate) async fn prebootstrap_audit_tables(cfg: &Config) -> Result<()> {
         sql::audit::BOOTSTRAP_INDEX
     );
     mssql::exec(&mut conn.client, &bootstrap).await?;
-    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.database);
+    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     mark_tables_ensured(&db_fp);
     Ok(())
 }

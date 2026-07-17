@@ -49,7 +49,8 @@ async fn fast_reset_test_database(cfg: &Config) -> Result<()> {
     let mut conn = connect(cfg).await?;
     mssql::exec(&mut conn.client, FAST_RESET_SQL).await?;
     invalidate_process_caches(cfg, false).await?;
-    let db_fp = migrator_core::audit::db_fingerprint(&cfg.server, &cfg.database);
+    let db_fp =
+        migrator_core::audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     migrator_core::audit::mark_tables_ensured(&db_fp);
     Ok(())
 }

@@ -102,6 +102,7 @@ pub fn merge_rows(state: &mut CatalogState, rows: &[crate::driver::RowData]) -> 
         let name = row.get_str(3).unwrap_or("");
         let parent = row.get_str(4);
         let key = ObjectKey::new(schema, obj_kind, name);
+        super::catalog_guard::ensure_index_unambiguous(state, &key, obj_kind, parent)?;
         state
             .objects
             .insert(key, catalog_object(schema, obj_kind, name, parent));

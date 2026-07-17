@@ -33,6 +33,7 @@ pub(super) async fn run_parallel_with_ensure(
     let need_checksums = ctx.need_checksums;
     let need_catalog = ctx.need_catalog;
     let catalog_base = ctx.catalog_base;
+    let bypass = ctx.bypass;
 
     let command_timeout = ctx.cfg.command_timeout;
     let ensure_fut = {
@@ -74,6 +75,7 @@ pub(super) async fn run_parallel_with_ensure(
                 catalog_base,
                 round_trips_start,
                 bootstrap_in_sql: false,
+                bypass,
             },
             &mut db_conn,
         )

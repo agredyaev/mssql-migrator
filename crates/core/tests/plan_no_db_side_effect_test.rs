@@ -186,9 +186,17 @@ async fn plan_multi_db_layout_only_targets_catalog_directories_edge_case() {
         "multi-db catalog should stay unresolved"
     );
 
-    let _ = run_command(Command::Plan, &cfg)
-        .await
-        .expect("plan may succeed for reachable catalog databases only");
+    // A missing declared database must FAIL the read-only run (a green plan
+    // that silently skipped part of the layout validates nothing) — and the
+    // failure must not create the database as a side effect.
+    let err = match run_command(Command::Plan, &cfg).await {
+        Ok(_) => panic!("plan must fail when a declared catalog database is absent"),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string().contains("sideeffect_multi_absent"),
+        "error names the missing database: {err}"
+    );
     assert!(database_exists("sideeffect_multi_present").await);
     assert!(
         !database_exists("sideeffect_multi_absent").await,
@@ -209,6 +217,8 @@ async fn plan_missing_database_does_not_create_regression() {
     drop_database_if_exists("sideeffect_regression").await;
     migrator_core::audit::invalidate_audit_cache_all(&db_fingerprint(
         &std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into()),
+        &std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into()),
+        &std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into()),
         "sideeffect_regression",
     ));
 
@@ -231,5 +241,52 @@ async fn plan_missing_database_does_not_create_regression() {
     assert!(
         !database_exists("sideeffect_regression").await,
         "regression: plan still creates database on sa login: {err}"
+    );
+}
+
+/// Read-only plan on a database WITHOUT audit tables must not bootstrap them:
+/// a preview must not require DDL rights or mutate state during approval.
+#[tokio::test]
+async fn plan_does_not_bootstrap_audit_tables_regression() {
+    if !integration_enabled() {
+        eprintln!("skip: RMIG_RUN_SQLSERVER_INTEGRATION not set");
+        return;
+    }
+
+    let base = tempfile::tempdir().expect("tempdir");
+    write_sql_layout(base.path(), "sideeffect_bootstrap");
+    drop_database_if_exists("sideeffect_bootstrap").await;
+    let mut master = connect(&sa_cfg("master", ""))
+        .await
+        .expect("connect master");
+    mssql::exec(&mut master.client, "CREATE DATABASE [sideeffect_bootstrap]")
+        .await
+        .expect("create empty db");
+    migrator_core::audit::invalidate_audit_cache_all(&db_fingerprint(
+        &std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into()),
+        &std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into()),
+        &std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into()),
+        "sideeffect_bootstrap",
+    ));
+
+    let mut cfg = sa_cfg("sideeffect_bootstrap", &base.path().to_string_lossy());
+    validate_config(&mut cfg).expect("valid config");
+    let out = run_command(Command::Plan, &cfg).await.expect("plan");
+    assert_eq!(out.exit_code, 0, "plan succeeds without audit tables");
+
+    let mut target = connect(&sa_cfg("sideeffect_bootstrap", ""))
+        .await
+        .expect("connect target");
+    let rows = mssql::query_tiberius(
+        &mut target.client,
+        "SELECT CASE WHEN OBJECT_ID('azdo_deploy_meta.history') IS NULL THEN 0 ELSE 1 END",
+        &[],
+    )
+    .await
+    .expect("probe audit table");
+    let bootstrapped = rows.first().and_then(|r| r.get::<i32, _>(0)).unwrap_or(1);
+    assert_eq!(
+        bootstrapped, 0,
+        "read-only plan must not create audit tables"
     );
 }

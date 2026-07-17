@@ -66,3 +66,44 @@ fn assert_open_tx_guards_trancount_regression() {
     assert!(apply::ASSERT_OPEN_TX.contains("@@TRANCOUNT"));
     assert!(apply::ASSERT_OPEN_TX.contains("THROW"));
 }
+
+/// Concurrent unlocked bootstraps race check-then-create; duplicate-create
+/// errors must be tolerated instead of failing the first deployment.
+#[test]
+fn bootstrap_tolerates_concurrent_duplicate_creates_regression() {
+    assert!(
+        audit::BOOTSTRAP_TABLES.contains("BEGIN TRY"),
+        "bootstrap creates must be guarded"
+    );
+    assert!(
+        audit::BOOTSTRAP_TABLES.contains("ERROR_NUMBER() NOT IN (2714, 2759)"),
+        "schema duplicate errors are tolerated"
+    );
+    assert!(
+        audit::BOOTSTRAP_TABLES.contains("ERROR_NUMBER() <> 2714"),
+        "table duplicate errors are tolerated"
+    );
+}
+
+/// Cache rows must bind to the same layout digest as the metadata row, or a
+/// torn concurrent save serves rows from one layout under another's meta.
+#[test]
+fn catalog_cache_load_binds_rows_to_digest_regression() {
+    assert!(catalog::CACHE_LOAD.contains("c.layout_digest = m.layout_digest"));
+}
+
+/// Alias user-defined types live in sys.types (not sys.table_types); the
+/// catalog query must see both forms or alias types are re-created forever.
+#[test]
+fn catalog_types_covers_alias_types_regression() {
+    assert!(catalog::TYPES.contains("sys.table_types"));
+    assert!(catalog::TYPES.contains("sys.types"));
+    assert!(catalog::TYPES.contains("is_table_type = 0"));
+}
+
+/// Index rows must carry the parent table so same-named indexes on different
+/// tables are detectable as ambiguous.
+#[test]
+fn catalog_indexes_return_parent_regression() {
+    assert!(catalog::INDEXES.contains("LOWER(o.name) AS parent_name"));
+}

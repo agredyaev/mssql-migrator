@@ -21,12 +21,18 @@ pub(super) async fn load_full_catalog(
     catalog_sql_ms: &mut i64,
 ) -> Result<CatalogState> {
     let t_sql = Instant::now();
-    if let Some(empty) = try_fast_empty_catalog(conn, scope_json).await? {
-        *round_trips += 1;
-        *catalog_sql_ms += timings::dur_ms(t_sql.elapsed());
-        return Ok(empty);
-    }
     let kinds = kinds_for_scope(ctx.ws, scope);
+    // The fast-empty probe reads sys.objects only; indexes and table types
+    // live in sys.indexes / sys.table_types, so zero sys.objects hits cannot
+    // prove such a scope empty.
+    let fast_empty_provable = !kinds.iter().any(|k| *k == "indexes" || *k == "types");
+    if fast_empty_provable {
+        if let Some(empty) = try_fast_empty_catalog(conn, scope_json).await? {
+            *round_trips += 1;
+            *catalog_sql_ms += timings::dur_ms(t_sql.elapsed());
+            return Ok(empty);
+        }
+    }
     let sql = batch::plan_db_batch_sql(&kinds, false, false, false, true, false, None);
     let sets = conn
         .query_all(&sql, &["[]", scope_json, schemas_json])

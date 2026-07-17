@@ -99,7 +99,7 @@ pub async fn run_apply_smoke(cfg: &Config) -> Result<ApplySmokeOut> {
     let mut ws = Workspace::default();
     scan::populate(&mut ws, &cfg.sql_root, cfg.skip_git()).await?;
 
-    let db_fp = db_fingerprint(&cfg.server, &cfg.database);
+    let db_fp = db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     invalidate_audit_cache(&db_fp);
 
     let fp = format!("{}_{}", cfg.server, cfg.database);

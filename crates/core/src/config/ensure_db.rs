@@ -36,8 +36,11 @@ pub async fn target_database_exists(cfg: &Config, db: &str) -> Result<bool> {
     match connect(&target).await {
         Ok(_) => Ok(true),
         Err(err) => {
+            // Match only SQL Server's own 4060 message text. A bare "4060"
+            // substring also matches hostnames/ports in transport errors and
+            // would classify an outage as "database absent".
             let msg = err.to_string().to_lowercase();
-            if msg.contains("cannot open database") || msg.contains("4060") {
+            if msg.contains("cannot open database") {
                 tracing::debug!(database = %db, "target database absent");
                 Ok(false)
             } else {

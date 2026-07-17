@@ -26,6 +26,7 @@ pub(super) fn body_ctx<'a>(
         catalog_base: setup.catalog_base.clone(),
         round_trips_start: trace.timings.round_trips,
         bootstrap_in_sql,
+        bypass: setup.bypass,
     }
 }
 
@@ -46,5 +47,6 @@ pub(super) fn parallel_ctx<'a>(
         need_checksums: setup.need_checksums,
         need_catalog: setup.need_catalog,
         catalog_base: setup.catalog_base.clone(),
+        bypass: setup.bypass,
     }
 }

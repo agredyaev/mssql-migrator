@@ -51,6 +51,8 @@ async fn recreate_empty_database(database: &str) {
 
     let db_fp = audit::db_fingerprint(
         &std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into()),
+        &std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into()),
+        &std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into()),
         database,
     );
     invalidate_audit_cache_all(&db_fp);

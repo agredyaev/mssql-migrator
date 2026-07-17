@@ -70,3 +70,20 @@ pub fn build_inspect_scope(
         allow_l1_skip,
     }
 }
+
+/// Builds the inspect scope together with its cache-key JSON (full scopes use
+/// the complete object list as the key).
+pub fn build_scope_and_json(
+    ws: &Workspace,
+    changed_paths: &[String],
+    full_inspect: bool,
+    checksums: &ChecksumMap,
+) -> (InspectScope, String) {
+    let scope = build_inspect_scope(ws, changed_paths, full_inspect, checksums);
+    let scope_json = if full_inspect {
+        ws.object_scope_json()
+    } else {
+        super::scope::build_scope_json(&scope)
+    };
+    (scope, scope_json)
+}

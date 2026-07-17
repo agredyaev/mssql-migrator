@@ -18,9 +18,13 @@ pub fn scan_root(ws: &mut Workspace, root: &str) -> Result<()> {
     let mut objects: Vec<(String, PathBuf)> = Vec::new();
     for entry in walk_sql(&root)? {
         let rel = relative_sql_path(&root, &entry)?;
-        if rel.contains("/_migrations/") {
+        // Positional classification: `checks` and `_migrations` are reserved
+        // only at their contract positions (`<db>/checks/*.sql` and
+        // `<schema>/tables/_migrations/`); a schema legitimately named
+        // `checks` or `_migrations` must still produce deployable objects.
+        if rel.contains("/tables/_migrations/") {
             parse::push_transition(ws, &rel, &entry)?;
-        } else if rel.contains("/checks/") {
+        } else if parse::is_check_path(&rel) {
             parse::push_check(ws, &rel, &entry)?;
         } else {
             objects.push((rel, entry));

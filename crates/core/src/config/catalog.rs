@@ -23,7 +23,7 @@ pub fn discover_catalog_databases(sql_root: &str) -> Result<Vec<String>> {
         if name.starts_with('.') {
             continue;
         }
-        if catalog_database_dir_has_schema(entry.path().as_path()) {
+        if catalog_database_dir_has_schema(entry.path().as_path())? {
             names.push(name.into_owned());
         }
     }
@@ -37,18 +37,26 @@ pub fn discover_catalog_databases(sql_root: &str) -> Result<Vec<String>> {
     Ok(names)
 }
 
-fn catalog_database_dir_has_schema(db_dir: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(db_dir) else {
-        return false;
-    };
-    for entry in entries.flatten() {
-        if entry
+fn catalog_database_dir_has_schema(db_dir: &Path) -> Result<bool> {
+    // An unreadable candidate directory must surface as an error, never as
+    // "not a database": permissions or mount failures would otherwise shrink
+    // the deployment scope silently.
+    let entries = std::fs::read_dir(db_dir).map_err(|e| {
+        Error::Config(format!(
+            "cannot read catalog candidate {}: {e}",
+            db_dir.display()
+        ))
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            Error::Config(format!("cannot read entry under {}: {e}", db_dir.display()))
+        })?;
+        let ft = entry
             .file_type()
-            .map(|ft| ft.is_dir() && !ft.is_symlink())
-            .unwrap_or(false)
-        {
-            return true;
+            .map_err(|e| Error::Config(format!("cannot stat {}: {e}", entry.path().display())))?;
+        if ft.is_dir() && !ft.is_symlink() {
+            return Ok(true);
         }
     }
-    false
+    Ok(false)
 }

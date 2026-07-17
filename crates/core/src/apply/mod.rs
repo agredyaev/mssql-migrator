@@ -55,7 +55,7 @@ pub async fn execute_plan(
     }
     plan.ensure_objects_materialized(ws);
     let mut result = ApplyResult::default();
-    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.database);
+    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     ensure_tables(conn, &db_fp).await?;
     // History rows are now flushed per applied object, so the index must exist
     // before the apply loop rather than in `finish`.
@@ -73,7 +73,7 @@ pub async fn execute_plan(
 }
 
 async fn finish(cfg: &Config, conn: &mut TimingConn, result: ApplyResult) -> Result<ApplyResult> {
-    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.database);
+    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     if result.wrote_history {
         invalidate_audit_cache(&db_fp);
         audit::mark_history_nonempty(&db_fp);
@@ -85,7 +85,7 @@ async fn finish(cfg: &Config, conn: &mut TimingConn, result: ApplyResult) -> Res
             tracing::warn!(error = %e, "post-apply catalog cache invalidation failed");
         }
         let l1 = crate::cache::l1::L1Cache::new(&cfg.l1_cache_dir);
-        let fp = audit::db_fingerprint(&cfg.server, &cfg.database);
+        let fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
         if let Err(e) = l1.invalidate_all(&fp) {
             tracing::warn!(error = %e, "post-apply L1 cache invalidation failed");
         }

@@ -23,9 +23,12 @@ pub(super) async fn load_git_delta_catalog(
     schemas_json: &str,
     mut loaded: CatalogState,
 ) -> Result<CatalogState> {
-    if let Some(cached) =
-        catalog_inspect_cache::try_get(ctx.db_fp, &ctx.ws.layout_digest, scope_json)
-    {
+    if let Some(cached) = catalog_inspect_cache::try_get_unless_bypassed(
+        ctx.bypass,
+        ctx.db_fp,
+        &ctx.ws.layout_digest,
+        scope_json,
+    ) {
         warm.local_trace.flags.scoped_hit = true;
         return Ok(cached);
     }

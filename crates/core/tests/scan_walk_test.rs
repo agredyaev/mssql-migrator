@@ -97,3 +97,138 @@ fn scan_skips_symlinked_sql_files() {
         .collect();
     assert_eq!(paths, vec!["dactests/smoke/tables/real.sql"]);
 }
+
+fn scan_ok(base: &std::path::Path) -> Workspace {
+    let mut ws = Workspace::default();
+    scan_root(&mut ws, base.to_str().expect("utf8 path")).expect("scan");
+    ws
+}
+
+fn write_sql(base: &std::path::Path, rel: &str, body: &str) {
+    let p = base.join(rel);
+    std::fs::create_dir_all(p.parent().expect("parent")).expect("mkdir");
+    std::fs::write(p, body).expect("write sql");
+}
+
+/// Nested (archive/fixture) paths under a kind folder must fail loudly instead
+/// of becoming live managed objects.
+#[test]
+fn scan_rejects_nested_object_path_regression() {
+    let base = tempfile::tempdir().expect("tempdir");
+    write_sql(
+        base.path(),
+        "db/archive/dbo/tables/old.sql",
+        "CREATE TABLE dbo.old(id INT);\n",
+    );
+    let mut ws = Workspace::default();
+    let err = scan_root(&mut ws, base.path().to_str().expect("utf8"))
+        .expect_err("nested object path must be rejected");
+    assert!(
+        err.to_string().contains("nested path"),
+        "unexpected error: {err}"
+    );
+}
+
+/// `.SQL` (any case) strips from the object key exactly like `.sql`.
+#[test]
+fn scan_uppercase_extension_keys_match_regression() {
+    let base = tempfile::tempdir().expect("tempdir");
+    write_sql(
+        base.path(),
+        "db/smoke/tables/t.SQL",
+        "CREATE TABLE smoke.t(id INT);\n",
+    );
+    let ws = scan_ok(base.path());
+    assert_eq!(ws.object_count(), 1);
+    assert_eq!(ws.entry_key(0).as_str(), "smoke/tables/t");
+}
+
+/// Schemas named `checks` or `_migrations` are ordinary schemas when they are
+/// not at the reserved contract positions.
+#[test]
+fn scan_checks_and_migrations_schema_names_are_objects_regression() {
+    let base = tempfile::tempdir().expect("tempdir");
+    write_sql(
+        base.path(),
+        "db/checks/views/v.sql",
+        "CREATE OR ALTER VIEW checks.v AS SELECT 1 AS one;\n",
+    );
+    write_sql(
+        base.path(),
+        "db/_migrations/views/w.sql",
+        "CREATE OR ALTER VIEW _migrations.w AS SELECT 1 AS one;\n",
+    );
+    let ws = scan_ok(base.path());
+    assert_eq!(
+        ws.object_count(),
+        2,
+        "both files are deployable view objects"
+    );
+}
+
+/// The same schema name in two catalog databases stays two schema entries, so
+/// each database subset can still plan CREATE SCHEMA.
+#[test]
+fn scan_shared_schema_name_exists_in_both_databases_regression() {
+    let base = tempfile::tempdir().expect("tempdir");
+    write_sql(
+        base.path(),
+        "db_a/shared/tables/a.sql",
+        "CREATE TABLE shared.a(id INT);\n",
+    );
+    write_sql(
+        base.path(),
+        "db_b/shared/tables/b.sql",
+        "CREATE TABLE shared.b(id INT);\n",
+    );
+    let ws = scan_ok(base.path());
+    let a = ws.for_catalog_database("db_a");
+    let b = ws.for_catalog_database("db_b");
+    assert_eq!(a.schemas.len(), 1, "db_a keeps its shared schema");
+    assert_eq!(b.schemas.len(), 1, "db_b keeps its shared schema");
+}
+
+/// Equal transition ordinals for same-named tables in DIFFERENT databases are
+/// legitimate; each database subset keeps only its own scripts.
+#[test]
+fn scan_same_ordinal_across_databases_regression() {
+    let base = tempfile::tempdir().expect("tempdir");
+    for db in ["db_a", "db_b"] {
+        write_sql(
+            base.path(),
+            &format!("{db}/dbo/tables/t.sql"),
+            "CREATE TABLE dbo.t(id INT);\n",
+        );
+        write_sql(
+            base.path(),
+            &format!("{db}/dbo/tables/_migrations/t/001_abcdef1_add.sql"),
+            "ALTER TABLE dbo.t ADD c INT;\n",
+        );
+    }
+    let ws = scan_ok(base.path());
+    for db in ["db_a", "db_b"] {
+        let sub = ws.for_catalog_database(db);
+        let total: usize = sub.transitions_by_row.values().map(|v| v.len()).sum();
+        assert_eq!(total, 1, "{db} keeps exactly its own transition");
+    }
+}
+
+/// Control characters accepted in Unix filenames must serialize as valid JSON
+/// in the OPENJSON key payloads.
+#[cfg(unix)]
+#[test]
+fn scan_control_char_names_serialize_as_valid_json_regression() {
+    let base = tempfile::tempdir().expect("tempdir");
+    write_sql(
+        base.path(),
+        "db/smoke/tables/a\nb.sql",
+        "CREATE TABLE smoke.x(id INT);\n",
+    );
+    let ws = scan_ok(base.path());
+    assert_eq!(ws.object_count(), 1);
+    let keys = ws.normalized_keys_json();
+    let parsed: Vec<String> = serde_json::from_str(&keys).expect("keys JSON must be valid");
+    assert!(parsed[0].contains('\n'), "newline survives the round-trip");
+    let scope = ws.object_scope_json();
+    serde_json::from_str::<serde_json::Value>(&scope).expect("scope JSON must be valid");
+}

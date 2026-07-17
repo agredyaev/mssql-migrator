@@ -21,6 +21,7 @@ pub(super) struct ExecuteSetup {
     pub defer_bootstrap: bool,
     pub bootstrap_in_sql: bool,
     pub catalog_base: Option<CatalogState>,
+    pub bypass: bool,
 }
 
 pub(super) async fn prepare_execute(
@@ -29,19 +30,29 @@ pub(super) async fn prepare_execute(
     ws: &Workspace,
     keys_json: &str,
     trace: &mut PlanDbTrace,
+    bypass: bool,
 ) -> Result<ExecuteSetup> {
-    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.database);
+    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
+    if bypass {
+        // Mutating commands promise live DB state: drop the process-local
+        // history-empty/nonempty probes so checksum loading re-queries the
+        // database instead of fabricating zero checksums from a stale probe.
+        audit::invalidate_audit_cache(&db_fp);
+    }
     audit::sync_tables_ensured(conn, &db_fp).await?;
     let git = resolve_changed_paths(&cfg.sql_root);
     let full = cfg.inspect_full() || cfg.skip_git() || git.full_inspect;
     let git_delta = !full && !git.paths.is_empty();
-    let need_bootstrap = !audit::tables_ensured(&db_fp);
+    // Read-only commands (plan/validate) must not execute DDL: only mutating
+    // commands (bypass=true, running under the advisory lock) may bootstrap.
+    let need_bootstrap = bypass && !audit::tables_ensured(&db_fp);
     trace.flags.bootstrap = need_bootstrap;
     let need_checksums = keys_json != "[]";
 
     let clean_git_tree =
         git.paths.is_empty() && matches!(git.source, "git-head" | "git-merge-base");
-    let try_cache = cfg.catalog_cache()
+    let try_cache = !bypass
+        && cfg.catalog_cache()
         && audit::tables_ensured(&db_fp)
         && git.paths.is_empty()
         && !full
@@ -80,5 +91,6 @@ pub(super) async fn prepare_execute(
         defer_bootstrap,
         bootstrap_in_sql: defer_bootstrap,
         catalog_base,
+        bypass,
     })
 }

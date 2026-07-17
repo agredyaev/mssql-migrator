@@ -32,7 +32,8 @@ pub fn ingest(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
         scaffold,
     });
     if !scaffold {
-        ws.push_transition_staging(meta.table_key.clone(), share(&meta.ordinal), sk)?;
+        let database = share(rel.split('/').next().unwrap_or(""));
+        ws.push_transition_staging(database, meta.table_key.clone(), share(&meta.ordinal), sk)?;
         ws.invalidate_transition_paths();
     }
     Ok(())
@@ -77,7 +78,11 @@ fn parse_meta(rel: &str) -> Result<Option<TransitionMeta>> {
 }
 
 fn parse_filename(file: &str) -> Option<(String, String, String)> {
-    let file = file.strip_suffix(".sql")?;
+    let stripped = super::strip_sql_ext(file);
+    if stripped.len() == file.len() {
+        return None;
+    }
+    let file = stripped;
     let (ordinal, rest) = file.split_once('_')?;
     if ordinal.len() != 3 || !ordinal.chars().all(|c| c.is_ascii_digit()) {
         return None;

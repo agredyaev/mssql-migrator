@@ -20,6 +20,7 @@ pub(crate) async fn load_checksums_plan(
     conn: &mut PlanDbConn<'_>,
     db_fp: &str,
     keys_json: &str,
+    allow_bootstrap: bool,
 ) -> Result<ChecksumMap> {
     if keys_json == "[]" {
         return Ok(ChecksumMap::new());
@@ -27,18 +28,29 @@ pub(crate) async fn load_checksums_plan(
     if audit::history_known_nonempty(db_fp) {
         return load_checksums_query_plan(conn, keys_json).await;
     }
-    if history_table_is_empty_plan(conn, db_fp).await? {
+    if history_table_is_empty_plan(conn, db_fp, allow_bootstrap).await? {
         return Ok(audit::empty_checksums_from_keys_json(keys_json));
     }
     load_checksums_query_plan(conn, keys_json).await
 }
 
-async fn history_table_is_empty_plan(conn: &mut PlanDbConn<'_>, db_fp: &str) -> Result<bool> {
+async fn history_table_is_empty_plan(
+    conn: &mut PlanDbConn<'_>,
+    db_fp: &str,
+    allow_bootstrap: bool,
+) -> Result<bool> {
     if let Some(empty) = audit::history_empty_cached(db_fp) {
         return Ok(empty);
     }
     if !audit::tables_ensured(db_fp) {
-        ensure_tables_plan(conn, db_fp).await?;
+        if allow_bootstrap {
+            ensure_tables_plan(conn, db_fp).await?;
+        } else if !super::probe::history_table_exists(conn).await? {
+            // Read-only commands must not run bootstrap DDL: absent audit
+            // tables simply mean "no baselines yet".
+            audit::cache_history_empty(db_fp, true);
+            return Ok(true);
+        }
     }
     let rows = conn.query(sql::audit::HISTORY_EMPTY, &[]).await?;
     audit::mark_tables_ensured(db_fp);

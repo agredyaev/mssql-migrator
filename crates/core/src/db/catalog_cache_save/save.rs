@@ -6,7 +6,10 @@ use crate::error::Result;
 
 use super::marshal::{filter_for_layout, marshal_rows};
 
+// One transaction: concurrent unlocked savers must never interleave rows from
+// one layout with metadata from another (torn cache).
 const CACHE_SAVE_BATCH: &str = concat!(
+    "SET XACT_ABORT ON;\nBEGIN TRANSACTION;\n",
     include_str!("../../../../../sql/catalog/catalog_cache_delete_all.sql"),
     "\n",
     include_str!("../../../../../sql/catalog/catalog_cache_insert_openjson.sql"),
@@ -18,7 +21,8 @@ const CACHE_SAVE_BATCH: &str = concat!(
     "    UPDATE SET layout_digest = @p2, object_count = @p3, captured_at = SYSUTCDATETIME()\n",
     "WHEN NOT MATCHED THEN\n",
     "    INSERT (id, layout_digest, object_count, captured_at)\n",
-    "    VALUES (1, @p2, @p3, SYSUTCDATETIME());"
+    "    VALUES (1, @p2, @p3, SYSUTCDATETIME());\n",
+    "COMMIT TRANSACTION;"
 );
 
 /// Persist catalog rows in one TDS round-trip (DELETE + INSERT + meta MERGE).
