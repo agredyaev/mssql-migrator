@@ -1,4 +1,4 @@
-use super::super::timing_compare::compare_timings;
+use super::super::plan_timing_compare::compare_timings;
 use super::super::types::E2EScenarioReport;
 
 /// Compare committed baseline report vs current run: behavior (actions + snapshot) + phase timings.
@@ -17,6 +17,18 @@ pub fn compare_e2e_reports(
         msgs.push(format!(
             "action_counts: baseline={:?} actual={:?}",
             baseline.action_counts, actual.action_counts
+        ));
+    }
+    if baseline.setup_steps != actual.setup_steps {
+        msgs.push(format!(
+            "setup_steps: baseline={:?} actual={:?}",
+            baseline.setup_steps, actual.setup_steps
+        ));
+    }
+    if baseline.io.query_calls != actual.io.query_calls {
+        msgs.push(format!(
+            "io.query_calls: baseline={} actual={}",
+            baseline.io.query_calls, actual.io.query_calls
         ));
     }
     msgs.extend(crate::gate::parity_messages(

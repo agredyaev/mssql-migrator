@@ -58,7 +58,7 @@ async fn prod_gate_incremental_plan() {
     let result = evaluate_gate(GateInput {
         blocked: plan.blocked,
         timings: out.timings.clone(),
-        max_plan_wall_ms: max_plan_wall_ms_from_env(),
+        max_plan_wall_ms: max_plan_wall_ms_from_env().expect("valid RMIG_GATE_MAX_PLAN_WALL_MS"),
         baseline,
         current,
         delta_keys: delta,

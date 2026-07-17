@@ -91,10 +91,20 @@ pub fn evaluate_gate(in_: GateInput) -> GateResult {
     }
 }
 
-/// Read `RMIG_GATE_MAX_PLAN_WALL_MS` from the environment, returning 0 when unset.
-pub fn max_plan_wall_ms_from_env() -> i64 {
-    std::env::var("RMIG_GATE_MAX_PLAN_WALL_MS")
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0)
+/// Read `RMIG_GATE_MAX_PLAN_WALL_MS` from the environment.
+///
+/// Unset/empty → `Ok(0)` (SLO disabled). A PRESENT value must be a positive
+/// integer: a typo like `4s`, `-1`, or `0` would otherwise silently disable a
+/// production release safeguard, so it fails closed instead.
+pub fn max_plan_wall_ms_from_env() -> std::result::Result<i64, String> {
+    let raw = match std::env::var("RMIG_GATE_MAX_PLAN_WALL_MS") {
+        Ok(v) if !v.trim().is_empty() => v,
+        _ => return Ok(0),
+    };
+    match raw.trim().parse::<i64>() {
+        Ok(n) if n > 0 => Ok(n),
+        _ => Err(format!(
+            "RMIG_GATE_MAX_PLAN_WALL_MS must be a positive integer (ms), got {raw:?}"
+        )),
+    }
 }

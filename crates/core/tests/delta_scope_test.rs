@@ -36,8 +36,10 @@ fn sample_ws() -> Workspace {
 fn delta_closure_adds_trigger_parent() {
     let ws = sample_ws();
     let mut delta = keys_for_changed_paths(&ws, &["db/smoke/triggers/tr.sql".into()]);
+    // Delta keys are database-qualified to match snapshot identity.
+    assert!(delta.contains("db/smoke/triggers/tr"), "delta={delta:?}");
     delta = expand_delta_closure(&ws, delta);
-    assert!(delta.contains("smoke/tables/t1"));
+    assert!(delta.contains("db/smoke/tables/t1"), "delta={delta:?}");
 }
 
 #[test]

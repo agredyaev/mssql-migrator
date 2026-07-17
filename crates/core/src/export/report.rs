@@ -35,9 +35,15 @@ pub fn write_reports(
     }
     let dir = Path::new(&cfg.report_dir);
     fs::create_dir_all(dir)?;
+    let plan_path = dir.join(".plan.json");
     if let Some(plan) = plan {
-        let path = dir.join(".plan.json");
-        write_atomic(&path, |f| write_plan_json(plan, ws, f))?;
+        write_atomic(&plan_path, |f| write_plan_json(plan, ws, f))?;
+    } else if let Err(e) = fs::remove_file(&plan_path) {
+        // A failed run must not leave the previous run's plan next to its own
+        // failure report — operators would diagnose against the wrong plan.
+        if e.kind() != std::io::ErrorKind::NotFound {
+            return Err(Error::Io(e));
+        }
     }
     let result = if exit_code == 0 { "success" } else { "failure" };
     let report = RunFinished {
@@ -50,10 +56,17 @@ pub fn write_reports(
     Ok(())
 }
 
-/// Writes via a sibling `.tmp` file then renames over `path`, so a crash or a
-/// concurrent reader never observes a truncated report.
+/// Writes via a UNIQUE sibling temp file then renames over `path`, so a crash
+/// or concurrent reader never observes a truncated report and two concurrent
+/// writers never race on one temp pathname (last complete writer wins).
 fn write_atomic(path: &Path, write: impl FnOnce(&mut File) -> Result<()>) -> Result<()> {
-    let tmp = path.with_extension("tmp");
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let tmp = path.with_extension(format!(
+        "tmp.{}.{}",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
     {
         let mut f = File::create(&tmp)?;
         write(&mut f)?;

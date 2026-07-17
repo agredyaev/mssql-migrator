@@ -25,13 +25,16 @@ pub fn compare_e2e_blocked_reports(
             baseline.blocked, actual.blocked
         ));
     }
-    if baseline.blocked && actual.scaffold_paths.is_empty() && !baseline.scaffold_paths.is_empty() {
-        msgs.push("actual: expected scaffold_paths after blocked migrate".into());
-    }
-    if !baseline.scaffold_paths.is_empty() && actual.scaffold_paths.is_empty() {
+    if baseline.blockers != actual.blockers {
         msgs.push(format!(
-            "scaffold_paths: baseline={} actual=0",
-            baseline.scaffold_paths.len()
+            "blockers: baseline={:?} actual={:?}",
+            baseline.blockers, actual.blockers
+        ));
+    }
+    if baseline.scaffold_paths != actual.scaffold_paths {
+        msgs.push(format!(
+            "scaffold_paths: baseline={:?} actual={:?}",
+            baseline.scaffold_paths, actual.scaffold_paths
         ));
     }
     msgs.extend(compare_workflow_timings(&baseline.timings, &actual.timings));

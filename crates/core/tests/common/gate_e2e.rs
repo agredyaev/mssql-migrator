@@ -35,7 +35,7 @@ pub async fn build_gate_report(
     let result = evaluate_gate(GateInput {
         blocked: plan.blocked,
         timings,
-        max_plan_wall_ms: max_plan_wall_ms_from_env(),
+        max_plan_wall_ms: max_plan_wall_ms_from_env().expect("valid RMIG_GATE_MAX_PLAN_WALL_MS"),
         baseline,
         current: current.clone(),
         delta_keys: delta,

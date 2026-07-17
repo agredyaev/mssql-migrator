@@ -173,3 +173,57 @@ fn slim_row_plan_with_materialized_objects_writes_report_without_workspace() {
         "{plan_data}"
     );
 }
+
+/// A failed run (no plan) must remove the previous run's `.plan.json`, so the
+/// failure report is never diagnosed against a stale plan.
+#[test]
+fn failed_run_removes_stale_plan_regression() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut cfg = Config::default();
+    cfg.report_dir = dir.path().to_string_lossy().into();
+    let plan = MigrationPlan {
+        command: "plan".into(),
+        ..Default::default()
+    };
+    write_reports(&cfg, "plan", Some(&plan), None, 0).expect("success run");
+    assert!(dir.path().join(".plan.json").exists());
+
+    write_reports(&cfg, "migrate", None, None, 5).expect("failure run");
+    assert!(
+        !dir.path().join(".plan.json").exists(),
+        "stale plan must be removed on a plan-less failure"
+    );
+    assert!(dir.path().join(".report.json").exists());
+}
+
+/// Two concurrent writers into one report dir must both succeed (unique temp
+/// names; last complete writer wins).
+#[test]
+fn concurrent_report_writers_both_succeed_regression() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().to_string_lossy().into_owned();
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+    let handles: Vec<_> = (0..2)
+        .map(|i| {
+            let barrier = barrier.clone();
+            let report_dir = path.clone();
+            std::thread::spawn(move || {
+                let mut cfg = Config::default();
+                cfg.report_dir = report_dir;
+                let plan = MigrationPlan {
+                    command: format!("plan{i}"),
+                    ..Default::default()
+                };
+                barrier.wait();
+                write_reports(&cfg, "plan", Some(&plan), None, 0)
+            })
+        })
+        .collect();
+    for h in handles {
+        h.join()
+            .expect("thread")
+            .expect("both writers must succeed");
+    }
+    assert!(dir.path().join(".plan.json").exists());
+    assert!(dir.path().join(".report.json").exists());
+}

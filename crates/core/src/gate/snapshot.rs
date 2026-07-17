@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use crate::export::{MigrationPlan, PlannedObject};
 
 /// Schema version tag for the snapshot format.
-pub const SNAPSHOT_VERSION: &str = "1";
+/// v2: object keys are database-qualified (`database/normalized_key`) so
+/// same-named objects in different catalog databases cannot collapse.
+pub const SNAPSHOT_VERSION: &str = "2";
 
 /// Snapshot of the current migration plan, serialised between CLI runs.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -40,10 +42,7 @@ impl PlanSnapshot {
     pub fn from_plan(plan: &MigrationPlan) -> Self {
         let mut objects = HashMap::new();
         for obj in &plan.objects {
-            objects.insert(
-                obj.normalized_key.as_ref().to_string(),
-                snapshot_object(obj),
-            );
+            objects.insert(snapshot_key(obj), snapshot_object(obj));
         }
         Self {
             version: SNAPSHOT_VERSION.into(),
@@ -51,6 +50,17 @@ impl PlanSnapshot {
             layout_hash: String::new(),
             objects,
         }
+    }
+}
+
+/// Database-qualified identity: two catalog databases can hold the same
+/// normalized key with different planned actions.
+fn snapshot_key(obj: &PlannedObject) -> String {
+    let db = obj.database_name.as_ref();
+    if db.is_empty() {
+        obj.normalized_key.as_ref().to_string()
+    } else {
+        format!("{db}/{}", obj.normalized_key.as_ref())
     }
 }
 

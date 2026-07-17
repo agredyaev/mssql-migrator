@@ -308,3 +308,23 @@ async fn migrate_blocks_implicit_adoption_without_flag_regression() {
         "flagged migrate adopts the pre-existing object"
     );
 }
+
+/// `validate` is the CI gate: a blocked plan must exit EXIT_PLAN_BLOCKED, not 0.
+#[tokio::test(flavor = "current_thread")]
+async fn validate_blocked_plan_exits_nonzero_regression() {
+    if !integration_enabled::enabled() {
+        eprintln!("skip: RMIG_RUN_SQLSERVER_INTEGRATION not set");
+        return;
+    }
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path();
+    write(root, &format!("{DB}/smoke/tables/guarded.sql"), TABLE_V1);
+    let (mut cfg, _conn) = fresh(root).await;
+    cfg.set_allow_adopt(true);
+    assert_eq!(run(&cfg, Command::Migrate).await.expect("cold"), 0);
+
+    // Table changed, no transition → blocked plan; validate must fail.
+    write(root, &format!("{DB}/smoke/tables/guarded.sql"), TABLE_V2);
+    let code = run(&cfg, Command::Validate).await.expect("validate runs");
+    assert_eq!(code, EXIT_PLAN_BLOCKED, "blocked validate must exit 10");
+}
