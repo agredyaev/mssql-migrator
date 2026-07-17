@@ -92,5 +92,5 @@ Recovery: re-run full bench suite after layout PR; attach artifacts to the PR wh
 ## References
 
 - [`ops/perf/README.md`](../ops/perf/README.md)
-- [`docs/dod.md`](dod.md)
+- [`docs/data-oriented-layout-policy.md`](data-oriented-layout-policy.md)
 - [`docs/specs/rust/module-domain.md`](specs/rust/module-domain.md)

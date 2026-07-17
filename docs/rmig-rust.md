@@ -111,6 +111,6 @@ make prod-gate       # Execute incremental plans and go/no-go checks
 
 ## References
 
-- Deep footprint audit: [perf-footprint-audit.md](../docs/perf-footprint-audit.md)
-- Environment contract: [operational-contract.md](../docs/operational-contract.md)
-- Core specs: [specs/README.md](../docs/specs/rust/README.md)
+- Deep footprint audit: [perf-footprint-audit.md](perf-footprint-audit.md)
+- Environment contract: [operational-contract.md](operational-contract.md)
+- Core specs: [specs/rust/README.md](specs/rust/README.md)

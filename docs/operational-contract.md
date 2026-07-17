@@ -11,7 +11,7 @@ Define how **`rmig`** is built, configured, and operated. It acts as the primary
 This contract governs the CLI entry points, execution commands, dynamic environment configurations, and produced planning report artifacts:
 
 - **CLI entry**: `crates/cli/src/main.rs` → `migrator_core::engine::run_command`
-- **Configuration loading**: Sourced fromdotenv and process environment (`config::build_config`)
+- **Configuration loading**: Sourced from dotenv and process environment (`config::build_config`)
 
 ---
 

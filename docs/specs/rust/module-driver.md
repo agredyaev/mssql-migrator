@@ -29,7 +29,7 @@ All SQL I/O from `audit`, `db`, `apply`, `lock`, and `scaffold` flows through `T
 ## Assumptions and constraints
 
 - `trust_server_certificate` supported for Docker dev.
-- Integrated Windows auth is outside the normal SQL-auth path; see `docs/operational-contract.md` for runtime environment variables.
+- SQL authentication is the only supported mode. `select_auth_method` rejects `integrated` / `windows` with `Error::Config`; Windows/integrated auth would require a compile-time tiberius feature and is out of scope (target SQL Server 2019 has no workload/managed-identity support), not something toggled by a runtime environment variable.
 
 ## Nominal flow
 

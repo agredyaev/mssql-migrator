@@ -14,7 +14,7 @@ Describe the **in-memory layout model**: object keys, workspace entries, string 
 - `crates/core/src/domain/arena/mod.rs`, `shared/mod.rs` - string dedup / `SharedStr`
 - `crates/core/src/domain/fingerprint.rs` - `key_fingerprint` for normalized path bytes
 - `crates/core/src/domain/path_cache.rs` - object/transition path caches on `Workspace`
-- `crates/core/src/domain/mod.rs` - `intern_catalog_state`, `for_each_entry`
+- `crates/core/src/domain/mod.rs` - `for_each_entry`, entry-iteration helpers (`intern_catalog_state` lives in `db`, see `db/state.rs`)
 
 ## System context
 
@@ -51,7 +51,7 @@ Describe the **in-memory layout model**: object keys, workspace entries, string 
 
 ## Verification and validation
 
-- `crates/core/src/domain/arena.rs` tests
+- `crates/core/src/domain/arena/` tests
 - `crates/core/src/domain/key.rs` tests
 
 ## References

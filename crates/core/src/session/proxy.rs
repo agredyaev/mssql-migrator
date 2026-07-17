@@ -52,8 +52,14 @@ impl ProxyClient {
                 .into_result()
                 .map(|_| ())?;
         }
+        // Send the configured SQL endpoint with the handshake: the daemon holds
+        // one warm connection from ITS environment, and a session must not
+        // silently execute against a different server than this CLI intends.
+        let (server, port, user) = cfg
+            .map(|c| (c.server.clone(), c.port.clone(), c.user.clone()))
+            .unwrap_or_default();
         client
-            .call(Request::Ping)
+            .call(Request::Ping { server, port, user })
             .await?
             .into_result()
             .map(|_| ())?;

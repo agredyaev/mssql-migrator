@@ -7,7 +7,7 @@ use super::protocol::{Request, Response};
 pub async fn handle(client: &mut RawClient, req: Request) -> Response {
     match req {
         Request::Auth { .. } => Response::err("auth must be handled before rpc dispatch"),
-        Request::Ping => match crate::driver::mssql::ping(client).await {
+        Request::Ping { .. } => match crate::driver::mssql::ping(client).await {
             Ok(()) => Response::ok_empty(),
             Err(e) => Response::err(e.to_string()),
         },

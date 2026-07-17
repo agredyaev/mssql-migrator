@@ -38,8 +38,8 @@ The first path segment under `RM_SQL_ROOT` is the **SQL Server database name** (
 |----------|----------|-------|
 | `RM_DB_SERVER` | yes | Host |
 | `RM_SQL_ROOT` | yes | Root of catalog tree |
-| `RM_DB_AUTH` | no | `sql` (default), `integrated`, or `windows`; integrated modes skip SQL credential validation |
-| `RM_DB_USER` / `RM_DB_PASSWORD` | yes for SQL auth | Not required when `RM_DB_AUTH` is `integrated` or `windows` without explicit credentials |
+| `RM_DB_AUTH` | no | Only `sql` (the default) is accepted. `integrated` / `windows` are rejected with `Error::Config` at `driver/mssql_auth.rs`; target SQL Server 2019 has no workload/managed-identity support, so token auth is out of scope. |
+| `RM_DB_USER` / `RM_DB_PASSWORD` | yes | Always required: `sql_credentials_required` returns true unconditionally (`config/auth_mode.rs`). |
 | `RM_DB_DATABASE` | **no** | Derived from catalog; field on `Config` is runtime-only |
 | `RM_SQL_BASE` | no | Defaults to `RM_SQL_ROOT` (scaffold/migrations path) |
 
@@ -57,7 +57,7 @@ If `RM_SQL_ROOT` contains multiple child directories with schema subfolders (e.g
 ## Nominal flow
 
 1. Load dotenv → `build_config` (does not read `RM_DB_DATABASE`).
-2. `validate_config` → require `RM_DB_SERVER`, `RM_SQL_ROOT`, and (for SQL auth) non-empty `RM_DB_USER` / `RM_DB_PASSWORD`; then set `sql_base` and discover DB name when exactly one catalog DB.
+2. `validate_config` → require `RM_DB_SERVER`, `RM_SQL_ROOT`, and non-empty `RM_DB_USER` / `RM_DB_PASSWORD` (always, since only SQL auth is supported); then set `sql_base` and discover DB name when exactly one catalog DB.
 3. Engine: for each catalog DB, first probe direct connectivity to that target database; only fall back to `master` create-db preflight when the target connection fails. Then scan → per-DB plan/migrate.
 
 ## Off-nominal behavior

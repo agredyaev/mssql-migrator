@@ -44,8 +44,9 @@ Operators invoke `rmig` with commands: `plan`, `migrate`, `validate`, `baseline`
 - `cargo build -p rmig -p rmigd`
 - `make slo` (uses `rmigd` + warm plan)
 - Integration: `crates/core/tests/integration_plan.rs`
-- CLI JSON streams: `crates/cli/tests/plan_json_cli_test.rs`
-- Explicit env file errors: `crates/cli/tests/env_file_cli_test.rs`
+- CLI arg/flag parsing: `crates/cli/src/tests/args_test.rs`
+- Logging setup: `crates/cli/src/tests/logging_test.rs`
+- Plan JSON roundtrip: `crates/core/tests/plan_json_roundtrip_test.rs`
 
 ## Operations and recovery
 

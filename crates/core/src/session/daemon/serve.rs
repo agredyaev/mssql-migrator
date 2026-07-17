@@ -20,6 +20,7 @@ pub async fn serve(
     stream: tokio::net::UnixStream,
     client: Arc<tokio::sync::Mutex<RawClient>>,
     command_timeout: Duration,
+    endpoint: Arc<super::endpoint::Endpoint>,
 ) -> Result<()> {
     let (read_half, mut write_half) = stream.into_split();
     let mut reader = BufReader::new(read_half);
@@ -82,6 +83,14 @@ pub async fn serve(
                 Response::err("rmigd: auth required (send Auth with RMIG_SESSION_TOKEN)"),
             )
             .await?;
+            break;
+        }
+
+        // Refuse a session whose declared SQL endpoint differs from the warm
+        // connection's: the CLI would otherwise plan and apply against the
+        // daemon's server while reporting its own configured target.
+        if let Some(resp) = super::endpoint::refusal_for(&req, &endpoint) {
+            write_response(&mut write_half, resp).await?;
             break;
         }
 

@@ -1,6 +1,6 @@
 use super::flags::{
-    flag_get, flag_set, CONFIG_FLAG_CATALOG_CACHE, CONFIG_FLAG_INSPECT_FULL, CONFIG_FLAG_JSON_LOGS,
-    CONFIG_FLAG_REPORT_SYNC, CONFIG_FLAG_SKIP_GIT,
+    flag_get, flag_set, CONFIG_FLAG_ALLOW_ADOPT, CONFIG_FLAG_CATALOG_CACHE,
+    CONFIG_FLAG_INSPECT_FULL, CONFIG_FLAG_JSON_LOGS, CONFIG_FLAG_REPORT_SYNC, CONFIG_FLAG_SKIP_GIT,
 };
 use super::Config;
 
@@ -63,5 +63,19 @@ impl Config {
     /// Sets or clears the catalog-cache flag.
     pub fn set_catalog_cache(&mut self, on: bool) {
         flag_set(&mut self.flags, CONFIG_FLAG_CATALOG_CACHE, on);
+    }
+
+    #[inline]
+    /// Returns `true` when `migrate` may adopt existing unrecorded objects
+    /// (`RMIG_ALLOW_ADOPT`). Adoption trusts live objects by name alone, so it
+    /// requires explicit opt-in; `baseline` is the always-explicit path.
+    pub fn allow_adopt(&self) -> bool {
+        flag_get(self.flags, CONFIG_FLAG_ALLOW_ADOPT)
+    }
+
+    #[inline]
+    /// Sets or clears the allow-adopt flag.
+    pub fn set_allow_adopt(&mut self, on: bool) {
+        flag_set(&mut self.flags, CONFIG_FLAG_ALLOW_ADOPT, on);
     }
 }

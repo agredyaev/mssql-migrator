@@ -29,6 +29,7 @@ use crate::config::{build_config, load_env_file, load_env_file_required, validat
 use crate::driver::connect;
 use crate::session::limits::MAX_DAEMON_CLIENTS;
 
+mod endpoint;
 mod reply;
 mod serve;
 use super::socket::{resolve_socket_path, restrict_dir_mode, restrict_socket_mode};
@@ -82,6 +83,11 @@ pub async fn run_daemon(socket: &Path, env_path: &Path, env_required: bool) -> a
     tracing::info!(socket = %socket.display(), "rmigd listening");
     let client_slots = Arc::new(Semaphore::new(MAX_DAEMON_CLIENTS));
     let command_timeout = cfg.command_timeout;
+    let daemon_endpoint = Arc::new(endpoint::Endpoint {
+        server: cfg.server.clone(),
+        port: cfg.port.clone(),
+        user: cfg.user.clone(),
+    });
     loop {
         // A transient accept error (e.g. EMFILE under fd pressure) must not kill
         // the daemon; log, back off briefly, and keep serving.
@@ -95,9 +101,10 @@ pub async fn run_daemon(socket: &Path, env_path: &Path, env_required: bool) -> a
         };
         let permit = client_slots.clone().acquire_owned().await?;
         let client = shared.clone();
+        let ep = daemon_endpoint.clone();
         tokio::spawn(async move {
             let _permit = permit;
-            if let Err(e) = serve(stream, client, command_timeout).await {
+            if let Err(e) = serve(stream, client, command_timeout, ep).await {
                 tracing::warn!(error = %e, "rmigd client failed");
             }
         });

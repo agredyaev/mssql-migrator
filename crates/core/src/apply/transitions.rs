@@ -33,11 +33,18 @@ async fn apply_one_transition(
     path: &str,
     result: &mut ApplyResult,
 ) -> Result<()> {
-    let Some(body) = read_transition(ws, obj, path) else {
+    let Some(script) = find_transition(ws, obj, path) else {
         result.push_error(format!("{path}: transition script not found"));
         return Ok(());
     };
-    let cs = transition_checksum(ws, obj, path).unwrap_or(obj.checksum);
+    let cs = script.checksum().copied().unwrap_or(obj.checksum);
+    let body = match super::script_read::verified_body(script.abs_path().as_ref(), &cs, path) {
+        Ok(body) => body,
+        Err(msg) => {
+            result.push_error(msg);
+            return Ok(());
+        }
+    };
     let rec = audit::record_applied(
         path,
         &obj.kind,
@@ -56,20 +63,12 @@ async fn apply_one_transition(
     Ok(())
 }
 
-fn read_transition(ws: &Workspace, obj: &PlannedObject, path: &str) -> Option<String> {
-    for key in path_lookup_candidates(obj.database_name.as_ref(), path) {
-        if let Some(script) = ws.script_by_key(&ScriptKey::from_path(&key)) {
-            return std::fs::read_to_string(script.abs_path().as_ref()).ok();
-        }
-    }
-    None
-}
-
-fn transition_checksum(ws: &Workspace, obj: &PlannedObject, path: &str) -> Option<[u8; 32]> {
+fn find_transition<'a>(
+    ws: &'a Workspace,
+    obj: &PlannedObject,
+    path: &str,
+) -> Option<crate::domain::ScriptRef<'a>> {
     path_lookup_candidates(obj.database_name.as_ref(), path)
         .into_iter()
-        .find_map(|key| {
-            ws.script_by_key(&ScriptKey::from_path(&key))
-                .and_then(|s| s.checksum().copied())
-        })
+        .find_map(|key| ws.script_by_key(&ScriptKey::from_path(&key)))
 }

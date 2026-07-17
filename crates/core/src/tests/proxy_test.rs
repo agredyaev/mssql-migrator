@@ -5,6 +5,14 @@ use crate::session::limits::MAX_SESSION_LINE_BYTES;
 use crate::session::protocol::{Request, Response};
 use crate::session::proxy::ProxyClient;
 
+fn ping_request() -> Request {
+    Request::Ping {
+        server: String::new(),
+        port: String::new(),
+        user: String::new(),
+    }
+}
+
 fn proxy_client(stream: UnixStream) -> ProxyClient {
     let (read_half, write_half) = stream.into_split();
     ProxyClient {
@@ -37,7 +45,7 @@ async fn call_round_trips_small_response_happy_path() {
             .expect("write response");
     });
 
-    let response = client.call(Request::Ping).await.expect("ping response");
+    let response = client.call(ping_request()).await.expect("ping response");
     server.await.expect("server task");
     response.into_result().expect("ping should succeed");
 }
@@ -78,7 +86,7 @@ async fn call_rejects_oversized_response_regression() {
     });
 
     let err = client
-        .call(Request::Ping)
+        .call(ping_request())
         .await
         .expect_err("oversized response should fail");
     server.await.expect("server task");

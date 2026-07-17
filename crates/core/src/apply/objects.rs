@@ -68,7 +68,7 @@ pub async fn apply_objects(
     Ok(())
 }
 
-fn adopt_record(obj: &PlannedObject) -> HistoryRecord {
+pub(super) fn adopt_record(obj: &PlannedObject) -> HistoryRecord {
     audit::record_adopted(
         &obj.normalized_key,
         obj.checksum,

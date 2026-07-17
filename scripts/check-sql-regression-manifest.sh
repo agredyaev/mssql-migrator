@@ -23,6 +23,8 @@ REQUIRED=(
   db_auth_test
   apply_e2e_integration
   existing_db_adoption_integration
+  adopt_e2e_integration
+  drift_e2e_integration
   chaos_kill_mid_apply_test
 )
 

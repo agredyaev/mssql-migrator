@@ -64,7 +64,7 @@ Tests point `RM_SQL_ROOT` at `$REPO/.temp/sql` (fixture in `.temp/`, not committ
 ## Off-nominal behavior
 
 - Missing `RM_SQL_ROOT` or empty catalog dirs → `validate_config` / `discover_catalog_databases` error before connect.
-- Multiple top-level DB dirs → engine runs plan/migrate once per database (see `engine/run.rs`).
+- Multiple top-level DB dirs → engine runs plan/migrate once per database (see `engine/run/mod.rs`).
 - Apple Silicon + Colima without Rosetta → Docker MSSQL can crash before bind/listen with `Invalid mapping of address ... below 0x400000000000`; fix the Colima profile first, then rerun `make db-up`.
 
 ## Verification

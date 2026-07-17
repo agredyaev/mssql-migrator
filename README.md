@@ -90,7 +90,7 @@ Verify the workspace using the following verification suite:
   ```bash
   ./target/release/rmig --env .env plan
   ```
-- **Recovery**: Refer to [runbook.md](file://~/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/runbook.md) for unlocking active sessions or recovering from blocked migrations.
+- **Recovery**: Refer to [runbook.md](docs/runbook.md) for unlocking active sessions or recovering from blocked migrations.
 
 ---
 
@@ -104,8 +104,9 @@ Verify the workspace using the following verification suite:
 
 | Topic | Canonical Path |
 | :--- | :--- |
-| Core specifications | [docs/specs/rust/README.md](file://~/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/specs/rust/README.md) |
-| Operator reference | [docs/rmig-rust.md](file://~/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/rmig-rust.md) |
-| Production gate | [docs/prod-gate.md](file://~/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/prod-gate.md) |
-| Performance harness | [ops/perf/README.md](file://~/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/ops/perf/README.md) |
-| Product overview | [docs/solution.md](file://~/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/solution.md) |
+| Architecture walkthrough (start here) | [docs/architecture-walkthrough.md](docs/architecture-walkthrough.md) |
+| Core specifications | [docs/specs/rust/README.md](docs/specs/rust/README.md) |
+| Operator reference | [docs/rmig-rust.md](docs/rmig-rust.md) |
+| Production gate | [docs/prod-gate.md](docs/prod-gate.md) |
+| Performance harness | [ops/perf/README.md](ops/perf/README.md) |
+| Product overview | [docs/solution.md](docs/solution.md) |

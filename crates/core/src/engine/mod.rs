@@ -19,6 +19,7 @@
 //! ### Off-Nominal & Failure Containment
 //! - **Process Panic / Database Aborts**: Captures errors, releases session locks safely, and formats precise diagnostic logs to stderr.
 
+mod adopt_gate;
 mod apply_run;
 mod blocked;
 mod filter;

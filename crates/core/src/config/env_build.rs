@@ -70,6 +70,7 @@ pub fn build_config(env: &HashMap<String, String>, json_logs: bool) -> Config {
     cfg.set_skip_git(parse_bool(&get("RM_SKIP_GIT")));
     cfg.set_inspect_full(parse_bool(&get("RMIG_INSPECT_FULL")));
     cfg.set_catalog_cache(!matches!(get("RMIG_CATALOG_CACHE").as_str(), "0" | "false"));
+    cfg.set_allow_adopt(parse_bool(&get("RMIG_ALLOW_ADOPT")));
     cfg.session_socket = get("RMIG_SESSION");
     cfg.session_token = get("RMIG_SESSION_TOKEN");
     set_timeout(

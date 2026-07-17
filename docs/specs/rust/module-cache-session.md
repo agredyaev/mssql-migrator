@@ -30,12 +30,12 @@ Product SLO (`cli_wall_ms` < 150 ms) assumes warm path: L1 hit and/or `RMIG_SESS
 
 - L1: `try_load`, `save`, `invalidate_all`
 - Session: `connect_daemon`, `connect_session_or_direct`, `resolve_session_token`, `run_daemon`
-- Env: `RMIG_SESSION` (socket path), `RMIG_L1_CACHE_DIR`
+- Env: `RMIG_SESSION` (socket path), `RMIG_SESSION_TOKEN` (shared auth token)
 - Limits: `MAX_SESSION_LINE_BYTES`, `MAX_DAEMON_CLIENTS`, `MAX_L1_CACHE_BYTES`
 
 ## Assumptions and constraints
 
-- Assumption: L1 cache directory is writable (`RMIG_L1_CACHE_DIR` or default under temp).
+- Assumption: L1 cache directory (`cfg.l1_cache_dir`, default `.rmig/cache`) is writable.
 - Constraint: session daemon requires Unix domain socket (feature `session-daemon`).
 - Constraint: `rmigd` keeps one warm TDS session. Concurrent socket handlers are bounded by `MAX_DAEMON_CLIENTS`; SQL RPCs serialize on the shared TDS client.
 

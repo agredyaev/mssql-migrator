@@ -70,5 +70,11 @@ pub fn parse_object(rel: &str, abs: &Path) -> Result<Option<ParsedObject>> {
 
 fn file_checksum(path: &Path) -> Result<[u8; 32]> {
     let data = std::fs::read(path).map_err(crate::error::Error::Io)?;
-    Ok(Sha256::digest(&data).into())
+    Ok(content_checksum(&data))
+}
+
+/// Canonical script checksum. Apply-time re-verification must hash exactly the
+/// way the scanner did, so both sides share this one function.
+pub(crate) fn content_checksum(data: &[u8]) -> [u8; 32] {
+    Sha256::digest(data).into()
 }

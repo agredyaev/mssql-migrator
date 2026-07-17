@@ -11,7 +11,17 @@ pub enum Request {
     Auth {
         token: String,
     },
-    Ping,
+    /// Handshake. The endpoint fields carry the client's configured SQL Server
+    /// identity so the daemon can refuse a session whose warm connection points
+    /// at a different server/port/login. Empty fields mean a legacy client.
+    Ping {
+        #[serde(default)]
+        server: String,
+        #[serde(default)]
+        port: String,
+        #[serde(default)]
+        user: String,
+    },
     Exec {
         sql: String,
     },
@@ -31,7 +41,11 @@ impl std::fmt::Debug for Request {
                 .debug_struct("Auth")
                 .field("token", &"<redacted>")
                 .finish(),
-            Self::Ping => f.write_str("Ping"),
+            Self::Ping { server, port, .. } => f
+                .debug_struct("Ping")
+                .field("server", server)
+                .field("port", port)
+                .finish(),
             Self::Exec { sql } => f.debug_struct("Exec").field("sql", sql).finish(),
             Self::Query { sql, params } => f
                 .debug_struct("Query")

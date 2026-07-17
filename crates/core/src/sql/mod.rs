@@ -54,6 +54,8 @@ pub mod catalog {
 pub mod apply {
     pub const CREATE_SCHEMA: &str = include_str!("../../../../sql/apply/create_schema.sql");
     pub const BEGIN_TX: &str = include_str!("../../../../sql/apply/begin_transaction.sql");
+    pub const ASSERT_OPEN_TX: &str =
+        include_str!("../../../../sql/apply/assert_open_transaction.sql");
     pub const COMMIT_TX: &str = include_str!("../../../../sql/apply/commit_transaction.sql");
     pub const ROLLBACK: &str = include_str!("../../../../sql/apply/rollback.sql");
 }

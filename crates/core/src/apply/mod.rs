@@ -23,13 +23,17 @@
 
 mod history_write;
 mod kind;
+mod metadata;
 mod objects;
 mod objects_exec;
 mod result;
 mod schemas;
+mod script_read;
+mod table_records;
 mod transitions;
 mod tx;
 
+pub use metadata::{execute_metadata_plan, MetadataMode};
 pub use result::ApplyResult;
 
 use crate::audit::{self, ensure_history_index, ensure_tables, invalidate_audit_cache};
