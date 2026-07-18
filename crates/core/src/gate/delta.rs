@@ -47,7 +47,8 @@ pub fn keys_for_changed_paths(ws: &Workspace, changed_paths: &[String]) -> HashS
     keys
 }
 
-/// Expands `delta` to include parent tables and transition tables reachable from the initial set.
+/// Expands `delta` to include parent tables of matched triggers. Changed transition
+/// scripts already enter as their table's qualified key via `keys_for_changed_paths`.
 pub fn expand_delta_closure(ws: &Workspace, mut delta: HashSet<String>) -> HashSet<String> {
     if delta.is_empty() {
         return delta;
@@ -73,24 +74,6 @@ pub fn expand_delta_closure(ws: &Workspace, mut delta: HashSet<String>) -> HashS
                     if delta.insert(format!("{pdb}/{pk}")) {
                         added += 1;
                     }
-                }
-            }
-        }
-        for (&row_id, entries) in ws.transitions_by_row.iter() {
-            let ti = row_id as usize - 1;
-            let table_key = ws.entry_key(ti).as_str();
-            let tdb = ws.database_name(ws.entry(ti).db_id);
-            let qualified = format!("{tdb}/{table_key}");
-            if delta.contains(&qualified) {
-                continue;
-            }
-            for e in entries {
-                let path = ws.script(e.script_id).path_str();
-                if delta.contains(path) {
-                    if delta.insert(qualified.clone()) {
-                        added += 1;
-                    }
-                    break;
                 }
             }
         }

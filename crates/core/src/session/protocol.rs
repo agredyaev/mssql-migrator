@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::config::Config;
 use crate::driver::RowData;
 
 #[derive(Serialize, Deserialize)]
@@ -13,7 +14,8 @@ pub enum Request {
     },
     /// Handshake. The endpoint fields carry the client's configured SQL Server
     /// identity so the daemon can refuse a session whose warm connection points
-    /// at a different server/port/login. Empty fields mean a legacy client.
+    /// at a different server/port/login/TLS policy. Empty/absent fields mean a
+    /// legacy client.
     Ping {
         #[serde(default)]
         server: String,
@@ -21,6 +23,10 @@ pub enum Request {
         port: String,
         #[serde(default)]
         user: String,
+        #[serde(default)]
+        encrypt: Option<bool>,
+        #[serde(default)]
+        trust_server_certificate: Option<bool>,
     },
     Exec {
         sql: String,
@@ -29,6 +35,27 @@ pub enum Request {
         sql: String,
         params: Vec<String>,
     },
+}
+
+impl Request {
+    pub(super) fn ping(cfg: Option<&Config>) -> Self {
+        let Some(cfg) = cfg else {
+            return Self::Ping {
+                server: String::new(),
+                port: String::new(),
+                user: String::new(),
+                encrypt: None,
+                trust_server_certificate: None,
+            };
+        };
+        Self::Ping {
+            server: cfg.server.clone(),
+            port: cfg.port.clone(),
+            user: cfg.user.clone(),
+            encrypt: Some(cfg.encrypt()),
+            trust_server_certificate: Some(cfg.trust_server_certificate()),
+        }
+    }
 }
 
 /// `Debug` is hand-written (not derived) so the `Auth` session token is never

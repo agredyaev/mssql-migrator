@@ -25,7 +25,7 @@ use std::sync::Arc;
 use tokio::net::UnixListener;
 use tokio::sync::{Mutex, Semaphore};
 
-use crate::config::{build_config, load_env_file, load_env_file_required, validate_config};
+use crate::config::Config;
 use crate::driver::connect;
 use crate::session::limits::MAX_DAEMON_CLIENTS;
 
@@ -37,23 +37,13 @@ use super::socket::{resolve_socket_path, restrict_socket_mode};
 use serve::serve;
 
 /// Starts the rmigd Unix-socket daemon, accepting connections until the process exits.
-pub async fn run_daemon(socket: &Path, env_path: &Path, env_required: bool) -> anyhow::Result<()> {
-    let env = if env_required {
-        load_env_file_required(env_path)?
-    } else {
-        load_env_file(env_path)?
-    };
-    let mut cfg = build_config(&env, false);
-    validate_config(&mut cfg).map_err(|e| anyhow::anyhow!("{e}"))?;
+pub async fn run_daemon(socket: &Path, cfg: Config) -> anyhow::Result<()> {
     super::auth::apply_session_token_from_config(&cfg);
-    if super::auth::resolve_session_token(Some(&cfg)).is_empty() {
-        tracing::warn!(
-            "rmigd running WITHOUT a session token: socket file permissions are the only access control"
-        );
-    }
     let conn = connect(&cfg).await?;
     let shared = Arc::new(Mutex::new(conn.client));
-    let socket = if socket.as_os_str().is_empty() {
+    let socket = if !cfg.session_socket.is_empty() {
+        std::path::PathBuf::from(&cfg.session_socket)
+    } else if socket.as_os_str().is_empty() {
         resolve_socket_path()?
     } else {
         socket.to_path_buf()
@@ -87,6 +77,8 @@ pub async fn run_daemon(socket: &Path, env_path: &Path, env_required: bool) -> a
         server: cfg.server.clone(),
         port: cfg.port.clone(),
         user: cfg.user.clone(),
+        encrypt: cfg.encrypt(),
+        trust_server_certificate: cfg.trust_server_certificate(),
     });
     loop {
         // A transient accept error (e.g. EMFILE under fd pressure) must not kill
