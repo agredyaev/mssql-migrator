@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use migrator_core::config::{build_config, load_env_file, validate_config};
+use migrator_core::config::{build_config, load_toml_config, validate_config};
 use migrator_core::Config;
 
 pub fn repo_root() -> std::path::PathBuf {
@@ -14,8 +14,8 @@ pub fn repo_root() -> std::path::PathBuf {
 
 /// Base config for integration / SLO tests (`skip_git`). Caller may attach `rmigd` socket.
 pub fn parity_config_base() -> Config {
-    let env = load_env_file(&repo_root().join(".env")).unwrap_or_default();
-    let mut cfg = build_config(&env, true);
+    let file = load_toml_config(&repo_root().join("config.toml")).expect("load config");
+    let mut cfg = build_config(&file, true);
     if cfg.server.is_empty() {
         cfg.server = "127.0.0.1".into();
     }

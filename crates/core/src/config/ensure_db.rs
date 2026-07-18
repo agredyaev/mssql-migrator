@@ -36,11 +36,7 @@ pub async fn target_database_exists(cfg: &Config, db: &str) -> Result<bool> {
     match connect(&target).await {
         Ok(_) => Ok(true),
         Err(err) => {
-            // Match only SQL Server's own 4060 message text. A bare "4060"
-            // substring also matches hostnames/ports in transport errors and
-            // would classify an outage as "database absent".
-            let msg = err.to_string().to_lowercase();
-            if msg.contains("cannot open database") {
+            if is_missing_db_error(&err.to_string()) {
                 tracing::debug!(database = %db, "target database absent");
                 Ok(false)
             } else {
@@ -96,14 +92,31 @@ async fn create_database_if_missing(conn: &mut MssqlConn, cfg: &Config, db: &str
     // First-deployment recovery must stay inside RM_COMMAND_TIMEOUT: this exec
     // runs on a raw master connection with no TimingConn bound around it.
     let t = cfg.command_timeout;
-    let fut = mssql::exec(&mut conn.client, &sql);
-    if t.is_zero() {
+    with_create_database_timeout(t, db, mssql::exec(&mut conn.client, &sql)).await
+}
+
+async fn with_create_database_timeout<F, T>(
+    timeout: std::time::Duration,
+    db: &str,
+    fut: F,
+) -> Result<T>
+where
+    F: std::future::Future<Output = Result<T>>,
+{
+    if timeout.is_zero() {
         fut.await
     } else {
-        tokio::time::timeout(t, fut).await.map_err(|_| {
-            crate::error::Error::Sql(format!("CREATE DATABASE {db} timed out after {t:?}"))
+        tokio::time::timeout(timeout, fut).await.map_err(|_| {
+            crate::error::Error::Sql(format!("CREATE DATABASE {db} timed out after {timeout:?}"))
         })?
     }
+}
+
+// Match only SQL Server's own 4060 message text. A bare "4060" substring also
+// matches hostnames/ports in transport errors and would classify an outage as
+// "database absent".
+fn is_missing_db_error(msg: &str) -> bool {
+    msg.to_lowercase().contains("cannot open database")
 }
 
 #[cfg(test)]

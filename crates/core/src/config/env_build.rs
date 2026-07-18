@@ -1,103 +1,94 @@
-use std::collections::HashMap;
-use std::time::Duration;
-
-use crate::error::{Error, Result};
 use crate::Config;
 
-pub(crate) fn parse_bool(s: &str) -> bool {
-    matches!(
-        s.trim().to_lowercase().as_str(),
-        "1" | "true" | "yes" | "on" | "y" | "enabled"
-    )
-}
+use super::env_parse::{apply_tls, parse_bool, set_timeout};
+use super::TomlConfig;
 
-/// True when `s` is a recognizable boolean (either polarity); used to warn on
-/// typo'd flags whose silent-false could disable a security control.
-fn recognized_bool(s: &str) -> bool {
-    let t = s.trim().to_lowercase();
-    parse_bool(&t) || matches!(t.as_str(), "0" | "false" | "no" | "off" | "n" | "disabled")
-}
-
-pub(crate) fn parse_duration(s: &str) -> Result<Duration> {
-    if s.is_empty() {
-        return Err(Error::Config("empty duration".into()));
-    }
-    if let Ok(secs) = s.parse::<u64>() {
-        return Ok(Duration::from_secs(secs));
-    }
-    let s = s.trim();
-    if let Some(stripped) = s.strip_suffix('s') {
-        let n: f64 = stripped.parse().map_err(|_| Error::Config(s.to_string()))?;
-        // try_from_secs_f64 rejects negative/NaN/overflow instead of panicking.
-        return Duration::try_from_secs_f64(n).map_err(|_| Error::Config(s.to_string()));
-    }
-    Err(Error::Config(format!("invalid duration: {s}")))
-}
-
-fn set_timeout(raw: &str, name: &str, slot: &mut Duration) {
-    match parse_duration(raw) {
-        Ok(d) => *slot = d,
-        Err(_) if !raw.is_empty() => {
-            tracing::warn!(var = name, value = raw, "invalid duration; keeping default")
-        }
-        Err(_) => {}
-    }
-}
-
-/// Builds a `Config` from environment variables, consulting `env` as a fallback for each key.
-pub fn build_config(env: &HashMap<String, String>, json_logs: bool) -> Config {
+/// Builds a config with process environment taking precedence over typed TOML.
+pub fn build_config(file: &TomlConfig, json_logs: bool) -> Config {
     let mut cfg = Config::default();
-    let get = |k: &str| -> String {
-        std::env::var(k)
-            .ok()
-            .or_else(|| env.get(k).cloned())
-            .unwrap_or_default()
-    };
-    cfg.sql_root = get("RM_SQL_ROOT");
-    cfg.sql_base = get("RM_SQL_BASE");
-    cfg.report_dir = get("RM_REPORT_DIR");
-    cfg.set_report_sync(parse_bool(&get("RM_REPORT_SYNC")));
-    cfg.log_level = get("RM_LOG_LEVEL");
-    cfg.server = get("RM_DB_SERVER");
-    cfg.port = get("RM_DB_PORT");
-    if cfg.port.is_empty() {
-        cfg.port = "1433".into();
-    }
+    let get = |name: &str, value: Option<String>| std::env::var(name).ok().or(value);
+    cfg.sql_root = get("RM_SQL_ROOT", file.paths.sql_root.clone()).unwrap_or_default();
+    cfg.sql_base = get("RM_SQL_BASE", file.paths.sql_base.clone()).unwrap_or_default();
+    cfg.report_dir = get("RM_REPORT_DIR", file.paths.report_dir.clone()).unwrap_or_default();
+    cfg.l1_cache_dir = get("RMIG_L1_CACHE_DIR", file.paths.l1_cache_dir.clone())
+        .unwrap_or(cfg.l1_cache_dir.clone());
+    let report_sync_default = cfg.report_sync();
+    cfg.set_report_sync(
+        get(
+            "RM_REPORT_SYNC",
+            file.execution.report_sync.map(|v| v.to_string()),
+        )
+        .map_or(report_sync_default, |v| parse_bool(&v)),
+    );
+    cfg.log_level =
+        get("RM_LOG_LEVEL", file.execution.log_level.clone()).unwrap_or(cfg.log_level.clone());
+    cfg.server = get("RM_DB_SERVER", file.database.server.clone()).unwrap_or_default();
+    cfg.port =
+        get("RM_DB_PORT", file.database.port.map(|v| v.to_string())).unwrap_or(cfg.port.clone());
     cfg.database.clear();
-    cfg.db_auth = get("RM_DB_AUTH");
-    cfg.user = get("RM_DB_USER");
-    cfg.password = get("RM_DB_PASSWORD");
-    cfg.set_skip_git(parse_bool(&get("RM_SKIP_GIT")));
-    cfg.set_inspect_full(parse_bool(&get("RMIG_INSPECT_FULL")));
-    cfg.set_catalog_cache(!matches!(get("RMIG_CATALOG_CACHE").as_str(), "0" | "false"));
-    cfg.set_allow_adopt(parse_bool(&get("RMIG_ALLOW_ADOPT")));
-    cfg.session_socket = get("RMIG_SESSION");
-    cfg.session_token = get("RMIG_SESSION_TOKEN");
+    cfg.db_auth = get("RM_DB_AUTH", file.database.auth.clone()).unwrap_or(cfg.db_auth.clone());
+    cfg.user = std::env::var("RM_DB_USER").unwrap_or_default();
+    cfg.password = std::env::var("RM_DB_PASSWORD").unwrap_or_default();
+    let skip_git_default = cfg.skip_git();
+    cfg.set_skip_git(
+        get(
+            "RM_SKIP_GIT",
+            file.execution.skip_git.map(|v| v.to_string()),
+        )
+        .map_or(skip_git_default, |v| parse_bool(&v)),
+    );
+    let inspect_full_default = cfg.inspect_full();
+    cfg.set_inspect_full(
+        get(
+            "RMIG_INSPECT_FULL",
+            file.execution.inspect_full.map(|v| v.to_string()),
+        )
+        .map_or(inspect_full_default, |v| parse_bool(&v)),
+    );
+    let catalog_cache_default = cfg.catalog_cache();
+    cfg.set_catalog_cache(
+        get(
+            "RMIG_CATALOG_CACHE",
+            file.execution.catalog_cache.map(|v| v.to_string()),
+        )
+        .map_or(catalog_cache_default, |v| parse_bool(&v)),
+    );
+    let allow_adopt_default = cfg.allow_adopt();
+    cfg.set_allow_adopt(
+        get(
+            "RMIG_ALLOW_ADOPT",
+            file.execution.allow_adopt.map(|v| v.to_string()),
+        )
+        .map_or(allow_adopt_default, |v| parse_bool(&v)),
+    );
+    cfg.session_socket = get("RMIG_SESSION", file.session.socket.clone()).unwrap_or_default();
+    cfg.session_token = std::env::var("RMIG_SESSION_TOKEN").unwrap_or_default();
     set_timeout(
-        &get("RM_LOCK_TIMEOUT"),
+        &get("RM_LOCK_TIMEOUT", file.execution.lock_timeout.clone()).unwrap_or_default(),
         "RM_LOCK_TIMEOUT",
         &mut cfg.lock_timeout,
     );
     set_timeout(
-        &get("RM_COMMAND_TIMEOUT"),
+        &get("RM_COMMAND_TIMEOUT", file.execution.command_timeout.clone()).unwrap_or_default(),
         "RM_COMMAND_TIMEOUT",
         &mut cfg.command_timeout,
     );
-    let encrypt = get("RM_DB_ENCRYPT");
-    if !encrypt.is_empty() && !recognized_bool(&encrypt) {
-        tracing::warn!(
-            var = "RM_DB_ENCRYPT",
-            value = encrypt.as_str(),
-            "unrecognized boolean; treating as false (TLS disabled)"
-        );
-    }
-    cfg.set_encrypt(parse_bool(&encrypt));
-    cfg.set_trust_server_certificate(parse_bool(&get("RM_DB_TRUST_SERVER_CERTIFICATE")));
+    apply_tls(&mut cfg, file);
     cfg.set_json_logs(json_logs);
-    if let Ok(n) = get("RMIG_SLO_MAX_CLI_WALL_MS").parse::<i64>() {
+    if let Ok(n) = get(
+        "RMIG_SLO_MAX_CLI_WALL_MS",
+        file.execution.slo_max_cli_wall_ms.map(|v| v.to_string()),
+    )
+    .unwrap_or_default()
+    .parse::<i64>()
+    {
         if n > 0 {
             cfg.slo_max_cli_wall_ms = n;
         }
     }
     cfg
 }
+
+#[cfg(test)]
+#[path = "../tests/env_build_test.rs"]
+mod tests;

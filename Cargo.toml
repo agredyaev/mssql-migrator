@@ -16,6 +16,7 @@ tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "net", "i
 tokio-util = { version = "0.7.18", features = ["compat"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "registry"] }
+toml = "1.1.3"
 
 # Profiling builds: optimized with debug symbols for flamegraphs (`cargo flamegraph`, samply).
 [profile.release]
@@ -40,5 +41,4 @@ debug = false
 [profile.profiling]
 inherits = "release"
 debug = true
-
 

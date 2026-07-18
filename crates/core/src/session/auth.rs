@@ -13,7 +13,7 @@ use crate::error::{Error, Result};
 /// POSIX; why `set_var` is `unsafe` in Rust 2024).
 static SESSION_TOKEN: RwLock<Option<String>> = RwLock::new(None);
 
-/// Resolve the session token from config (dotenv), the published token, or the
+/// Resolve the session token from validated config, the published token, or the
 /// process environment, in that order.
 pub fn resolve_session_token(cfg: Option<&Config>) -> String {
     if let Some(cfg) = cfg {
@@ -31,7 +31,7 @@ pub fn resolve_session_token(cfg: Option<&Config>) -> String {
     std::env::var("RMIG_SESSION_TOKEN").unwrap_or_default()
 }
 
-/// Publish a dotenv-loaded token for daemon-side auth checks in this process.
+/// Publish the process-environment token for daemon-side auth checks.
 pub fn apply_session_token_from_config(cfg: &Config) {
     if !cfg.session_token.is_empty() {
         *SESSION_TOKEN
