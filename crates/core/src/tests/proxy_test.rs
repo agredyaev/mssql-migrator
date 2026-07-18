@@ -10,6 +10,8 @@ fn ping_request() -> Request {
         server: String::new(),
         port: String::new(),
         user: String::new(),
+        encrypt: None,
+        trust_server_certificate: None,
     }
 }
 

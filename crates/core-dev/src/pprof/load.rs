@@ -28,7 +28,7 @@ pub fn write_load_profile(
     write_text_top_frames(&report, txt_path, meta)
 }
 
-fn write_text_top_frames(report: &pprof::Report, path: &Path, meta: &str) -> io::Result<()> {
+pub fn write_text_top_frames(report: &pprof::Report, path: &Path, meta: &str) -> io::Result<()> {
     let mut by_fn: HashMap<String, isize> = HashMap::new();
     let mut total: isize = 0;
     for (frames, count) in &report.data {

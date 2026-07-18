@@ -9,4 +9,4 @@ mod load;
 
 pub use criterion::RmigPprofProfiler;
 pub use guard::PprofGuard;
-pub use load::write_load_profile;
+pub use load::{write_load_profile, write_text_top_frames};

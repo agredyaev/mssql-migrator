@@ -87,6 +87,14 @@ fn validate_config_missing_sql_user_regression() {
     let msg = err.to_string();
     assert!(msg.contains("RM_DB_USER"), "unexpected error: {msg}");
     assert!(msg.contains("RM_DB_PASSWORD"), "unexpected error: {msg}");
+    assert!(
+        msg.contains("process environment"),
+        "unexpected error: {msg}"
+    );
+    assert!(
+        msg.contains("not read from config.toml"),
+        "unexpected error: {msg}"
+    );
 }
 
 /// Port zero parses as u16 but is not a reachable TCP destination; the
@@ -113,4 +121,22 @@ fn validate_config_rejects_port_zero_regression() {
         err.to_string().contains("RM_DB_PORT"),
         "unexpected error: {err}"
     );
+}
+
+#[test]
+fn validate_daemon_requires_transport_token() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("db1/smoke/tables")).expect("mkdir");
+    std::fs::write(dir.path().join("db1/smoke/tables/t1.sql"), "SELECT 1;\n").expect("write");
+    let mut cfg = make_cfg(
+        "localhost",
+        &dir.path().to_string_lossy(),
+        "svc",
+        "secret",
+        "sql",
+    );
+    let err = validate_daemon_config(&mut cfg).expect_err("daemon token is required");
+    let message = err.to_string();
+    assert!(message.contains("RMIG_SESSION_TOKEN"), "got: {message}");
+    assert!(message.contains("process environment"), "got: {message}");
 }

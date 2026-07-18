@@ -6,6 +6,8 @@ fn request_ping_roundtrip_json() {
         server: "s".into(),
         port: "1433".into(),
         user: "sa".into(),
+        encrypt: Some(true),
+        trust_server_certificate: Some(false),
     };
     let line = serde_json::to_string(&req).unwrap();
     let back: Request = serde_json::from_str(&line).unwrap();
@@ -17,10 +19,13 @@ fn request_ping_roundtrip_json() {
 #[test]
 fn request_ping_without_endpoint_fields_is_accepted_regression() {
     let back: Request = serde_json::from_str(r#"{"op":"ping"}"#).unwrap();
-    assert!(
-        matches!(back, Request::Ping { ref server, ref port, ref user }
-            if server.is_empty() && port.is_empty() && user.is_empty())
-    );
+    assert!(matches!(back, Request::Ping {
+            ref server,
+            ref port,
+            ref user,
+            encrypt: None,
+            trust_server_certificate: None,
+        } if server.is_empty() && port.is_empty() && user.is_empty()));
 }
 
 #[test]

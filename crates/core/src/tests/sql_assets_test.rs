@@ -31,6 +31,16 @@ fn audit_identity_columns_are_nvarchar_regression() {
     );
 }
 
+#[test]
+fn module_definition_audit_is_additive_and_live_regression() {
+    assert!(audit::BOOTSTRAP_TABLES.contains("live_definition_checksum VARBINARY(32) NULL"));
+    assert!(audit::INSERT_HISTORY.contains("HASHBYTES('SHA2_256', OBJECT_DEFINITION"));
+    assert!(audit::INSERT_HISTORY.contains("THROW 51000"));
+    assert!(audit::LOAD_CHECKSUMS
+        .contains("COL_LENGTH('azdo_deploy_meta.history', 'live_definition_checksum')"));
+    assert!(audit::LOAD_CHECKSUMS.contains("live_definition_drift"));
+}
+
 /// SHA-256 Git repositories emit 64-hex commit ids; a 40-char column silently
 /// truncates them.
 #[test]

@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use migrator_core::config::{build_config, validate_config};
+use migrator_core::config::{build_config, validate_config, TomlConfig};
 use migrator_core::driver::TimingConn;
 use migrator_core::error::Result;
 use migrator_core::Config;
@@ -100,7 +100,7 @@ fn migrate_cmd(bin: &Path, root: &Path) -> Command {
 }
 
 fn chaos_cfg() -> Config {
-    let mut cfg = build_config(&std::collections::HashMap::new(), true);
+    let mut cfg = build_config(&TomlConfig::default(), true);
     cfg.server = std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into());
     cfg.port = std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into());
     cfg.user = std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into());

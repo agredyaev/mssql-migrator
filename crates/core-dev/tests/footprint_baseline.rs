@@ -39,16 +39,18 @@ fn footprint_baseline_match() {
     });
     let baseline: FootprintBaseline =
         serde_json::from_str(&data).expect("parse footprint baseline");
-    // Struct sizes are ABI-specific: a baseline recorded for another target or
-    // compiler must not be compared (legacy "unknown" baselines are exempt
-    // until regenerated).
+    // Struct sizes are ABI-specific: unknown or cross-target evidence cannot
+    // be interpreted.
     let current = FootprintBaseline::current();
-    if baseline.target != "unknown" {
-        assert_eq!(
-            baseline.target, current.target,
-            "baseline recorded for a different target; regenerate it"
-        );
-    }
+    assert_ne!(baseline.target, "unknown", "baseline target is missing");
+    assert_ne!(
+        baseline.rustc_version, "unknown",
+        "baseline compiler provenance is missing"
+    );
+    assert_eq!(
+        baseline.target, current.target,
+        "baseline recorded for a different target; regenerate it"
+    );
     let got = collect_struct_sizes();
     assert_eq!(
         got.len(),
