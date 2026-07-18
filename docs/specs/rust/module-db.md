@@ -26,7 +26,7 @@ Describe **SQL Server catalog and audit I/O for the plan phase**: batched TDS ro
 
 `engine::run_command` calls `run_plan_db_phase`, which tries L1 (`cache::l1`), then warm snapshot, then plan DB I/O. On **direct connect** (`session_socket` empty), `plan_parallel::run_parallel` keeps the primary TDS session and serialises bootstrap ensure + plan-body queries through an async mutex. With `RMIG_SESSION`, `plan_batch::run_batch` runs the same logic sequentially through `rmigd`.
 
-Paths: `cold_full`, `git_delta`, `incremental`, `cache_hit`, `warm_snapshot`. Empty audit history skips OPENJSON checksum load (`audit::load_checksums` zero-digest map). Plan-path bootstrap omits `BOOTSTRAP_INDEX` (deferred to apply). Catalog save runs **outside** `parallel_wall_ms`.
+Paths: `cold_full`, `git_delta`, `incremental`, `cache_hit`, `warm_snapshot`. Empty audit history skips OPENJSON checksum load (plan-side `load_checksums_plan` zero-digest map). Plan-path bootstrap omits `BOOTSTRAP_INDEX` (deferred to apply). Catalog save runs **outside** `parallel_wall_ms`.
 
 ## Interfaces and boundaries
 
@@ -48,8 +48,8 @@ Paths: `cold_full`, `git_delta`, `incremental`, `cache_hit`, `warm_snapshot`. Em
 2. Optional L1 hit → return immediately.
 3. Optional warm snapshot → seed L1 and return.
 4. **Direct connect:** if bootstrap is needed, `tokio::join!` coordinates ensure and plan-body tasks, but both use the same TDS session through an async mutex; `parallel_wall_ms` records the coordinated wall time.
-5. **Git delta:** `audit::load_checksums` fast path; optional relaxed cache load; hot catalog SQL or inspector cache hit.
-6. **Cold / incremental:** `audit::load_checksums` (skip OPENJSON when history empty); scoped catalog batch or single RT bootstrap+catalog when cold full + empty history.
+5. **Git delta:** plan-side `load_checksums_plan` fast path; optional relaxed cache load; hot catalog SQL or inspector cache hit.
+6. **Cold / incremental:** plan-side `load_checksums_plan` (skip OPENJSON when history empty); scoped catalog batch or single RT bootstrap+catalog when cold full + empty history.
 7. `save_batched` after plan when cache enabled; `save_workspace_snapshot` after apply (engine).
 
 ## Off-nominal behavior and failure containment

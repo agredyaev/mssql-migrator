@@ -11,7 +11,7 @@ Define how **`rmig`** is built, configured, and operated. It acts as the primary
 This contract governs the CLI entry points, execution commands, dynamic environment configurations, and produced planning report artifacts:
 
 - **CLI entry**: `crates/cli/src/main.rs` → `migrator_core::engine::run_command`
-- **Configuration loading**: Sourced from dotenv and process environment (`config::build_config`)
+- **Configuration loading**: Typed TOML plus process environment overrides (`config::build_config`)
 
 ---
 
@@ -24,17 +24,17 @@ This contract governs the CLI entry points, execution commands, dynamic environm
 ## Interfaces and Boundaries
 
 ### 1. Invocations and Commands
-- **CLI Syntax**: `rmig [--env <path>] [--json] <command>` (invoking without arguments or with `--help` prints usage)
+- **CLI Syntax**: `rmig [--config <path>] [--json] <command>` (invoking without arguments or with `--help` prints usage)
 - **Supported Commands**: `plan`, `migrate`, `validate`, `baseline`, `repair-checksum`, `version`
 
 ### 2. Required Environment Variables
 
 | Variable | Meaning | Path Reference |
 | :--- | :--- | :--- |
-| `RM_DB_SERVER` | Target SQL Server host address | Sourced in config |
-| `RM_SQL_ROOT` | Absolute root directory of the SQL schema tree; **database name(s) are the top-level directories here** (e.g. `dactests/`) | Sourced in config |
+| `RM_DB_SERVER` | Process override for `database.server` | Sourced in config |
+| `RM_SQL_ROOT` | Process override for `paths.sql_root`; **database name(s) are the top-level directories here** (e.g. `dactests/`) | Sourced in config |
 | `RM_SQL_BASE` | Base directory for dynamic scaffold migrations | Defaults to `RM_SQL_ROOT` |
-| `RM_DB_USER` / `RM_DB_PASSWORD` | SQL authentication credentials | Sourced in config (required for SQL auth) |
+| `RM_DB_USER` / `RM_DB_PASSWORD` | SQL authentication credentials | Required process variables; forbidden in TOML |
 
 `RM_DB_DATABASE` is **not** read by `rmig` / `migrator_core::config::build_config`. Shell helpers under `ops/perf/` may set it for Docker `DROP/CREATE` orchestration only; see `ops/perf/e2e_env.sh`.
 
@@ -108,8 +108,8 @@ Azure DevOps / production release: the CI **Integration & E2E (MSSQL)** job (`.g
 ## Open Issues and Non-Goals
 
 - **Non-Goals**: Env variable validation does not actively sanitize database passwords or check user authorization levels prior to connecting.
-- **Known limitation — live-definition drift**: plan compares repository checksums against recorded audit history only; it never hashes the live module body. An out-of-band `CREATE OR ALTER` on a view, function, procedure, or trigger therefore survives a clean `plan`/`migrate` (pinned by `oob_drop_recreated_and_oob_modify_survival_known_limitation` in the drift E2E suite). Detecting it requires definition digests in the catalog model, which is out of scope for the current release.
-- **Known limitation — module apply order**: modules apply in a fixed kind order (views before functions) with no dependency graph. A new view that calls a new function in the same change set fails on first apply; stage such changes across two commits (function first), or pre-create the prerequisite.
+- **Live module integrity**: audit history stores SQL Server's `OBJECT_DEFINITION` SHA-256 for managed views, functions, procedures, and triggers. Plan reports `UpdateExistingModule` when the live definition changes out of band.
+- **Module dependency order**: modules start in deterministic kind/key order. Failed modules retry after later prerequisites apply; a pass with no progress fails with one error per unresolved module.
 
 ---
 

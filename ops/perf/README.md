@@ -45,7 +45,9 @@ After `make e2e-all`, inspect `azdo_deploy_meta.history`: expect `kind=migration
 | Step | Test | Verifies |
 |------|------|----------|
 | 1 | `apply_e2e_integration.rs` | Cold migrate, catalog + audit history |
-| 2 | `workflow_integration.rs` | Git DDL, blocked migrate, view update |
+| 2 | `adopt_e2e_integration.rs` | Adopt of pre-existing identical objects |
+| 3 | `drift_e2e_integration.rs` | Drift lifecycle: OOB drop/modify, fail-retry, history |
+| 4 | `workflow_integration.rs` | Git DDL, blocked migrate, view update |
 
 ## Footprint
 

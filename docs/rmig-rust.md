@@ -27,7 +27,8 @@ This specification governs the Rust workspace compilation structures, profiling 
 - **Unix Domain Socket Integration**: Spawning the daemon exposes a Unix socket for warm connection multiplexing:
   ```bash
   cargo build --release -p rmigd
-  RMIGD_SOCKET=/tmp/rmigd.sock RMIGD_ENV=.env ./target/release/rmigd
+  RM_DB_USER=sa RM_DB_PASSWORD='***' RMIG_SESSION_TOKEN='***' \
+    RMIGD_SOCKET=/tmp/rmigd.sock RMIGD_CONFIG=config.toml ./target/release/rmigd
   export RMIG_SESSION=/tmp/rmigd.sock
   ```
 - **SLO Enforcement**: Running `make slo` automatically spawns `rmigd`, sets `RMIG_USE_RMIGD=1`, and asserts that the `cli_wall_ms` remains below `RMIG_SLO_MAX_CLI_WALL_MS` (default `150`).

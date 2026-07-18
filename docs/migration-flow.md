@@ -58,7 +58,7 @@ from the repository tree are therefore never created, altered, or dropped — se
 ## Off-Nominal Behavior And Failure Containment
 
 - Failure mode: a planned object fails to execute.
-  Containment: its transaction rolls back (`SET XACT_ABORT ON` plus a `@@TRANCOUNT`-guarded ROLLBACK), the apply stops at the first failure, remaining objects/transitions are not attempted, accumulated audit history is still flushed, and the run returns `Error::Sql` (exit 5).
+  Containment: its transaction rolls back (`SET XACT_ABORT ON` plus a `@@TRANCOUNT`-guarded ROLLBACK). Non-modules stop; modules retry after later prerequisites and fail on a no-progress pass. Accumulated audit history is still flushed and the run returns `Error::Sql` (exit 5).
 - Failure mode: the ROLLBACK itself fails.
   Containment: the rollback error is recorded in the result, signalling unknown connection state instead of running the next object in a zombie transaction (`crates/core/src/apply/objects_exec.rs`).
 - Failure mode: SQL Server is unreachable or unresponsive.

@@ -57,9 +57,27 @@ Tests point `RM_SQL_ROOT` at `$REPO/.temp/sql` (fixture in `.temp/`, not committ
 1. On Apple Silicon + Colima, run `colima start --vz-rosetta --memory 4 --cpu 4` before starting Docker SQL Server.
 2. `make db-up` - Docker SQL Server only (databases created on first `migrate`).
 3. `make check` - arch guard, release dep check, `clippy -D warnings`, unit + non-SQL integration tests (SQL suites skip without `RMIG_RUN_SQLSERVER_INTEGRATION=1`).
-4. `make sql-regression` - bugslog SQL regression battery via `ops/perf/sql_regression.sh` (includes `rmigd` lock tests).
+4. `make sql-regression` - bugslog SQL regression battery via `ops/perf/sql_regression.sh` (includes `apply_integrity_integration` and `rmigd` lock tests).
 5. `make check-e2e` - `sql-regression` + scenario matrix + workflow + SLO + prod gate (ADO merge gate).
 6. `make integration` - `apply_e2e_integration` + `adopt_e2e_integration` + `drift_e2e_integration` + `workflow_integration` on `.temp/sql` (subset; prefer `make check-e2e` before merge).
+
+Critical bug regressions are mandatory:
+
+- `BUG-013`: `scripts/check-sql-regression-manifest.sh` rejects existence-only release-binary builds; `chaos_kill_mid_apply_test` runs the rebuilt `rmig`.
+- `BUG-023`: `apply_integrity_integration::transition_rollback_body_cannot_commit_history_regression` proves rollback cannot leave history.
+- `BUG-033`: `apply_integrity_integration::migrate_blocks_implicit_adoption_without_flag_regression` uses a structurally different live table and proves fail-closed adoption.
+- `BUG-073`: `daemon_endpoint_tests` checks server, port, login, and TLS-policy mismatches under `cargo test -p migrator-core --all-features --lib --tests`.
+- `BUG-078`: `apply_script_read_tests::verified_body_rejects_changed_file_regression` rejects bytes changed after scan.
+- `BUG-100`: `apply_integrity_integration::baseline_and_repair_never_execute_ddl_regression` proves module and pending-transition DDL remain unexecuted.
+
+High-severity regressions added by the completeness audit are also mandatory:
+
+- `BUG-026`: `advisory_lock_rmigd_test::preexisting_socket_override_is_never_removed_regression` proves the harness does not stop or remove an unowned path.
+- `BUG-029`: `drift_e2e_integration::malformed_checksum_blocks_every_command_except_repair_regression` proves audit corruption fails closed against SQL Server.
+- `BUG-040`, `BUG-046`, `BUG-095`: `ops/quality/scripts/tests/run.sh` pins branch-only manual dispatch, exact green SHA, atomic ref push, and partial-publication resume.
+- `BUG-062`: the same script gate rejects broad `pkill -f` cleanup; `sql_regression.sh` only inspects its validated repository socket.
+- `BUG-106`: `delta_scope_test::mutating_full_scope_inspects_every_object_regression` plus the script call-site guard prove mutating plans do not use fixed spot checks.
+- `BUG-107`: `driver_mssql_tests::session_init_step_is_bounded_regression`, `ensure_db_tests::create_database_step_is_bounded_regression`, and the script call-site guard pin both raw-operation timeouts.
 
 ## Off-nominal behavior
 

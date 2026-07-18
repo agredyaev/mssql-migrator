@@ -8,14 +8,14 @@ Describe **configuration loading**, **catalog-derived database names**, **plan J
 
 ## Scope
 
-- `crates/core/src/config/env.rs`, `validate.rs`, `catalog.rs`, `mod.rs`
+- `crates/core/src/config/toml_config.rs`, `env_build.rs`, `validate.rs`, `catalog.rs`, `mod.rs`
 - `crates/core/src/export/plan_json/mod.rs`, `report.rs`, `checksum_json.rs`, `mod.rs`
 - `crates/core/src/timings/mod.rs`
 - `crates/core/src/error.rs`
 
 ## System context
 
-CLI loads env → `Config` → `validate_config` → `discover_catalog_databases` → (`ensure_catalog_databases_exist` for mutate commands only) → engine.
+CLI loads typed TOML plus process env → `Config` → `validate_config` → `discover_catalog_databases` → (`ensure_catalog_databases_exist` for mutate commands only) → engine.
 
 SQL layout:
 
@@ -32,14 +32,19 @@ The first path segment under `RM_SQL_ROOT` is the **SQL Server database name** (
 - `MigrationPlan` serde types in `export`
 - `PhaseTimings` emitted to stderr / JSON when `--json`
 
-### Required environment (Rust production)
+### TOML and process environment
+
+`config.toml` accepts `[database]` (`server`, `port`, `auth`, `encrypt`, `trust_server_certificate`), `[paths]` (`sql_root`, `sql_base`, `report_dir`, `l1_cache_dir`), `[execution]` flags/timeouts/SLO, and optional `[session].socket`. Process variables override TOML.
+
+`database.user`, `database.password`, and `session.token` are rejected. Set the corresponding process variables below.
 
 | Variable | Required | Notes |
 |----------|----------|-------|
-| `RM_DB_SERVER` | yes | Host |
-| `RM_SQL_ROOT` | yes | Root of catalog tree |
+| `RM_DB_SERVER` | no | Override for `database.server` |
+| `RM_SQL_ROOT` | no | Override for `paths.sql_root` |
 | `RM_DB_AUTH` | no | Only `sql` (the default) is accepted. `integrated` / `windows` are rejected with `Error::Config` at `driver/mssql_auth.rs`; target SQL Server 2019 has no workload/managed-identity support, so token auth is out of scope. |
-| `RM_DB_USER` / `RM_DB_PASSWORD` | yes | Always required: `sql_credentials_required` returns true unconditionally (`config/auth_mode.rs`). |
+| `RM_DB_USER` / `RM_DB_PASSWORD` | yes | Process environment only; required by SQL authentication. |
+| `RMIG_SESSION_TOKEN` | for `rmigd` | Process environment only; required for daemon transport. |
 | `RM_DB_DATABASE` | **no** | Derived from catalog; field on `Config` is runtime-only |
 | `RM_SQL_BASE` | no | Defaults to `RM_SQL_ROOT` (scaffold/migrations path) |
 
@@ -56,7 +61,7 @@ If `RM_SQL_ROOT` contains multiple child directories with schema subfolders (e.g
 
 ## Nominal flow
 
-1. Load dotenv → `build_config` (does not read `RM_DB_DATABASE`).
+1. Load typed TOML → `build_config` with process-env overrides (does not read `RM_DB_DATABASE`).
 2. `validate_config` → require `RM_DB_SERVER`, `RM_SQL_ROOT`, and non-empty `RM_DB_USER` / `RM_DB_PASSWORD` (always, since only SQL auth is supported); then set `sql_base` and discover DB name when exactly one catalog DB.
 3. Engine: for each catalog DB, first probe direct connectivity to that target database; only fall back to `master` create-db preflight when the target connection fails. Then scan → per-DB plan/migrate.
 

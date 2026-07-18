@@ -29,7 +29,7 @@ sql/               # embedded T-SQL (include_str!)
 
 ## Interfaces and Boundaries
 
-- **Inputs**: Environment variable configurations (loaded from a `.env` file or process context) and a declarative T-SQL folder layout.
+- **Inputs**: Non-secret settings from `config.toml`, credentials from the process environment, and a declarative T-SQL folder layout.
 - **Outputs**: Compiled native binaries (`bin/rmig` and `rmigd`), plans, and execution audit reports.
 
 ---
@@ -88,7 +88,7 @@ Verify the workspace using the following verification suite:
 
 - **Routine Execution**: Run plans using:
   ```bash
-  ./target/release/rmig --env .env plan
+  RM_DB_USER=sa RM_DB_PASSWORD='***' ./target/release/rmig --config config.toml plan
   ```
 - **Recovery**: Refer to [runbook.md](docs/runbook.md) for unlocking active sessions or recovering from blocked migrations.
 

@@ -66,7 +66,7 @@ steps:
   - uses: actions/checkout@v4
     with:
       fetch-depth: 0
-  - run: rmig --env .env plan
+  - run: rmig --config config.toml plan
 ```
 
 No `export RMIG_GATE_GIT_BASE=...` step.

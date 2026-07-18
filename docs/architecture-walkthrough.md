@@ -62,8 +62,8 @@ The database driver is `tiberius` (a pure-Rust TDS client) over `tokio` TCP — 
 
 ## Interfaces And Boundaries
 
-- Inputs: the command line, environment variables (from `--env <path>` / `.env` and the
-  process environment), and a declarative folder tree
+- Inputs: the command line, non-secret `config.toml`, process-environment overrides and
+  secrets, and a declarative folder tree
   `<database>/<schema>/<kind>/<name>.sql` (kinds: tables, views, procedures, functions,
   triggers, indexes, types, sequences, synonyms).
 - Outputs: a process exit code, `tracing` logs on stderr, optional plan/report JSON
@@ -102,16 +102,16 @@ Key environment variables: `RM_DB_SERVER`, `RM_DB_PORT`, `RM_DB_USER`, `RM_DB_PA
 
 ## Nominal Flow
 
-A run of `rmig --env .env migrate`, step by step:
+A run of `rmig --config config.toml migrate`, step by step:
 
 1. Process start (`crates/cli/src/main.rs`): `#[tokio::main]` builds a multi-threaded async
    runtime; `async fn main` returns an `ExitCode` that becomes the shell exit status. The
    binary is `#![forbid(unsafe_code)]`.
-2. Argument parsing (`crates/cli/src/args.rs`): a hand-written loop reads `--env`, `--json`,
+2. Argument parsing (`crates/cli/src/args.rs`): a hand-written loop reads `--config`, `--json`,
    `-h/--help`, and one bare command word, mapped to the `Command` enum.
 3. `version` short-circuit: printed before any env load or DB access.
-4. Config: `.env` is loaded (`config/env.rs`), then `build_config` (`config/env_build.rs`)
-   resolves each key with precedence process-env > dotenv > default, and `validate_config`
+4. Config: typed TOML is loaded by `config`, then `build_config` resolves each key with
+   precedence process-env > TOML > default, and `validate_config`
    (`config/validate.rs`) enforces required vars, validates the port, and derives the
    database name from the folder layout.
 5. Logging: `init_tracing` (`crates/cli/src/logging.rs`) installs a stderr subscriber.
@@ -157,7 +157,7 @@ A run of `rmig --env .env migrate`, step by step:
 - Contracts and checks: `make check` (fmt, clippy `-D warnings`, tests, rustdoc, arch
   guards), `make doc-check` (documentation gates), `make check-e2e` (SQL matrix, SLO,
   prod gate). Chaos/fuzz/regression tests live under `crates/core/tests/`.
-- Read-only observation: `./target/release/rmig --env .env plan --json` prints the plan to
+- Read-only observation: `./target/release/rmig --config config.toml plan --json` prints the plan to
   stdout and phase timings to stderr while touching no data.
 - Exit criteria: lint/test/doc/arch green offline; the E2E matrix green against live SQL.
 

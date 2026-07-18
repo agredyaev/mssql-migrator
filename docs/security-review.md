@@ -71,7 +71,7 @@ without escaping.
 
 ## Operations And Recovery
 
-- Routine operation: supply credentials via CI secrets; never commit `.env` with real passwords (the loader warns on world-readable `.env`).
+- Routine operation: map credentials from CI secrets into `RM_DB_USER`, `RM_DB_PASSWORD`, and `RMIG_SESSION_TOKEN`; secret fields in `config.toml` are rejected.
 - Recovery or rollback: if a secret is suspected leaked, rotate the SQL login and `RMIG_SESSION_TOKEN`; redaction prevents recurrence in logs.
 
 ## Open Issues And Non-Goals

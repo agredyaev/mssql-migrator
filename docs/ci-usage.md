@@ -25,23 +25,24 @@ same `Makefile` targets apply.
 
 ## Interfaces And Boundaries
 
-- Inputs: environment variables (below) and the repository tree under `RM_SQL_ROOT`.
+- Inputs: `config.toml`, process environment overrides, and the repository tree under `paths.sql_root`.
 - Outputs: a process exit code, structured logs, and (with `--json`) a plan document.
-- CLI form: `rmig [--env <path>] [--json] <command>` where `<command>` is one of `plan`, `migrate`, `validate`, `baseline`, `repair-checksum`, `version`.
-- Ownership boundaries: exit-code mapping is owned by `crates/core/src/error.rs`; config parsing by `crates/core/src/config/env_build.rs`.
+- CLI form: `rmig [--config <path>] [--json] <command>` where `<command>` is one of `plan`, `migrate`, `validate`, `baseline`, `repair-checksum`, `version`.
+- Ownership boundaries: exit-code mapping is owned by `crates/core/src/error.rs`; config parsing by `crates/core/src/config/`.
 
 ## Assumptions And Constraints
 
-- Required variables: `RM_DB_SERVER`, `RM_SQL_ROOT`, and for SQL authentication `RM_DB_USER` and `RM_DB_PASSWORD` (validated in `crates/core/src/config/validate.rs`).
+- Required settings: `database.server` and `paths.sql_root` in TOML or their process-environment overrides. SQL authentication requires non-empty `RM_DB_USER` and `RM_DB_PASSWORD` in the process environment.
 - Optional variables: `RM_DB_PORT`, `RM_DB_AUTH`, `RM_DB_ENCRYPT`, `RM_DB_TRUST_SERVER_CERTIFICATE`, `RM_SQL_BASE`, `RM_SKIP_GIT`, `RM_LOG_LEVEL`.
 - Timeouts: `RM_COMMAND_TIMEOUT` (per query/connect; default 30s) and `RM_LOCK_TIMEOUT` (advisory lock). A value of zero disables the command timeout.
-- Daemon: `RMIG_SESSION` (client socket path), `RMIG_SESSION_TOKEN` (shared auth token), `RMIG_USE_RMIGD` (enable the `rmigd` path in the ops scripts).
+- Daemon: `RMIG_SESSION` (client socket path), mandatory process secret `RMIG_SESSION_TOKEN`, and `RMIG_USE_RMIGD` (enable the `rmigd` path in the ops scripts).
+- Azure DevOps: map secret-variable-group values to process variables named `RM_DB_USER`, `RM_DB_PASSWORD`, and `RMIG_SESSION_TOKEN`; never place them in `config.toml`.
 - Reproducibility: set `RMIG_PLANNED_AT` (RFC3339) or `SOURCE_DATE_EPOCH` (Unix seconds) to pin `plannedAt` in plan JSON.
 - Constraint: secrets must never be echoed in CI logs; see `docs/security-review.md`.
 
 ## Nominal Flow
 
-1. Export the required variables (and credentials via a secret store, not plaintext).
+1. Load `config.toml` and map credentials from the CI secret store into the required process variables.
 2. Run lint and unit checks: `make check` (or `cargo test -p migrator-core --lib` for unit only).
 3. For database behavior, start SQL Server and run `make check-e2e`.
 4. Run `rmig validate` or `rmig plan` to preview, then `rmig migrate` to apply.
@@ -55,7 +56,7 @@ same `Makefile` targets apply.
 - Failure mode: invalid repository structure (duplicate object/ordinal, bad path).
   Containment: scan fails closed with exit 8 before any deployment.
 - Failure mode: a deploy step fails.
-  Containment: apply stops at the first failure, rolls back its transaction, and exits 5; re-running after a fix is safe.
+  Containment: each object transaction rolls back on failure. Modules retry after later prerequisites; a no-progress pass exits 5 and re-running after a fix is safe.
 
 ## Verification And Validation
 
