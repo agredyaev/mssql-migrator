@@ -19,6 +19,7 @@ use setup::prepare_execute;
 pub struct ExecOpts {
     pub mode: PlanDbMode,
     pub bypass: bool,
+    pub allow_checksum_repair: bool,
 }
 
 pub async fn execute(
@@ -31,7 +32,16 @@ pub async fn execute(
     opts: ExecOpts,
 ) -> Result<PlanDbResult> {
     let mut trace = PlanDbTrace::default();
-    let setup = prepare_execute(cfg, conn, ws, keys_json, &mut trace, opts.bypass).await?;
+    let setup = prepare_execute(
+        cfg,
+        conn,
+        ws,
+        keys_json,
+        &mut trace,
+        opts.bypass,
+        opts.allow_checksum_repair,
+    )
+    .await?;
     let (ensure_ms, body, parallel_wall) =
         run_plan_body(cfg, conn, ws, keys_json, &setup, opts.mode, &mut trace).await?;
     let catalog = body.catalog;

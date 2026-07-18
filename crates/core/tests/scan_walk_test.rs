@@ -256,3 +256,34 @@ fn scan_checks_under_schema_position_is_skipped_regression() {
     );
     assert_eq!(ws.entry_key(0).as_str(), "smoke/tables/t");
 }
+
+/// Back-to-back path hashing let ["a.sql","b.sql"] collide with the single
+/// path "a.sqlb.sql"; length-prefixing must keep the digests distinct.
+#[test]
+fn layout_digest_length_prefix_prevents_concat_collision_regression() {
+    use migrator_core::domain::{share, Script, ScriptKey, ScriptKind};
+    use migrator_core::scan::layout_digest;
+
+    let mut two = Workspace::default();
+    for p in ["db/s/views/a.sql", "db/s/views/b.sql"] {
+        two.insert_script(Script {
+            key: ScriptKey::from_path(p),
+            kind: ScriptKind::Object,
+            abs_path: share(p),
+            checksum: Some([0; 32]),
+            scaffold: false,
+        });
+    }
+
+    let mut one = Workspace::default();
+    let joined = "db/s/views/a.sqldb/s/views/b.sql";
+    one.insert_script(Script {
+        key: ScriptKey::from_path(joined),
+        kind: ScriptKind::Object,
+        abs_path: share(joined),
+        checksum: Some([0; 32]),
+        scaffold: false,
+    });
+
+    assert_ne!(layout_digest(&two), layout_digest(&one));
+}

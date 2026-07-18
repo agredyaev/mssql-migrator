@@ -22,11 +22,7 @@ pub(super) async fn load_full_catalog(
 ) -> Result<CatalogState> {
     let t_sql = Instant::now();
     let kinds = kinds_for_scope(ctx.ws, scope);
-    // The fast-empty probe reads sys.objects only; indexes and table types
-    // live in sys.indexes / sys.table_types, so zero sys.objects hits cannot
-    // prove such a scope empty.
-    let fast_empty_provable = !kinds.iter().any(|k| *k == "indexes" || *k == "types");
-    if fast_empty_provable {
+    if fast_empty_provable(&kinds) {
         if let Some(empty) = try_fast_empty_catalog(conn, scope_json).await? {
             *round_trips += 1;
             *catalog_sql_ms += timings::dur_ms(t_sql.elapsed());
@@ -48,3 +44,14 @@ pub(super) async fn load_full_catalog(
     store_inspect_cache(ctx.db_fp, &ctx.ws.layout_digest, scope_json, &loaded);
     Ok(loaded)
 }
+
+// The fast-empty probe reads sys.objects only; indexes and table types
+// live in sys.indexes / sys.table_types, so zero sys.objects hits cannot
+// prove such a scope empty.
+fn fast_empty_provable(kinds: &[&str]) -> bool {
+    !kinds.iter().any(|k| *k == "indexes" || *k == "types")
+}
+
+#[cfg(test)]
+#[path = "../../../../tests/fast_empty_test.rs"]
+mod fast_empty_tests;

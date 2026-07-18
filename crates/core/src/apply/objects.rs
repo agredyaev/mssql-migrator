@@ -6,6 +6,7 @@ use crate::export::{MigrationPlan, PlannedObject};
 
 use super::history_write::commit_history;
 use super::kind::sort_tx_batch;
+use super::modules::apply_modules;
 use super::objects_exec::exec_object;
 use super::result::ApplyResult;
 
@@ -59,12 +60,7 @@ pub async fn apply_objects(
         return Ok(());
     }
     sort_tx_batch(&mut module_batch);
-    for obj in module_batch {
-        exec_object(conn, ws, obj, result).await?;
-        if result.failed > 0 {
-            break;
-        }
-    }
+    apply_modules(conn, ws, module_batch, result).await?;
     Ok(())
 }
 

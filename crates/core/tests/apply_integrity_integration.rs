@@ -16,7 +16,7 @@ mod state_smoke_conn;
 
 use std::path::Path;
 
-use migrator_core::config::{build_config, load_env_file, validate_config};
+use migrator_core::config::{build_config, load_toml_config, validate_config};
 use migrator_core::domain::Action;
 use migrator_core::driver::TimingConn;
 use migrator_core::engine::{run_command, Command};
@@ -38,8 +38,8 @@ fn repo_root() -> std::path::PathBuf {
 }
 
 fn test_cfg(sql_root: &Path) -> Config {
-    let env = load_env_file(&repo_root().join(".env")).unwrap_or_default();
-    let mut cfg = build_config(&env, true);
+    let file = load_toml_config(&repo_root().join("config.toml")).expect("load config");
+    let mut cfg = build_config(&file, true);
     if cfg.server.is_empty() {
         cfg.server = "127.0.0.1".into();
     }
@@ -110,6 +110,14 @@ async fn object_id(conn: &mut TimingConn, name: &str) -> bool {
         .query("SELECT OBJECT_ID(@p1)", &[name])
         .await
         .expect("object_id");
+    rows.first().and_then(|r| r.get_i32(0)).is_some()
+}
+
+async fn column_exists(conn: &mut TimingConn, table: &str, column: &str) -> bool {
+    let rows = conn
+        .query("SELECT COL_LENGTH(@p1, @p2)", &[table, column])
+        .await
+        .expect("column probe");
     rows.first().and_then(|r| r.get_i32(0)).is_some()
 }
 
@@ -191,7 +199,7 @@ async fn transition_rollback_body_cannot_commit_history_regression() {
 }
 
 /// `baseline` adopts existing objects only: it must never create missing ones,
-/// and `repair-checksum` must never execute module DDL.
+/// and `repair-checksum` must never execute module or transition DDL.
 #[tokio::test(flavor = "current_thread")]
 async fn baseline_and_repair_never_execute_ddl_regression() {
     if !integration_enabled::enabled() {
@@ -229,10 +237,22 @@ async fn baseline_and_repair_never_execute_ddl_regression() {
     allow.set_allow_adopt(true);
     assert_eq!(run(&allow, Command::Migrate).await.expect("migrate"), 0);
     write(root, &format!("{DB}/smoke/views/v_guard.sql"), VIEW_V2);
+    write(root, &format!("{DB}/smoke/tables/guarded.sql"), TABLE_V2);
+    let pending = format!("{DB}/smoke/tables/_migrations/guarded/001_abcdef1_add.sql");
+    write(root, &pending, "ALTER TABLE smoke.guarded ADD extra INT;\n");
     assert_eq!(run(&cfg, Command::RepairChecksum).await.expect("repair"), 0);
     conn.query("SELECT original FROM smoke.v_guard", &[])
         .await
         .expect("live view must keep its ORIGINAL body after repair-checksum");
+    assert!(
+        !column_exists(&mut conn, "smoke.guarded", "extra").await,
+        "repair-checksum must not execute pending transition DDL"
+    );
+    assert_eq!(
+        migration_rows(&mut conn, "%001_abcdef1_add.sql").await,
+        0,
+        "repair-checksum must not record an unexecuted transition as applied"
+    );
     let rows = conn
         .query(
             "SELECT TOP 1 checksum, event FROM azdo_deploy_meta.history \
@@ -283,7 +303,9 @@ async fn migrate_blocks_implicit_adoption_without_flag_regression() {
     conn.exec("IF SCHEMA_ID(N'smoke') IS NULL EXEC('CREATE SCHEMA [smoke]')")
         .await
         .expect("schema");
-    conn.exec(TABLE_V1).await.expect("pre-create table");
+    conn.exec("CREATE TABLE smoke.guarded (id BIGINT NOT NULL);\n")
+        .await
+        .expect("pre-create structurally different table");
 
     let code = run(&cfg, Command::Migrate)
         .await
@@ -365,4 +387,72 @@ async fn transition_runs_before_dependent_objects_regression() {
     conn.query("SELECT extra FROM smoke.v_extra", &[])
         .await
         .expect("view sees the transition-added column");
+}
+
+/// Modules retry in deterministic passes, allowing prerequisites that sort
+/// later to commit before their dependents retry.
+#[tokio::test(flavor = "current_thread")]
+async fn module_dependencies_retry_until_resolved_regression() {
+    if !integration_enabled::enabled() {
+        eprintln!("skip: RMIG_RUN_SQLSERVER_INTEGRATION not set");
+        return;
+    }
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path();
+    write(
+        root,
+        &format!("{DB}/smoke/views/v_calls.sql"),
+        "CREATE OR ALTER VIEW smoke.v_calls AS SELECT smoke.a_outer() AS value;\n",
+    );
+    write(
+        root,
+        &format!("{DB}/smoke/functions/a_outer.sql"),
+        "CREATE OR ALTER FUNCTION smoke.a_outer() RETURNS INT AS BEGIN RETURN smoke.z_inner(); END;\n",
+    );
+    write(
+        root,
+        &format!("{DB}/smoke/functions/z_inner.sql"),
+        "CREATE OR ALTER FUNCTION smoke.z_inner() RETURNS INT AS BEGIN RETURN 7; END;\n",
+    );
+    let (cfg, mut conn) = fresh(root).await;
+    assert_eq!(run(&cfg, Command::Migrate).await.expect("migrate"), 0);
+    conn.query("SELECT value FROM smoke.v_calls", &[])
+        .await
+        .expect("view resolves function dependency");
+    for key in [
+        "smoke/views/v_calls",
+        "smoke/functions/a_outer",
+        "smoke/functions/z_inner",
+    ] {
+        assert_eq!(
+            migration_rows(&mut conn, key).await,
+            1,
+            "{key} writes history exactly once"
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn unresolved_module_dependency_fails_after_no_progress_regression() {
+    if !integration_enabled::enabled() {
+        eprintln!("skip: RMIG_RUN_SQLSERVER_INTEGRATION not set");
+        return;
+    }
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path();
+    write(
+        root,
+        &format!("{DB}/smoke/views/v_dead_end.sql"),
+        "CREATE OR ALTER VIEW smoke.v_dead_end AS SELECT smoke.missing_function() AS value;\n",
+    );
+    let (cfg, mut conn) = fresh(root).await;
+    let err = run(&cfg, Command::Migrate)
+        .await
+        .expect_err("unresolved module dependency must fail");
+    assert!(err.to_string().contains("v_dead_end"), "{err}");
+    assert_eq!(
+        migration_rows(&mut conn, "smoke/views/v_dead_end").await,
+        0,
+        "failed module must not write history"
+    );
 }

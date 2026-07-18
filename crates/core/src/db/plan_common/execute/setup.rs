@@ -4,6 +4,7 @@ use crate::audit;
 use crate::config::Config;
 use crate::db::plan_db_trace::{PlanDbPath, PlanDbTrace};
 use crate::db::state::CatalogState;
+use crate::domain::is_module_kind_code;
 use crate::domain::Workspace;
 use crate::driver::TimingConn;
 use crate::error::Result;
@@ -22,6 +23,7 @@ pub(super) struct ExecuteSetup {
     pub bootstrap_in_sql: bool,
     pub catalog_base: Option<CatalogState>,
     pub bypass: bool,
+    pub allow_checksum_repair: bool,
 }
 
 pub(super) async fn prepare_execute(
@@ -31,6 +33,7 @@ pub(super) async fn prepare_execute(
     keys_json: &str,
     trace: &mut PlanDbTrace,
     bypass: bool,
+    allow_checksum_repair: bool,
 ) -> Result<ExecuteSetup> {
     let db_fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     if bypass {
@@ -47,13 +50,18 @@ pub(super) async fn prepare_execute(
     let git_delta = !full && !git.paths.is_empty() && !bypass;
     // Read-only commands (plan/validate) must not execute DDL: only mutating
     // commands (bypass=true, running under the advisory lock) may bootstrap.
-    let need_bootstrap = bypass && !audit::tables_ensured(&db_fp);
+    // Mutating commands also run the additive audit-schema migration. This is
+    // a no-op after upgrade and lets a legacy read-only plan be restored by
+    // the following migrate without relying on process-local table state.
+    let need_bootstrap = bypass;
     trace.flags.bootstrap = need_bootstrap;
     let need_checksums = keys_json != "[]";
 
     let clean_git_tree =
         git.paths.is_empty() && matches!(git.source, "git-head" | "git-merge-base");
-    let try_cache = !bypass
+    let has_modules = (0..ws.object_count()).any(|i| is_module_kind_code(ws.row(i).kind_code));
+    let try_cache = !has_modules
+        && !bypass
         && cfg.catalog_cache()
         && audit::tables_ensured(&db_fp)
         && git.paths.is_empty()
@@ -94,5 +102,6 @@ pub(super) async fn prepare_execute(
         bootstrap_in_sql: defer_bootstrap,
         catalog_base,
         bypass,
+        allow_checksum_repair,
     })
 }

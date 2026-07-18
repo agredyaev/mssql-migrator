@@ -25,6 +25,7 @@
 mod history_write;
 mod kind;
 mod metadata;
+mod modules;
 mod objects;
 mod objects_exec;
 mod result;

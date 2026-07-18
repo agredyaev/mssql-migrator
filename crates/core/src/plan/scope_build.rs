@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::db::state::{catalog_object_parts, CatalogObject, ChecksumMap};
-use crate::domain::{ObjectKey, Workspace};
+use crate::domain::{is_module_kind_code, ObjectKey, Workspace};
 use crate::gate::{expand_delta_closure, keys_for_changed_paths};
 
 use super::scope::InspectScope;
@@ -34,6 +34,10 @@ pub fn build_inspect_scope(
         // Delta keys are database-qualified (`db/schema/kind/name`) to match
         // snapshot identities; workspace keys carry the database separately.
         let qualified = format!("{}/{k}", ws.database_name(obj.db_id));
+        if is_module_kind_code(ws.row(i).kind_code) {
+            hot.insert(k.to_string());
+            continue;
+        }
         if delta.contains(&qualified) {
             hot.insert(k.to_string());
             continue;

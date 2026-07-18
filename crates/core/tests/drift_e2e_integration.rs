@@ -2,8 +2,8 @@
 //! and audit-history robustness (duplicate rows, zero checksums, repair).
 //!
 //! These pin the CURRENT engine semantics so later drift-detection work cannot
-//! silently change them: plan compares repo checksums against recorded history
-//! only — the live object body is never inspected.
+//! silently change them: plan compares repo checksums against history and the
+//! recorded module-definition digest against the live SQL Server object.
 //!
 //! Run:
 //!   RMIG_RUN_SQLSERVER_INTEGRATION=1 cargo test -p migrator-core --test drift_e2e_integration -- --nocapture --test-threads=1
@@ -30,14 +30,13 @@ use migrator_core::engine::{run_command, Command, RunOutput};
 use migrator_core::export::MigrationPlan;
 
 const VIEW_KEY: &str = "smoke/views/smoke_view";
+const PROC_KEY: &str = "smoke/procedures/refresh_smoke";
 const BOGUS_CHECKSUM: &str = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
 
-/// Out-of-band DROP is healed by re-create; out-of-band MODIFY survives —
-/// a KNOWN LIMITATION pinned on purpose: plan compares repo checksums against
-/// recorded history only and never hashes the live module body (documented in
-/// docs/operational-contract.md, Open Issues).
+/// Out-of-band module changes are detected even after a warm cache and are
+/// restored by migrate; missing objects are still re-created.
 #[tokio::test(flavor = "current_thread")]
-async fn oob_drop_recreated_and_oob_modify_survival_known_limitation() {
+async fn oob_drop_recreated_and_oob_modify_is_restored_after_warm_cache() {
     if !integration_enabled::enabled() {
         eprintln!("skip: RMIG_RUN_SQLSERVER_INTEGRATION not set");
         return;
@@ -61,30 +60,69 @@ async fn oob_drop_recreated_and_oob_modify_survival_known_limitation() {
     assert_eq!(applied, 2, "one applied row per create");
     assert_eq!(view_action(&cfg).await, Action::SkipUnchanged, "healed");
 
-    // Out-of-band modify: latest history checksum still equals the repo file,
-    // so the drifted live body is skipped silently and survives the migrate.
+    // Populate L1/warm snapshots first. Module definitions must still be
+    // queried live on the next plan.
+    let (_, warm_timings) = engine_smoke::plan(&cfg).await.expect("warm plan");
+    assert!(!warm_timings.l1_cache_hit(), "modules bypass top-level L1");
+
+    // An out-of-band body edit must become an in-place module update.
     conn.exec("CREATE OR ALTER VIEW smoke.smoke_view AS SELECT CAST(99 AS INT) AS drifted")
         .await
         .expect("oob modify view");
-    let plan = fresh_plan(&cfg).await;
+    let (plan, timings) = engine_smoke::plan(&cfg).await.expect("live drift plan");
+    assert!(
+        !timings.l1_cache_hit(),
+        "warm cache cannot hide module drift"
+    );
     assert_eq!(
         action_of(&plan),
-        Action::SkipUnchanged,
-        "oob modify undetected"
+        Action::UpdateExistingModule,
+        "oob modify detected"
     );
-    assert!(!plan.blocked, "oob modify must not block");
-    assert_eq!(migrate(&cfg).await, 0, "migrate over drifted body");
-    conn.query("SELECT drifted FROM smoke.smoke_view", &[])
+    assert_eq!(migrate(&cfg).await, 0, "restore drifted body");
+    conn.query("SELECT id, value, created_at FROM smoke.smoke_view", &[])
         .await
-        .expect("drifted body must survive the migrate untouched");
+        .expect("repository body restored");
+    assert!(
+        conn.query("SELECT drifted FROM smoke.smoke_view", &[])
+            .await
+            .is_err(),
+        "drifted column must be gone after restore"
+    );
 
     eprintln!("drift_e2e oob OK: applied_rows={applied}");
 }
 
-/// A failing module writes no history row, halts the module batch, and a
-/// retry after the fix applies exactly once.
+/// A legacy history table has no live-definition column. Read-only planning
+/// must not alter it, but must force modules through UPDATE; migrate performs
+/// the additive upgrade and restores a nullable digest.
 #[tokio::test(flavor = "current_thread")]
-async fn failed_apply_halts_batch_no_history_then_retry_applies_once() {
+async fn legacy_history_without_live_definition_checksum_is_read_only_then_restored() {
+    if !integration_enabled::enabled() {
+        eprintln!("skip: RMIG_RUN_SQLSERVER_INTEGRATION not set");
+        return;
+    }
+    let cfg = fresh_cold_db().await;
+    let mut conn = state_smoke_conn::open_conn(&cfg).await.expect("connect");
+    assert_eq!(migrate(&cfg).await, 0, "cold migrate");
+    conn.exec("ALTER TABLE azdo_deploy_meta.history DROP COLUMN live_definition_checksum")
+        .await
+        .expect("simulate legacy history");
+
+    assert_eq!(view_action(&cfg).await, Action::UpdateExistingModule);
+    assert!(
+        !column_exists(&mut conn, "live_definition_checksum").await,
+        "plan must not alter a legacy audit table"
+    );
+    assert_eq!(migrate(&cfg).await, 0, "migrate upgrades legacy history");
+    assert!(column_exists(&mut conn, "live_definition_checksum").await);
+    assert_eq!(view_action(&cfg).await, Action::SkipUnchanged);
+}
+
+/// A failing module writes no history row while independent modules continue;
+/// a later migrate retries the failed module and applies it exactly once.
+#[tokio::test(flavor = "current_thread")]
+async fn failed_apply_defers_module_then_retry_applies_once() {
     if !integration_enabled::enabled() {
         eprintln!("skip: RMIG_RUN_SQLSERVER_INTEGRATION not set");
         return;
@@ -126,10 +164,14 @@ async fn failed_apply_halts_batch_no_history_then_retry_applies_once() {
         0,
         "failed module must write no history row"
     );
-    // Modules apply in kind order (views → functions → procedures): the view
-    // failure must halt the batch before the procedure is created.
+    // Independent modules continue while the failed view is deferred.
     let proc_created = object_exists(&mut conn, "refresh_smoke").await;
-    assert!(!proc_created, "batch must halt at first module failure");
+    assert!(proc_created, "independent module must still be applied");
+    assert_eq!(
+        count_key_rows(&mut conn, PROC_KEY, "applied").await,
+        1,
+        "independent module is recorded once"
+    );
 
     // Fix (drop the collision) → retry applies exactly once.
     conn.exec("DROP TABLE smoke.smoke_view")
@@ -143,7 +185,12 @@ async fn failed_apply_halts_batch_no_history_then_retry_applies_once() {
     );
     assert!(
         object_exists(&mut conn, "refresh_smoke").await,
-        "batch resumes past the fixed module"
+        "independent module remains applied"
+    );
+    assert_eq!(
+        count_key_rows(&mut conn, PROC_KEY, "applied").await,
+        1,
+        "retry must not duplicate independent module history"
     );
 
     eprintln!("drift_e2e fail/retry OK");
@@ -218,6 +265,61 @@ async fn history_rows_latest_wins_zero_readopts_and_repair_recovers() {
     eprintln!("drift_e2e history OK");
 }
 
+/// A malformed persisted checksum is audit corruption, not an adoption
+/// request. Only the explicit metadata-only repair command may replace it.
+#[tokio::test(flavor = "current_thread")]
+async fn malformed_checksum_blocks_every_command_except_repair_regression() {
+    if !integration_enabled::enabled() {
+        eprintln!("skip: RMIG_RUN_SQLSERVER_INTEGRATION not set");
+        return;
+    }
+    let cfg = fresh_cold_db().await;
+    let mut conn = state_smoke_conn::open_conn(&cfg).await.expect("connect");
+    assert_eq!(migrate(&cfg).await, 0, "cold migrate");
+
+    conn.exec(&format!(
+        "UPDATE azdo_deploy_meta.history SET checksum = 'not-hex' \
+         WHERE id = (SELECT MAX(id) FROM azdo_deploy_meta.history \
+         WHERE normalized_key = '{VIEW_KEY}' AND kind = 'object' \
+         AND event IN ('applied','adopted'))"
+    ))
+    .await
+    .expect("corrupt latest checksum");
+    let before = count_all_key_rows(&mut conn, VIEW_KEY).await;
+
+    for cmd in [
+        Command::Plan,
+        Command::Validate,
+        Command::Migrate,
+        Command::Baseline,
+    ] {
+        let mut command_cfg = cfg.clone();
+        command_cfg.set_allow_adopt(true);
+        let err = match run_fresh(cmd, &command_cfg).await {
+            Ok(out) => panic!(
+                "{cmd:?} accepted corrupt audit history with exit {}",
+                out.exit_code
+            ),
+            Err(err) => err,
+        };
+        assert_eq!(
+            err.exit_code(),
+            migrator_core::error::EXIT_CHECKSUM,
+            "{cmd:?}: {err}"
+        );
+        assert!(err.to_string().contains(VIEW_KEY), "{cmd:?}: {err}");
+    }
+    assert_eq!(
+        count_all_key_rows(&mut conn, VIEW_KEY).await,
+        before,
+        "blocked commands must not re-adopt or rewrite history"
+    );
+
+    let out = repair(&cfg).await.expect("repair-checksum");
+    assert_eq!(out.exit_code, 0);
+    assert_eq!(view_action(&cfg).await, Action::SkipUnchanged);
+}
+
 async fn fresh_cold_db() -> Config {
     let mut cfg = workflow_config::workflow_config().clone();
     cfg.set_skip_git(true);
@@ -246,11 +348,15 @@ async fn migrate(cfg: &Config) -> i32 {
 }
 
 async fn repair(cfg: &Config) -> migrator_core::error::Result<RunOutput> {
+    run_fresh(Command::RepairChecksum, cfg).await
+}
+
+async fn run_fresh(cmd: Command, cfg: &Config) -> migrator_core::error::Result<RunOutput> {
     oob_barrier(cfg).await;
     let mut c = cfg.clone();
     c.set_skip_git(true);
     c.session_socket.clear();
-    run_command(Command::RepairChecksum, &c).await
+    run_command(cmd, &c).await
 }
 
 async fn fresh_plan(cfg: &Config) -> MigrationPlan {
@@ -283,6 +389,18 @@ async fn count_key_rows(conn: &mut TimingConn, key: &str, event: &str) -> i32 {
     rows.first().and_then(|r| r.get_i32(0)).unwrap_or(0)
 }
 
+async fn count_all_key_rows(conn: &mut TimingConn, key: &str) -> i32 {
+    let rows = conn
+        .query(
+            "SELECT COUNT(*) FROM azdo_deploy_meta.history \
+             WHERE normalized_key = @p1 AND kind = 'object'",
+            &[key],
+        )
+        .await
+        .expect("history count");
+    rows.first().and_then(|r| r.get_i32(0)).unwrap_or(0)
+}
+
 async fn top_checksum(conn: &mut TimingConn, key: &str) -> String {
     let rows = conn
         .query(
@@ -299,11 +417,25 @@ async fn top_checksum(conn: &mut TimingConn, key: &str) -> String {
         .to_string()
 }
 
+async fn column_exists(conn: &mut TimingConn, column: &str) -> bool {
+    let rows = conn
+        .query(
+            "SELECT CASE WHEN COL_LENGTH('azdo_deploy_meta.history', @p1) IS NULL THEN 0 ELSE 1 END",
+            &[column],
+        )
+        .await
+        .expect("column probe");
+    rows.first().and_then(|r| r.get_i32(0)).unwrap_or(0) != 0
+}
+
 async fn insert_history(conn: &mut TimingConn, key: &str, checksum: &str, event: &str) {
     conn.exec(&format!(
         "INSERT INTO azdo_deploy_meta.history \
-         (normalized_key, kind, checksum, git_hash, git_author, git_date, event, created_at) \
-         VALUES ('{key}', 'object', '{checksum}', '', '', '1900-01-01', '{event}', SYSUTCDATETIME())"
+         (normalized_key, kind, checksum, live_definition_checksum, git_hash, git_author, git_date, event, created_at) \
+         SELECT '{key}', 'object', '{checksum}', \
+             (SELECT TOP (1) live_definition_checksum FROM azdo_deploy_meta.history \
+              WHERE normalized_key = '{key}' ORDER BY id DESC), \
+             '', '', '1900-01-01', '{event}', SYSUTCDATETIME()"
     ))
     .await
     .expect("insert history row");

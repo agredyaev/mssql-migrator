@@ -28,3 +28,7 @@ pub(super) fn ensure_index_unambiguous(
         key.as_str()
     )))
 }
+
+#[cfg(test)]
+#[path = "../tests/catalog_guard_test.rs"]
+mod catalog_guard_tests;

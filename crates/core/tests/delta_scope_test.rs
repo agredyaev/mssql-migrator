@@ -32,6 +32,30 @@ fn sample_ws() -> Workspace {
     ws
 }
 
+fn wide_ws() -> Workspace {
+    let mut ws = Workspace::default();
+    let db_id = ws.intern_database(share("db"));
+    let mut entries = Vec::new();
+    for i in 0..10u8 {
+        let name = format!("t{i}");
+        let path = format!("db/smoke/tables/{name}.sql");
+        let key = ObjectKey::new("smoke", "tables", &name);
+        let checksum = [i + 1; 32];
+        let sid = ws.insert_script(Script {
+            key: ScriptKey::from_path(&path),
+            kind: ScriptKind::Object,
+            abs_path: share(path),
+            checksum: Some(checksum),
+            scaffold: false,
+        });
+        entries.push(ObjectEntry::with_staging_key(
+            key, sid, checksum, false, db_id,
+        ));
+    }
+    ws.adopt_dense_entries(entries);
+    ws
+}
+
 #[test]
 fn delta_closure_adds_trigger_parent() {
     let ws = sample_ws();
@@ -64,4 +88,22 @@ fn git_hot_scope_json_targets_changed_objects_regression() {
         json.contains("\"object\":\"t1\""),
         "delta closure parent must be inspected too: {json}"
     );
+}
+
+#[test]
+fn mutating_full_scope_inspects_every_object_regression() {
+    let ws = wide_ws();
+    let mut checksums = ChecksumMap::new();
+    for i in 0..ws.object_count() {
+        checksums.insert_key(ws.entry_key(i), ws.entry(i).checksum);
+    }
+
+    let scope = build_inspect_scope(&ws, &[], true, &checksums);
+    assert!(scope.full_inspect);
+    assert_eq!(scope.hot_keys.len(), 10, "all managed objects must be live");
+    assert!(
+        scope.stable_objects.is_empty(),
+        "mutating plans must not synthesize stable catalog objects"
+    );
+    assert!(!scope.allow_l1_skip);
 }

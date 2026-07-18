@@ -1,7 +1,6 @@
 mod bootstrap;
 mod cache;
 mod checksum;
-mod history;
 
 pub use bootstrap::{
     ensure_tables, ensure_tables_on, probe_audit_tables_exist, sync_tables_ensured,
@@ -15,4 +14,3 @@ pub use checksum::{
     checksum_map_from_rows, checksum_map_from_rows_ws, empty_checksums_from_keys_json,
     looks_like_checksum_rows,
 };
-pub use history::load_checksums;

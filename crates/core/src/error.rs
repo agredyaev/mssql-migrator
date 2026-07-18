@@ -40,6 +40,8 @@ pub enum Error {
     Conn(String),
     /// Migration plan is structurally blocked and cannot proceed.
     PlanBlocked,
+    /// Persisted audit checksum is malformed and cannot be trusted.
+    Checksum(String),
     /// Advisory lock could not be acquired within the timeout.
     LockTimeout,
     /// Uncategorized error from a dependency.
@@ -79,6 +81,7 @@ impl Error {
             Self::Config(_) => EXIT_CONFIG,
             Self::InvalidInput(_) => EXIT_INVALID_INPUT,
             Self::PlanBlocked => EXIT_PLAN_BLOCKED,
+            Self::Checksum(_) => EXIT_CHECKSUM,
             Self::LockTimeout => EXIT_LOCK_TIMEOUT,
             Self::Conn(_) => EXIT_CONN,
             Self::Sql(_) => EXIT_SQL,
@@ -97,6 +100,7 @@ impl fmt::Display for Error {
             Self::Sql(m) => write!(f, "{m}"),
             Self::Conn(m) => write!(f, "{m}"),
             Self::PlanBlocked => write!(f, "plan is blocked"),
+            Self::Checksum(m) => write!(f, "checksum integrity error: {m}"),
             Self::LockTimeout => write!(f, "lock timeout"),
             Self::Other(e) => write!(f, "{e}"),
         }

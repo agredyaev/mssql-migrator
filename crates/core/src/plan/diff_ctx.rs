@@ -1,4 +1,4 @@
-use crate::db::state::CatalogState;
+use crate::db::state::{CatalogState, ChecksumMap};
 
 #[derive(Debug, Default)]
 pub(crate) struct DiffCounters {
@@ -11,5 +11,6 @@ pub(crate) struct DiffCounters {
 
 pub(crate) struct DecideCtx<'a> {
     pub catalog: &'a CatalogState,
+    pub checksums: &'a ChecksumMap,
     pub counters: &'a mut DiffCounters,
 }

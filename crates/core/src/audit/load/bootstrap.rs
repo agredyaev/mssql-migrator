@@ -4,17 +4,14 @@ use crate::sql;
 
 use super::cache::{invalidate_audit_cache_all, mark_tables_ensured, tables_ensured};
 
-/// Creates audit schema tables on `client` if they have not been created for `db_fp` this process run.
+/// Creates or upgrades audit schema tables on `client`.
 pub async fn ensure_tables_on(client: &mut DbClient, db_fp: &str) -> Result<()> {
-    if tables_ensured(db_fp) {
-        return Ok(());
-    }
     client.exec(sql::audit::BOOTSTRAP_TABLES).await?;
     mark_tables_ensured(db_fp);
     Ok(())
 }
 
-/// Creates audit schema tables via `conn` if they have not been created for `db_fp` this process run.
+/// Creates or upgrades audit schema tables via `conn`.
 pub async fn ensure_tables(conn: &mut TimingConn, db_fp: &str) -> Result<()> {
     ensure_tables_on(conn.client_mut()?, db_fp).await
 }

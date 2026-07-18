@@ -70,3 +70,7 @@ pub async fn save(
 ) -> Result<()> {
     save_batched(conn, layout_digest, ws, state).await
 }
+
+#[cfg(test)]
+#[path = "../../tests/cache_save_batch_test.rs"]
+mod cache_save_batch_tests;

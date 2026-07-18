@@ -26,6 +26,8 @@ pub struct ScenarioInput<'a> {
     pub child_row_id: u32,
     /// Whether the object has at least one transition-path row.
     pub has_transition_paths: bool,
+    /// The audited module definition differs from SQL Server's current body.
+    pub live_definition_drift: bool,
 }
 
 /// Resolves the `PlanScenario` to apply for a single object given `input`.
@@ -41,12 +43,16 @@ pub fn resolve_plan_scenario(input: ScenarioInput<'_>) -> PlanScenario {
         prior_digests,
         child_row_id,
         has_transition_paths,
+        live_definition_drift,
     } = input;
     if !exists {
         return PlanScenario::Create;
     }
     if prior.is_none() || prior == Some([0; 32]) {
         return PlanScenario::Adopt;
+    }
+    if live_definition_drift && is_module_kind_code(kind_code) {
+        return PlanScenario::ModuleUpdate;
     }
     if prior == Some(checksum) {
         return PlanScenario::SkipUnchanged;

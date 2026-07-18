@@ -25,6 +25,13 @@ BEGIN CATCH
     IF ERROR_NUMBER() <> 2714 THROW;
 END CATCH;
 
+-- Additive compatibility migration. Read-only plan/validate paths never run
+-- this bootstrap against an existing history table; their load query treats a
+-- missing column as legacy module drift instead.
+IF COL_LENGTH('azdo_deploy_meta.history', 'live_definition_checksum') IS NULL
+    ALTER TABLE azdo_deploy_meta.history
+        ADD live_definition_checksum VARBINARY(32) NULL;
+
 BEGIN TRY
     IF OBJECT_ID('azdo_deploy_meta.catalog_meta') IS NULL
     CREATE TABLE azdo_deploy_meta.catalog_meta (

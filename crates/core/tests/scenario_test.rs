@@ -18,6 +18,7 @@ fn skip_when_checksum_matches() {
         prior_digests: &[],
         child_row_id: 1,
         has_transition_paths: false,
+        live_definition_drift: false,
     });
     assert_eq!(s, PlanScenario::SkipUnchanged);
 }
