@@ -37,9 +37,9 @@ pub(super) async fn load_incremental_catalog(
     }
     let kinds = kinds_for_scope(p.ctx.ws, p.scope);
     let sql = if single_rt {
-        batch::plan_db_batch_sql(&kinds, true, false, false, true, false, None)
+        batch::plan_db_batch_sql(&kinds, true, false, false, true, false, false)
     } else {
-        batch::plan_db_batch_sql(&kinds, false, false, false, true, false, None)
+        batch::plan_db_batch_sql(&kinds, false, false, false, true, false, false)
     };
     let t_sql = Instant::now();
     let sets = conn

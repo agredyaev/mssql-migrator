@@ -84,7 +84,7 @@ without escaping.
   - The string arena (`crates/core/src/domain/arena/builder.rs`, `crates/core/src/domain/arena/slice.rs`, `crates/core/src/domain/shared/mod.rs`) uses unchecked slice access and `panic!` for offset lookups. Offsets are constructed only from scan input already validated as UTF-8, so untrusted repository data cannot reach them; bounds checks would add cost to a hot path. Left unchanged.
   - `crates/core/src/domain/arena/builder.rs` casts buffer length to `u32`, capping a single arena at 4 GiB, far above any real migration repository.
   - Driver error text from `crates/core/src/driver/mssql_query.rs` is surfaced as-is. TDS error messages do not carry credentials, so they are passed through for diagnostics.
-  - The `relaxed_cache_count` interpolation in `crates/core/src/db/batch.rs` substitutes only a `usize`, so it cannot inject SQL.
+  - Resolved: the former `relaxed_cache_count` interpolation in `crates/core/src/db/batch.rs` now binds the object count as a query parameter (`@p4`) instead of substituting it into the SQL text.
 - Non-goals: this document does not cover SQL Server-side authorization, certificate issuance, or host hardening.
 
 ## References

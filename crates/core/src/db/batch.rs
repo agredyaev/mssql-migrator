@@ -16,10 +16,11 @@ struct PlanDbBatchSqlOpts<'a> {
     scoped_hit: bool,
     catalog: bool,
     skip_schema_rows: bool,
-    relaxed_cache_count: Option<usize>,
+    relaxed_cache: bool,
 }
 
-/// Combined TDS batch: bootstrap, checksums (@p1), scoped hit (@p2), catalog (@p2 scope, @p3 schemas).
+/// Combined TDS batch: bootstrap, checksums (@p1), scoped hit (@p2), catalog
+/// (@p2 scope, @p3 schemas), relaxed cache load (@p4 object count).
 pub fn plan_db_batch_sql(
     kinds: &[&str],
     bootstrap: bool,
@@ -27,7 +28,7 @@ pub fn plan_db_batch_sql(
     scoped_hit: bool,
     catalog: bool,
     skip_schema_rows: bool,
-    relaxed_cache_count: Option<usize>,
+    relaxed_cache: bool,
 ) -> String {
     plan_db_batch_sql_inner(&PlanDbBatchSqlOpts {
         kinds,
@@ -37,7 +38,7 @@ pub fn plan_db_batch_sql(
         scoped_hit,
         catalog,
         skip_schema_rows,
-        relaxed_cache_count,
+        relaxed_cache,
     })
 }
 
@@ -51,8 +52,8 @@ fn plan_db_batch_sql_inner(opts: &PlanDbBatchSqlOpts<'_>) -> String {
             b.push('\n');
         }
     }
-    if let Some(count) = opts.relaxed_cache_count {
-        b.push_str(&sql::catalog::CACHE_LOAD_RELAXED.replace("@p1", &count.to_string()));
+    if opts.relaxed_cache {
+        b.push_str(sql::catalog::CACHE_LOAD_RELAXED);
         b.push('\n');
     }
     if opts.checksums {
@@ -78,9 +79,15 @@ mod tests {
 
     #[test]
     fn batch_includes_checksums_and_catalog_params() {
-        let sql = plan_db_batch_sql(&["tables"], true, true, false, true, false, None);
+        let sql = plan_db_batch_sql(&["tables"], true, true, false, true, false, false);
         assert!(sql.contains("OPENJSON(@p1)"), "checksums use @p1");
         assert!(sql.contains("OPENJSON(@p2)"), "catalog scope uses @p2");
         assert!(sql.contains("OPENJSON(@p3)"), "catalog schemas use @p3");
+    }
+
+    #[test]
+    fn relaxed_cache_load_binds_count_as_param() {
+        let sql = plan_db_batch_sql(&[], false, false, false, false, false, true);
+        assert!(sql.contains("m.object_count = @p4"), "count bound as @p4");
     }
 }

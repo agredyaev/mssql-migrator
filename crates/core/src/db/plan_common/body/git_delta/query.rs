@@ -62,7 +62,7 @@ async fn query_partial_cache(
     loaded: &mut CatalogState,
 ) -> Result<()> {
     let kinds = kinds_for_scope(ctx.ws, scope);
-    let sql = batch::plan_db_batch_sql(&kinds, false, false, false, true, true, None);
+    let sql = batch::plan_db_batch_sql(&kinds, false, false, false, true, true, false);
     let t_sql = Instant::now();
     let sets = conn
         .query_all(&sql, &["[]", scope_json, schemas_json])
@@ -81,7 +81,7 @@ async fn query_delta_paths(
 ) -> Result<()> {
     let hit_scope = git_hot_scope_json(ctx.ws, &ctx.git.paths);
     let kinds = kinds_for_git_delta(ctx.ws, &ctx.git.paths);
-    let sql = batch::plan_db_batch_sql(&kinds, false, false, false, true, false, None);
+    let sql = batch::plan_db_batch_sql(&kinds, false, false, false, true, false, false);
     let t_sql = Instant::now();
     let sets = conn
         .query_all(&sql, &["[]", &hit_scope, schemas_json])
