@@ -46,6 +46,10 @@ pub async fn run_plan_pipeline(cfg: &Config) -> Result<(MigrationPlan, PhaseTimi
         db.ensure_ms.max(db.checksums_ms + db.inspect_ms)
     };
     timings.set_l1_cache_hit(db.l1_hit);
+    timings.plan_db_path = db.trace.path_label().to_string();
+    timings.plan_db_query_calls = db.trace.timings.query_calls;
+    timings.plan_db_query_ms = db.trace.timings.query_ms;
+    timings.plan_db_round_trips = db.trace.timings.round_trips;
     timings.finish_audit_ms();
 
     let (mut plan, diff_ms) =

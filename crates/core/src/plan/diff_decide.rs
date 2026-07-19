@@ -56,7 +56,6 @@ pub(crate) fn decide_object_at(
         kind_code,
         obj,
         ws,
-        catalog: ctx.catalog,
         prior_digests: &ws.prior_by_row,
         child_row_id: row_id,
         has_transition_paths,

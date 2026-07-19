@@ -3,7 +3,7 @@
 //!
 //! These pin the CURRENT engine semantics so later drift-detection work cannot
 //! silently change them: plan compares repo checksums against history and the
-//! recorded module-definition digest against the live SQL Server object.
+//! recorded managed-object fingerprint against the live SQL Server object.
 //!
 //! Run:
 //!   RMIG_RUN_SQLSERVER_INTEGRATION=1 cargo test -p migrator-core --test drift_e2e_integration -- --nocapture --test-threads=1
@@ -63,7 +63,10 @@ async fn oob_drop_recreated_and_oob_modify_is_restored_after_warm_cache() {
     // Populate L1/warm snapshots first. Module definitions must still be
     // queried live on the next plan.
     let (_, warm_timings) = engine_smoke::plan(&cfg).await.expect("warm plan");
-    assert!(!warm_timings.l1_cache_hit(), "modules bypass top-level L1");
+    assert!(
+        !warm_timings.l1_cache_hit(),
+        "live-state checks bypass top-level L1"
+    );
 
     // An out-of-band body edit must become an in-place module update.
     conn.exec("CREATE OR ALTER VIEW smoke.smoke_view AS SELECT CAST(99 AS INT) AS drifted")
@@ -93,9 +96,144 @@ async fn oob_drop_recreated_and_oob_modify_is_restored_after_warm_cache() {
     eprintln!("drift_e2e oob OK: applied_rows={applied}");
 }
 
+/// Out-of-band table/index shape changes fail closed before apply. Restoring
+/// the audited shape clears the blocker without rewriting history.
+#[tokio::test(flavor = "current_thread")]
+async fn oob_nonmodule_shape_drift_blocks_validate_and_migrate() {
+    if !integration_enabled::enabled() {
+        eprintln!("skip: RMIG_RUN_SQLSERVER_INTEGRATION not set");
+        return;
+    }
+    let cfg = fresh_cold_db().await;
+    let mut conn = state_smoke_conn::open_conn(&cfg).await.expect("connect");
+    assert_eq!(migrate(&cfg).await, 0, "cold migrate");
+
+    conn.exec("ALTER TABLE smoke.smoke_table ADD oob_probe int NULL")
+        .await
+        .expect("add drift column");
+    let plan = fresh_plan(&cfg).await;
+    assert!(plan.blocked, "live table drift must block");
+    assert_eq!(action_for(&plan, "smoke/tables/smoke_table"), Action::Fail);
+    assert!(
+        plan.blockers
+            .iter()
+            .any(|b| b.contains("last audited structural state")),
+        "blocker must identify structural drift: {:?}",
+        plan.blockers
+    );
+    let validate = run_fresh(Command::Validate, &cfg)
+        .await
+        .expect("validate output");
+    assert_eq!(validate.exit_code, migrator_core::error::EXIT_PLAN_BLOCKED);
+    let blocked_migrate = run_fresh(Command::Migrate, &cfg)
+        .await
+        .expect("blocked migrate output");
+    assert_eq!(
+        blocked_migrate.exit_code,
+        migrator_core::error::EXIT_PLAN_BLOCKED
+    );
+
+    conn.exec("ALTER TABLE smoke.smoke_table DROP COLUMN oob_probe")
+        .await
+        .expect("restore table");
+    assert!(
+        !fresh_plan(&cfg).await.blocked,
+        "restored table must be clean"
+    );
+
+    conn.exec(
+        "DROP INDEX ix_smoke_table_value ON smoke.smoke_table; \
+         CREATE UNIQUE NONCLUSTERED INDEX ix_smoke_table_value \
+         ON smoke.smoke_table(value) INCLUDE(created_at) WHERE value IS NOT NULL;",
+    )
+    .await
+    .expect("replace index out of band");
+    let plan = fresh_plan(&cfg).await;
+    assert!(plan.blocked, "live index drift must block");
+    assert_eq!(
+        action_for(&plan, "smoke/indexes/ix_smoke_table_value"),
+        Action::Fail
+    );
+    conn.exec(
+        "DROP INDEX ix_smoke_table_value ON smoke.smoke_table; \
+         CREATE UNIQUE NONCLUSTERED INDEX ix_smoke_table_value \
+         ON smoke.smoke_table(value) WHERE value IS NOT NULL;",
+    )
+    .await
+    .expect("restore index");
+    assert!(
+        !fresh_plan(&cfg).await.blocked,
+        "restored index must be clean"
+    );
+}
+
+/// Every non-table transactional kind has a live fingerprint; none may fall
+/// through to `skip_unchanged` after out-of-band replacement or alteration.
+#[tokio::test(flavor = "current_thread")]
+async fn type_sequence_and_synonym_live_drift_is_blocked() {
+    if !integration_enabled::enabled() {
+        eprintln!("skip: RMIG_RUN_SQLSERVER_INTEGRATION not set");
+        return;
+    }
+    let dir = tempfile::tempdir().expect("temp SQL root");
+    let root = dir.path().join("sql");
+    write_fixture(
+        &root,
+        "dactests/smoke/types/code_t.sql",
+        "CREATE TYPE smoke.code_t FROM int NOT NULL;\n",
+    );
+    write_fixture(
+        &root,
+        "dactests/smoke/sequences/seq_t.sql",
+        "CREATE SEQUENCE smoke.seq_t AS bigint START WITH 1 INCREMENT BY 2 MINVALUE 1 MAXVALUE 1000 CYCLE CACHE 20;\n",
+    );
+    write_fixture(
+        &root,
+        "dactests/smoke/synonyms/syn_t.sql",
+        "CREATE SYNONYM smoke.syn_t FOR sys.objects;\n",
+    );
+    let mut cfg = workflow_config::workflow_config().clone();
+    cfg.sql_root = root.to_string_lossy().into();
+    cfg.sql_base = cfg.sql_root.clone();
+    cfg.set_skip_git(true);
+    cfg.set_catalog_cache(false);
+    db_reset::reset_test_database(&cfg).await.expect("reset db");
+    assert_eq!(migrate(&cfg).await, 0, "create transactional kinds");
+    let mut conn = state_smoke_conn::open_conn(&cfg).await.expect("connect");
+
+    conn.exec(
+        "DROP TYPE smoke.code_t; CREATE TYPE smoke.code_t FROM bigint NOT NULL; \
+         ALTER SEQUENCE smoke.seq_t INCREMENT BY 3 NO CYCLE NO CACHE; \
+         DROP SYNONYM smoke.syn_t; CREATE SYNONYM smoke.syn_t FOR sys.tables;",
+    )
+    .await
+    .expect("drift transactional kinds");
+    let plan = fresh_plan(&cfg).await;
+    assert!(plan.blocked);
+    for key in [
+        "smoke/types/code_t",
+        "smoke/sequences/seq_t",
+        "smoke/synonyms/syn_t",
+    ] {
+        assert_eq!(action_for(&plan, key), Action::Fail, "{key}");
+    }
+
+    conn.exec(
+        "DROP TYPE smoke.code_t; CREATE TYPE smoke.code_t FROM int NOT NULL; \
+         ALTER SEQUENCE smoke.seq_t INCREMENT BY 2 MINVALUE 1 MAXVALUE 1000 CYCLE CACHE 20; \
+         DROP SYNONYM smoke.syn_t; CREATE SYNONYM smoke.syn_t FOR sys.objects;",
+    )
+    .await
+    .expect("restore transactional kinds");
+    assert!(
+        !fresh_plan(&cfg).await.blocked,
+        "restored states must be clean"
+    );
+}
+
 /// A legacy history table has no live-definition column. Read-only planning
-/// must not alter it, but must force modules through UPDATE; migrate performs
-/// the additive upgrade and restores a nullable digest.
+/// must not alter it. Migrate adds the column but blocks non-idempotent object
+/// kinds; explicit metadata-only repair captures the verified live baseline.
 #[tokio::test(flavor = "current_thread")]
 async fn legacy_history_without_live_definition_checksum_is_read_only_then_restored() {
     if !integration_enabled::enabled() {
@@ -114,8 +252,17 @@ async fn legacy_history_without_live_definition_checksum_is_read_only_then_resto
         !column_exists(&mut conn, "live_definition_checksum").await,
         "plan must not alter a legacy audit table"
     );
-    assert_eq!(migrate(&cfg).await, 0, "migrate upgrades legacy history");
+    assert_eq!(
+        migrate(&cfg).await,
+        migrator_core::error::EXIT_PLAN_BLOCKED,
+        "migrate upgrades the audit schema but cannot guess non-module state"
+    );
     assert!(column_exists(&mut conn, "live_definition_checksum").await);
+    assert!(fresh_plan(&cfg).await.blocked);
+    assert_eq!(
+        repair(&cfg).await.expect("repair legacy state").exit_code,
+        0
+    );
     assert_eq!(view_action(&cfg).await, Action::SkipUnchanged);
 }
 
@@ -375,6 +522,20 @@ fn action_of(plan: &MigrationPlan) -> Action {
         .find(|o| o.normalized_key.as_ref() == VIEW_KEY)
         .map(|o| o.planned_action)
         .expect("smoke_view in plan")
+}
+
+fn action_for(plan: &MigrationPlan, key: &str) -> Action {
+    plan.objects
+        .iter()
+        .find(|o| o.normalized_key.as_ref() == key)
+        .map(|o| o.planned_action)
+        .unwrap_or_else(|| panic!("{key} in plan"))
+}
+
+fn write_fixture(root: &std::path::Path, relative: &str, body: &str) {
+    let path = root.join(relative);
+    std::fs::create_dir_all(path.parent().expect("fixture parent")).expect("create fixture dir");
+    std::fs::write(path, body).expect("write fixture");
 }
 
 async fn count_key_rows(conn: &mut TimingConn, key: &str, event: &str) -> i32 {

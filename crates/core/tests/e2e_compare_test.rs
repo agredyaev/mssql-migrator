@@ -26,6 +26,14 @@ fn scenario_compare_flags_io_and_setup_changes_regression() {
         msgs.iter().any(|m| m.contains("setup_steps")),
         "setup drift must be visible: {msgs:?}"
     );
+
+    let mut with_false_cache_claim = E2EScenarioReport::default();
+    with_false_cache_claim.timings.set_l1_cache_hit(true);
+    let msgs = compare_e2e_reports(&baseline, &with_false_cache_claim);
+    assert!(
+        msgs.iter().any(|m| m.contains("l1_cache_hit")),
+        "cache-path regressions must be visible: {msgs:?}"
+    );
 }
 
 #[test]

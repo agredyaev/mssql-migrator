@@ -16,11 +16,11 @@
   "catalog_cache_rows": 6,
   "timings": {
     "setup_apply_ms": 0,
-    "plan_wall_ms": 220,
-    "plan_parallel_wall_ms": 25,
+    "plan_wall_ms": 748,
+    "plan_parallel_wall_ms": 569,
     "plan_db_path": "incremental",
-    "migrate_wall_ms": 144,
-    "migrate_parallel_wall_ms": 7,
-    "total_ms": 558
+    "migrate_wall_ms": 185,
+    "migrate_parallel_wall_ms": 24,
+    "total_ms": 1129
   }
 }

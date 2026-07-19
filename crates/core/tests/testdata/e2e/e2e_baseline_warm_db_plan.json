@@ -1,17 +1,21 @@
 {
   "scenario": "warm_db_plan",
   "timings": {
-    "connect_ms": 7,
+    "connect_ms": 4,
     "inspect_ms": 4,
-    "checksums_ms": 20,
-    "parallel_wall_ms": 25,
-    "audit_ms": 20,
-    "plan_wall_ms": 121,
-    "engine_ms": 114
+    "checksums_ms": 17,
+    "parallel_wall_ms": 22,
+    "audit_ms": 17,
+    "plan_wall_ms": 119,
+    "engine_ms": 115,
+    "plan_db_query_calls": 3,
+    "plan_db_query_ms": 22,
+    "plan_db_round_trips": 2,
+    "plan_db_path": "cold_full"
   },
   "io": {
-    "query_ms": 25,
-    "query_calls": 4,
+    "query_ms": 22,
+    "query_calls": 3,
     "exec_ms": 0,
     "exec_calls": 0,
     "extra_connects": 0,

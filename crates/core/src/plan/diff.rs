@@ -66,7 +66,6 @@ pub fn compute_diff_into(
     }
 
     let mut ctx = DecideCtx {
-        catalog,
         checksums,
         counters: &mut counters,
     };

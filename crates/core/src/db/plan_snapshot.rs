@@ -2,7 +2,6 @@ use crate::cache::l1::L1Cache;
 use crate::config::Config;
 use crate::db::plan_db_trace::{PlanDbPath, PlanDbTrace};
 use crate::db::state::ChecksumMap;
-use crate::domain::is_module_kind_code;
 use crate::domain::Workspace;
 use crate::driver::TimingConn;
 use crate::error::Result;
@@ -45,12 +44,12 @@ pub async fn run_plan_db_phase(
 ) -> Result<PlanDbResult> {
     let fp = crate::audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     let l1 = L1Cache::new(&cfg.l1_cache_dir);
-    // Module definitions are compared to live SQL Server text. A cached
-    // checksum/catalog pair has no current definition digest, so never let a
-    // top-level snapshot suppress that query.
-    let has_modules = (0..ws.object_count()).any(|i| is_module_kind_code(ws.row(i).kind_code));
+    // Every managed object has a live-state fingerprint. A top-level snapshot
+    // cannot prove that SQL Server was not changed out of band, so only an
+    // empty workspace may use it.
+    let requires_live_state = ws.object_count() != 0;
 
-    if !bypass_cache && !has_modules {
+    if !bypass_cache && !requires_live_state {
         if let Some((checksums, catalog)) = l1.try_load(&fp, &ws.layout_digest)? {
             return Ok(PlanDbResult {
                 checksums,
@@ -69,7 +68,7 @@ pub async fn run_plan_db_phase(
     }
 
     if let Some((checksums, catalog)) = super::warm_snapshot::reuse(&fp, &ws.layout_digest)
-        .filter(|_| !bypass_cache && !has_modules)
+        .filter(|_| !bypass_cache && !requires_live_state)
     {
         l1.save(&fp, &ws.layout_digest, &checksums, &catalog)?;
         return Ok(PlanDbResult {

@@ -30,7 +30,7 @@ pub async fn execute_metadata_plan(
     plan: &mut MigrationPlan,
     mode: MetadataMode,
 ) -> Result<ApplyResult> {
-    if plan.blocked {
+    if plan.blocked && mode != MetadataMode::RepairChecksum {
         return Err(Error::PlanBlocked);
     }
     plan.ensure_objects_materialized(ws);
@@ -43,7 +43,10 @@ pub async fn execute_metadata_plan(
         result.skipped += 1;
         match obj.planned_action {
             Action::AdoptExisting => recs.push(super::objects::adopt_record(obj)),
-            Action::UpdateExistingModule | Action::ReprocessChanged
+            Action::UpdateExistingModule
+            | Action::ReprocessChanged
+            | Action::ReprocessChangedBlocked
+            | Action::Fail
                 if mode == MetadataMode::RepairChecksum =>
             {
                 recs.push(repair_record(obj));
