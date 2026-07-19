@@ -7,8 +7,8 @@
 //!
 //! ### Non-obvious behaviour
 //! - **Single connection, concurrent clients**: All spawned tasks share one
-//!   `Arc<tokio::sync::Mutex<RawClient>>`. Requests are serialised at the
-//!   TDS level — each waits for the previous query to finish.
+//!   mutex-protected optional TDS client. Requests are serialised; a client
+//!   whose command times out is discarded and reconnected before reuse.
 //! - **Async mutex**: Uses `tokio::sync::Mutex` (not `std::sync::Mutex`)
 //!   because the lock is held across `.await` points in RPC handlers.
 //! - **Feature-gated**: Entire module is `#[cfg(feature = "session-daemon")]`.
@@ -40,7 +40,8 @@ use serve::serve;
 pub async fn run_daemon(socket: &Path, cfg: Config) -> anyhow::Result<()> {
     super::auth::apply_session_token_from_config(&cfg);
     let conn = connect(&cfg).await?;
-    let shared = Arc::new(Mutex::new(conn.client));
+    let shared = Arc::new(Mutex::new(Some(conn.client)));
+    let reconnect_cfg = Arc::new(cfg.clone());
     let socket = if !cfg.session_socket.is_empty() {
         std::path::PathBuf::from(&cfg.session_socket)
     } else if socket.as_os_str().is_empty() {
@@ -93,10 +94,11 @@ pub async fn run_daemon(socket: &Path, cfg: Config) -> anyhow::Result<()> {
         };
         let permit = client_slots.clone().acquire_owned().await?;
         let client = shared.clone();
+        let cfg = reconnect_cfg.clone();
         let ep = daemon_endpoint.clone();
         tokio::spawn(async move {
             let _permit = permit;
-            if let Err(e) = serve(stream, client, command_timeout, ep).await {
+            if let Err(e) = serve(stream, client, cfg, command_timeout, ep).await {
                 tracing::warn!(error = %e, "rmigd client failed");
             }
         });

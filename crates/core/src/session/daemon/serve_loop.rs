@@ -4,11 +4,11 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 
+use crate::config::Config;
 use crate::driver::RawClient;
 use crate::error::{Error, Result};
 
 use super::super::auth::{token_required, verify_token};
-use super::super::daemon_rpc;
 use super::super::limits::MAX_SESSION_LINE_BYTES;
 use super::super::protocol::{Request, Response};
 use super::reply::write_response;
@@ -20,10 +20,11 @@ const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 pub(super) async fn serve_loop(
     reader: &mut BufReader<OwnedReadHalf>,
     write_half: &mut OwnedWriteHalf,
-    client: &Arc<tokio::sync::Mutex<RawClient>>,
+    client: &Arc<tokio::sync::Mutex<Option<RawClient>>>,
+    reconnect_cfg: &Config,
     command_timeout: Duration,
     endpoint: &super::endpoint::Endpoint,
-    session: &mut Option<tokio::sync::OwnedMutexGuard<RawClient>>,
+    session: &mut Option<tokio::sync::OwnedMutexGuard<Option<RawClient>>>,
 ) -> Result<()> {
     let need_token = token_required();
     let mut authenticated = !need_token;
@@ -87,23 +88,24 @@ pub(super) async fn serve_loop(
         }
 
         if session.is_none() {
-            *session = Some(client.clone().lock_owned().await);
+            let mut guard = client.clone().lock_owned().await;
+            if let Err(e) = super::serve::reconnect(&mut guard, reconnect_cfg).await {
+                let message = format!("rmigd: database reconnect failed: {e}");
+                write_response(write_half, Response::err(message)).await?;
+                break;
+            }
+            *session = Some(guard);
         }
         let Some(guard) = session.as_deref_mut() else {
             break;
         };
-        let resp = if command_timeout.is_zero() {
-            daemon_rpc::handle(guard, req).await
-        } else {
-            match tokio::time::timeout(command_timeout, daemon_rpc::handle(guard, req)).await {
-                Ok(r) => r,
-                Err(_) => {
-                    write_response(write_half, Response::err("rmigd: request timed out")).await?;
-                    break;
-                }
+        match super::serve::dispatch(guard, req, command_timeout).await? {
+            Some(resp) => write_response(write_half, resp).await?,
+            None => {
+                write_response(write_half, Response::err("rmigd: request timed out")).await?;
+                break;
             }
-        };
-        write_response(write_half, resp).await?;
+        }
     }
     Ok(())
 }
