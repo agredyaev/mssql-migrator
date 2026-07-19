@@ -38,6 +38,8 @@ The first path segment under `RM_SQL_ROOT` is the **SQL Server database name** (
 
 `database.user`, `database.password`, and `session.token` are rejected. Set the corresponding process variables below.
 
+The checked-in `config.toml` keeps the secure transport defaults. Local Docker runners source `ops/perf/e2e_env.sh` and explicitly set the test-only non-TLS exception.
+
 | Variable | Required | Notes |
 |----------|----------|-------|
 | `RM_DB_SERVER` | no | Override for `database.server` |
@@ -45,6 +47,8 @@ The first path segment under `RM_SQL_ROOT` is the **SQL Server database name** (
 | `RM_DB_AUTH` | no | Only `sql` (the default) is accepted. `integrated` / `windows` are rejected with `Error::Config` at `driver/mssql_auth.rs`; target SQL Server 2019 has no workload/managed-identity support, so token auth is out of scope. |
 | `RM_DB_USER` / `RM_DB_PASSWORD` | yes | Process environment only; required by SQL authentication. |
 | `RMIG_SESSION_TOKEN` | for `rmigd` | Process environment only; required for daemon transport. |
+| `RM_DB_ENCRYPT` | no | Defaults to `true`. Set `false` only for an explicitly accepted local/test transport. |
+| `RM_DB_TRUST_SERVER_CERTIFICATE` | no | Defaults to `false`; normal certificate validation remains enabled. |
 | `RM_DB_DATABASE` | **no** | Derived from catalog; field on `Config` is runtime-only |
 | `RM_SQL_BASE` | no | Defaults to `RM_SQL_ROOT` (scaffold/migrations path) |
 
@@ -58,6 +62,7 @@ If `RM_SQL_ROOT` contains multiple child directories with schema subfolders (e.g
 
 - SQL Server 2016+ with OPENJSON.
 - Catalog directory must contain at least one `<database>/<schema>/` subtree.
+- Present boolean environment variables must use a recognized value (`true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`, `y`/`n`, or `enabled`/`disabled`). Typos fail with `Error::Config`; they never disable TLS implicitly.
 
 ## Nominal flow
 
@@ -71,11 +76,13 @@ If `RM_SQL_ROOT` contains multiple child directories with schema subfolders (e.g
   Containment: `Error::Config` before connect.
 - Failure mode: multiple catalog DBs without operator narrowing `RM_SQL_ROOT`.
   Containment: engine processes each DB sequentially and merges the per-DB plans.
+- Failure mode: `RM_DB_ENCRYPT=ture` or another invalid boolean.
+  Containment: `validate_config` returns exit `2` before any network connection.
 
 ## Verification and validation
 
 - `crates/core/src/config/catalog.rs` unit test `discover_databases_from_layout`
-- `crates/core/src/config/validate.rs` unit tests for SQL credential preflight
+- `crates/core/src/config/validate.rs` unit tests for SQL credential preflight; `config::env_parse::tests::invalid_boolean_is_rejected_regression`
 - `make check`, `make integration`
 - `crates/core/tests/plan_json_roundtrip_test.rs`, `exit_code_test.rs`, `db_auth_test.rs`
 

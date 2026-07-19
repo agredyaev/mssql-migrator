@@ -34,6 +34,7 @@ same `Makefile` targets apply.
 
 - Required settings: `database.server` and `paths.sql_root` in TOML or their process-environment overrides. SQL authentication requires non-empty `RM_DB_USER` and `RM_DB_PASSWORD` in the process environment.
 - Optional variables: `RM_DB_PORT`, `RM_DB_AUTH`, `RM_DB_ENCRYPT`, `RM_DB_TRUST_SERVER_CERTIFICATE`, `RM_SQL_BASE`, `RM_SKIP_GIT`, `RM_LOG_LEVEL`.
+- TLS defaults: encryption on and certificate trust bypass off. Local Docker scripts opt out explicitly. Any invalid boolean environment value exits `2` before connect.
 - Timeouts: `RM_COMMAND_TIMEOUT` (per query/connect; default 30s) and `RM_LOCK_TIMEOUT` (advisory lock). A value of zero disables the command timeout.
 - Daemon: `RMIG_SESSION` (client socket path), mandatory process secret `RMIG_SESSION_TOKEN`, and `RMIG_USE_RMIGD` (enable the `rmigd` path in the ops scripts).
 - Azure DevOps: map secret-variable-group values to process variables named `RM_DB_USER`, `RM_DB_PASSWORD`, and `RMIG_SESSION_TOKEN`; never place them in `config.toml`.

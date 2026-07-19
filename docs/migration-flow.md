@@ -52,7 +52,7 @@ from the repository tree are therefore never created, altered, or dropped — se
 2. Connect (direct TDS or via `rmigd`) — `crates/core/src/engine/run/database.rs`.
 3. Read-only commands (`plan`, `validate`) inspect the catalog and diff without the lock (`crates/core/src/engine/run/plan_phase.rs`).
 4. Mutating commands (`migrate`, `baseline`, `repair-checksum`) acquire the advisory lock first, then inspect, diff, and apply entirely inside the lock so a concurrent migrator cannot make the plan stale (`crates/core/src/engine/apply_run.rs`).
-5. Apply order: ensure audit tables, apply schemas (idempotent `IF SCHEMA_ID ... EXEC('CREATE SCHEMA ...')`), then objects, then table transitions (`crates/core/src/apply/mod.rs`).
+5. Apply order: ensure audit tables, apply schemas (idempotent `IF SCHEMA_ID ... EXEC('CREATE SCHEMA ...')`), then table transitions, then dependent indexes and programmable objects (`crates/core/src/apply/mod.rs`).
 6. Flush audit history, invalidate caches, release the lock, and return exit code 0 on success.
 
 ## Off-Nominal Behavior And Failure Containment

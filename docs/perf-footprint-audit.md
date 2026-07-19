@@ -25,7 +25,7 @@ Footprint work validates layout policy under [`data-oriented-layout-policy.md`](
 | Input | Output |
 |-------|--------|
 | `make bench-footprint` | `artifacts/footprint_bench.txt`, struct size JSON |
-| `make bench-footprint-alloc` | `artifacts/plan_diff_dhat.txt`, `artifacts/alloc_flame.txt` |
+| `make bench-footprint-alloc` | `artifacts/rust_plan_diff_dhat.txt`, `artifacts/rust_alloc_flame.txt` |
 | `footprint_baseline_match` test | pass/fail vs committed JSON |
 
 ## Assumptions and constraints
@@ -68,8 +68,8 @@ cargo test -p migrator-core-dev --test footprint_baseline footprint_baseline_mat
 |----------|---------|
 | `artifacts/struct_sizes.json` | `sizeof` snapshot |
 | `artifacts/footprint_bench.txt` | criterion log |
-| `artifacts/plan_diff_5k_flamegraph.svg` | CPU hot path |
-| `artifacts/plan_diff_dhat.txt` | dhat summary (skip-heavy) |
+| `artifacts/rust_plan_diff_5k_flamegraph.svg` | CPU hot path |
+| `artifacts/rust_plan_diff_dhat.txt` | dhat summary (skip-heavy) |
 | `artifacts/dhat_heap.json` | raw dhat heap (input to Python tree) |
 | `artifacts/alloc_flame.txt` | human alloc tree from `dhat_alloc_tree.py` |
 | `artifacts/scan_5k_load_flamegraph.svg`, `artifacts/scan_dhat.txt` | scan_root CPU + heap |

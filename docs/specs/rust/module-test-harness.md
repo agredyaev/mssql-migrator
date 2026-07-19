@@ -57,7 +57,7 @@ Tests point `RM_SQL_ROOT` at `$REPO/.temp/sql` (fixture in `.temp/`, not committ
 1. On Apple Silicon + Colima, run `colima start --vz-rosetta --memory 4 --cpu 4` before starting Docker SQL Server.
 2. `make db-up` - Docker SQL Server only (databases created on first `migrate`).
 3. `make check` - arch guard, release dep check, `clippy -D warnings`, unit + non-SQL integration tests (SQL suites skip without `RMIG_RUN_SQLSERVER_INTEGRATION=1`).
-4. `make sql-regression` - bugslog SQL regression battery via `ops/perf/sql_regression.sh` (includes `apply_integrity_integration` and `rmigd` lock tests).
+4. `make sql-regression` - bugslog SQL regression battery via `ops/perf/sql_regression.sh` (includes `apply_integrity_integration`, `rmigd` lock tests, and timeout cleanup recovery).
 5. `make check-e2e` - `sql-regression` + scenario matrix + workflow + SLO + prod gate (ADO merge gate).
 6. `make integration` - `apply_e2e_integration` + `adopt_e2e_integration` + `drift_e2e_integration` + `workflow_integration` on `.temp/sql` (subset; prefer `make check-e2e` before merge).
 

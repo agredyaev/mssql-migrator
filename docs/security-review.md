@@ -13,7 +13,7 @@ remain. It answers: "Is it safe to run this in CI against a production catalog?"
 - Secret handling and redaction: `crates/core/src/config/cold.rs`, `crates/core/src/config/debug.rs`, `crates/core/src/session/auth.rs`.
 - SQL safety: `crates/core/src/sql_ident.rs`, `crates/core/src/session/client.rs`, parameterized catalog queries in `crates/core/src/db`.
 - Input validation: `crates/core/src/scan/walk.rs`, `crates/core/src/config/validate.rs`.
-- Out of scope: SQL Server-side permissions and network security (operator-owned).
+- Out of scope: SQL Server-side permissions and host hardening (operator-owned).
 
 ## System Context
 
@@ -33,17 +33,18 @@ without escaping.
 
 - Assumptions: operators supply credentials via a secret store, not committed files.
 - Assumption: repository `.sql` script bodies are TRUSTED input. The migrator executes them verbatim (wrapped only in a transaction) with the deploy credentials, so write access to the migrations repository is equivalent to arbitrary SQL execution against the target server. Only identifiers and catalog reads are treated as untrusted; script contents are not sandboxed.
-- Assumption: `rmigd` token auth is OPT-IN. An empty configured token disables authentication entirely (`crates/core/src/session/auth.rs`); in that mode the Unix-socket file permissions (`0600` socket in a `0700` directory) are the only access control, so the socket path must never be placed in a group/world-accessible directory.
+- Assumption: `rmigd` always requires `RMIG_SESSION_TOKEN` from the process environment. Empty tokens fail startup; socket permissions are defense in depth, not the authentication boundary.
 - Constraints:
   - Do not print secrets; do not log connection strings or credentials; do not include credentials in error messages.
   - `password` and `session_token` are redacted in all `Debug` output; `Config`, `ConfigCold`, and the session `Request` (`crates/core/src/session/protocol.rs`) implement redacting `Debug` by hand.
   - User-controlled schema/database identifiers are emitted only through `bracket_ident`, which validates the component and doubles `]`.
   - Catalog reads use parameterized queries (`@p1`/`@p2`/`@p3`), not string interpolation of untrusted values.
+  - Database transport defaults to encryption with certificate validation (`RM_DB_ENCRYPT=true`, `RM_DB_TRUST_SERVER_CERTIFICATE=false`). Invalid boolean values fail configuration before connect.
   - Dynamic `CREATE SCHEMA` is wrapped in `EXEC(...)` (required by T-SQL batch rules) with the bracketed identifier and the `SCHEMA_ID` probe both single-quote-escaped, so a schema name containing `'` cannot break out (`crates/core/src/apply/schemas.rs`).
 
 ## Nominal Flow
 
-1. Config is built from the environment; `crates/core/src/config/validate.rs` rejects control characters in server and database names.
+1. Config is built from the environment; `crates/core/src/config/validate.rs` rejects invalid booleans and control characters before connecting.
 2. Secrets live in `ConfigCold` behind an `Arc`; any `Debug` rendering shows `<redacted>`/`<unset>` (`crates/core/src/config/debug.rs`, `crates/core/src/config/cold.rs`).
 3. Schema/database names are quoted via `bracket_ident` before use (for example `USE [db]` in `crates/core/src/session/client.rs`).
 4. The `rmigd` session token is compared in constant time (`crates/core/src/session/auth.rs`).
@@ -58,6 +59,8 @@ without escaping.
   Containment: the hand-written `Debug` impls redact `password` and `session_token`, so no secret reaches the log.
 - Failure mode: an attacker probes the daemon token.
   Containment: constant-time comparison avoids leaking matched-prefix length via timing.
+- Failure mode: a TLS boolean contains a typo such as `RM_DB_ENCRYPT=ture`.
+  Containment: configuration exits `2`; encryption is never silently disabled.
 - Failure mode: a catalog database directory has an illegal or over-long name.
   Containment: `crates/core/src/config/ensure_db.rs` validates every name through `bracket_ident` before opening any connection, failing with exit `8` instead of emitting an invalid `CREATE DATABASE` statement.
 - Failure mode: a schema name contains a single quote (legal inside brackets, e.g. `O'Brien`).
@@ -82,7 +85,7 @@ without escaping.
   - `crates/core/src/domain/arena/builder.rs` casts buffer length to `u32`, capping a single arena at 4 GiB, far above any real migration repository.
   - Driver error text from `crates/core/src/driver/mssql_query.rs` is surfaced as-is. TDS error messages do not carry credentials, so they are passed through for diagnostics.
   - The `relaxed_cache_count` interpolation in `crates/core/src/db/batch.rs` substitutes only a `usize`, so it cannot inject SQL.
-- Non-goals: this document does not cover SQL Server-side authorization, TLS configuration, or host hardening.
+- Non-goals: this document does not cover SQL Server-side authorization, certificate issuance, or host hardening.
 
 ## References
 

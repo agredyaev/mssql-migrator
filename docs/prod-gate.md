@@ -58,7 +58,7 @@ Database **drop/create** is optional and **excluded** from plan wall SLO when `R
 
 ### Rust plan DB SLO (`parallel_wall_ms`)
 
-Integration gate: [`crates/core/tests/workflow_integration.rs`](../crates/core/tests/workflow_integration.rs) asserts `parallel_wall_ms ≤ RMIG_PLAN_DB_MAX_PAR_MS` (default **500**) after each workflow phase (L1 hits exempt).
+Integration gate: [`crates/core/tests/workflow_integration.rs`](../crates/core/tests/workflow_integration.rs) asserts `parallel_wall_ms ≤ RMIG_PLAN_DB_MAX_PAR_MS` (default **500**) after each workflow phase. The generic empty-workspace L1 path is exempt; managed fixtures refresh live fingerprints.
 
 | Variable | Default | Role |
 |----------|---------|------|
@@ -86,10 +86,10 @@ Reference timings JSON: [`crates/core/tests/testdata/cli_phase/plan_full_cli_ref
 
 | Scenario | inspect_ms | cli_wall_ms | Notes |
 |----------|------------|-------------|--------|
-| Warm SLO gate | ~70–110 | &lt;150 | `make slo` with L1 + session reuse |
-| Cold plan (no session) | ~570–650 | ~630–700 | Historical reference sample |
+| Warm SLO gate | ~70–150 | &lt;150 | `make slo` with session reuse and warm SQL query plans; live fingerprints remain enabled |
+| Cold plan (no session) | ~570–750 | ~630–800 | Historical reference sample |
 
-Dominant cost before optimization was **column catalog** inside inspect; removing it from the default path is the largest win. Inspect runs **parallel schema + object** OpenJSON queries on cache miss.
+Dominant warm costs are the live-state checksum query and catalog inspect. SQL Server caches the fingerprint query plan; the first run after server restart is a cold reference, not the warm CLI SLO sample.
 
 ## Assumptions and constraints
 

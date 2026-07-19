@@ -91,8 +91,8 @@ make prod-gate       # Execute incremental plans and go/no-go checks
 | Profiling Target | Tool / Command | Generated Artifacts |
 | :--- | :--- | :--- |
 | Struct sizes & baseline diffs | `make bench-footprint` | `artifacts/struct_sizes.json` |
-| CPU flamegraph (5k objects) | `make bench-footprint-profile` | `artifacts/plan_diff_5k_flamegraph.svg` |
-| DHAT heap allocations | `make bench-footprint-alloc` | `artifacts/plan_diff_dhat.txt` |
+| CPU flamegraph (5k objects) | `make bench-footprint-profile` | `artifacts/rust_plan_diff_5k_flamegraph.svg` |
+| DHAT heap allocations | `make bench-footprint-alloc` | `artifacts/rust_plan_diff_dhat.txt` |
 | Full integration flamegraph | `ops/perf/flamegraph.sh` | Profiling artifacts |
 
 ---
