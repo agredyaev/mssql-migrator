@@ -38,29 +38,3 @@ SELECT rows.normalized_key, rows.kind, rows.object_kind, rows.checksum, live.def
     COALESCE(TRY_CONVERT(datetime2, NULLIF(rows.git_date, ''), 127), CONVERT(datetime2, '1900-01-01T00:00:00')),
     rows.event, NULLIF(rows.error_text, '')
     FROM parts AS rows
-    OUTER APPLY (
-        SELECT HASHBYTES('SHA2_256', OBJECT_DEFINITION(o.object_id)) AS definition_checksum
-        FROM sys.objects AS o
-        INNER JOIN sys.schemas AS s ON s.schema_id = o.schema_id
-        WHERE rows.kind = 'object'
-          AND rows.object_kind IN ('views', 'functions', 'procedures', 'triggers')
-          AND LOWER(s.name) = rows.schema_name COLLATE DATABASE_DEFAULT
-          AND LOWER(o.name) = rows.object_name COLLATE DATABASE_DEFAULT
-          AND ((rows.object_kind = 'views' AND o.type = 'V')
-            OR (rows.object_kind = 'functions' AND o.type IN ('FN', 'IF', 'TF', 'FS', 'FT'))
-            OR (rows.object_kind = 'procedures' AND o.type IN ('P', 'PC'))
-            OR (rows.object_kind = 'triggers' AND o.type = 'TR'))
-    ) AS live;
-
-IF EXISTS (
-    SELECT 1 FROM @prepared
-    WHERE kind = 'object' AND object_kind IN ('views', 'functions', 'procedures', 'triggers')
-      AND live_definition_checksum IS NULL
-)
-    THROW 51000, 'cannot capture live module definition checksum', 1;
-
-INSERT INTO azdo_deploy_meta.history (normalized_key, kind, checksum, live_definition_checksum, git_hash, git_author, git_date, event, error_text, created_at)
-SELECT
-    normalized_key, kind, checksum, live_definition_checksum, git_hash, git_author,
-    git_date, event, error_text, SYSUTCDATETIME()
-FROM @prepared;

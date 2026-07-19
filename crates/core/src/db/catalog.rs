@@ -46,13 +46,15 @@ fn build_catalog_from_header(header: &str, kinds: &[&str], skip_schema_rows: boo
     let mut first = true;
     let mut push_source = |name: &str| {
         if first {
-            b.push_str(" SELECT row_kind, schema_name, kind, object_name, parent_name FROM ");
+            b.push(' ');
+            b.push_str(sql::catalog::ROWS_PROJECTION);
+            b.push(' ');
             b.push_str(name);
             first = false;
         } else {
-            b.push_str(
-                " UNION ALL SELECT row_kind, schema_name, kind, object_name, parent_name FROM ",
-            );
+            b.push_str(" UNION ALL ");
+            b.push_str(sql::catalog::ROWS_PROJECTION);
+            b.push(' ');
             b.push_str(name);
         }
     };

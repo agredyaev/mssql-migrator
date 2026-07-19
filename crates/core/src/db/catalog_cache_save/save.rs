@@ -14,14 +14,8 @@ const CACHE_SAVE_BATCH: &str = concat!(
     "\n",
     include_str!("../../../../../sql/catalog/catalog_cache_insert_openjson.sql"),
     "\n",
-    // MERGE uses @p2 digest + @p3 count (INSERT uses @p1 payload + @p2 digest).
-    "MERGE azdo_deploy_meta.catalog_meta AS t\n",
-    "USING (SELECT 1 AS id) AS s ON t.id = s.id\n",
-    "WHEN MATCHED THEN\n",
-    "    UPDATE SET layout_digest = @p2, object_count = @p3, captured_at = SYSUTCDATETIME()\n",
-    "WHEN NOT MATCHED THEN\n",
-    "    INSERT (id, layout_digest, object_count, captured_at)\n",
-    "    VALUES (1, @p2, @p3, SYSUTCDATETIME());\n",
+    // MERGE uses @p2 digest + @p3 count; INSERT uses @p1 payload + @p2 digest.
+    include_str!("../../../../../sql/catalog/catalog_meta_merge.sql"),
     "COMMIT TRANSACTION;"
 );
 

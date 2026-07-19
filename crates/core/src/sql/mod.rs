@@ -24,10 +24,18 @@ pub mod audit {
     pub const BOOTSTRAP_TABLES: &str = include_str!("../../../../sql/audit/bootstrap_tables.sql");
     pub const BOOTSTRAP_INDEX: &str = include_str!("../../../../sql/audit/bootstrap_index.sql");
     pub const HISTORY_EMPTY: &str = include_str!("../../../../sql/audit/history_empty_probe.sql");
-    pub const LOAD_CHECKSUMS: &str =
-        include_str!("../../../../sql/audit/load_checksums_openjson.sql");
-    pub const INSERT_HISTORY: &str =
-        include_str!("../../../../sql/audit/insert_history_openjson.sql");
+    pub const HISTORY_EXISTS: &str = include_str!("../../../../sql/audit/history_exists.sql");
+    // Header/tail fragments are not runnable alone; the shared canonical-state
+    // block is embedded by both sides.
+    pub const LOAD_CHECKSUMS: &str = concat!(
+        include_str!("../../../../sql/audit/load_checksums_header.sql"),
+        include_str!("../../../../sql/audit/_object_canonical_state.sql"),
+    );
+    pub const INSERT_HISTORY: &str = concat!(
+        include_str!("../../../../sql/audit/insert_history_header.sql"),
+        include_str!("../../../../sql/audit/_object_canonical_state.sql"),
+        include_str!("../../../../sql/audit/insert_history_tail.sql"),
+    );
     pub const LOAD_ALL_MIGRATIONS: &str =
         include_str!("../../../../sql/audit/load_all_migrations.sql");
 }
@@ -51,6 +59,12 @@ pub mod catalog {
         include_str!("../../../../sql/catalog/catalog_cache_delete_all.sql");
     pub const CACHE_INSERT: &str =
         include_str!("../../../../sql/catalog/catalog_cache_insert_openjson.sql");
+    pub const META_MERGE: &str = include_str!("../../../../sql/catalog/catalog_meta_merge.sql");
+    pub const ROWS_PROJECTION: &str = include_str!("../../../../sql/catalog/rows_projection.sql");
+}
+
+pub mod driver {
+    pub const PING: &str = include_str!("../../../../sql/driver/ping.sql");
 }
 
 pub mod apply {
@@ -59,9 +73,11 @@ pub mod apply {
         include_str!("../../../../sql/apply/assert_open_transaction.sql");
     pub const COMMIT_TX: &str = include_str!("../../../../sql/apply/commit_transaction.sql");
     pub const ROLLBACK: &str = include_str!("../../../../sql/apply/rollback.sql");
+    pub const ROLLBACK_IF_OPEN: &str = include_str!("../../../../sql/apply/rollback_if_open.sql");
 }
 
 pub mod lock {
     pub const ACQUIRE: &str = include_str!("../../../../sql/lock/acquire.sql");
     pub const RELEASE: &str = include_str!("../../../../sql/lock/release.sql");
+    pub const RELEASE_IF_HELD: &str = include_str!("../../../../sql/lock/release_if_held.sql");
 }

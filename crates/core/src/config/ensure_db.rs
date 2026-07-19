@@ -83,7 +83,11 @@ async fn create_database_if_missing(conn: &mut MssqlConn, cfg: &Config, db: &str
     // is still needed for the `N'...'` string-literal context of the existence probe.
     let bracket = bracket_ident(db)?;
     let literal = db.replace('\'', "''");
-    let sql = format!("IF DB_ID(N'{literal}') IS NULL CREATE DATABASE {bracket}");
+    let sql = format!(
+        include_str!("../../../../sql/apply/create_database.sql"),
+        literal = literal,
+        bracket = bracket,
+    );
     tracing::info!(
         database = %db,
         sql_root = %cfg.sql_root,
@@ -108,6 +112,7 @@ where
     } else {
         tokio::time::timeout(timeout, fut).await.map_err(|_| {
             crate::error::Error::Sql(format!("CREATE DATABASE {db} timed out after {timeout:?}"))
+            // sql-gate:allow error text
         })?
     }
 }

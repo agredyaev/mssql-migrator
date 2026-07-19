@@ -1,0 +1,1 @@
+SELECT row_kind, schema_name, kind, object_name, parent_name FROM

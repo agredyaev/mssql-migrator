@@ -32,13 +32,45 @@ fn audit_identity_columns_are_nvarchar_regression() {
 }
 
 #[test]
-fn module_definition_audit_is_additive_and_live_regression() {
+fn managed_object_state_audit_is_additive_and_live_regression() {
     assert!(audit::BOOTSTRAP_TABLES.contains("live_definition_checksum VARBINARY(32) NULL"));
-    assert!(audit::INSERT_HISTORY.contains("HASHBYTES('SHA2_256', OBJECT_DEFINITION"));
+    assert!(audit::INSERT_HISTORY.contains("HASHBYTES('SHA2_256'"));
+    for kind in [
+        "'types'",
+        "'sequences'",
+        "'tables'",
+        "'synonyms'",
+        "'indexes'",
+        "'views'",
+        "'functions'",
+        "'procedures'",
+        "'triggers'",
+    ] {
+        assert!(
+            audit::INSERT_HISTORY.contains(kind),
+            "history fingerprint must cover {kind}"
+        );
+        assert!(
+            audit::LOAD_CHECKSUMS.contains(kind),
+            "live drift query must cover {kind}"
+        );
+    }
     assert!(audit::INSERT_HISTORY.contains("THROW 51000"));
     assert!(audit::LOAD_CHECKSUMS
         .contains("COL_LENGTH('azdo_deploy_meta.history', 'live_definition_checksum')"));
     assert!(audit::LOAD_CHECKSUMS.contains("live_definition_drift"));
+    assert_eq!(
+        live_fingerprint_block(audit::INSERT_HISTORY),
+        live_fingerprint_block(audit::LOAD_CHECKSUMS),
+        "history write and plan read must hash identical canonical state"
+    );
+}
+
+fn live_fingerprint_block(sql: &str) -> &str {
+    let start = sql.find("    OUTER APPLY (\n").expect("fingerprint start");
+    let tail = &sql[start..];
+    let end = tail.find("    ) AS live;").expect("fingerprint end") + "    ) AS live;".len();
+    &tail[..end]
 }
 
 /// SHA-256 Git repositories emit 64-hex commit ids; a 40-char column silently

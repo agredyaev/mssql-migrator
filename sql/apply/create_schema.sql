@@ -1,0 +1,1 @@
+IF SCHEMA_ID(N'{probe}') IS NULL EXEC('CREATE SCHEMA {bracket_escaped}')

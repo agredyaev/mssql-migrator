@@ -1,0 +1,1 @@
+IF DB_ID(N'{literal}') IS NULL CREATE DATABASE {bracket}
