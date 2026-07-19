@@ -4,6 +4,10 @@ use super::repo;
 
 /// Returns the list of file names changed between `base` and `head` in `repo`.
 pub fn diff_name_only(repo: &str, base: &str, head: &str) -> Option<Vec<String>> {
+    // Refs beginning with '-' would parse as git options (argument injection).
+    if base.starts_with('-') || head.starts_with('-') {
+        return None;
+    }
     let out = Command::new("git")
         .args(["-C", repo, "diff", "--name-only", base, head])
         .output()
@@ -34,6 +38,10 @@ pub fn merge_base_paths(sql_root: &str) -> Option<Vec<String>> {
 
 /// Returns the merge-base commit between `head` and `other` in `repo`.
 pub fn merge_base(repo: &str, head: &str, other: &str) -> Option<String> {
+    // Refs beginning with '-' would parse as git options (argument injection).
+    if head.starts_with('-') || other.starts_with('-') {
+        return None;
+    }
     let out = Command::new("git")
         .args(["-C", repo, "merge-base", head, other])
         .output()
