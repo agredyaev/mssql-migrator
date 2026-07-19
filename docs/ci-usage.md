@@ -51,7 +51,7 @@ same `Makefile` targets apply.
 
 ## Off-Nominal Behavior And Failure Containment
 
-- Exit codes (`crates/core/src/error.rs`): `0` ok; `1` general/IO; `2` config (missing/invalid env); `3` connect failure or connect timeout; `5` SQL error or query timeout; `7` advisory-lock timeout; `8` invalid input (bad repository structure/identifier); `10` plan blocked; `130` interrupted (SIGINT/SIGTERM — the run future is dropped, the connection closes, and the server rolls back any open transaction).
+- Exit codes (`crates/core/src/error.rs`): `0` ok; `1` general/IO; `2` config (missing/invalid env); `3` connect failure or connect timeout; `4` undecodable persisted audit checksum (run `rmig repair-checksum`); `5` SQL error or query timeout; `7` advisory-lock timeout; `8` invalid input (bad repository structure/identifier); `10` plan blocked; `130` interrupted (SIGINT/SIGTERM — the run future is dropped, the connection closes, and the server rolls back any open transaction).
 - Failure mode: SQL Server unreachable or hung.
   Containment: connect and per-command timeouts fail with codes 3/5 instead of hanging the job.
 - Failure mode: invalid repository structure (duplicate object/ordinal, bad path).

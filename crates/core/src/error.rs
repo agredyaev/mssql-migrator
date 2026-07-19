@@ -14,13 +14,14 @@
 //! - `1`: Uncategorized / OS errors (`EXIT_GENERAL`)
 //! - `2`: Environmental config errors (`EXIT_CONFIG`)
 //! - `3`: Database connection failures (`EXIT_CONN`)
+//! - `4`: Undecodable persisted audit checksum; run `repair-checksum` (`EXIT_CHECKSUM`)
 //! - `5`: SQL execution runtime exceptions (`EXIT_SQL`)
 //! - `7`: Advisory lock timeout / contention (`EXIT_LOCK_TIMEOUT`)
 //! - `8`: Invalid input / bad repository structure or identifier (`EXIT_INVALID_INPUT`)
 //! - `10`: Structural layout plan is blocked (`EXIT_PLAN_BLOCKED`)
 //!
-//! Codes `4` (`EXIT_CHECKSUM`), `6` (`EXIT_VALIDATION`), and `9` (`EXIT_CRITICAL`)
-//! are reserved constants not currently returned by [`Error::exit_code`].
+//! Codes `6` (`EXIT_VALIDATION`) and `9` (`EXIT_CRITICAL`) are reserved
+//! constants not currently returned by [`Error::exit_code`].
 
 use std::fmt;
 
