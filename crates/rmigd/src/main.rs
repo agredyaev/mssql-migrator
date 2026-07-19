@@ -20,11 +20,16 @@
 //! - Socket file collision: if a live daemon answers on the socket, startup is
 //!   refused; a stale socket file is removed and replaced.
 //! - A missing config file or environment-only credential fails startup.
+//! - SIGINT/SIGTERM: the serve future is dropped (listener and warm TDS
+//!   connection close; the server rolls back any open transaction), the
+//!   socket file is removed, and the daemon exits `0`.
 
 #![forbid(unsafe_code)]
 use std::process::ExitCode;
 
 use tracing_subscriber::EnvFilter;
+
+mod shutdown;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -52,12 +57,26 @@ async fn run() -> Result<(), i32> {
         eprintln!("rmigd: {e}");
         e.exit_code()
     })?;
-    migrator_core::session::run_daemon(&socket, cfg)
-        .await
-        .map_err(|e| {
+    // run_daemon prefers cfg.session_socket over the passed path; mirror that
+    // so the signal path unlinks the socket the daemon actually bound.
+    let effective_socket = if cfg.session_socket.is_empty() {
+        socket.clone()
+    } else {
+        std::path::PathBuf::from(&cfg.session_socket)
+    };
+    tokio::select! {
+        res = migrator_core::session::run_daemon(&socket, cfg) => res.map_err(|e| {
             eprintln!("rmigd: {e:#}");
             migrator_core::error::EXIT_GENERAL
-        })
+        }),
+        sig = shutdown::shutdown_signal() => {
+            // Dropping the run_daemon future closes the listener and the warm
+            // TDS connection; SQL Server rolls back any open transaction.
+            let _ = std::fs::remove_file(&effective_socket);
+            eprintln!("rmigd: {sig}, shutting down");
+            Ok(())
+        }
+    }
 }
 
 fn report(e: migrator_core::Error) -> i32 {
