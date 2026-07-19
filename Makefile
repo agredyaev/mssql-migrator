@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: all build release-build test check doc-check doc-rust db-up db-down db-init \
+.PHONY: all build release-build test check doc-check doc-rust deny db-up db-down db-init \
 	arch e2e e2e-all e2e-timings check-e2e sql-regression integration script-tests \
 	slo prod-gate plan-db-perf workflow-fast \
 	bench-footprint bench-footprint-profile bench-footprint-alloc \
@@ -22,7 +22,11 @@ release-build:
 
 test:
 	cargo test -p migrator-core --all-features --lib --tests
+	cargo test -p rmig
 	cargo test -p rmigd
+
+deny:
+	cargo deny check
 
 arch:
 	@chmod +x scripts/check-rust-arch.sh scripts/check-rust-release-deps.sh scripts/check-rust-release-profile.sh scripts/check-rust-loc.sh scripts/check-e2e-scenarios.sh scripts/check-prod-gate-reset.sh scripts/check-e2e-git-flag.sh scripts/check-rm-db-database-contract.sh scripts/check-advisory-lock-release.sh scripts/check-sql-regression-manifest.sh scripts/check-no-inline-sql.sh ops/perf/sql_regression.sh
@@ -82,6 +86,7 @@ db-down:
 db-init: db-up
 
 test-int: db-up
+	@export ROOT="$(CURDIR)" && set -a && . ops/perf/e2e_env.sh && set +a && \
 	RUSTFLAGS="-D warnings" cargo test --release -p migrator-core --test integration_plan -- --nocapture --test-threads=1
 
 e2e: db-up
