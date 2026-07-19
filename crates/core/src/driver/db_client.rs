@@ -30,7 +30,7 @@ impl DbClient {
                 let refs: Vec<&dyn tiberius::ToSql> =
                     params.iter().map(|s| s as &dyn tiberius::ToSql).collect();
                 let rows = mssql::query_tiberius(c, sql, &refs).await?;
-                Ok(rows.iter().map(super::row::from_tiberius).collect())
+                rows.iter().map(super::row::from_tiberius).collect()
             }
             Self::Proxy(p) => p.query(sql, params).await,
         }
@@ -43,10 +43,9 @@ impl DbClient {
                 let refs: Vec<&dyn tiberius::ToSql> =
                     params.iter().map(|s| s as &dyn tiberius::ToSql).collect();
                 let sets = mssql::query_all_results(c, sql, &refs).await?;
-                Ok(sets
-                    .into_iter()
+                sets.into_iter()
                     .map(|set| set.iter().map(super::row::from_tiberius).collect())
-                    .collect())
+                    .collect()
             }
             Self::Proxy(p) => {
                 let rows = p.query(sql, params).await?;

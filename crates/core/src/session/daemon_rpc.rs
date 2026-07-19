@@ -31,7 +31,7 @@ async fn query(client: &mut RawClient, sql: &str, params: &[String]) -> Result<V
     let param_refs: Vec<&dyn tiberius::ToSql> =
         refs.iter().map(|s| s as &dyn tiberius::ToSql).collect();
     let rows = crate::driver::mssql::query_tiberius(client, sql, &param_refs).await?;
-    Ok(rows.iter().map(from_tiberius).collect())
+    rows.iter().map(from_tiberius).collect()
 }
 
 /// Roll back and release the session lock before reuse. The caller discards the

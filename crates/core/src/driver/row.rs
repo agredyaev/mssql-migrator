@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::{Error, Result};
+
 /// Single column value from a database result row.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Cell {
@@ -51,25 +53,65 @@ impl RowData {
 }
 
 /// Converts a `tiberius::Row` into a `RowData` by extracting each column cell.
-pub fn from_tiberius(row: &tiberius::Row) -> RowData {
+///
+/// Fails closed: a column whose type no decode rung understands is an error,
+/// not a silent `Cell::Null` — only a genuine SQL `NULL` maps to `Cell::Null`.
+pub fn from_tiberius(row: &tiberius::Row) -> Result<RowData> {
     let n = row.columns().len();
     let mut cells = Vec::with_capacity(n);
     for i in 0..n {
-        if let Ok(Some(b)) = row.try_get::<&[u8], _>(i) {
-            cells.push(Cell::Bytes(b.to_vec()));
-        } else if let Ok(Some(s)) = row.try_get::<&str, _>(i) {
-            cells.push(Cell::Str(s.to_string()));
-        } else if let Ok(Some(b)) = row.try_get::<bool, _>(i) {
-            cells.push(Cell::Str(if b { "1".into() } else { "0".into() }));
-        } else if let Ok(Some(n)) = row.try_get::<i32, _>(i) {
-            cells.push(Cell::Str(n.to_string()));
-        } else if let Ok(Some(n)) = row.try_get::<i64, _>(i) {
-            cells.push(Cell::Str(n.to_string()));
-        } else if let Ok(Some(n)) = row.try_get::<u8, _>(i) {
-            cells.push(Cell::Str(n.to_string()));
-        } else {
-            cells.push(Cell::Null);
-        }
+        cells.push(cell_from(row, i)?);
     }
-    RowData { cells }
+    Ok(RowData { cells })
+}
+
+/// `try_get` yields `Ok(None)` only when the requested type matches the column
+/// and the value is NULL; a type mismatch is `Err`. Recording `Ok(None)` lets a
+/// NULL of a supported type stay `Cell::Null` while an unsupported type fails.
+fn take<'a, T: tiberius::FromSql<'a>>(
+    row: &'a tiberius::Row,
+    i: usize,
+    saw_null: &mut bool,
+) -> Option<T> {
+    match row.try_get::<T, _>(i) {
+        Ok(Some(v)) => Some(v),
+        Ok(None) => {
+            *saw_null = true;
+            None
+        }
+        Err(_) => None,
+    }
+}
+
+fn cell_from(row: &tiberius::Row, i: usize) -> Result<Cell> {
+    let mut null = false;
+    if let Some(b) = take::<&[u8]>(row, i, &mut null) {
+        return Ok(Cell::Bytes(b.to_vec()));
+    }
+    if let Some(s) = take::<&str>(row, i, &mut null) {
+        return Ok(Cell::Str(s.to_string()));
+    }
+    if let Some(b) = take::<bool>(row, i, &mut null) {
+        return Ok(Cell::Str(if b { "1".into() } else { "0".into() }));
+    }
+    if let Some(n) = take::<i16>(row, i, &mut null) {
+        return Ok(Cell::Str(n.to_string()));
+    }
+    if let Some(n) = take::<i32>(row, i, &mut null) {
+        return Ok(Cell::Str(n.to_string()));
+    }
+    if let Some(n) = take::<i64>(row, i, &mut null) {
+        return Ok(Cell::Str(n.to_string()));
+    }
+    if let Some(n) = take::<u8>(row, i, &mut null) {
+        return Ok(Cell::Str(n.to_string()));
+    }
+    if null {
+        return Ok(Cell::Null);
+    }
+    Err(Error::Sql(format!(
+        "unsupported column type {:?} for column {} at index {i}",
+        row.columns().get(i).map(tiberius::Column::column_type),
+        row.columns().get(i).map_or("?", tiberius::Column::name),
+    )))
 }
