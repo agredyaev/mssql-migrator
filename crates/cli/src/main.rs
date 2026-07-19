@@ -107,6 +107,16 @@ async fn run_command_line(
             } else if json {
                 print_timings_json(&out.timings)?;
             }
+            if out.exit_code == migrator_core::error::EXIT_PLAN_BLOCKED && !json {
+                // Blocked plans exit 10 through the Ok path; without this the
+                // console shows nothing and the blockers exist only in --json.
+                if let Some(plan) = &out.plan {
+                    for b in &plan.blockers {
+                        eprintln!("rmig: blocked: {b}");
+                    }
+                }
+                eprintln!("rmig: plan is blocked; run 'rmig plan --json' for details");
+            }
             write_reports(&cfg, cmd, out.plan.as_ref(), None, out.exit_code)?;
             Ok(out.exit_code)
         }
