@@ -1,6 +1,6 @@
-# rmig-profile revision=a237eda6e6a7f01b7090904514f35c9211c3939e version=1.0.7 target=aarch64-apple-darwin dirty=true
-   Compiling migrator-core-dev v1.0.7 (~/project/mssql-reporting-migrator/crates/core-dev)
-    Finished `profiling` profile [optimized + debuginfo] target(s) in 2.80s
+# rmig-profile revision=d6902d1e6057318f16b0ee8aca1461665e6af320 version=1.0.7 target=aarch64-apple-darwin dirty=false
+   Compiling migrator-core-dev v1.0.7 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core-dev)
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 2.42s
      Running benches/plan_diff_dhat_scan.rs (target/profiling/deps/plan_diff_dhat_scan-3965346bacbabbbb)
 dhat: scan_fixture_5000 x20 complete
 dhat: Total:     17,887,648 bytes in 195,254 blocks
