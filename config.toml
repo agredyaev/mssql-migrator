@@ -2,8 +2,10 @@
 server = "127.0.0.1"
 port = 1433
 auth = "sql"
-encrypt = false
-trust_server_certificate = true
+# Production-safe transport policy. Local Docker gates override both values
+# through ops/perf/e2e_env.sh because that fixture has no TLS endpoint.
+encrypt = true
+trust_server_certificate = false
 
 [paths]
 sql_root = ".temp/sql"

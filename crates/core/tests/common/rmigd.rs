@@ -60,7 +60,16 @@ pub fn ensure_started() -> Option<String> {
             "RM_DB_PASSWORD",
             std::env::var("RM_DB_PASSWORD").unwrap_or_else(|_| "yourStrong(!)Password".into()),
         )
-        .env("RM_DB_TRUST_SERVER_CERTIFICATE", "true")
+        // The checked-in Docker SQL Server fixture has no TLS endpoint.
+        // Keep this test-only opt-out explicit; production defaults stay secure.
+        .env(
+            "RM_DB_ENCRYPT",
+            std::env::var("RM_DB_ENCRYPT").unwrap_or_else(|_| "false".into()),
+        )
+        .env(
+            "RM_DB_TRUST_SERVER_CERTIFICATE",
+            std::env::var("RM_DB_TRUST_SERVER_CERTIFICATE").unwrap_or_else(|_| "true".into()),
+        )
         .env(
             "RM_SQL_ROOT",
             std::env::var("RM_SQL_ROOT")

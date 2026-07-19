@@ -34,6 +34,9 @@ pub fn parity_config_base() -> Config {
         cfg.sql_base = cfg.sql_root.clone();
     }
     cfg.set_skip_git(true);
+    // The checked-in Docker fixture has no TLS endpoint. Production defaults
+    // and the repository config remain encrypted and certificate-verified.
+    cfg.set_encrypt(false);
     cfg.set_trust_server_certificate(true);
     cfg.set_catalog_cache(!matches!(
         std::env::var("RMIG_CATALOG_CACHE").as_deref(),

@@ -38,6 +38,8 @@ pub fn workflow_config() -> &'static Config {
         }
         cfg.set_skip_git(false);
         cfg.session_socket.clear();
+        // Explicit test-only opt-out for the local Docker SQL Server fixture.
+        cfg.set_encrypt(false);
         cfg.set_trust_server_certificate(true);
         cfg.set_catalog_cache(true);
         validate_config(&mut cfg).expect("valid workflow config");

@@ -6,15 +6,51 @@ use crate::Config;
 use super::TomlConfig;
 
 pub(super) fn parse_bool(s: &str) -> bool {
-    matches!(
-        s.trim().to_lowercase().as_str(),
-        "1" | "true" | "yes" | "on" | "y" | "enabled"
-    )
+    let value = s.trim();
+    value == "1"
+        || ["true", "yes", "on", "y", "enabled"]
+            .iter()
+            .any(|expected| value.eq_ignore_ascii_case(expected))
 }
 
 fn recognized_bool(s: &str) -> bool {
-    let t = s.trim().to_lowercase();
-    parse_bool(&t) || matches!(t.as_str(), "0" | "false" | "no" | "off" | "n" | "disabled")
+    let value = s.trim();
+    parse_bool(value)
+        || value == "0"
+        || ["false", "no", "off", "n", "disabled"]
+            .iter()
+            .any(|expected| value.eq_ignore_ascii_case(expected))
+}
+
+pub(super) fn validate_boolean_envs() -> Result<()> {
+    const NAMES: &[&str] = &[
+        "RM_REPORT_SYNC",
+        "RM_SKIP_GIT",
+        "RMIG_INSPECT_FULL",
+        "RMIG_CATALOG_CACHE",
+        "RMIG_ALLOW_ADOPT",
+        "RM_DB_ENCRYPT",
+        "RM_DB_TRUST_SERVER_CERTIFICATE",
+    ];
+    for name in NAMES {
+        let Some(raw) = std::env::var_os(name) else {
+            continue;
+        };
+        let value = raw
+            .to_str()
+            .ok_or_else(|| Error::Config(format!("{name} must be a UTF-8 boolean value")))?;
+        validate_boolean_value(name, value)?;
+    }
+    Ok(())
+}
+
+fn validate_boolean_value(name: &str, value: &str) -> Result<()> {
+    if recognized_bool(value) {
+        return Ok(());
+    }
+    Err(Error::Config(format!(
+        "{name} has invalid boolean value {value:?}; use true or false"
+    )))
 }
 
 pub(super) fn parse_duration(s: &str) -> Result<Duration> {
@@ -44,20 +80,15 @@ pub(super) fn set_timeout(raw: &str, name: &str, slot: &mut Duration) {
 
 pub(super) fn apply_tls(cfg: &mut Config, file: &TomlConfig) {
     let get = |name: &str, value: Option<String>| std::env::var(name).ok().or(value);
-    let encrypt = get(
-        "RM_DB_ENCRYPT",
-        file.database.encrypt.map(|v| v.to_string()),
-    )
-    .unwrap_or_default();
-    if !encrypt.is_empty() && !recognized_bool(&encrypt) {
-        tracing::warn!(
-            var = "RM_DB_ENCRYPT",
-            value = encrypt.as_str(),
-            "unrecognized boolean; treating as false (TLS disabled)"
-        );
-    }
-    cfg.set_encrypt(parse_bool(&encrypt));
-    let default = cfg.trust_server_certificate();
+    let encrypt_default = cfg.encrypt();
+    cfg.set_encrypt(
+        get(
+            "RM_DB_ENCRYPT",
+            file.database.encrypt.map(|v| v.to_string()),
+        )
+        .map_or(encrypt_default, |v| parse_bool(&v)),
+    );
+    let trust_default = cfg.trust_server_certificate();
     cfg.set_trust_server_certificate(
         get(
             "RM_DB_TRUST_SERVER_CERTIFICATE",
@@ -65,6 +96,10 @@ pub(super) fn apply_tls(cfg: &mut Config, file: &TomlConfig) {
                 .trust_server_certificate
                 .map(|v| v.to_string()),
         )
-        .map_or(default, |v| parse_bool(&v)),
+        .map_or(trust_default, |v| parse_bool(&v)),
     );
 }
+
+#[cfg(test)]
+#[path = "../tests/env_parse_test.rs"]
+mod tests;

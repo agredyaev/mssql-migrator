@@ -14,19 +14,21 @@ mkdir -p "$TEMP_DIR/sql/dactests/smoke/procedures"
 mkdir -p "$TEMP_DIR/sql/dactests/smoke/tables"
 mkdir -p "$TEMP_DIR/sql/dactests/smoke/views"
 
-# Create .env
-cat << 'EOF' > "$TEMP_DIR/.env"
-RM_DB_SERVER=localhost
-RM_DB_PORT=1433
-RM_DB_DATABASE=rmig_test
-RM_DB_AUTH=sql
-RM_DB_USER=sa
-RM_DB_PASSWORD=yourStrong(!)Password
-RM_DB_ENCRYPT=false
-RM_DB_TRUST_SERVER_CERTIFICATE=true
-RM_SQL_ROOT=sql
-RM_SQL_BASE=sql
-RM_LOG_LEVEL=debug
+# Create non-secret config. SQL credentials stay in process environment.
+cat << 'EOF' > "$TEMP_DIR/config.toml"
+[database]
+server = "localhost"
+port = 1433
+auth = "sql"
+encrypt = false
+trust_server_certificate = true
+
+[paths]
+sql_root = "sql"
+sql_base = "sql"
+
+[execution]
+log_level = "debug"
 EOF
 
 # Create sql files

@@ -2,10 +2,12 @@ use crate::error::{Error, Result};
 
 use super::auth_mode::sql_credentials_required;
 use super::catalog_paths::normalize_catalog_paths;
+use super::env_parse::validate_boolean_envs;
 use super::Config;
 
 /// Validates required fields in `cfg`, returning an error if any mandatory env vars are absent.
 pub fn validate_config(cfg: &mut Config) -> Result<()> {
+    validate_boolean_envs()?;
     let mut missing = Vec::new();
     let mut missing_secrets = Vec::new();
     let requires_sql_credentials = sql_credentials_required(&cfg.db_auth);
