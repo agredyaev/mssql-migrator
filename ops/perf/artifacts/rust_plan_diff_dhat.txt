@@ -1,8 +1,16 @@
-   Compiling migrator-core-dev v0.1.0 (~/project/mssql-reporting-migrator/rust/crates/core-dev)
-    Finished `profiling` profile [optimized + debuginfo] target(s) in 0.60s
-     Running benches/plan_diff_dhat.rs (target/profiling/deps/plan_diff_dhat-a2a66fc39d38e251)
+# rmig-profile revision=a237eda6e6a7f01b7090904514f35c9211c3939e version=1.0.7 target=aarch64-apple-darwin dirty=true
+   Compiling winnow v1.0.4
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling serde_spanned v1.1.1
+   Compiling toml_writer v1.1.2+spec-1.1.0
+   Compiling migrator-core-dev v1.0.7 (~/project/mssql-reporting-migrator/crates/core-dev)
+   Compiling toml_parser v1.1.2+spec-1.1.0
+   Compiling toml v1.1.3+spec-1.1.0
+   Compiling migrator-core v1.0.7 (~/project/mssql-reporting-migrator/crates/core)
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 17.46s
+     Running benches/plan_diff_dhat.rs (target/profiling/deps/plan_diff_dhat-4de9f32dc0deaacc)
 dhat: plan_diff_skip_heavy_5000 x20 complete
-dhat: Total:     8,329,494 bytes in 70,083 blocks
-dhat: At t-gmax: 5,321,730 bytes in 45,035 blocks
+dhat: Total:     11,145,588 bytes in 90,141 blocks
+dhat: At t-gmax: 6,336,160 bytes in 65,041 blocks
 dhat: At t-end:  112 bytes in 2 blocks
 dhat: The data has been saved to dhat-heap.json, and is viewable with dhat/dh_view.html

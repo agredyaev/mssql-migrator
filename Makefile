@@ -21,11 +21,11 @@ release-build:
 	cp -f target/release-dist/rmig $(RELEASE_BIN)
 
 test:
-	cargo test -p migrator-core --lib --tests
+	cargo test -p migrator-core --all-features --lib --tests
 	cargo test -p rmigd
 
 arch:
-	@chmod +x scripts/check-rust-arch.sh scripts/check-rust-release-deps.sh scripts/check-rust-release-profile.sh scripts/check-rust-loc.sh scripts/check-e2e-scenarios.sh scripts/check-prod-gate-reset.sh scripts/check-e2e-git-flag.sh scripts/check-rm-db-database-contract.sh scripts/check-advisory-lock-release.sh scripts/check-sql-regression-manifest.sh ops/perf/sql_regression.sh
+	@chmod +x scripts/check-rust-arch.sh scripts/check-rust-release-deps.sh scripts/check-rust-release-profile.sh scripts/check-rust-loc.sh scripts/check-e2e-scenarios.sh scripts/check-prod-gate-reset.sh scripts/check-e2e-git-flag.sh scripts/check-rm-db-database-contract.sh scripts/check-advisory-lock-release.sh scripts/check-sql-regression-manifest.sh scripts/check-no-inline-sql.sh ops/perf/sql_regression.sh
 	scripts/check-rust-arch.sh
 	scripts/check-rust-release-deps.sh
 	scripts/check-rust-release-profile.sh
@@ -36,6 +36,7 @@ arch:
 	scripts/check-rm-db-database-contract.sh
 	scripts/check-advisory-lock-release.sh
 	scripts/check-sql-regression-manifest.sh
+	scripts/check-no-inline-sql.sh
 
 script-tests:
 	@chmod +x ops/quality/scripts/tests/run.sh
@@ -44,7 +45,7 @@ script-tests:
 check: arch script-tests
 	cargo fmt --all -- --check
 	RUSTFLAGS="-D warnings" cargo clippy -p migrator-core -p rmig -p rmigd --lib --bins --tests -- -D warnings
-	RUSTFLAGS="-D warnings" cargo test -p migrator-core --lib --tests
+	RUSTFLAGS="-D warnings" cargo test -p migrator-core --all-features --lib --tests
 	RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 	@echo "check: PASS (SQL gate: make sql-regression && make check-e2e)"
 

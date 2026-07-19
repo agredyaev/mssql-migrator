@@ -7,6 +7,9 @@ cd "$ROOT"
 ARTIFACTS="$ROOT/ops/perf/artifacts"
 PKG=migrator-core-dev
 mkdir -p "$ARTIFACTS"
+# shellcheck source=ops/perf/profile_identity.sh
+source "$ROOT/ops/perf/profile_identity.sh"
+PROFILE_ID="$(rmig_profile_identity "$ROOT")"
 
 MODE="${1:-bench}"
 shift || true
@@ -26,7 +29,8 @@ case "$MODE" in
   bench)
     RMIG_FOOTPRINT_REPORT=1 \
       cargo test -p "$PKG" --test footprint_baseline -- --nocapture
-    cargo bench -p "$PKG" --bench plan_diff --features bench-skip -- --noplot 2>&1 | tee "$ARTIFACTS/footprint_bench.txt"
+    { echo "# $PROFILE_ID"; cargo bench -p "$PKG" --bench plan_diff --features bench-skip -- --noplot; } \
+      2>&1 | tee "$ARTIFACTS/rust_footprint_bench.txt"
     cargo test -p "$PKG" --test footprint_baseline footprint_baseline_match -q
     ;;
   profile)
@@ -39,8 +43,10 @@ case "$MODE" in
       echo "ERROR: no flamegraph produced under target/criterion/plan_diff* — profiling evidence missing" >&2
       exit 1
     fi
-    cp -f "$FG" "$ARTIFACTS/plan_diff_5k_flamegraph.svg"
-    echo "CPU flamegraph: $ARTIFACTS/plan_diff_5k_flamegraph.svg (source: $FG)"
+    cp -f "$FG" "$ARTIFACTS/rust_plan_diff_5k_flamegraph.svg"
+    printf '\n<!-- %s -->\n' "$PROFILE_ID" \
+      >> "$ARTIFACTS/rust_plan_diff_5k_flamegraph.svg"
+    echo "CPU flamegraph: $ARTIFACTS/rust_plan_diff_5k_flamegraph.svg (source: $FG)"
     "$ROOT/ops/perf/profile_summary.sh"
     ;;
   profile-load)
@@ -84,16 +90,17 @@ case "$MODE" in
     shift || true
     FEAT="$(feat_for_alloc "$BENCH")"
     case "$BENCH" in
-      skip_heavy|"") DHAT_BENCH=plan_diff_dhat; DHAT_OUT=plan_diff_dhat.txt ;;
-      transitions)   DHAT_BENCH=plan_diff_dhat_transitions; DHAT_OUT=plan_diff_dhat_transitions.txt ;;
-      scan)          DHAT_BENCH=plan_diff_dhat_scan; DHAT_OUT=plan_diff_dhat_scan.txt ;;
+      skip_heavy|"") DHAT_BENCH=plan_diff_dhat; DHAT_OUT=rust_plan_diff_dhat.txt ;;
+      transitions)   DHAT_BENCH=plan_diff_dhat_transitions; DHAT_OUT=rust_plan_diff_dhat_transitions.txt ;;
+      scan)          DHAT_BENCH=plan_diff_dhat_scan; DHAT_OUT=rust_plan_diff_dhat_scan.txt ;;
       scan_root)     DHAT_BENCH=scan_dhat; DHAT_OUT=scan_dhat.txt ;;
       cache)         DHAT_BENCH=cache_serde_dhat; DHAT_OUT=cache_serde_dhat.txt ;;
     esac
     # Remove every stale heap first: succeeding without a NEW heap must fail,
     # not silently republish an old binary's allocation evidence.
     rm -f dhat-heap.json "$ROOT/crates/core-dev/dhat-heap.json" "$ARTIFACTS/dhat_heap.json"
-    cargo bench -p "$PKG" --bench "$DHAT_BENCH" --features "$FEAT" --profile profiling 2>&1 | tee "$ARTIFACTS/$DHAT_OUT"
+    { echo "# $PROFILE_ID"; cargo bench -p "$PKG" --bench "$DHAT_BENCH" --features "$FEAT" --profile profiling; } \
+      2>&1 | tee "$ARTIFACTS/$DHAT_OUT"
     if [ -f dhat-heap.json ]; then
       cp -f dhat-heap.json "$ARTIFACTS/dhat_heap.json"
     elif [ -f "$ROOT/crates/core-dev/dhat-heap.json" ]; then
@@ -103,15 +110,17 @@ case "$MODE" in
       exit 1
     fi
     if [ -f "$ARTIFACTS/dhat_heap.json" ]; then
-      FLAME="$ARTIFACTS/alloc_flame.txt"
+      FLAME="$ARTIFACTS/rust_alloc_flame.txt"
       case "$BENCH" in
-        transitions) FLAME="$ARTIFACTS/alloc_flame_transitions.txt" ;;
-        scan)        FLAME="$ARTIFACTS/alloc_flame_scan.txt" ;;
+        transitions) FLAME="$ARTIFACTS/rust_alloc_flame_transitions.txt" ;;
+        scan)        FLAME="$ARTIFACTS/rust_alloc_flame_scan.txt" ;;
         scan_root)   FLAME="$ARTIFACTS/alloc_flame_scan_root.txt" ;;
         cache)       FLAME="$ARTIFACTS/alloc_flame_cache.txt" ;;
       esac
-      python3 "$ROOT/ops/perf/dhat_alloc_tree.py" "$ARTIFACTS/dhat_heap.json" --iterations 20 \
-        | tee "$FLAME"
+      {
+        echo "# $PROFILE_ID"
+        python3 "$ROOT/ops/perf/dhat_alloc_tree.py" "$ARTIFACTS/dhat_heap.json" --iterations 20
+      } | tee "$FLAME"
     fi
     echo "dhat report: $ARTIFACTS/$DHAT_OUT"
     echo "alloc tree:  $FLAME"

@@ -1,15 +1,15 @@
-    Blocking waiting for file lock on artifact directory
-    Finished `bench` profile [optimized + debuginfo] target(s) in 12.51s
-     Running benches/plan_diff.rs (target/release/deps/plan_diff-91bf57d507775029)
+# rmig-profile revision=a237eda6e6a7f01b7090904514f35c9211c3939e version=1.0.7 target=aarch64-apple-darwin dirty=true
+   Compiling migrator-core-dev v1.0.7 (~/project/mssql-reporting-migrator/crates/core-dev)
+    Finished `bench` profile [optimized + debuginfo] target(s) in 3.58s
+     Running benches/plan_diff.rs (target/release/deps/plan_diff-3076d181ce2f6c9d)
 Gnuplot not found, using plotters backend
 Benchmarking plan_diff_skip_heavy_5000
 Benchmarking plan_diff_skip_heavy_5000: Warming up for 3.0000 s
-Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.3078 s (66k iterations)
+Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.1751 s (35k iterations)
 Benchmarking plan_diff_skip_heavy_5000: Analyzing
 plan_diff_skip_heavy_5000
-                        time:   [72.032 µs 74.678 µs 77.833 µs]
-                        change: [+17.546% +21.469% +25.461%] (p = 0.00 < 0.05)
-                        Performance has regressed.
-Found 9 outliers among 100 measurements (9.00%)
-  9 (9.00%) high mild
-
+                        time:   [146.38 µs 146.48 µs 146.59 µs]
+                        change: [−6.7327% −2.3717% +0.0053%] (p = 0.26 > 0.05)
+                        No change in performance detected.
+Found 3 outliers among 100 measurements (3.00%)
+  3 (3.00%) high mild

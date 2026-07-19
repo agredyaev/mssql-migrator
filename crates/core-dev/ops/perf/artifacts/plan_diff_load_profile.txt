@@ -1,0 +1,44 @@
+# skip_heavy n=5000, 30s sustained load, 59435 iters (1981 iter/s)
+# total samples: 5320
+# top frames (inclusive; each stack frame credited once per sample)
+
+    5320  100.0%  std::rt::lang_start
+    5320  100.0%  core::ops::function::FnOnce::call_once
+    5320  100.0%  backtrace::backtrace::libunwind::trace
+    5320  100.0%  _main
+    5320  100.0%  <pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace>::trace
+    5320  100.0%  std::rt::lang_start::{{closure}}
+    5320  100.0%  <&dyn core::ops::function::Fn<(), Output = i32> + core::marker::Sync + core::panic::unwind_safe::RefUnwindSafe as core::ops::function::FnOnce<()>>::call_once
+    5320  100.0%  plan_diff_load::main
+    5320  100.0%  std::sys::backtrace::__rust_begin_short_backtrace
+    5318  100.0%  migrator_core::plan::diff::compute_diff_into
+    2274   42.7%  migrator_core::plan::diff_object::fill_plan_row
+    2225   41.8%  migrator_core::plan::diff_fill_skip::skip_fill_unchanged
+    1912   35.9%  migrator_core::plan::diff_decide::decide_object_at
+     856   16.1%  <T as core::array::equality::SpecArrayEq<U,_>>::spec_eq
+     528    9.9%  migrator_core::domain::workspace::objects::access::<impl migrator_core::domain::workspace::Workspace>::entry
+     521    9.8%  core::slice::index::<impl core::ops::index::Index<I> for [T]>::index
+     488    9.2%  core::array::equality::<impl core::cmp::PartialEq<[U; N]> for [T; N]>::eq
+     468    8.8%  core::array::equality::<impl core::cmp::PartialEq<[U; N]> for [T; N]>::ne
+     391    7.3%  migrator_core::export::plan_row::PlanRow::planned_action
+     342    6.4%  core::iter::range::<impl core::iter::traits::iterator::Iterator for core::ops::range::Range<A>>::next
+     213    4.0%  <core::ops::range::Range<T> as core::iter::range::RangeIteratorImpl>::spec_next
+     203    3.8%  migrator_core::domain::workspace::Workspace::row
+     126    2.4%  <usize>::unchecked_add
+     122    2.3%  core::slice::index::<impl core::ops::index::IndexMut<I> for [T]>::index_mut
+       6    0.1%  <std::sys::pal::unix::time::Timespec>::now
+       4    0.1%  <std::sys::time::unix::Instant>::now
+       3    0.1%  hashbrown::set::HashSet<T,S,A>::contains
+       3    0.1%  core::hash::BuildHasher::hash_one
+       3    0.1%  hashbrown::map::make_hash
+       2    0.0%  core::hash::impls::<impl core::hash::Hash for &T>::hash
+       1    0.0%  core::fmt::write
+       1    0.0%  <core::hash::sip::Hasher<S> as core::hash::Hasher>::finish
+       1    0.0%  <core::hash::sip::Hasher<S> as core::hash::Hasher>::write_str
+       1    0.0%  <core::hash::sip::Hasher<S> as core::hash::Hasher>::write
+       1    0.0%  migrator_core::domain::shared::traits::<impl core::convert::AsRef<str> for migrator_core::domain::shared::SharedStr>::as_ref
+       1    0.0%  core::hash::impls::<impl core::hash::Hash for str>::hash
+       1    0.0%  std::io::default_write_fmt::<std::io::stdio::StderrLock>
+       1    0.0%  migrator_core::plan::diff_plan::ensure_plan_rows
+       1    0.0%  <std::sys::fd::unix::FileDesc>::write
+       1    0.0%  core::ub_checks::maybe_is_nonoverlapping

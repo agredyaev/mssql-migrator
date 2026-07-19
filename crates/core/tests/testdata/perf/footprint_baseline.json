@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "rustc_version": "unknown",
-  "target": "unknown",
+  "rustc_version": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "target": "aarch64-apple-darwin",
   "threshold_bytes": 40,
   "struct_sizes": [
     {

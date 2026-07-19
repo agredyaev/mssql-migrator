@@ -3,6 +3,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
+# shellcheck source=ops/perf/e2e_env.sh
+source "$ROOT/ops/perf/e2e_env.sh"
 
 export RMIG_RUN_SQLSERVER_INTEGRATION="${RMIG_RUN_SQLSERVER_INTEGRATION:-1}"
 export RMIG_WORKFLOW_FAST_RESET="${RMIG_WORKFLOW_FAST_RESET:-1}"

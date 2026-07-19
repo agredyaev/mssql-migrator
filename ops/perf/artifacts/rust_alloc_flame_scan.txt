@@ -1,14 +1,15 @@
+# rmig-profile revision=a237eda6e6a7f01b7090904514f35c9211c3939e version=1.0.7 target=aarch64-apple-darwin dirty=true
 # Rust dhat allocation summary
-# total allocated (tb sum): 13.93 MB (13932130 B)
+# total allocated (tb sum): 17.89 MB (17887648 B)
 # loop iterations: 20
-# setup (one-time): 13.60 MB
-# warm (first compute_diff / plan resize): 335.1 KB
+# setup (one-time): 17.47 MB
+# warm (first compute_diff / plan resize): 413.9 KB
 # loop (warmed compute_diff x20): 0 B (0 B/iter)
 
 ## Phase totals
 Phase                 Bytes    Share
-setup              13.60 MB    97.6%
-warm               335.1 KB     2.4%
+setup              17.47 MB    97.7%
+warm               413.9 KB     2.3%
 loop                    0 B     0.0%
 
 ## Top categories (loop phase only)
@@ -20,12 +21,26 @@ Frame                                                                           
 
 ## Top rmig frames (deepest in stack, all phases)
 Frame                                                                           Bytes   Share
-plan_diff_dhat_scan::main (core/benches/plan_diff_dhat_scan.rs:58:40)        13.60 MB   97.6%
-plan_diff_dhat_scan::main (core/benches/plan_diff_dhat_scan.rs:60:5)         335.1 KB    2.4%
-plan_diff_dhat_scan::main (core/benches/plan_diff_dhat_scan.rs:62:5)             64 B    0.0%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:14:14     11.04 MB   61.7%
+migrator_core::scan::parse_parallel::parse_objects::{{closure}}::{{closu      3.86 MB   21.6%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:23:19      1.19 MB    6.6%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:22:34     720.0 KB    4.0%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:22:14     671.7 KB    3.8%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:27:5)     413.9 KB    2.3%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:13:16        230 B    0.0%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:16:21        108 B    0.0%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:31:5)         64 B    0.0%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:16:37          6 B    0.0%
 
 ## Top leaf alloc frames (flat)
 Frame                                                                           Bytes
-plan_diff_dhat_scan::main (core/benches/plan_diff_dhat_scan.rs:58:40)        13.60 MB
-plan_diff_dhat_scan::main (core/benches/plan_diff_dhat_scan.rs:60:5)         335.1 KB
-plan_diff_dhat_scan::main (core/benches/plan_diff_dhat_scan.rs:62:5)             64 B
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:14:14     11.04 MB
+__pthread_cond_wait (???:0:0)                                                 3.58 MB
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:23:19      1.19 MB
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:22:34     720.0 KB
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:22:14     671.7 KB
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:27:5)     413.9 KB
+std::sys::backtrace::__rust_begin_short_backtrace (src/sys/backtrace.rs:     280.0 KB
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:13:16        230 B
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:16:21        108 B
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:31:5)         64 B

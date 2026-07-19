@@ -166,12 +166,72 @@ assert t.delta_str(100, 150).startswith("+50ms")
 EOF
 then ok "e2e_timings renders categorical/bool deltas as transitions"; else bad "e2e_timings delta typing"; fi
 
+# --- e2e_timings: a missing scenario must fail, not report green ------------
+t="$(tmp_root)"
+mkdir -p "$t/ops/perf/artifacts" "$t/crates/core/tests/testdata/e2e"
+cp "$ROOT/ops/perf/e2e_timings.py" "$t/ops/perf/"
+for s in empty_db_plan warm_db_plan skip_unchanged_plan catalog_cache_plan; do
+  echo '{"timings":{"plan_wall_ms":1}}' > "$t/crates/core/tests/testdata/e2e/e2e_baseline_${s}.json"
+done
+for s in empty_db_plan warm_db_plan skip_unchanged_plan; do
+  echo '{"timings":{"plan_wall_ms":1}}' > "$t/ops/perf/artifacts/e2e_${s}.json"
+done
+check "e2e_timings fails when a required scenario artifact is missing" 1 \
+  python3 "$t/ops/perf/e2e_timings.py"
+rm -rf "$t"
+
 # --- dhat_alloc_tree: zero iterations rejected at the CLI ------------------
 t="$(tmp_root)"
 echo '{}' > "$t/heap.json"
 check "dhat_alloc_tree rejects --iterations 0" 2 \
   python3 "$ROOT/ops/perf/dhat_alloc_tree.py" "$t/heap.json" --iterations 0
 rm -rf "$t"
+
+# --- dhat phase attribution: loop markers stay in sync with bench frames ----
+if grep -q 'LOOP_MARKERS = ("bench_loop",)' "$ROOT/ops/perf/dhat_alloc_tree.py" \
+    && grep -q 'fn bench_loop' "$ROOT/crates/core-dev/benches/scan_dhat.rs" \
+    && grep -q 'inline(never)' "$ROOT/crates/core-dev/benches/scan_dhat.rs" \
+    && grep -q 'fn bench_loop' "$ROOT/crates/core-dev/benches/cache_serde_dhat.rs" \
+    && grep -q 'inline(never)' "$ROOT/crates/core-dev/benches/cache_serde_dhat.rs"; then
+  ok "dhat LOOP_MARKERS match inline(never) bench_loop frames"
+else
+  bad "dhat loop marker sync"
+fi
+
+# --- perf summary: committed evidence must be repo-relative & tracked -------
+t="$(tmp_root)"
+mkdir -p "$t/artifacts"
+touch "$t/artifacts/plan_diff_5k_flamegraph.svg" \
+  "$t/artifacts/rust_plan_diff_5k_flamegraph.svg"
+# shellcheck source=ops/perf/profile_identity.sh
+source "$ROOT/ops/perf/profile_identity.sh"
+profile_id="$(rmig_profile_identity "$ROOT")"
+printf '# %s\nartifact: %s/target/release/rmig\n' "$profile_id" "$ROOT" \
+  > "$t/artifacts/rust_plan_diff_dhat.txt"
+printf '\n<!-- %s -->\n' "$profile_id" \
+  >> "$t/artifacts/rust_plan_diff_5k_flamegraph.svg"
+RMIG_FOOTPRINT_ARTIFACTS="$t/artifacts" bash "$ROOT/ops/perf/profile_summary.sh" >/dev/null
+if grep -q 'rust_plan_diff_5k_flamegraph.svg' "$t/artifacts/profile_summary.txt" \
+    && ! grep -q '  ops/perf/artifacts/plan_diff_5k_flamegraph.svg' "$t/artifacts/profile_summary.txt" \
+    && ! grep -Fq "$ROOT/" "$t/artifacts/profile_summary.txt"; then
+  ok "profile summary prefers tracked Rust artifacts and scrubs checkout paths"
+else
+  bad "profile summary generation portability"
+fi
+sed '1s/.*/# stale-profile/' "$t/artifacts/rust_plan_diff_dhat.txt" \
+  > "$t/artifacts/stale.txt"
+mv "$t/artifacts/stale.txt" "$t/artifacts/rust_plan_diff_dhat.txt"
+check "profile summary rejects stale artifact identity" 1 \
+  env RMIG_FOOTPRINT_ARTIFACTS="$t/artifacts" \
+  bash "$ROOT/ops/perf/profile_summary.sh"
+rm -rf "$t"
+
+if ! grep -q '/Users/' "$ROOT/ops/perf/artifacts/profile_summary.txt" \
+    && ! grep -q 'artifacts/plan_diff_5k_flamegraph.svg' "$ROOT/ops/perf/artifacts/profile_summary.txt"; then
+  ok "profile summary references tracked repo-relative artifacts"
+else
+  bad "profile summary references untracked/absolute paths"
+fi
 
 # --- e2e_all finalizer preserves scenario rows (no same-path tee) ----------
 if grep -q 'mktemp' "$ROOT/ops/perf/e2e_all.sh" \
@@ -184,10 +244,39 @@ fi
 # --- sql_regression: injection guard + identity-checked lock/cleanup -------
 if grep -q 'A-Za-z0-9_' "$ROOT/ops/perf/sql_regression.sh" \
     && grep -q 'lstart' "$ROOT/ops/perf/sql_regression.sh" \
-    && grep -q 'RMIGD_SOCKET must live under' "$ROOT/ops/perf/sql_regression.sh"; then
+    && grep -q 'RMIGD_SOCKET must live under' "$ROOT/ops/perf/sql_regression.sh" \
+    && ! grep -q 'pkill -f' "$ROOT/ops/perf/sql_regression.sh"; then
   ok "sql_regression guards db names, lock identity, and socket cleanup"
 else
   bad "sql_regression guard structure"
+fi
+
+# --- mutating plan: every managed object must be live-inspected ------------
+if grep -q 'ctx.full || ctx.bypass' \
+    "$ROOT/crates/core/src/db/plan_common/body/standard/mod.rs"; then
+  ok "mutating plan bypass forces a full managed-object inspection"
+else
+  bad "mutating plan can fall back to deterministic spot checks"
+fi
+
+# --- raw SQL setup steps must use the command timeout ----------------------
+if grep -q '"session init", init_session' "$ROOT/crates/core/src/driver/mssql.rs" \
+    && grep -q 'with_create_database_timeout(t, db, mssql::exec' \
+      "$ROOT/crates/core/src/config/ensure_db.rs"; then
+  ok "session init and CREATE DATABASE call sites are timeout-bounded"
+else
+  bad "raw SQL setup timeout call sites"
+fi
+
+# --- release workflow: source, evidence, and publication invariants --------
+if grep -q 'github.ref_type.*branch' "$ROOT/.github/workflows/release.yml" \
+    && grep -q 'steps.release_state.outputs.validated_sha' "$ROOT/.github/workflows/release.yml" \
+    && grep -q 'workflow_run.head_branch || github.ref_name' "$ROOT/.github/workflows/release.yml" \
+    && grep -q 'git push --atomic' "$ROOT/.github/workflows/release.yml" \
+    && grep -q 'steps.release_state.outputs.resume' "$ROOT/.github/workflows/release.yml"; then
+  ok "release workflow binds branch, green SHA, atomic refs, and resume path"
+else
+  bad "release workflow invariants"
 fi
 
 # claim_lock runtime: an unrelated LIVE pid must not impersonate the owner
@@ -209,10 +298,18 @@ fi
 kill "$DUMMY" 2>/dev/null || true
 rm -rf "$t"
 
+# --- sql_regression: remote bootstrap target must be refused ----------------
+t="$(tmp_root)"
+mkdir -p "$t/sqlroot"
+check "sql_regression refuses a remote bootstrap target" 1 \
+  env RM_DB_SERVER=db.remote.example RM_SQL_ROOT="$t/sqlroot" bash "$ROOT/ops/perf/sql_regression.sh"
+rm -rf "$t"
+
 # --- footprint_bench alloc: stale heap must not be republished -------------
 t="$(tmp_root)"
 mkdir -p "$t/ops/perf/artifacts" "$t/bin" "$t/crates/core-dev"
-cp "$ROOT/ops/perf/footprint_bench.sh" "$t/ops/perf/"
+cp "$ROOT/ops/perf/footprint_bench.sh" "$ROOT/ops/perf/profile_identity.sh" "$t/ops/perf/"
+printf 'test\n' > "$t/VERSION"
 echo '{"old": true}' > "$t/ops/perf/artifacts/dhat_heap.json"
 printf '#!/bin/sh\nexit 0\n' > "$t/bin/cargo"; chmod +x "$t/bin/cargo"
 printf '#!/bin/sh\nexit 0\n' > "$t/bin/python3"; chmod +x "$t/bin/python3"
@@ -222,6 +319,22 @@ if [[ ! -f "$t/ops/perf/artifacts/dhat_heap.json" ]]; then
   ok "footprint alloc removed the stale heap instead of republishing it"
 else
   bad "footprint alloc stale heap still present"
+fi
+rm -rf "$t"
+
+# --- footprint_bench profile: stale criterion flamegraph must not pass ------
+t="$(tmp_root)"
+mkdir -p "$t/ops/perf/artifacts" "$t/bin" "$t/target/criterion/plan_diff_skip_heavy_5000/profile"
+cp "$ROOT/ops/perf/footprint_bench.sh" "$ROOT/ops/perf/profile_identity.sh" "$t/ops/perf/"
+printf 'test\n' > "$t/VERSION"
+echo '<svg/>' > "$t/target/criterion/plan_diff_skip_heavy_5000/profile/flamegraph.svg"
+printf '#!/bin/sh\nexit 0\n' > "$t/bin/cargo"; chmod +x "$t/bin/cargo"
+check "footprint profile fails without a FRESH flamegraph" 1 \
+  env PATH="$t/bin:$PATH" bash "$t/ops/perf/footprint_bench.sh" profile
+if [[ ! -e "$t/target/criterion/plan_diff_skip_heavy_5000/profile/flamegraph.svg" ]]; then
+  ok "footprint profile wiped stale criterion output before benching"
+else
+  bad "footprint profile kept stale criterion output"
 fi
 rm -rf "$t"
 

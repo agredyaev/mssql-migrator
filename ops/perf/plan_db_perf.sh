@@ -3,6 +3,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
+# shellcheck source=ops/perf/e2e_env.sh
+source "$ROOT/ops/perf/e2e_env.sh"
 ARTIFACTS="$ROOT/ops/perf/artifacts"
 mkdir -p "$ARTIFACTS"
 rm -f "$ARTIFACTS/plan_db_trace.json"

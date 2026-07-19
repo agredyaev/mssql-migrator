@@ -140,8 +140,10 @@ if command -v lsof >/dev/null 2>&1; then
       exit 1
     fi
   done < <(lsof -t "$RMIGD_SOCKET" 2>/dev/null || true)
+elif [[ -e "$RMIGD_SOCKET" || -S "$RMIGD_SOCKET" ]]; then
+  echo "sql-regression: lsof is required to prove ownership of existing $RMIGD_SOCKET" >&2
+  exit 1
 fi
-pkill -f "${ROOT}/target/release/rmigd" 2>/dev/null || true
 rm -f "$RMIGD_SOCKET"
 sleep 0.2
 
@@ -162,6 +164,7 @@ cargo build --release -p rmigd
 CORE_TESTS=(
   advisory_lock_guard_test
   advisory_lock_rmigd_test
+  rmigd_timeout_recovery_test
   multi_db_plan_test
   plan_deferred_bootstrap_test
   plan_collation_test
@@ -169,6 +172,7 @@ CORE_TESTS=(
   plan_no_db_side_effect_test
   session_fallback_test
   db_auth_test
+  apply_integrity_integration
   apply_e2e_integration
   existing_db_adoption_integration
   adopt_e2e_integration

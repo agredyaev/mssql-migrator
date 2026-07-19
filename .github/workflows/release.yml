@@ -61,12 +61,35 @@ jobs:
           # now (a later merge could otherwise be tagged/published untested).
           ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
+      - name: Resolve release state
+        id: release_state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.ref_type }}" != "branch" ]]; then
+            echo "ERROR: manual releases must be dispatched from a branch, not ${{ github.ref_type }}" >&2
+            exit 1
+          fi
+          current_tag="v$(cat VERSION)"
+          if git tag --points-at HEAD --list "$current_tag" | grep -qx "$current_tag"; then
+            echo "validated_sha=$(git rev-parse HEAD^)" >> "$GITHUB_OUTPUT"
+            if gh release view "$current_tag" >/dev/null 2>&1; then
+              echo "resume=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "resume=true" >> "$GITHUB_OUTPUT"
+              echo "tag=$current_tag" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "resume=false" >> "$GITHUB_OUTPUT"
+            echo "validated_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Require green CI for this exact commit (manual dispatch)
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          sha="$(git rev-parse HEAD)"
+          sha="${{ steps.release_state.outputs.validated_sha }}"
           conclusion="$(gh run list --commit "$sha" --workflow CI --json conclusion \
             --jq 'map(select(.conclusion == "success")) | length')"
           if [ "${conclusion:-0}" -lt 1 ]; then
@@ -137,7 +160,9 @@ jobs:
         id: version
         run: |
           OLD=$(cat VERSION)
-          python3 scripts/bump-version.py "${{ steps.bump_type.outputs.bump }}"
+          if [[ "${{ steps.release_state.outputs.resume }}" != "true" ]]; then
+            python3 scripts/bump-version.py "${{ steps.bump_type.outputs.bump }}"
+          fi
           NEW=$(cat VERSION)
           echo "old=$OLD"   >> "$GITHUB_OUTPUT"
           echo "new=$NEW"   >> "$GITHUB_OUTPUT"
@@ -164,6 +189,11 @@ jobs:
         if: steps.filter.outputs.skip != 'true'
         id: pushed
         run: |
+          if [[ "${{ steps.release_state.outputs.resume }}" == "true" ]]; then
+            echo "Resuming publication for existing tag ${{ steps.version.outputs.tag }}"
+            echo "released_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           # Stage Cargo.lock too: `make release-build` above re-synced the
           # workspace-member versions, so omitting it leaves the committed lock
           # stale and breaks `cargo install --locked` from the release tag.

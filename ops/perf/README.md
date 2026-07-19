@@ -29,9 +29,9 @@ Baselines: [`crates/core/tests/testdata/e2e/`](../../crates/core/tests/testdata/
 |----------|----------|
 | `empty_db_plan` | 6x `create_object`; DB reset |
 | `prod_gate_cold` | Gate GO vs [`plan_baseline_empty_db.json`](../../crates/core/tests/testdata/prod_gate/plan_baseline_empty_db.json) |
-| `warm_db_plan` | 6x `skip_unchanged` after apply setup |
-| `skip_unchanged_plan` | unchanged adopt path |
-| `catalog_cache_plan` | `RMIG_CATALOG_CACHE=1` |
+| `warm_db_plan` | 6x `skip_unchanged` after apply setup and one unmeasured SQL-plan warm-up |
+| `skip_unchanged_plan` | unchanged plan with fresh live-state fingerprints; committed baseline pins `l1_cache_hit=false` |
+| `catalog_cache_plan` | `RMIG_CATALOG_CACHE=1`; catalog persistence is enabled, while top-level L1 remains bypassed for live-state integrity |
 | `blocked_table_plan` | exit **10**, scaffold file |
 | `apply_smoke_result` | cold apply; DB reset; `audit_migration_rows=0` |
 | `ddl_transition_apply` | blocked DDL → transition migrate; `audit_migration_rows=1`, catalog meta/cache filled; **last step** — leaves migration row in `history` |
@@ -46,7 +46,7 @@ After `make e2e-all`, inspect `azdo_deploy_meta.history`: expect `kind=migration
 |------|------|----------|
 | 1 | `apply_e2e_integration.rs` | Cold migrate, catalog + audit history |
 | 2 | `adopt_e2e_integration.rs` | Adopt of pre-existing identical objects |
-| 3 | `drift_e2e_integration.rs` | Drift lifecycle: OOB drop/modify, fail-retry, history |
+| 3 | `drift_e2e_integration.rs` | Drift lifecycle: module restore, table/index fail-closed checks, fail-retry, history repair |
 | 4 | `workflow_integration.rs` | Git DDL, blocked migrate, view update |
 
 ## Footprint
@@ -88,10 +88,10 @@ Runbook: [`docs/perf-footprint-audit.md`](../../docs/perf-footprint-audit.md).
 |------|----------|
 | `e2e_<scenario>.json` | `make e2e-all` |
 | `e2e_timings_report.md` | `make e2e-timings` |
-| `footprint_bench.txt` | `make bench-footprint` |
-| `plan_diff_5k_flamegraph.svg` | `make bench-footprint-profile` |
-| `plan_diff_dhat.txt` | `make bench-footprint-alloc` |
-| `alloc_flame.txt` | `dhat_alloc_tree.py` (called from alloc bench) |
+| `rust_footprint_bench.txt` | `make bench-footprint` |
+| `rust_plan_diff_5k_flamegraph.svg` | `make bench-footprint-profile` |
+| `rust_plan_diff_dhat.txt` | `make bench-footprint-alloc` |
+| `rust_alloc_flame.txt` | `dhat_alloc_tree.py` (called from alloc bench) |
 | `scan_5k_load_flamegraph.svg`, `scan_dhat.txt` | `footprint_bench.sh profile-load-scan` / `alloc scan_root` |
 | `cache_serde_load_flamegraph.svg`, `cache_serde_dhat.txt` | `footprint_bench.sh profile-load-cache` / `alloc cache` |
 | `plan_db_trace.json` | `make plan-db-perf` |

@@ -27,7 +27,7 @@ jobs:
       # `--tests` runs every migrator-core integration binary too (DB-gated ones
       # self-skip without RMIG_RUN_SQLSERVER_INTEGRATION); rmigd's unit tests
       # otherwise never execute anywhere in CI.
-      - run: cargo test -p migrator-core --lib --tests
+      - run: cargo test -p migrator-core --all-features --lib --tests
       - run: cargo test -p rmigd
 
   integration:

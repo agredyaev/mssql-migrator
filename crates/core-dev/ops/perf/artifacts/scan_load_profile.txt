@@ -1,0 +1,44 @@
+# scan_fixture n=5000, 30s sustained load, 191 iters (6 iter/s)
+# total samples: 75919
+# top frames (inclusive; each stack frame credited once per sample)
+
+   75919  100.0%  backtrace::backtrace::libunwind::trace
+   75919  100.0%  <pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace>::trace
+   75897  100.0%  std::sys::backtrace::__rust_begin_short_backtrace
+   70083   92.3%  core::iter::traits::iterator::Iterator::collect
+   70083   92.3%  <alloc::vec::Vec<T> as core::iter::traits::collect::FromIterator<T>>::from_iter
+   70083   92.3%  <alloc::vec::Vec<T> as alloc::vec::spec_from_iter::SpecFromIter<T,I>>::from_iter
+   70078   92.3%  <alloc::vec::Vec<T> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<T,I>>::from_iter
+   70071   92.3%  <core::panic::unwind_safe::AssertUnwindSafe<F> as core::ops::function::FnOnce<()>>::call_once
+   70071   92.3%  std::panicking::catch_unwind
+   70071   92.3%  ___rust_try
+   70071   92.3%  std::panicking::catch_unwind::do_call
+   70067   92.3%  <alloc::vec::Vec<T,A> as alloc::vec::spec_extend::SpecExtend<T,I>>::spec_extend
+   70044   92.3%  __pthread_cond_wait
+   70024   92.2%  alloc::vec::Vec<T,A>::extend_trusted
+   70024   92.2%  core::iter::traits::iterator::Iterator::for_each
+   70013   92.2%  <core::iter::adapters::map::Map<I,F> as core::iter::traits::iterator::Iterator>::fold
+   70013   92.2%  core::iter::adapters::map::map_fold::{{closure}}
+   70011   92.2%  std::thread::lifecycle::spawn_unchecked::{{closure}}::{{closure}}
+   70011   92.2%  migrator_core::scan::parse_object::parse_object
+   70011   92.2%  migrator_core::scan::parse_parallel::parse_objects::{{closure}}::{{closure}}::{{closure}}
+   70011   92.2%  <alloc::boxed::Box<dyn core::ops::function::FnOnce<(), Output = ()> + core::marker::Send> as core::ops::function::FnOnce<()>>::call_once
+   70011   92.2%  migrator_core::scan::parse_parallel::parse_objects::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+   70011   92.2%  <core::slice::iter::Iter<T> as core::iter::traits::iterator::Iterator>::fold
+   70011   92.2%  core::ops::function::FnOnce::call_once{{vtable.shim}}
+   69751   91.9%  migrator_core::scan::parse_object::file_checksum
+   69729   91.8%  std::fs::read
+   64542   85.0%  <std::sys::fs::unix::File>::open::{closure#0}
+   64542   85.0%  <std::sys::fs::unix::File>::open_c::{closure#0}
+   64542   85.0%  _os_cpu_copy_in_cksum
+    5886    7.8%  core::ops::function::FnOnce::call_once
+    5886    7.8%  <&dyn core::ops::function::Fn<(), Output = i32> + core::marker::Sync + core::panic::unwind_safe::RefUnwindSafe as core::ops::function::FnOnce<()>>::call_once
+    5886    7.8%  _main
+    5886    7.8%  std::rt::lang_start
+    5886    7.8%  std::rt::lang_start::{{closure}}
+    5886    7.8%  scan_load::main
+    5827    7.7%  migrator_core::scan::walk::scan_root
+    2977    3.9%  migrator_core::scan::walk::walk_sql
+    2593    3.4%  migrator_core::scan::walk::walk_dir
+    2586    3.4%  std::fs::read::inner
+    2040    2.7%  std::sys::fs::unix::stat
