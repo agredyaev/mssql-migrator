@@ -179,6 +179,7 @@ CORE_TESTS=(
   existing_db_adoption_integration
   adopt_e2e_integration
   drift_e2e_integration
+  incremental_drift_test
   chaos_kill_mid_apply_test
 )
 

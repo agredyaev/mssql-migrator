@@ -281,6 +281,13 @@
                 WHERE LOWER(s.name) = rows.schema_name COLLATE DATABASE_DEFAULT
                   AND LOWER(table_state.name) = rows.object_name COLLATE DATABASE_DEFAULT
                 FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES
-            ) END AS canonical_state) AS state
+            ) END AS canonical_state
+            -- Incremental drift: filter the row out before the expensive
+            -- per-kind subqueries are projected, so non-suspect objects skip the
+            -- fingerprint entirely (a CASE guard is not enough — the optimizer
+            -- may still evaluate the subqueries). The insert path sets
+            -- is_suspect = 1 for every row, so it always fingerprints.
+            FROM (VALUES (1)) AS suspect_guard(x)
+            WHERE rows.is_suspect = 1) AS state
         WHERE rows.kind = 'object'
     ) AS live;

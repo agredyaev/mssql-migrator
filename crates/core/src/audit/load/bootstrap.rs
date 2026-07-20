@@ -7,6 +7,7 @@ use super::cache::{invalidate_audit_cache_all, mark_tables_ensured, tables_ensur
 /// Creates or upgrades audit schema tables on `client`.
 pub async fn ensure_tables_on(client: &mut DbClient, db_fp: &str) -> Result<()> {
     client.exec(sql::audit::BOOTSTRAP_TABLES).await?;
+    client.exec(sql::audit::BOOTSTRAP_DRIFT).await?;
     mark_tables_ensured(db_fp);
     Ok(())
 }
