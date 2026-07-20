@@ -122,6 +122,21 @@ No critical or high findings open.
 - Per-DB existence probe (M1, full TDS login per catalog DB): measured inside SLO/plan-db-perf envelopes; connect_ms 2–4 per probe. At fleet scale N databases → N logins on first deploy; accepted with the documented rationale (per-DB permission validation + 4060-vs-outage classification). No rewrite.
 - No N+1 patterns, no unbounded buffering beyond full materialization of catalog result sets (bounded by catalog size; accepted, §13).
 
+### 10.1 Scale characteristics (synthetic 2k / 20k / 100k catalogs)
+
+To close the "large-catalog behaviour is reasoned, not measured" caveat, synthetic single-database catalogs of pure tables (worst case for drift fingerprinting — a table's live fingerprint enumerates every column, constraint, FK, and index, heavier than a module's `OBJECT_DEFINITION`) were generated and applied to a live SQL Server, then re-planned. Harness: `crates/core-dev/tests/scale_footprint.rs` (in-memory) and `ops/perf/` fixtures (live). All peak RSS via `/usr/bin/time -l`, amd64-under-Rosetta host.
+
+In-memory pipeline (no DB), 100k objects: build workspace 340 ms → 136 MB; **`compute_diff` 56 ms with RSS flat** (streams into a pre-allocated plan — no allocation spike); scan 100k `.sql` files off disk 15.3 s; **peak RSS 178 MB**. The diff algorithm itself is not a bottleneck at any scale tested.
+
+Live DB:
+
+| N | apply wall | apply rate | apply peak RSS | plan readback wall | readback peak RSS |
+|---|---|---|---|---|---|
+| 2 000 | 75 s | 26.5/s | 19 MB | 3.6 s | 21 MB |
+| 20 000 | 478 s | 41.8/s | 95 MB | 37.5 s (×3 stable) | 117–124 MB |
+
+Both curves are linear (~6 KB RSS per object; apply peak is the *plan* phase, not the per-object apply loop — the apply loop is transactional and O(1) in N). Readback wall at 20k decomposes as: **checksum+drift query 27.5 s (73 %)**, catalog query 9.3 s (25 %), file scan 0.6 s, `compute_diff` 0.05 s, connect 6 ms — i.e. **98 % is SQL Server round-trip, and the single dominant cost is the per-object live-definition drift fingerprint** (`sql/audit/_object_canonical_state.sql`). That fingerprint is computed for every workspace object on every plan: `keys_json` is the full workspace key set (git-delta scoping applies to catalog inspection, not to the checksum/drift query), so plan time is O(catalog size) regardless of how few files changed. For the product's real target (reporting-layer catalogs of hundreds to low-thousands of objects) this is sub-second to a few seconds; it only reaches tens of seconds at 20k+.
+
 ## 11. Resource-leak and soak results
 
 200 sequential `rmig plan` runs through one `rmigd` (release binaries, live DB):
@@ -154,7 +169,8 @@ Refuted prior-exploration claims (recorded for honesty): "4 empty SQL asset file
 2. **No metrics/health endpoint** on rmigd — liveness is probeable by socket connect (the daemon itself uses this to refuse double-start); tracing to stderr is the only telemetry. Recommendation only.
 3. **Arena invariant `panic!`s under `panic=abort`** (release-dist) — documented "can't happen" assertions on validated scan input; a trip aborts without a report or classified exit code.
 4. **`@pN` renumbering via text `.replace`** in `db/catalog.rs` — fragile but fenced by unit tests asserting placeholder positions and by every DB suite.
-5. **Full materialization of catalog result sets** — bounded by catalog object count; no streaming needed at product scale.
+5. **Plan cost is O(catalog size), dominated by the live-drift fingerprint** — measured (§10.1): a full plan spends ~73 % of its wall in the checksum/drift query, which recomputes each object's live-definition fingerprint (`sql/audit/_object_canonical_state.sql`) for **every** workspace object every plan (`keys_json` is the full key set; git-delta scopes only catalog inspection). Sub-second for typical catalogs, ~27 s at 20k, extrapolating to minutes at 100k. This is a **deliberate correctness feature** (structural-drift blocking, commit `ddbad29`): it catches out-of-band ALTERs to objects whose repository file did not change. The obvious shortcut — skipping the fingerprint by `sys.objects.modify_date` — is **unsound** (that column does not bump on every definition change, e.g. index changes; the tool deliberately does not trust it), so no cheaper method preserves the guarantee. The only semantics-preserving speed-up is a set-based rewrite of the fingerprint query (one pass instead of N correlated `OUTER APPLY` subqueries); it is a high-risk change to a 286-line safety-critical asset shared by the read and insert paths, so it is **recommended as a separately-tested follow-up, not applied in this audit**. Memory is a separate axis: result sets are fully materialized (`~6 KB`/object, linear — 178 MB in-memory at 100k, ~120 MB live readback at 20k), reducible by streaming rows instead of collecting `Vec<Vec<RowData>>`; also a scoped driver-layer follow-up, not needed at product scale.
+   - **Operational mitigation (documented):** the default `RM_COMMAND_TIMEOUT` of 30 s is tight once the checksum/drift query approaches that duration (~15k+ objects); a plan then fails with an actionable `query timed out after 30s` (exit 5). Raise `RM_COMMAND_TIMEOUT` for large full-catalog plans (see `docs/perf-footprint-audit.md`).
 6. **Single-platform CI** (ubuntu/amd64), amd64-only DB fixture, core-dev benches not wired into CI (perf on shared runners is noise; local runs are the evidence).
 7. **Local `plan-db-perf` 500 ms SLO unreachable under Rosetta** — stable 557 ms; CI (native amd64) is the enforcement point.
 8. **SIGINT mid-COMMIT window** — a commit already sent may complete server-side while the client exits 130; the audit-history model makes the rerun converge (skip-unchanged), so no divergence.

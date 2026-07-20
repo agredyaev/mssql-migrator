@@ -33,6 +33,7 @@ Footprint work validates layout policy under [`data-oriented-layout-policy.md`](
 - Skip-heavy 5k workspace is the headline diff benchmark.
 - dhat **loop** phase B/iter is the allocation regression signal (target **0 B/iter** after warmup).
 - Struct sizes are platform-dependent; the committed baseline is validated by `make bench-footprint` (which runs `footprint_baseline_match` in `migrator-core-dev`); `make check` does not select that crate.
+- Plan cost and footprint are O(catalog size). The in-memory diff is negligible (measured 56 ms for 100k objects); a full plan's wall time is ~98% SQL Server round-trip, and the single dominant cost is the per-object live-definition drift fingerprint in `sql/audit/_object_canonical_state.sql`, computed for every workspace object every plan. This is intentional (structural-drift detection): `sys.objects.modify_date` is not trusted, so the fingerprint cannot be skipped without weakening the guarantee. Result sets are fully materialized, so peak resident memory is roughly linear at a few KB per object.
 
 ## Nominal flow
 
@@ -84,6 +85,8 @@ dhat phases (`dhat_alloc_tree.py`):
 | loop | warmed iterations (headline **B/iter**) |
 
 Recovery: re-run full bench suite after layout PR; attach artifacts to the PR when sizes or loop alloc change.
+
+Large catalogs: for a full plan over tens of thousands of objects, the checksum/drift query can approach the default 30 s `RM_COMMAND_TIMEOUT` and fail with `query timed out after 30s` (exit 5). Raise `RM_COMMAND_TIMEOUT` (seconds) for such catalogs. The measured in-memory and live footprint curve (2k/20k/100k) is reproducible via `crates/core-dev/tests/scale_footprint.rs` (set `RMIG_SCALE_N`, run under `/usr/bin/time -l`).
 
 ## Open issues and non-goals
 
