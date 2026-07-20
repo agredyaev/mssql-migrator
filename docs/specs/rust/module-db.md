@@ -40,7 +40,7 @@ Paths: `cold_full`, `git_delta`, `incremental`, `cache_hit`, `warm_snapshot`. Em
 - SQL Server OPENJSON; scope triples `(schema, kind, object)`.
 - `RMIG_PLAN_DB_MAX_PAR_MS` (default 500) - workflow SLO on `parallel_wall_ms`.
 - `RMIG_CATALOG_CACHE=0` disables persistent catalog cache.
-- `RMIG_PLAN_DB_TRACE=1` appends to `ops/perf/artifacts/plan_db_trace.json`.
+- `RMIG_PLAN_DB_TRACE=1` appends to `plan_db_trace.json` under `ops/perf/artifacts/` (generated).
 
 ## Nominal flow
 

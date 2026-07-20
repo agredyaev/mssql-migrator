@@ -37,7 +37,7 @@ Database **drop/create** is optional and **excluded** from plan wall SLO when `R
 | Output | Description |
 |--------|-------------|
 | Test pass/fail | `prod_gate_incremental_plan` exit code |
-| JSON report | `RMIG_GATE_REPORT` (default via script: `ops/perf/artifacts/prod_gate_report.json`; gitignored) |
+| JSON report | `RMIG_GATE_REPORT` (default via script: `prod_gate_report.json` under `ops/perf/artifacts/`; generated, gitignored) |
 | `t.Log` | Phase timings and `timingConn` DB boundary summary |
 
 ### Gate verdict (`gate::evaluate_gate`)
@@ -63,7 +63,7 @@ Integration gate: [`crates/core/tests/workflow_integration.rs`](../crates/core/t
 | Variable | Default | Role |
 |----------|---------|------|
 | `RMIG_PLAN_DB_MAX_PAR_MS` | 500 | Hard ceiling for plan DB parallel wall |
-| `RMIG_PLAN_DB_TRACE=1` | off | Append per-phase trace to `ops/perf/artifacts/plan_db_trace.json` |
+| `RMIG_PLAN_DB_TRACE=1` | off | Append per-phase trace to `plan_db_trace.json` under `ops/perf/artifacts/` (generated) |
 
 Runner: `make plan-db-perf` ([`ops/perf/plan_db_perf.sh`](../ops/perf/plan_db_perf.sh)). See [`ops/perf/README.md`](../ops/perf/README.md) for path → RT table and measured workflow timings on Docker SQL 2019 + `.temp/sql`.
 

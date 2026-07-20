@@ -8,7 +8,9 @@ source "$ROOT/ops/perf/e2e_env.sh"
 
 export RMIG_USE_RMIGD="${RMIG_USE_RMIGD:-1}"
 export RMIG_SESSION_TOKEN="${RMIG_SESSION_TOKEN:-rmig-integration-test-token}"
+# rmigd refuses a group/world-accessible socket parent; CI umask makes 755.
 mkdir -p "$ROOT/.rmig"
+chmod 700 "$ROOT/.rmig"
 
 # Ensure catalog databases exist before rmigd discovers them from RM_SQL_ROOT.
 ensure_catalog_databases() {
