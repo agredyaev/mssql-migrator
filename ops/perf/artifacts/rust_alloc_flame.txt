@@ -1,14 +1,15 @@
+# rmig-profile revision=d6902d1e6057318f16b0ee8aca1461665e6af320 version=1.0.7 target=aarch64-apple-darwin dirty=false
 # Rust dhat allocation summary
-# total allocated (tb sum): 8.33 MB (8329494 B)
+# total allocated (tb sum): 11.15 MB (11145588 B)
 # loop iterations: 20
-# setup (one-time): 7.92 MB
+# setup (one-time): 10.73 MB
 # warm (first compute_diff / plan resize): 413.9 KB
 # loop (warmed compute_diff x20): 0 B (0 B/iter)
 
 ## Phase totals
 Phase                 Bytes    Share
-setup               7.92 MB    95.0%
-warm               413.9 KB     5.0%
+setup              10.73 MB    96.3%
+warm               413.9 KB     3.7%
 loop                    0 B     0.0%
 
 ## Top categories (loop phase only)
@@ -20,12 +21,12 @@ Frame                                                                           
 
 ## Top rmig frames (deepest in stack, all phases)
 Frame                                                                           Bytes   Share
-plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)               7.92 MB   95.0%
-plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:14:5)               413.9 KB    5.0%
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)              10.73 MB   96.3%
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:14:5)               413.9 KB    3.7%
 plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:18:5)                   64 B    0.0%
 
 ## Top leaf alloc frames (flat)
 Frame                                                                           Bytes
-plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)               7.92 MB
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)              10.73 MB
 plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:14:5)               413.9 KB
 plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:18:5)                   64 B

@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::sync::OnceLock;
 
-use migrator_core::config::{build_config, load_env_file, validate_config};
+use migrator_core::config::{build_config, load_toml_config, validate_config};
 use migrator_core::Config;
 
 static WORKFLOW_CFG: OnceLock<Config> = OnceLock::new();
@@ -17,8 +17,8 @@ fn repo_root() -> std::path::PathBuf {
 
 pub fn workflow_config() -> &'static Config {
     WORKFLOW_CFG.get_or_init(|| {
-        let env = load_env_file(&repo_root().join(".env")).unwrap_or_default();
-        let mut cfg = build_config(&env, true);
+        let file = load_toml_config(&repo_root().join("config.toml")).expect("load config");
+        let mut cfg = build_config(&file, true);
         if cfg.server.is_empty() {
             cfg.server = "127.0.0.1".into();
         }
@@ -38,6 +38,8 @@ pub fn workflow_config() -> &'static Config {
         }
         cfg.set_skip_git(false);
         cfg.session_socket.clear();
+        // Explicit test-only opt-out for the local Docker SQL Server fixture.
+        cfg.set_encrypt(false);
         cfg.set_trust_server_certificate(true);
         cfg.set_catalog_cache(true);
         validate_config(&mut cfg).expect("valid workflow config");

@@ -2,7 +2,17 @@ use std::collections::HashSet;
 
 use crate::domain::Workspace;
 
-/// Returns the set of normalized object keys that match any of the changed file paths.
+/// Snapshot-object identity for gate deltas: `database/normalized_key`, the
+/// database taken from the script path's first component (matches
+/// `PlanSnapshot` keys, which are database-qualified).
+fn qualified_key(path: &str, key: &str) -> String {
+    match path.split('/').next() {
+        Some(db) if !db.is_empty() => format!("{db}/{key}"),
+        _ => key.to_string(),
+    }
+}
+
+/// Returns the set of snapshot keys that match any of the changed file paths.
 pub fn keys_for_changed_paths(ws: &Workspace, changed_paths: &[String]) -> HashSet<String> {
     let mut keys = HashSet::new();
     if changed_paths.is_empty() {
@@ -16,28 +26,29 @@ pub fn keys_for_changed_paths(ws: &Workspace, changed_paths: &[String]) -> HashS
             continue;
         }
         if let Some(k) = by_path.get(&p) {
-            keys.insert(k.as_str().to_string());
+            keys.insert(qualified_key(&p, k.as_str()));
             continue;
         }
         if let Some(table_key) = trans_paths.get(&p) {
-            keys.insert(table_key.clone());
+            keys.insert(qualified_key(&p, table_key));
             continue;
         }
         for (path, key) in &by_path {
             if path.ends_with(&p) || p.ends_with(path.as_str()) {
-                keys.insert(key.as_str().to_string());
+                keys.insert(qualified_key(path, key.as_str()));
             }
         }
         for (path, table_key) in &trans_paths {
             if path.ends_with(&p) || p.ends_with(path.as_str()) {
-                keys.insert(table_key.clone());
+                keys.insert(qualified_key(path, table_key));
             }
         }
     }
     keys
 }
 
-/// Expands `delta` to include parent tables and transition tables reachable from the initial set.
+/// Expands `delta` to include parent tables of matched triggers. Changed transition
+/// scripts already enter as their table's qualified key via `keys_for_changed_paths`.
 pub fn expand_delta_closure(ws: &Workspace, mut delta: HashSet<String>) -> HashSet<String> {
     if delta.is_empty() {
         return delta;
@@ -47,7 +58,8 @@ pub fn expand_delta_closure(ws: &Workspace, mut delta: HashSet<String>) -> HashS
         let n = ws.object_count();
         for i in 0..n {
             let obj = ws.entry(i);
-            if !delta.contains(obj.key_str(ws, i)) {
+            let db = ws.database_name(obj.db_id);
+            if !delta.contains(&format!("{db}/{}", obj.key_str(ws, i))) {
                 continue;
             }
             if obj.kind_part(ws, i) != "triggers" {
@@ -56,25 +68,12 @@ pub fn expand_delta_closure(ws: &Workspace, mut delta: HashSet<String>) -> HashS
             let row_id = ws.row_id_at(i);
             if let Some(pref) = obj.parent_ref_for_row(ws, row_id) {
                 if pref.parent_row_id > 0 {
-                    let pk = ws.entry_key((pref.parent_row_id as usize) - 1).as_str();
-                    if delta.insert(pk.to_string()) {
+                    let pi = (pref.parent_row_id as usize) - 1;
+                    let pk = ws.entry_key(pi).as_str();
+                    let pdb = ws.database_name(ws.entry(pi).db_id);
+                    if delta.insert(format!("{pdb}/{pk}")) {
                         added += 1;
                     }
-                }
-            }
-        }
-        for (&row_id, entries) in ws.transitions_by_row.iter() {
-            let table_key = ws.entry_key(row_id as usize - 1).as_str();
-            if delta.contains(table_key) {
-                continue;
-            }
-            for e in entries {
-                let path = ws.script(e.script_id).path_str();
-                if delta.contains(path) {
-                    if delta.insert(table_key.to_string()) {
-                        added += 1;
-                    }
-                    break;
                 }
             }
         }

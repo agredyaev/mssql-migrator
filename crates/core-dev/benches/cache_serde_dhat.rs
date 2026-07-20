@@ -12,6 +12,17 @@ static DHAT: dhat::Alloc = dhat::Alloc;
 
 type Payload = (ChecksumMap, CatalogState);
 
+/// Named marker frame: the dhat classifier attributes stacks containing
+/// `bench_loop` to the loop phase; without it every allocation reads as setup.
+#[inline(never)]
+fn bench_loop(checksums: &ChecksumMap, catalog: &CatalogState) {
+    for _ in 0..20 {
+        let bytes = serde_json::to_vec(&(checksums, catalog)).expect("serialize");
+        let round: Payload = serde_json::from_slice(&bytes).expect("deserialize");
+        std::hint::black_box(round);
+    }
+}
+
 fn main() {
     let n = 5000;
     let (_ws, catalog, checksums) = skip_heavy_workspace(n);
@@ -19,10 +30,6 @@ fn main() {
     let _warm: Payload = serde_json::from_slice(&warm).expect("warm deserialize");
 
     let _profiler = dhat::Profiler::new_heap();
-    for _ in 0..20 {
-        let bytes = serde_json::to_vec(&(&checksums, &catalog)).expect("serialize");
-        let round: Payload = serde_json::from_slice(&bytes).expect("deserialize");
-        std::hint::black_box(round);
-    }
+    bench_loop(&checksums, &catalog);
     eprintln!("dhat: cache_serde_roundtrip n=5000 x20 complete (loop-only profile)");
 }

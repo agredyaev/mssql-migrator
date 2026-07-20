@@ -20,7 +20,7 @@ pub(super) async fn query_git_delta_catalog(
     mut warm: GitDeltaWarmup,
 ) -> Result<(CatalogState, i64, GitDeltaWarmup)> {
     let schemas_json = schemas_json(ctx.ws);
-    let scope = build_inspect_scope(ctx.ws, &ctx.git.paths, false, &warm.checksums);
+    let scope = build_inspect_scope(ctx.ws, &ctx.git.paths, ctx.bypass, &warm.checksums);
     let scope_json = build_scope_json(&scope);
     let query_catalog = should_query_catalog(false, &scope, &scope_json, &warm.checksums).await?;
     warm.local_trace.flags.catalog_queried = query_catalog;

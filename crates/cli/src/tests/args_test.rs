@@ -14,16 +14,16 @@ fn parse_args_empty_invocation_returns_help_happy_path() {
 
 #[test]
 fn parse_args_accepts_flags_before_command_regression() {
-    let parsed = parse_args(&argv(&["--json", "--env", "prod.env", "plan"]))
+    let parsed = parse_args(&argv(&["--json", "--config", "prod.toml", "plan"]))
         .expect("flags before command should parse");
     match parsed {
         ParsedArgs::Run {
             cmd,
-            env_file,
+            config_file,
             json,
         } => {
             assert_eq!(cmd, "plan");
-            assert_eq!(env_file.as_deref(), Some("prod.env"));
+            assert_eq!(config_file.as_deref(), Some("prod.toml"));
             assert!(json);
         }
         ParsedArgs::Help => panic!("expected run invocation"),
@@ -32,16 +32,16 @@ fn parse_args_accepts_flags_before_command_regression() {
 
 #[test]
 fn parse_args_accepts_flags_after_command_edge_case() {
-    let parsed = parse_args(&argv(&["plan", "--json", "--env", "prod.env"]))
+    let parsed = parse_args(&argv(&["plan", "--json", "--config", "prod.toml"]))
         .expect("flags after command should parse");
     match parsed {
         ParsedArgs::Run {
             cmd,
-            env_file,
+            config_file,
             json,
         } => {
             assert_eq!(cmd, "plan");
-            assert_eq!(env_file.as_deref(), Some("prod.env"));
+            assert_eq!(config_file.as_deref(), Some("prod.toml"));
             assert!(json);
         }
         ParsedArgs::Help => panic!("expected run invocation"),
@@ -49,13 +49,13 @@ fn parse_args_accepts_flags_after_command_edge_case() {
 }
 
 #[test]
-fn parse_args_missing_env_path_negative_path() {
-    let err = match parse_args(&argv(&["plan", "--env"])) {
-        Ok(_) => panic!("missing env path should fail"),
+fn parse_args_missing_config_path_negative_path() {
+    let err = match parse_args(&argv(&["plan", "--config"])) {
+        Ok(_) => panic!("missing config path should fail"),
         Err(err) => err,
     };
     assert!(
-        err.to_string().contains("--env requires path"),
+        err.to_string().contains("--config requires a path"),
         "unexpected error: {err}"
     );
 }
@@ -78,5 +78,28 @@ fn parse_command_rejects_unknown_command_negative_path() {
     assert!(
         err.to_string().contains("unknown command: deploy"),
         "unexpected error: {err}"
+    );
+}
+
+/// `--config` must not swallow a following flag as its value: `--json` would be
+/// silently lost and the missing path never diagnosed.
+#[test]
+fn parse_args_config_rejects_flag_as_value_regression() {
+    let err = match parse_args(&argv(&["--config", "--json", "version"])) {
+        Err(e) => e,
+        Ok(_) => panic!("--config followed by a flag must be rejected"),
+    };
+    assert!(
+        err.to_string().contains("--config requires a path"),
+        "error: {err}"
+    );
+
+    let err = match parse_args(&argv(&["version", "--config"])) {
+        Err(e) => e,
+        Ok(_) => panic!("trailing --config without a value must be rejected"),
+    };
+    assert!(
+        err.to_string().contains("--config requires a path"),
+        "error: {err}"
     );
 }

@@ -27,6 +27,10 @@ pub enum PlanScenario {
     ModuleUpdate = 8,
     /// Object has changed and will be reprocessed.
     Reprocess = 9,
+    /// A non-table structural object changed, but no safe update path exists.
+    StructuralChangeBlocked = 10,
+    /// Live non-module state differs from the last audited state.
+    LiveStructuralDriftBlocked = 11,
 }
 
 impl PlanScenario {
@@ -37,6 +41,7 @@ impl PlanScenario {
             Self::Adopt => Action::AdoptExisting,
             Self::SkipUnchanged => Action::SkipUnchanged,
             Self::TableReprocess | Self::Reprocess => Action::ReprocessChanged,
+            Self::StructuralChangeBlocked | Self::LiveStructuralDriftBlocked => Action::Fail,
             Self::TableBlockedNoTransitions
             | Self::TriggerBlockedParentMissing
             | Self::TriggerBlockedParentChanging => Action::ReprocessChangedBlocked,
@@ -53,6 +58,8 @@ impl PlanScenario {
     pub fn blocked_delta(self) -> u32 {
         match self {
             Self::TableBlockedNoTransitions
+            | Self::StructuralChangeBlocked
+            | Self::LiveStructuralDriftBlocked
             | Self::TriggerBlockedParentMissing
             | Self::TriggerBlockedParentChanging => 1,
             _ => 0,

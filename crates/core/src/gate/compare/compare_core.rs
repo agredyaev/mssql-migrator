@@ -34,6 +34,16 @@ pub fn compare_snapshots(
         passed: true,
         ..Default::default()
     };
+    // Different snapshot format versions have unknown wire semantics; refuse
+    // before comparing object state.
+    if baseline.version != current.version {
+        res.passed = false;
+        res.messages.push(format!(
+            "snapshot version mismatch: baseline={} current={}",
+            baseline.version, current.version
+        ));
+        return res;
+    }
     if current.blocked && !baseline.blocked {
         res.passed = false;
         res.messages.push("plan became blocked".into());
@@ -45,7 +55,10 @@ pub fn compare_snapshots(
         if diffs.is_empty() {
             continue;
         }
-        let in_delta = opts.delta_keys.is_empty() || opts.delta_keys.contains(&key);
+        // An EMPTY delta means "nothing may change" (exact-match mode), not
+        // "everything may change" — on main/shallow clones the gate would
+        // otherwise approve any drifted plan.
+        let in_delta = opts.delta_keys.contains(&key);
         if in_delta {
             if let Some(c) = current.objects.get(&key) {
                 if is_risky_action(&c.planned_action) {

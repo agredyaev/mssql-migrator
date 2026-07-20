@@ -13,7 +13,7 @@ This specification covers the five supporting modules inside `crates/core/src/`:
 | Module | Canonical Path | System Role |
 | :--- | :--- | :--- |
 | **`git`** | `crates/core/src/git/` | Executes local git commands to resolve pull request diffs and changed paths. |
-| **`lock`** | `crates/core/src/lock/mod.rs` | Implements distributed mutual exclusion via the `azdo_deploy_meta` schema table in SQL Server. |
+| **`lock`** | `crates/core/src/lock/mod.rs` | Implements distributed mutual exclusion via `sp_getapplock` (session-scoped advisory lock, resource `reporting_layer_migration`); no table is involved. |
 | **`sql`** | `crates/core/src/sql/mod.rs` | Uses `include_str!` to embed T-SQL bootstrap and execution scripts into the binary. |
 | **`sql_ident`** | `crates/core/src/sql_ident.rs` | Sanitizes path segments and safely quotes T-SQL bracket identifiers. |
 | **`buildinfo`** | `crates/core/src/buildinfo/mod.rs` | Serializes compile-time version and git commit hash information. |
@@ -48,7 +48,7 @@ graph TD
 - **Outputs**:
   - `version() -> &'static str`: Returns the semver version string.
   - `commit() -> &'static str`: Returns the 7-character truncated git commit hash.
-  - `write_json(writer: impl Write)`: Emits compact JSON (`{"version": "...", "commit": "..."}`) to the writer.
+  - `write_json(writer: impl Write)`: Emits compact JSON (`{"version": "...", "commit": "...", "author": "..."}`) to the writer.
 
 ### 2. `sql_ident` Interface
 - **`validate_path_component(name: &str) -> Result<()>`**: Validates that a string is a single-level directory or filename component. Rejects path traversal markers (`.`, `..`) and path separators (`/`, `\`, `\0`).
@@ -69,7 +69,7 @@ graph TD
 
 ### 1. Compile-Time Build Metadata Resolution
 1. The compilation phase triggers `crates/core/build.rs`.
-2. `build.rs` reads the root `VERSION` file and executes `git rev-parse HEAD`.
+2. `build.rs` reads the root `VERSION` file and executes `git rev-parse --short HEAD`.
 3. Variables are exposed as `RMIG_VERSION` and `RMIG_COMMIT`.
 4. `buildinfo` binds these strings permanently using `option_env!`.
 
@@ -105,7 +105,7 @@ graph TD
 ### 2. Dynamic Integration Checks
 - Verify CLI version output formats:
   ```bash
-  ./bin/rmig --version
+  ./bin/rmig version
   ./bin/rmig version --json
   ```
 
@@ -115,7 +115,7 @@ graph TD
 
 ### 1. Lock Cleanup
 - In the event of a crash during a locked migrate run, the distributed lock might remain active.
-- **Recovery**: Operators can run the recovery SQL script embedded in `sql/lock/release.sql` using an external SQL terminal or by running the `rmig repair` CLI path.
+- **Recovery**: The lock is session-scoped (`@LockOwner = 'Session'`), so it auto-releases when the crashed connection closes — this covers almost every crash. If a wedged-but-alive session still holds it, `sql/lock/release.sql` only works ON that owning session; from another session, identify and kill the owner instead: `SELECT request_session_id FROM sys.dm_tran_locks WHERE resource_type = 'APPLICATION';` then `KILL <spid>;`. (`repair-checksum` repairs audit checksums only and does not touch locks.)
 
 ### 2. Re-compiling Static Assets
 - Modifying T-SQL code inside `sql/` does not require database migration; it only requires running:

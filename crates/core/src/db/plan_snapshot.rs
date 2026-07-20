@@ -7,6 +7,7 @@ use crate::driver::TimingConn;
 use crate::error::Result;
 
 use super::plan_batch::run_batch;
+use super::plan_common::{ExecOpts, PlanDbMode};
 use super::plan_parallel::run_parallel;
 
 /// Output of the plan DB phase containing catalog state, checksums, and timing data.
@@ -39,11 +40,16 @@ pub async fn run_plan_db_phase(
     conn: &mut TimingConn,
     ws: &Workspace,
     bypass_cache: bool,
+    allow_checksum_repair: bool,
 ) -> Result<PlanDbResult> {
-    let fp = crate::audit::db_fingerprint(&cfg.server, &cfg.database);
+    let fp = crate::audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     let l1 = L1Cache::new(&cfg.l1_cache_dir);
+    // Every managed object has a live-state fingerprint. A top-level snapshot
+    // cannot prove that SQL Server was not changed out of band, so only an
+    // empty workspace may use it.
+    let requires_live_state = ws.object_count() != 0;
 
-    if !bypass_cache {
+    if !bypass_cache && !requires_live_state {
         if let Some((checksums, catalog)) = l1.try_load(&fp, &ws.layout_digest)? {
             return Ok(PlanDbResult {
                 checksums,
@@ -61,8 +67,8 @@ pub async fn run_plan_db_phase(
         }
     }
 
-    if let Some((checksums, catalog)) =
-        super::warm_snapshot::reuse(&fp, &ws.layout_digest).filter(|_| !bypass_cache)
+    if let Some((checksums, catalog)) = super::warm_snapshot::reuse(&fp, &ws.layout_digest)
+        .filter(|_| !bypass_cache && !requires_live_state)
     {
         l1.save(&fp, &ws.layout_digest, &checksums, &catalog)?;
         return Ok(PlanDbResult {
@@ -83,8 +89,18 @@ pub async fn run_plan_db_phase(
     let keys_json = ws.normalized_keys_json();
 
     if cfg.session_socket.is_empty() {
-        run_parallel(cfg, conn, ws, &keys_json, &fp, &l1).await
+        let opts = ExecOpts {
+            mode: PlanDbMode::Parallel,
+            bypass: bypass_cache,
+            allow_checksum_repair,
+        };
+        run_parallel(cfg, conn, ws, &keys_json, &fp, &l1, opts).await
     } else {
-        run_batch(cfg, conn, ws, &keys_json, &fp, &l1).await
+        let opts = ExecOpts {
+            mode: PlanDbMode::Sequential,
+            bypass: bypass_cache,
+            allow_checksum_repair,
+        };
+        run_batch(cfg, conn, ws, &keys_json, &fp, &l1, opts).await
     }
 }

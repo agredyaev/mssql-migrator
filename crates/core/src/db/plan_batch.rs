@@ -4,7 +4,7 @@ use crate::domain::Workspace;
 use crate::driver::TimingConn;
 use crate::error::Result;
 
-use super::plan_common::{execute, PlanDbMode};
+use super::plan_common::{execute, ExecOpts};
 use super::plan_snapshot::PlanDbResult;
 
 pub async fn run_batch(
@@ -14,6 +14,7 @@ pub async fn run_batch(
     keys_json: &str,
     fp: &str,
     l1: &L1Cache,
+    opts: ExecOpts,
 ) -> Result<PlanDbResult> {
-    execute(cfg, conn, ws, keys_json, fp, l1, PlanDbMode::Sequential).await
+    execute(cfg, conn, ws, keys_json, fp, l1, opts).await
 }

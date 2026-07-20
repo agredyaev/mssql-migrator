@@ -27,7 +27,8 @@ This specification governs the Rust workspace compilation structures, profiling 
 - **Unix Domain Socket Integration**: Spawning the daemon exposes a Unix socket for warm connection multiplexing:
   ```bash
   cargo build --release -p rmigd
-  RMIGD_SOCKET=/tmp/rmigd.sock RMIGD_ENV=.env ./target/release/rmigd
+  RM_DB_USER=sa RM_DB_PASSWORD='***' RMIG_SESSION_TOKEN='***' \
+    RMIGD_SOCKET=/tmp/rmigd.sock RMIGD_CONFIG=config.toml ./target/release/rmigd
   export RMIG_SESSION=/tmp/rmigd.sock
   ```
 - **SLO Enforcement**: Running `make slo` automatically spawns `rmigd`, sets `RMIG_USE_RMIGD=1`, and asserts that the `cli_wall_ms` remains below `RMIG_SLO_MAX_CLI_WALL_MS` (default `150`).
@@ -90,8 +91,8 @@ make prod-gate       # Execute incremental plans and go/no-go checks
 | Profiling Target | Tool / Command | Generated Artifacts |
 | :--- | :--- | :--- |
 | Struct sizes & baseline diffs | `make bench-footprint` | `artifacts/struct_sizes.json` |
-| CPU flamegraph (5k objects) | `make bench-footprint-profile` | `artifacts/plan_diff_5k_flamegraph.svg` |
-| DHAT heap allocations | `make bench-footprint-alloc` | `artifacts/plan_diff_dhat.txt` |
+| CPU flamegraph (5k objects) | `make bench-footprint-profile` | `artifacts/rust_plan_diff_5k_flamegraph.svg` |
+| DHAT heap allocations | `make bench-footprint-alloc` | `artifacts/rust_plan_diff_dhat.txt` |
 | Full integration flamegraph | `ops/perf/flamegraph.sh` | Profiling artifacts |
 
 ---
@@ -111,6 +112,6 @@ make prod-gate       # Execute incremental plans and go/no-go checks
 
 ## References
 
-- Deep footprint audit: [perf-footprint-audit.md](../docs/perf-footprint-audit.md)
-- Environment contract: [operational-contract.md](../docs/operational-contract.md)
-- Core specs: [specs/README.md](../docs/specs/rust/README.md)
+- Deep footprint audit: [perf-footprint-audit.md](perf-footprint-audit.md)
+- Environment contract: [operational-contract.md](operational-contract.md)
+- Core specs: [specs/rust/README.md](specs/rust/README.md)

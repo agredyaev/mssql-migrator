@@ -6,7 +6,7 @@ SELECT j.normalized_key,
        ISNULL(j.parent_name, N''),
        @p2
 FROM OPENJSON(@p1) WITH (
-    normalized_key VARCHAR(512) '$.k',
+    normalized_key NVARCHAR(512) '$.k',
     schema_name    NVARCHAR(128) '$.s',
     kind           VARCHAR(32) '$.g',
     object_name    NVARCHAR(256) '$.o',

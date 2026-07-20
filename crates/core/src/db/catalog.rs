@@ -46,13 +46,15 @@ fn build_catalog_from_header(header: &str, kinds: &[&str], skip_schema_rows: boo
     let mut first = true;
     let mut push_source = |name: &str| {
         if first {
-            b.push_str(" SELECT row_kind, schema_name, kind, object_name, parent_name FROM ");
+            b.push(' ');
+            b.push_str(sql::catalog::ROWS_PROJECTION);
+            b.push(' ');
             b.push_str(name);
             first = false;
         } else {
-            b.push_str(
-                " UNION ALL SELECT row_kind, schema_name, kind, object_name, parent_name FROM ",
-            );
+            b.push_str(" UNION ALL ");
+            b.push_str(sql::catalog::ROWS_PROJECTION);
+            b.push(' ');
             b.push_str(name);
         }
     };
@@ -102,6 +104,7 @@ pub fn merge_rows(state: &mut CatalogState, rows: &[crate::driver::RowData]) -> 
         let name = row.get_str(3).unwrap_or("");
         let parent = row.get_str(4);
         let key = ObjectKey::new(schema, obj_kind, name);
+        super::catalog_guard::ensure_index_unambiguous(state, &key, obj_kind, parent)?;
         state
             .objects
             .insert(key, catalog_object(schema, obj_kind, name, parent));

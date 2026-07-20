@@ -6,7 +6,7 @@ use crate::error::{Error, Result};
 /// Sends a trivial query to verify the connection is alive.
 pub async fn ping(client: &mut RawClient) -> Result<()> {
     client
-        .simple_query("SELECT 1")
+        .simple_query(crate::sql::driver::PING)
         .await
         .map_err(|e| Error::Sql(e.to_string()))?;
     Ok(())

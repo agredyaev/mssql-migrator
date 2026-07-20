@@ -7,7 +7,7 @@ use super::protocol::{Request, Response};
 pub async fn handle(client: &mut RawClient, req: Request) -> Response {
     match req {
         Request::Auth { .. } => Response::err("auth must be handled before rpc dispatch"),
-        Request::Ping => match crate::driver::mssql::ping(client).await {
+        Request::Ping { .. } => match crate::driver::mssql::ping(client).await {
             Ok(()) => Response::ok_empty(),
             Err(e) => Response::err(e.to_string()),
         },
@@ -31,15 +31,12 @@ async fn query(client: &mut RawClient, sql: &str, params: &[String]) -> Result<V
     let param_refs: Vec<&dyn tiberius::ToSql> =
         refs.iter().map(|s| s as &dyn tiberius::ToSql).collect();
     let rows = crate::driver::mssql::query_tiberius(client, sql, &param_refs).await?;
-    Ok(rows.iter().map(from_tiberius).collect())
+    rows.iter().map(from_tiberius).collect()
 }
 
-/// Best-effort release of the session advisory lock when a client disconnects,
-/// so a client that died mid-deploy without releasing does not leave the shared
-/// daemon session holding `reporting_layer_migration` forever. Releases ONLY if
-/// the session currently holds it, so a read-only client that never acquired the
-/// lock does not log a spurious "not currently held" error.
-pub async fn release_session_lock(client: &mut RawClient) {
-    const RELEASE_IF_HELD: &str = "IF APPLOCK_MODE('public', 'reporting_layer_migration', 'Session') <> 'NoLock' EXEC sp_releaseapplock @Resource = 'reporting_layer_migration', @LockOwner = 'Session';";
-    let _ = crate::driver::mssql::exec(client, RELEASE_IF_HELD).await;
+/// Roll back and release the session lock before reuse. The caller discards the
+/// whole connection if either cleanup round-trip fails.
+pub async fn cleanup_session(client: &mut RawClient) -> Result<()> {
+    crate::driver::mssql::exec(client, crate::sql::apply::ROLLBACK_IF_OPEN).await?;
+    crate::driver::mssql::exec(client, crate::sql::lock::RELEASE_IF_HELD).await
 }

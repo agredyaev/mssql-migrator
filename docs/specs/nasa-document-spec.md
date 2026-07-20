@@ -24,8 +24,7 @@ need chat history or CI archaeology.
 - every durable checked-in Markdown document in the repository
 - root `README.md`
 - docs under `docs/`
-- component and operations documentation under `ops/`, `platform/`, and
-  `services/`
+- component and operations documentation under `ops/`
 - templates and specifications under `docs/templates/` and `docs/specs/`
 
 ## Language Requirements

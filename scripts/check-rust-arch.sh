@@ -25,12 +25,13 @@ if [[ -d "$CLI_SRC" ]]; then
         err "cli must not import migrator_core::$mod (allowed: config, engine, error, export): $line"
         ;;
     esac
-  done < <(grep -hE '^use migrator_core::' "$CLI_SRC"/*.rs 2>/dev/null || true)
+  done < <(find "$CLI_SRC" -name '*.rs' -exec grep -hE '^use migrator_core::' {} + 2>/dev/null || true)
 fi
 
 if [[ -f "$RMIGD_SRC/main.rs" ]]; then
-  if grep -hE '^use migrator_core::' "$RMIGD_SRC/main.rs" 2>/dev/null | grep -qv '^use migrator_core::session'; then
-    err "rmigd must only import migrator_core::session"
+  if find "$RMIGD_SRC" -name '*.rs' -exec grep -hE '^use migrator_core::' {} + 2>/dev/null \
+      | grep -Ev '^use migrator_core::(session|config|error)' | grep -q .; then
+    err "rmigd must only import migrator_core::session/config/error"
   fi
   if ! grep -q 'migrator_core::session::run_daemon' "$RMIGD_SRC/main.rs"; then
     err "rmigd main must call migrator_core::session::run_daemon"

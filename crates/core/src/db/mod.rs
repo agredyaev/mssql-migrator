@@ -22,6 +22,7 @@ pub mod batch;
 mod catalog;
 mod catalog_cache;
 mod catalog_cache_save;
+mod catalog_guard;
 mod catalog_inspect_cache;
 mod columns;
 pub mod warm_snapshot;

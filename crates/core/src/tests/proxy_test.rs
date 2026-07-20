@@ -5,6 +5,16 @@ use crate::session::limits::MAX_SESSION_LINE_BYTES;
 use crate::session::protocol::{Request, Response};
 use crate::session::proxy::ProxyClient;
 
+fn ping_request() -> Request {
+    Request::Ping {
+        server: String::new(),
+        port: String::new(),
+        user: String::new(),
+        encrypt: None,
+        trust_server_certificate: None,
+    }
+}
+
 fn proxy_client(stream: UnixStream) -> ProxyClient {
     let (read_half, write_half) = stream.into_split();
     ProxyClient {
@@ -37,7 +47,7 @@ async fn call_round_trips_small_response_happy_path() {
             .expect("write response");
     });
 
-    let response = client.call(Request::Ping).await.expect("ping response");
+    let response = client.call(ping_request()).await.expect("ping response");
     server.await.expect("server task");
     response.into_result().expect("ping should succeed");
 }
@@ -78,7 +88,7 @@ async fn call_rejects_oversized_response_regression() {
     });
 
     let err = client
-        .call(Request::Ping)
+        .call(ping_request())
         .await
         .expect_err("oversized response should fail");
     server.await.expect("server task");
@@ -115,6 +125,40 @@ async fn timing_conn_exec_times_out_when_server_stalls() {
         .expect_err("a stalled server must hit the command timeout");
     assert!(
         err.to_string().contains("timed out"),
+        "unexpected error: {err}"
+    );
+    server.abort();
+}
+
+/// A peer streaming an over-limit line WITHOUT a newline must be cut off at
+/// the cap (bounded read), not buffered until it sends one.
+#[tokio::test]
+async fn call_caps_no_newline_flood_regression() {
+    let (client_stream, server_stream) = UnixStream::pair().expect("unix pair");
+    let mut client = proxy_client(client_stream);
+    let server = tokio::spawn(async move {
+        let (read_half, mut write_half) = server_stream.into_split();
+        let mut reader = BufReader::new(read_half);
+        let mut request_line = String::new();
+        reader
+            .read_line(&mut request_line)
+            .await
+            .expect("read request");
+        // Over-limit bytes with NO trailing newline; keep the stream open.
+        let flood = "x".repeat(MAX_SESSION_LINE_BYTES + 2);
+        write_half
+            .write_all(flood.as_bytes())
+            .await
+            .expect("write flood");
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+    });
+
+    let err = client
+        .call(ping_request())
+        .await
+        .expect_err("flood without newline must fail at the cap");
+    assert!(
+        matches!(err, crate::error::Error::InvalidInput(ref msg) if msg.contains("response exceeds size limit")),
         "unexpected error: {err}"
     );
     server.abort();

@@ -17,6 +17,7 @@ pub const CONFIG_FLAG_SKIP_GIT: u8 = 1 << 1;
 pub const CONFIG_FLAG_JSON_LOGS: u8 = 1 << 2;
 pub const CONFIG_FLAG_INSPECT_FULL: u8 = 1 << 3;
 pub const CONFIG_FLAG_CATALOG_CACHE: u8 = 1 << 4;
+pub const CONFIG_FLAG_ALLOW_ADOPT: u8 = 1 << 5;
 
 pub const CONFIG_COLD_FLAG_ENCRYPT: u8 = 1 << 0;
 pub const CONFIG_COLD_FLAG_TRUST_SERVER_CERTIFICATE: u8 = 1 << 1;

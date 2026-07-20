@@ -37,7 +37,7 @@ pub struct WorkspaceCold {
     /// Transition entries grouped by object row index.
     pub transitions_by_row: HashMap<u32, Vec<TransitionEntry>>,
     /// Staged transition data pending row assignment.
-    pub transitions_staging: HashMap<ObjectKey, Vec<(SharedStr, ScriptKey)>>,
+    pub transitions_staging: HashMap<(SharedStr, ObjectKey), Vec<(SharedStr, ScriptKey)>>,
     /// Parent references keyed by child object row index.
     pub parent_by_row: HashMap<u32, ParentRef>,
     /// Parent references keyed by child object key.

@@ -1,0 +1,25 @@
+[database]
+server = "127.0.0.1"
+port = 1433
+auth = "sql"
+# Production-safe transport policy. Local Docker gates override both values
+# through ops/perf/e2e_env.sh because that fixture has no TLS endpoint.
+encrypt = true
+trust_server_certificate = false
+
+[paths]
+sql_root = ".temp/sql"
+sql_base = ".temp/sql"
+report_dir = "ops/perf/artifacts"
+l1_cache_dir = ".rmig/cache"
+
+[execution]
+log_level = "info"
+report_sync = false
+skip_git = false
+inspect_full = false
+catalog_cache = true
+allow_adopt = false
+command_timeout = "30s"
+lock_timeout = "60s"
+slo_max_cli_wall_ms = 150

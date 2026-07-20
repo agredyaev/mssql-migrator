@@ -41,24 +41,26 @@ pub(super) async fn warmup_git_delta(
 
     if ctx.need_checksums {
         let t_cs = Instant::now();
-        checksums = load_checksums_plan(conn, ctx.db_fp, ctx.keys_json).await?;
+        checksums = load_checksums_plan(
+            conn,
+            ctx.db_fp,
+            ctx.keys_json,
+            ctx.bypass,
+            ctx.allow_checksum_repair,
+        )
+        .await?;
         checksums_ms = timings::dur_ms(t_cs.elapsed());
         set_checksum_trace(&mut local_trace, ctx.db_fp, ctx.keys_json);
         round_trips += checksum_query_round_trips(ctx.db_fp, ctx.keys_json);
     }
 
     if want_cache && loaded.objects.is_empty() {
-        let sql = batch::plan_db_batch_sql(
-            &[],
-            false,
-            false,
-            false,
-            false,
-            false,
-            Some(ctx.ws.object_count()),
-        );
+        let sql = batch::plan_db_batch_sql(&[], false, false, false, false, false, true);
+        let count = ctx.ws.object_count().to_string();
         if !sql.trim().is_empty() {
-            let sets = conn.query_all(&sql, &[ctx.keys_json, "[]", "[]"]).await?;
+            let sets = conn
+                .query_all(&sql, &[ctx.keys_json, "[]", "[]", &count])
+                .await?;
             round_trips += 1;
             for set in sets {
                 if catalog::looks_like_cache_load_rows(&set) {

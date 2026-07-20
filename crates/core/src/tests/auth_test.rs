@@ -60,11 +60,11 @@ fn resolve_session_token_falls_back_to_process_env_edge_case() {
 #[test]
 fn resolve_session_token_config_only_when_env_unset_regression() {
     let _guard = EnvGuard::new();
-    let cfg = cfg_with_token("dotenv-token");
+    let cfg = cfg_with_token("stored-token");
     assert_eq!(
         resolve_session_token(Some(&cfg)),
-        "dotenv-token",
-        "BG-011 regression: dotenv token must be honored without process env"
+        "stored-token",
+        "daemon config must retain the process-env token after validation"
     );
 }
 

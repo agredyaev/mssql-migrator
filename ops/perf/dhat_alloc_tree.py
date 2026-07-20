@@ -249,11 +249,17 @@ def main() -> int:
         default="ops/perf/artifacts/dhat_heap.json",
         help="Path to dhat-heap.json",
     )
+    def positive_int(v: str) -> int:
+        n = int(v)
+        if n < 1:
+            raise argparse.ArgumentTypeError("must be a positive integer")
+        return n
+
     parser.add_argument(
         "--iterations",
-        type=int,
+        type=positive_int,
         default=20,
-        help="bench_loop iteration count in dhat bench",
+        help="bench_loop iteration count in dhat bench (>= 1)",
     )
     args = parser.parse_args()
 

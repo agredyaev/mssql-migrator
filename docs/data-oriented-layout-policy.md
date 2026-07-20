@@ -6,7 +6,7 @@ Lifecycle: `Current`.
 
 Define non-negotiable **memory layout rules** for in-process hot paths: scan → diff → plan output. The goal is cache locality and allocation throughput on bulk loops, not domain encapsulation or polymorphic object graphs.
 
-This document is the **canonical policy**. Measurement procedures live in [`perf-footprint-audit.md`](perf-footprint-audit.md).
+This document is the **canonical policy** and records the committed in-memory struct baseline (see § Verification and validation). Measurement procedures live in [`perf-footprint-audit.md`](perf-footprint-audit.md).
 
 ## Scope
 
@@ -39,6 +39,23 @@ flowchart TB
   ScanFinalize --> DiffCompute --> PlanOutput
   PathIndex -.-> ScanFinalize
 ```
+
+### Kelley technique codes
+
+Vocabulary for the encoding techniques applied on hot paths; each maps to one or more **DOD-*** rules below.
+
+| Code | Technique |
+|------|-----------|
+| **IDX** | String or pointer replaced by a `u32` index |
+| **DER** | Derive at read/export; do not store |
+| **SOA** | Struct-of-arrays / columnar |
+| **SPARSE** | `HashMap<u32, T>` for rare fields |
+| **ARENA** | Single byte buffer plus offsets |
+| **SLAB** | One pre-sized domain per run |
+| **TAG** | `u8` enum plus `match` |
+| **OOB** | Skip unchanged rows via bit flags or side lists |
+| **COLD** | Fat data off the hot row |
+| **VIEW** | Fat wire shape only at JSON/export |
 
 ## Interfaces and boundaries
 
@@ -74,6 +91,12 @@ Code that runs **once per layout row** on every plan/diff for the full tree:
 4. **Layout follows access pattern:** Full scans use arrays and struct-of-arrays (SoA). Side tables are allowed only when a field is provably sparse on real fixtures.
 
 **Reference:** [Andrew Kelley - *Practical Data Oriented Design*](https://www.youtube.com/watch?v=IroPQ150F6c) (encoding vs OOP/polymorphism ~30:00; hash maps for sparse fields only).
+
+### Post-scan invariants
+
+- Diff iterates `for i in 0..object_count` by row index (**CASE-1**); no full-scan `HashMap` iteration (**DOD-X2**).
+- No `SharedStr::new` in per-object diff loops after scan finalize; hot rows read arena slices only.
+- The plan JSON wire shape stays fixed unless a maintainer refreshes the e2e baselines in the same change.
 
 ### Required patterns (MUST on hot paths)
 
@@ -259,13 +282,15 @@ Transition paths: **CASE-4** - read from `transition_path_cache` at fill time, n
 1. Author identifies whether a change touches **hot** or **cold** path (see § Interfaces) and names the matching **CASE-*** id(s) (see § Layout decision guide).
 2. Hot-path layout must satisfy **DOD-1** through **DOD-6** or cite an allowed **DOD-A*** pattern with evidence.
 3. Before merge, run footprint audit commands from [`perf-footprint-audit.md`](perf-footprint-audit.md) when layout changes materially.
-4. Record before/after bench or dhat totals in the PR when touching [`crates/core/src/domain/`](../crates/core/src/domain/), [`crates/core/src/plan/`](../crates/core/src/plan/), [`crates/core/src/domain/`](../crates/core/src/domain/), or [`crates/core/src/plan/`](../crates/core/src/plan/).
+4. Record before/after bench or dhat totals in the PR when touching [`crates/core/src/domain/`](../crates/core/src/domain/) or [`crates/core/src/plan/`](../crates/core/src/plan/).
 
 ## Off-nominal behavior and failure containment
 
 - **Policy violation without measurement:** Treat as review blocker for hot-path PRs until footprint evidence shows no regression or intentional baseline update.
 - **Sparse side table without sparsity note:** **DOD-A2** not satisfied; default to dense column or reject until fixture stats are documented.
 - **New map iteration in diff:** **DOD-X2** / **DOD-2** violation unless scoped to cold path only.
+- **Warmed skip-heavy loop allocates:** the 5000-object dhat skip loop must report `0 B/iter` after warmup; `> 0 B/iter` is a blocker until explained.
+- **Struct size drift:** a change in any baselined `size_of` fails `footprint_baseline_match`; refresh the committed baseline only with maintainer intent (`make bench-footprint-update-baseline`).
 
 ## Verification and validation
 
@@ -278,6 +303,22 @@ Transition paths: **CASE-4** - read from `transition_path_cache` at fill time, n
 | Full audit runbook | [`perf-footprint-audit.md`](perf-footprint-audit.md) § Nominal flow |
 
 Policy compliance is validated by **footprint audit**, not static lint alone.
+
+### Committed struct baseline
+
+Baselined `size_of` values (darwin/arm64, [`footprint_baseline.json`](../crates/core/tests/testdata/perf/footprint_baseline.json)):
+
+| Type | `size_of` (B) |
+|------|--------------:|
+| `Config` | 144 |
+| `ConfigCold` | 232 |
+| `Workspace` (hot) | 88 |
+| `WorkspaceCold` | 928 |
+| `ObjectEntry` | 48 |
+| `PlannedObject` | 144 |
+| `MigrationPlan` | 304 |
+
+The skip-heavy diff at 5000 objects reports `0 B/iter` in the dhat loop after warmup (see [`perf-footprint-audit.md`](perf-footprint-audit.md)).
 
 ### PR review checklist
 
@@ -293,12 +334,12 @@ Policy compliance is validated by **footprint audit**, not static lint alone.
 Routine check before large layout PRs:
 
 ```bash
-make bench-footprint && make bench-footprint
+make bench-footprint
 make bench-footprint-profile && make bench-footprint-alloc
 make profile-summary
 ```
 
-Update committed baselines only with maintainer intent: `make bench-footprint-update-baseline`, `make bench-footprint-update-baseline`.
+Update committed baselines only with maintainer intent: `make bench-footprint-update-baseline`.
 
 ## Open issues and non-goals
 
@@ -306,7 +347,6 @@ Update committed baselines only with maintainer intent: `make bench-footprint-up
 
 ## References
 
-- [`docs/dod.md`](dod.md) - layout invariants and baseline sizes
 - [`docs/perf-footprint-audit.md`](perf-footprint-audit.md) - measurement runbook
 - [`docs/specs/rust/module-domain.md`](specs/rust/module-domain.md) - workspace, arena
 - [Andrew Kelley - *Practical Data Oriented Design*](https://www.youtube.com/watch?v=IroPQ150F6c)

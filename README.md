@@ -29,7 +29,7 @@ sql/               # embedded T-SQL (include_str!)
 
 ## Interfaces and Boundaries
 
-- **Inputs**: Environment variable configurations (loaded from a `.env` file or process context) and a declarative T-SQL folder layout.
+- **Inputs**: Non-secret settings from `config.toml`, credentials from the process environment, and a declarative T-SQL folder layout.
 - **Outputs**: Compiled native binaries (`bin/rmig` and `rmigd`), plans, and execution audit reports.
 
 ---
@@ -88,9 +88,9 @@ Verify the workspace using the following verification suite:
 
 - **Routine Execution**: Run plans using:
   ```bash
-  ./target/release/rmig --env .env plan
+  RM_DB_USER=sa RM_DB_PASSWORD='***' ./target/release/rmig --config config.toml plan
   ```
-- **Recovery**: Refer to [runbook.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/runbook.md) for unlocking active sessions or recovering from blocked migrations.
+- **Recovery**: Refer to [runbook.md](docs/runbook.md) for unlocking active sessions or recovering from blocked migrations.
 
 ---
 
@@ -104,8 +104,9 @@ Verify the workspace using the following verification suite:
 
 | Topic | Canonical Path |
 | :--- | :--- |
-| Core specifications | [docs/specs/rust/README.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/specs/rust/README.md) |
-| Operator reference | [docs/rmig-rust.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/rmig-rust.md) |
-| Production gate | [docs/prod-gate.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/prod-gate.md) |
-| Performance harness | [ops/perf/README.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/ops/perf/README.md) |
-| Product overview | [docs/solution.md](file:///Users/fingerbib/.gemini/antigravity/worktrees/mssql-reporting-migrator/analyze-nasa-docs-compliance/docs/solution.md) |
+| Architecture walkthrough (start here) | [docs/architecture-walkthrough.md](docs/architecture-walkthrough.md) |
+| Core specifications | [docs/specs/rust/README.md](docs/specs/rust/README.md) |
+| Operator reference | [docs/rmig-rust.md](docs/rmig-rust.md) |
+| Production gate | [docs/prod-gate.md](docs/prod-gate.md) |
+| Performance harness | [ops/perf/README.md](ops/perf/README.md) |
+| Product overview | [docs/solution.md](docs/solution.md) |

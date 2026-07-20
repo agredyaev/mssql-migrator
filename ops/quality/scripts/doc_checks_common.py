@@ -55,3 +55,17 @@ LANGUAGE_EXEMPT: frozenset[str] = frozenset(
         "docs/templates/document-template.md",
     }
 )
+
+
+def strip_fenced_blocks(text: str) -> str:
+    """Remove fenced code blocks: example text inside ``` fences must never
+    satisfy structural/metadata requirements."""
+    out: list[str] = []
+    in_fence = False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence:
+            out.append(line)
+    return "\n".join(out)

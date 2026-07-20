@@ -27,7 +27,7 @@ jobs:
       # `--tests` runs every migrator-core integration binary too (DB-gated ones
       # self-skip without RMIG_RUN_SQLSERVER_INTEGRATION); rmigd's unit tests
       # otherwise never execute anywhere in CI.
-      - run: cargo test -p migrator-core --lib --tests
+      - run: cargo test -p migrator-core --all-features --lib --tests
       - run: cargo test -p rmigd
 
   integration:
@@ -38,9 +38,11 @@ jobs:
       RMIGD_SOCKET: ${{ github.workspace }}/.rmig/rmigd-ci.sock
       RMIG_E2E_TIMING_FACTOR: '5.0'
       RMIG_E2E_TIMING_SLACK_MS: '300'
-      # Absolute wall-clock SLO ceilings are not scaled by TIMING_FACTOR; relax
-      # them here so a loaded shared runner does not fail CI on a timing blip.
-      RMIG_SLO_MAX_CLI_WALL_MS: '750'
+      # The parallel-DB ceiling is not scaled by TIMING_FACTOR; relax it for
+      # loaded shared runners. The CLI wall SLO stays at the DOCUMENTED product
+      # limit (docs/prod-gate.md: < 150 ms) — a wider CI value would green-light
+      # regressions up to 5x the contract.
+      RMIG_SLO_MAX_CLI_WALL_MS: '150'
       RMIG_PLAN_DB_MAX_PAR_MS: '2500'
       RMIG_RUN_SQLSERVER_INTEGRATION: '1'
       RMIG_USE_RMIGD: '1'

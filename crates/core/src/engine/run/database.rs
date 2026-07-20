@@ -41,7 +41,14 @@ pub(super) async fn run_command_for_database(
         super::super::apply_run::run_locked(cmd, &mut conn, cfg, &mut ws, &mut timings).await?
     } else {
         let plan = plan_phase(cmd, cfg, &mut conn, &mut ws, &mut timings).await?;
-        (plan, 0)
+        // Validate is the CI gate for "can this repository be applied": a
+        // blocked plan is a failing validation, not a successful preview.
+        let code = if cmd == Command::Validate && plan.blocked {
+            crate::error::EXIT_PLAN_BLOCKED
+        } else {
+            0
+        };
+        (plan, code)
     };
 
     timings.plan_wall_ms = timings::dur_ms(cli_start.elapsed());

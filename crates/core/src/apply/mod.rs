@@ -13,8 +13,9 @@
 //! 1. Verify that the planning phase is not blocked.
 //! 2. Ensure targeted database structural tables exist (`audit::ensure_tables`).
 //! 3. Apply schema migrations sequentially (`schemas::apply_schemas`).
-//! 4. Apply non-schema structural objects (`objects::apply_objects`).
-//! 5. Execute state layout transitions (`transitions::apply_transitions`).
+//! 4. Execute state layout transitions (`transitions::apply_transitions`) —
+//!    before objects, so dependents can see columns the transitions add.
+//! 5. Apply non-schema structural objects (`objects::apply_objects`).
 //! 6. Flush generated history logs and invalidate downstream memory caches on completion.
 //!
 //! ### Off-Nominal & Failure Containment
@@ -23,13 +24,17 @@
 
 mod history_write;
 mod kind;
+mod metadata;
+mod modules;
 mod objects;
 mod objects_exec;
 mod result;
 mod schemas;
+mod script_read;
+mod table_records;
 mod transitions;
-mod tx;
 
+pub use metadata::{execute_metadata_plan, MetadataMode};
 pub use result::ApplyResult;
 
 use crate::audit::{self, ensure_history_index, ensure_tables, invalidate_audit_cache};
@@ -52,7 +57,7 @@ pub async fn execute_plan(
     }
     plan.ensure_objects_materialized(ws);
     let mut result = ApplyResult::default();
-    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.database);
+    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     ensure_tables(conn, &db_fp).await?;
     // History rows are now flushed per applied object, so the index must exist
     // before the apply loop rather than in `finish`.
@@ -61,16 +66,20 @@ pub async fn execute_plan(
     if result.failed > 0 {
         return finish(cfg, conn, result).await;
     }
-    objects::apply_objects(conn, ws, plan, &mut result).await?;
+    // Table transitions run BEFORE indexes and programmable objects: new
+    // indexes/views/functions in the same change set routinely depend on
+    // columns the transition adds, and the old shape would reject them.
+    // (New-table historical transitions stay audit-only inside object create.)
+    transitions::apply_transitions(conn, ws, plan, &mut result).await?;
     if result.failed > 0 {
         return finish(cfg, conn, result).await;
     }
-    transitions::apply_transitions(conn, ws, plan, &mut result).await?;
+    objects::apply_objects(conn, ws, plan, &mut result).await?;
     finish(cfg, conn, result).await
 }
 
 async fn finish(cfg: &Config, conn: &mut TimingConn, result: ApplyResult) -> Result<ApplyResult> {
-    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.database);
+    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     if result.wrote_history {
         invalidate_audit_cache(&db_fp);
         audit::mark_history_nonempty(&db_fp);
@@ -82,7 +91,7 @@ async fn finish(cfg: &Config, conn: &mut TimingConn, result: ApplyResult) -> Res
             tracing::warn!(error = %e, "post-apply catalog cache invalidation failed");
         }
         let l1 = crate::cache::l1::L1Cache::new(&cfg.l1_cache_dir);
-        let fp = audit::db_fingerprint(&cfg.server, &cfg.database);
+        let fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
         if let Err(e) = l1.invalidate_all(&fp) {
             tracing::warn!(error = %e, "post-apply L1 cache invalidation failed");
         }

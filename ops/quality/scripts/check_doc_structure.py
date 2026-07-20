@@ -34,7 +34,7 @@ def main() -> int:
         rel = C.rel_to_root(root, path)
         if rel in C.STRUCTURE_EXEMPT:
             continue
-        text = path.read_text(encoding="utf-8")
+        text = C.strip_fenced_blocks(path.read_text(encoding="utf-8"))
         missing = [name for name, rx in HEADING_TESTS if not rx.search(text)]
         if missing:
             failures.append(f"{rel}: missing sections → {', '.join(missing)}")

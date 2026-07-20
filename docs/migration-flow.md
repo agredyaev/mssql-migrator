@@ -52,13 +52,13 @@ from the repository tree are therefore never created, altered, or dropped — se
 2. Connect (direct TDS or via `rmigd`) — `crates/core/src/engine/run/database.rs`.
 3. Read-only commands (`plan`, `validate`) inspect the catalog and diff without the lock (`crates/core/src/engine/run/plan_phase.rs`).
 4. Mutating commands (`migrate`, `baseline`, `repair-checksum`) acquire the advisory lock first, then inspect, diff, and apply entirely inside the lock so a concurrent migrator cannot make the plan stale (`crates/core/src/engine/apply_run.rs`).
-5. Apply order: ensure audit tables, apply schemas (idempotent `IF SCHEMA_ID ... EXEC('CREATE SCHEMA ...')`), then objects, then table transitions (`crates/core/src/apply/mod.rs`).
+5. Apply order: ensure audit tables, apply schemas (idempotent `IF SCHEMA_ID ... EXEC('CREATE SCHEMA ...')`), then table transitions, then dependent indexes and programmable objects (`crates/core/src/apply/mod.rs`).
 6. Flush audit history, invalidate caches, release the lock, and return exit code 0 on success.
 
 ## Off-Nominal Behavior And Failure Containment
 
 - Failure mode: a planned object fails to execute.
-  Containment: its transaction rolls back (`SET XACT_ABORT ON` plus a `@@TRANCOUNT`-guarded ROLLBACK), the apply stops at the first failure, remaining objects/transitions are not attempted, accumulated audit history is still flushed, and the run returns `Error::Sql` (exit 5).
+  Containment: its transaction rolls back (`SET XACT_ABORT ON` plus a `@@TRANCOUNT`-guarded ROLLBACK). Non-modules stop; modules retry after later prerequisites and fail on a no-progress pass. Accumulated audit history is still flushed and the run returns `Error::Sql` (exit 5).
 - Failure mode: the ROLLBACK itself fails.
   Containment: the rollback error is recorded in the result, signalling unknown connection state instead of running the next object in a zombie transaction (`crates/core/src/apply/objects_exec.rs`).
 - Failure mode: SQL Server is unreachable or unresponsive.
@@ -74,7 +74,7 @@ from the repository tree are therefore never created, altered, or dropped — se
 
 ## Verification And Validation
 
-- Contracts and checks: `crates/core/src/apply/tx.rs` test (XACT_ABORT wrapping), `crates/core/src/tests/proxy_test.rs` (command timeout), `crates/core/src/tests/schema_sql_test.rs` (idempotent, injection-safe `CREATE SCHEMA`), `crates/core/src/tests/command_mutates_test.rs` (only mutating commands lock), and the SQL integration suite under `ops/perf/sql_regression.sh`.
+- Contracts and checks: `crates/core/src/apply/history_write.rs` test (XACT_ABORT wrapping), `crates/core/src/tests/proxy_test.rs` (command timeout), `crates/core/src/tests/schema_sql_test.rs` (idempotent, injection-safe `CREATE SCHEMA`), `crates/core/src/tests/command_mutates_test.rs` (only mutating commands lock), and the SQL integration suite under `ops/perf/sql_regression.sh`.
 - Existing-database safety: `crates/core/tests/unmanaged_objects_test.rs` (offline diff guards — absence never drops; the production gate is fail-closed on blocked plans) and `crates/core/tests/existing_db_adoption_integration.rs` (real-database preservation across `migrate` and read-only `plan`).
 - Evidence artifacts: plan JSON, audit history rows, and `make check-e2e` output.
 - Exit criteria: a clean apply succeeds; a failing apply stops at the first error, reports it, and leaves a clear (non-hanging) state.

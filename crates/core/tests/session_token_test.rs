@@ -1,77 +1,59 @@
 use std::sync::Mutex;
 
-use migrator_core::config::{build_config, load_env_file};
+use migrator_core::config::{build_config, load_toml_config_required, TomlConfig};
 use migrator_core::session::resolve_session_token;
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 
 struct EnvGuard {
     _lock: std::sync::MutexGuard<'static, ()>,
+    saved: Option<String>,
 }
 
 impl EnvGuard {
     fn new() -> Self {
         let lock = TEST_LOCK.lock().expect("session token test lock");
+        let saved = std::env::var("RMIG_SESSION_TOKEN").ok();
         std::env::remove_var("RMIG_SESSION_TOKEN");
-        Self { _lock: lock }
+        Self { _lock: lock, saved }
     }
 }
 
 impl Drop for EnvGuard {
     fn drop(&mut self) {
-        std::env::remove_var("RMIG_SESSION_TOKEN");
+        match self.saved.take() {
+            Some(value) => std::env::set_var("RMIG_SESSION_TOKEN", value),
+            None => std::env::remove_var("RMIG_SESSION_TOKEN"),
+        }
     }
 }
 
 #[test]
-fn build_config_loads_session_token_from_dotenv_happy_path() {
-    let _guard = EnvGuard::new();
-    let dir = tempfile::tempdir().expect("tempdir");
-    let env_path = dir.path().join("session.env");
-    std::fs::write(&env_path, "RMIG_SESSION_TOKEN=secret-from-file\n").expect("write env");
-    let env = load_env_file(&env_path).expect("load env");
-    let cfg = build_config(&env, false);
-    assert_eq!(resolve_session_token(Some(&cfg)), "secret-from-file");
-}
-
-#[test]
-fn build_config_without_session_token_stays_empty_negative_path() {
-    let _guard = EnvGuard::new();
-    let dir = tempfile::tempdir().expect("tempdir");
-    let env_path = dir.path().join("session.env");
-    std::fs::write(&env_path, "RM_DB_SERVER=localhost\n").expect("write env");
-    let env = load_env_file(&env_path).expect("load env");
-    let cfg = build_config(&env, false);
-    assert!(resolve_session_token(Some(&cfg)).is_empty());
-}
-
-#[test]
-fn process_env_overrides_empty_config_token_edge_case() {
+fn process_environment_token_is_loaded_happy_path() {
     let _guard = EnvGuard::new();
     std::env::set_var("RMIG_SESSION_TOKEN", "shell-token");
-    let dir = tempfile::tempdir().expect("tempdir");
-    let env_path = dir.path().join("session.env");
-    std::fs::write(&env_path, "RM_DB_SERVER=localhost\n").expect("write env");
-    let env = load_env_file(&env_path).expect("load env");
-    let cfg = build_config(&env, false);
+    let cfg = build_config(&TomlConfig::default(), false);
     assert_eq!(resolve_session_token(Some(&cfg)), "shell-token");
 }
 
 #[test]
-fn dotenv_token_used_when_process_env_unset_regression() {
+fn missing_process_environment_token_stays_empty_negative_path() {
+    let _guard = EnvGuard::new();
+    let cfg = build_config(&TomlConfig::default(), false);
+    assert!(resolve_session_token(Some(&cfg)).is_empty());
+}
+
+#[test]
+fn toml_session_token_is_rejected_with_env_guidance_regression() {
     let _guard = EnvGuard::new();
     let dir = tempfile::tempdir().expect("tempdir");
-    let env_path = dir.path().join("session.env");
-    std::fs::write(
-        &env_path,
-        "RMIG_SESSION_TOKEN=bg011-dotenv-only\nRM_DB_SERVER=localhost\n",
-    )
-    .expect("write env");
-    let env = load_env_file(&env_path).expect("load env");
-    let cfg = build_config(&env, false);
-    assert_eq!(
-        resolve_session_token(Some(&cfg)),
-        "bg011-dotenv-only",
-        "BG-011 regression: token from --env / RMIGD_ENV must drive session auth"
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "[session]\ntoken = 'must-not-be-read'\n").expect("write config");
+    let err = load_toml_config_required(&path).expect_err("TOML token must be rejected");
+    let message = err.to_string();
+    assert!(message.contains("RMIG_SESSION_TOKEN"), "{message}");
+    assert!(
+        !message.contains("must-not-be-read"),
+        "secret leaked: {message}"
     );
 }

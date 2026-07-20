@@ -1,4 +1,3 @@
-use crate::db::state::CatalogState;
 use crate::domain::{is_module_kind_code, ObjectEntry, KIND_TABLES, KIND_TRIGGERS};
 
 use super::diff_prepare::prior_digest_present;
@@ -18,14 +17,14 @@ pub struct ScenarioInput<'a> {
     pub obj: &'a ObjectEntry,
     /// Workspace containing the full object registry.
     pub ws: &'a crate::domain::Workspace,
-    /// Current catalog state loaded from the database.
-    pub catalog: &'a CatalogState,
     /// Slice of prior digests indexed by catalog row.
     pub prior_digests: &'a [Option<[u8; 32]>],
     /// Catalog row identifier for the child object.
     pub child_row_id: u32,
     /// Whether the object has at least one transition-path row.
     pub has_transition_paths: bool,
+    /// The audited live-state fingerprint differs from SQL Server's current state.
+    pub live_definition_drift: bool,
 }
 
 /// Resolves the `PlanScenario` to apply for a single object given `input`.
@@ -37,16 +36,23 @@ pub fn resolve_plan_scenario(input: ScenarioInput<'_>) -> PlanScenario {
         kind_code,
         obj,
         ws,
-        catalog,
         prior_digests,
         child_row_id,
         has_transition_paths,
+        live_definition_drift,
     } = input;
     if !exists {
         return PlanScenario::Create;
     }
     if prior.is_none() || prior == Some([0; 32]) {
         return PlanScenario::Adopt;
+    }
+    if live_definition_drift {
+        return if is_module_kind_code(kind_code) {
+            PlanScenario::ModuleUpdate
+        } else {
+            PlanScenario::LiveStructuralDriftBlocked
+        };
     }
     if prior == Some(checksum) {
         return PlanScenario::SkipUnchanged;
@@ -55,7 +61,6 @@ pub fn resolve_plan_scenario(input: ScenarioInput<'_>) -> PlanScenario {
         kind_code,
         obj,
         ws,
-        catalog,
         prior_digests,
         child_row_id,
         has_transition_paths,
@@ -66,7 +71,6 @@ fn resolve_changed_scenario(
     kind_code: u8,
     obj: &ObjectEntry,
     ws: &crate::domain::Workspace,
-    _catalog: &CatalogState,
     prior_digests: &[Option<[u8; 32]>],
     child_row_id: u32,
     has_transition_paths: bool,
@@ -79,7 +83,7 @@ fn resolve_changed_scenario(
                 PlanScenario::TableReprocess
             }
         }
-        KIND_TRIGGERS if obj.parent_ref_for_row(ws, child_row_id).is_some() => {
+        KIND_TRIGGERS => {
             let Some(pref) = obj.parent_ref_for_row(ws, child_row_id) else {
                 return changed_default_scenario(kind_code);
             };
@@ -104,6 +108,6 @@ fn changed_default_scenario(kind_code: u8) -> PlanScenario {
     if is_module_kind_code(kind_code) {
         PlanScenario::ModuleUpdate
     } else {
-        PlanScenario::Reprocess
+        PlanScenario::StructuralChangeBlocked
     }
 }

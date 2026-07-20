@@ -41,7 +41,7 @@ Operator-facing build/env docs: [`docs/rmig-rust.md`](../../rmig-rust.md). This 
 
 ## Nominal flow
 
-1. `crates/cli` loads `RM_*` from env / `--env` file.
+1. `crates/cli` loads non-secret settings from `config.toml` and overrides/secrets from process env.
 2. `engine::run_command` scans layout (`scan`), runs plan DB phase (`db` + `audit`), computes plan (`plan`).
 3. On `migrate`: optional blocked scaffold (`scaffold`), session lock (`lock`), apply (`apply`), audit flush (`audit`).
 4. Phase timings via `timings`; optional reports via `export`.

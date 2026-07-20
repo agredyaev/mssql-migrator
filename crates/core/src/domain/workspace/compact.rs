@@ -14,8 +14,22 @@ impl Workspace {
     fn compact_transitions(&mut self) {
         let staging = std::mem::take(&mut self.transitions_staging);
         self.transitions_by_row.clear();
-        for (key, entries) in staging {
-            let row_id = self.key_index(&key);
+        // Same-named tables can exist in several catalog databases; resolve
+        // each staged transition to the row of ITS database, not to whichever
+        // duplicate key happens to win in the scan-wide index.
+        let mut db_rows: std::collections::HashMap<(u16, u64), u32> =
+            std::collections::HashMap::new();
+        for i in 0..self.object_entries.len() {
+            let db_id = self.object_entries[i].db_id;
+            let fp = self.entry_key(i).fingerprint();
+            db_rows.insert((db_id, fp), (i + 1) as u32);
+        }
+        for ((db, key), entries) in staging {
+            let db_id = self.intern_database(db.clone());
+            let row_id = db_rows
+                .get(&(db_id, key.fingerprint()))
+                .copied()
+                .unwrap_or(0);
             if row_id == 0 {
                 tracing::warn!(
                     table = key.as_str(),
@@ -51,27 +65,30 @@ impl Workspace {
         }
     }
 
-    /// Appends a transition script to the staging map for `table_key`.
+    /// Appends a transition script to the staging map for `table_key` in `database`.
     pub fn push_transition_staging(
         &mut self,
+        database: SharedStr,
         table_key: ObjectKey,
         ordinal: SharedStr,
         script_key: ScriptKey,
     ) -> Result<()> {
-        // Reject two migration files claiming the same ordinal for one table: the
-        // apply order would be ambiguous. Gaps are intentionally allowed (apply
-        // tolerates them); only duplicates are a contract violation.
-        if let Some(entries) = self.transitions_staging.get(&table_key) {
+        // Reject two migration files claiming the same ordinal for one table IN
+        // ONE DATABASE: the apply order would be ambiguous. Equal ordinals for
+        // same-named tables in different catalog databases are legitimate.
+        let staged = (database, table_key);
+        if let Some(entries) = self.transitions_staging.get(&staged) {
             if entries.iter().any(|(ord, _)| *ord == ordinal) {
                 return Err(Error::InvalidInput(format!(
-                    "duplicate transition ordinal {} for {}: each migration ordinal must be unique per table",
+                    "duplicate transition ordinal {} for {}/{}: each migration ordinal must be unique per table",
                     &*ordinal,
-                    table_key.as_str()
+                    &*staged.0,
+                    staged.1.as_str()
                 )));
             }
         }
         self.transitions_staging
-            .entry(table_key)
+            .entry(staged)
             .or_default()
             .push((ordinal, script_key));
         Ok(())

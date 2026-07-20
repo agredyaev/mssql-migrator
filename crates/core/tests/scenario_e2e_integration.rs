@@ -110,6 +110,11 @@ async fn run_plan_scenario(scenario: &str, baseline_data: &str) {
             .await
             .expect("reset db for plan scenario");
     }
+    if scenario == "warm_db_plan" {
+        pipeline::run_plan_pipeline(cfg)
+            .await
+            .expect("warm SQL Server fingerprint query plan");
+    }
     let (plan, timings, io) = pipeline::run_plan_pipeline(cfg)
         .await
         .expect("plan pipeline");

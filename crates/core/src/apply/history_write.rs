@@ -1,50 +1,8 @@
-use crate::audit::{self, flush_history, HistoryRecord};
-use crate::domain::{path_lookup_candidates, ObjectKey, ScriptKey, Workspace};
+use crate::audit::{flush_history, HistoryRecord};
 use crate::driver::TimingConn;
-use crate::export::PlannedObject;
 
 use super::result::ApplyResult;
-
-/// A freshly created table's `.sql` already embodies all of its past transition
-/// scripts; record them as applied so a later table change does not replay them.
-pub(super) fn create_table_transition_records(
-    ws: &Workspace,
-    obj: &PlannedObject,
-) -> Vec<HistoryRecord> {
-    if obj.kind.as_ref() != "tables" {
-        return Vec::new();
-    }
-    let row_id = ws.key_index(&ObjectKey::from_normalized(obj.normalized_key.as_ref()));
-    let Some(paths) = ws
-        .transition_path_cache
-        .as_ref()
-        .and_then(|m| m.get(&row_id))
-    else {
-        return Vec::new();
-    };
-    paths
-        .iter()
-        .map(|off| {
-            let path = ws.str_at(*off);
-            let cs = path_lookup_candidates(obj.database_name.as_ref(), path)
-                .into_iter()
-                .find_map(|key| {
-                    ws.script_by_key(&ScriptKey::from_path(&key))
-                        .and_then(|s| s.checksum().copied())
-                })
-                .unwrap_or(obj.checksum);
-            audit::record_applied(
-                path,
-                &obj.kind,
-                cs,
-                obj.git_hash(),
-                obj.git_author(),
-                obj.git_date(),
-                "migration",
-            )
-        })
-        .collect()
-}
+pub(super) use super::table_records::create_table_transition_records;
 
 /// Persists `records` to audit history in its own INSERT. Used for module
 /// objects (CREATE OR ALTER, idempotent) and adopt records; the non-idempotent
@@ -72,6 +30,10 @@ pub(super) async fn commit_history(
 /// Run `body` and write `records` in ONE transaction, then commit — so an
 /// interrupted run can never leave a committed script without its history row.
 /// Returns `false` (and records a failure) on any step, rolling back.
+///
+/// `BEGIN` and the body execute as separate batches: module DDL such as
+/// `CREATE OR ALTER VIEW` must be the first statement of its batch, and the
+/// explicit transaction spans batches on the same connection anyway.
 pub(super) async fn apply_in_tx(
     conn: &mut TimingConn,
     body: &str,
@@ -79,8 +41,18 @@ pub(super) async fn apply_in_tx(
     result: &mut ApplyResult,
     label: &str,
 ) -> bool {
-    let open = format!("{}\n{}", crate::sql::apply::BEGIN_TX, body);
-    if let Err(e) = conn.exec(&open).await {
+    if let Err(e) = conn.exec(crate::sql::apply::BEGIN_TX).await {
+        rollback(conn, result, label, &e.to_string()).await;
+        return false;
+    }
+    if let Err(e) = conn.exec(body).await {
+        rollback(conn, result, label, &e.to_string()).await;
+        return false;
+    }
+    // A script body containing its own COMMIT/ROLLBACK would close the executor
+    // transaction; the history row would then autocommit and survive the failed
+    // final COMMIT, permanently marking an unapplied script as applied.
+    if let Err(e) = conn.exec(crate::sql::apply::ASSERT_OPEN_TX).await {
         rollback(conn, result, label, &e.to_string()).await;
         return false;
     }

@@ -1,43 +1,69 @@
 use crate::db::ChecksumMap;
+use crate::domain::ObjectKey;
 use crate::driver::RowData;
+use crate::error::{Error, Result};
 
 /// Builds a checksum map from audit history query rows.
-pub fn checksum_map_from_rows(rows: &[RowData]) -> ChecksumMap {
+pub fn checksum_map_from_rows(rows: &[RowData], allow_repair: bool) -> Result<ChecksumMap> {
     let mut out = ChecksumMap::new();
     for row in rows {
         let key = row.get_str(0).unwrap_or("");
         match parse_history_checksum(row, 1) {
-            Some(arr) => out.insert_normalized(key, arr),
-            None => tracing::warn!(
-                key,
-                "audit history row has an undecodable checksum; object omitted from the snapshot"
-            ),
+            Some(arr) => {
+                out.insert_normalized(key, arr);
+                if arr != [0; 32] && row.get_i32(2).is_some_and(|n| n != 0) {
+                    out.mark_live_definition_drift(&ObjectKey::from_normalized(key));
+                }
+            }
+            None if allow_repair => {
+                tracing::warn!(
+                    key,
+                    "audit history checksum is undecodable; repair-checksum will replace it"
+                );
+                out.insert_normalized(key, [0; 32]);
+            }
+            None => return Err(corrupt_checksum(key)),
         }
     }
-    out
+    Ok(out)
 }
 
 /// Map wire keys via layout fingerprints (no duplicate normalized `String` in `ChecksumMap`).
-pub fn checksum_map_from_rows_ws(rows: &[RowData]) -> ChecksumMap {
-    use crate::domain::ObjectKey;
+pub fn checksum_map_from_rows_ws(rows: &[RowData], allow_repair: bool) -> Result<ChecksumMap> {
     let mut out = ChecksumMap::new();
     out.reserve(rows.len());
     for row in rows {
         let key = row.get_str(0).unwrap_or("");
         match parse_history_checksum(row, 1) {
-            Some(arr) => out.insert_key(&ObjectKey::from_normalized(key), arr),
-            None => tracing::warn!(
-                key,
-                "audit history row has an undecodable checksum; object omitted from the snapshot"
-            ),
+            Some(arr) => {
+                let key = ObjectKey::from_normalized(key);
+                out.insert_key(&key, arr);
+                if arr != [0; 32] && row.get_i32(2).is_some_and(|n| n != 0) {
+                    out.mark_live_definition_drift(&key);
+                }
+            }
+            None if allow_repair => {
+                tracing::warn!(
+                    key,
+                    "audit history checksum is undecodable; repair-checksum will replace it"
+                );
+                out.insert_key(&ObjectKey::from_normalized(key), [0; 32]);
+            }
+            None => return Err(corrupt_checksum(key)),
         }
     }
-    out
+    Ok(out)
 }
 
-/// Returns true when `rows` have the two-column shape expected from a checksum query.
+fn corrupt_checksum(key: &str) -> Error {
+    Error::Checksum(format!(
+        "audit history checksum for {key} is undecodable; run repair-checksum"
+    ))
+}
+
+/// Returns true when `rows` have the checksum-query key and digest columns.
 pub fn looks_like_checksum_rows(rows: &[RowData]) -> bool {
-    rows.first().is_some_and(|r| r.cells.len() == 2)
+    rows.first().is_some_and(|r| r.cells.len() >= 2)
 }
 
 /// One zero digest per key when audit history is empty.
@@ -74,20 +100,5 @@ pub(super) fn parse_history_checksum(row: &RowData, idx: usize) -> Option<[u8; 3
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::driver::row::{Cell, RowData};
-
-    #[test]
-    fn parse_history_checksum_hex_string() {
-        let mut row = RowData::default();
-        row.cells.push(Cell::Str(
-            "75fdafa30d217c791047a3d8bd5f36dd62548e04a5154e758355a51525b2f973".into(),
-        ));
-        let sum = parse_history_checksum(&row, 0).expect("hex checksum");
-        assert_eq!(
-            hex::encode(sum),
-            "75fdafa30d217c791047a3d8bd5f36dd62548e04a5154e758355a51525b2f973"
-        );
-    }
-}
+#[path = "../../tests/audit_checksum_test.rs"]
+mod tests;

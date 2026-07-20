@@ -4,13 +4,13 @@ Lifecycle: `Current`.
 
 ## Purpose
 
-Describe **DDL/DML apply execution**: schemas, objects, transitions, transaction boundaries, audit flush, cache invalidation.
+Describe **DDL/DML apply execution**: schemas, table transitions, dependent objects, transaction boundaries, audit flush, and cache invalidation.
 
 ## Scope
 
 - `crates/core/src/apply/mod.rs` - `execute_plan` orchestration
 - `crates/core/src/apply/schemas.rs`, `objects.rs`, `objects_exec.rs`, `transitions.rs`
-- `crates/core/src/apply/tx.rs`, `kind.rs`, `result.rs`
+- `crates/core/src/apply/history_write.rs`, `kind.rs`, `result.rs`
 
 ## System context
 
@@ -24,15 +24,16 @@ Called from `engine::apply_run` after `lock::acquire`; `lock::release_after_body
 
 ## Assumptions and constraints
 
-- Apply order: schemas → objects → transitions.
+- Apply order: schemas → table transitions → indexes and programmable objects. This lets same-run dependents use columns introduced by a transition.
 - Failed object stops batch; partial errors returned as `Error::Sql`.
+- `baseline` and `repair-checksum` use `execute_metadata_plan`; they never execute repository SQL.
 
 ## Nominal flow
 
 1. `ensure_tables`.
 2. Apply schema DDL.
-3. Apply object scripts per plan.
-4. Apply transition migrations.
+3. Apply pending table transition migrations.
+4. Apply indexes and programmable object scripts per plan.
 5. `flush_history`, invalidate caches on success.
 
 ## Verification and validation
@@ -47,7 +48,7 @@ Called from `engine::apply_run` after `lock::acquire`; `lock::release_after_body
 
 ## Operations and recovery
 
-- Routine operation: no operator action; invoked only via migrate/baseline commands.
+- Routine operation: DDL execution is invoked only by `migrate`; metadata-only adoption/repair uses the separate executor.
 
 ## Open issues and non-goals
 

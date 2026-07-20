@@ -12,6 +12,8 @@ pub async fn open_conn(cfg: &Config) -> Result<TimingConn> {
     ))
 }
 
+// Included per-target via `#[path]`; not every target calls every probe.
+#[allow(dead_code)]
 pub async fn count_audit_rows(conn: &mut TimingConn, kind: &str, event: &str) -> Result<i32> {
     let rows = conn
         .query(

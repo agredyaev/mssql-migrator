@@ -11,7 +11,7 @@
 //!
 //! ### Nominal Flow
 //! 1. Verify existence of operational schema tracking tables (`ensure_tables`).
-//! 2. Load committed dynamic execution records and historical checksums (`load_checksums`).
+//! 2. Load committed dynamic execution records and historical checksums (plan-side `load_checksums_plan`).
 //! 3. Flush execution records upon successful migrations (`flush_history`).
 //! 4. Invalidate down-level memory snapshots (`invalidate_audit_cache`).
 //!
@@ -30,7 +30,7 @@ pub use load::{
     cache_history_empty, checksum_map_from_rows, checksum_map_from_rows_ws, db_fingerprint,
     empty_checksums_from_keys_json, ensure_tables, ensure_tables_on, history_empty_cached,
     history_known_empty, history_known_nonempty, invalidate_audit_cache,
-    invalidate_audit_cache_all, load_checksums, looks_like_checksum_rows, mark_history_nonempty,
+    invalidate_audit_cache_all, looks_like_checksum_rows, mark_history_nonempty,
     mark_tables_ensured, probe_audit_tables_exist, sync_tables_ensured, tables_ensured,
 };
 pub use migrations::load_all_applied;

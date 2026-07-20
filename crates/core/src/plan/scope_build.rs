@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::db::state::{catalog_object_parts, CatalogObject, ChecksumMap};
-use crate::domain::{ObjectKey, Workspace};
+use crate::domain::{is_module_kind_code, ObjectKey, Workspace};
 use crate::gate::{expand_delta_closure, keys_for_changed_paths};
 
 use super::scope::InspectScope;
@@ -31,7 +31,14 @@ pub fn build_inspect_scope(
         let obj = ws.entry(i);
         let key = ws.entry_key(i);
         let k = key.as_str();
-        if delta.contains(k) {
+        // Delta keys are database-qualified (`db/schema/kind/name`) to match
+        // snapshot identities; workspace keys carry the database separately.
+        let qualified = format!("{}/{k}", ws.database_name(obj.db_id));
+        if is_module_kind_code(ws.row(i).kind_code) {
+            hot.insert(k.to_string());
+            continue;
+        }
+        if delta.contains(&qualified) {
             hot.insert(k.to_string());
             continue;
         }
@@ -69,4 +76,21 @@ pub fn build_inspect_scope(
         stable_objects: stable,
         allow_l1_skip,
     }
+}
+
+/// Builds the inspect scope together with its cache-key JSON (full scopes use
+/// the complete object list as the key).
+pub fn build_scope_and_json(
+    ws: &Workspace,
+    changed_paths: &[String],
+    full_inspect: bool,
+    checksums: &ChecksumMap,
+) -> (InspectScope, String) {
+    let scope = build_inspect_scope(ws, changed_paths, full_inspect, checksums);
+    let scope_json = if full_inspect {
+        ws.object_scope_json()
+    } else {
+        super::scope::build_scope_json(&scope)
+    };
+    (scope, scope_json)
 }

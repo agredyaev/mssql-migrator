@@ -44,9 +44,12 @@ pub async fn apply_schemas(
 fn build_create_schema_sql(name: &str) -> Result<String> {
     let bracket = crate::sql_ident::bracket_ident(name)?;
     let probe = name.replace('\'', "''");
-    let exec_arg = format!("CREATE SCHEMA {bracket}").replace('\'', "''");
+    // Escaped for the inner EXEC('...') string-literal context.
+    let bracket_escaped = bracket.replace('\'', "''");
     Ok(format!(
-        "IF SCHEMA_ID(N'{probe}') IS NULL EXEC('{exec_arg}')"
+        include_str!("../../../../sql/apply/create_schema.sql"),
+        probe = probe,
+        bracket_escaped = bracket_escaped,
     ))
 }
 

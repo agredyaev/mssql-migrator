@@ -18,7 +18,10 @@ pub(crate) fn decide_object_at(
 
     if exists {
         if let Some(p) = prior {
-            if p != [0; 32] && p == checksum {
+            if p != [0; 32]
+                && p == checksum
+                && !ctx.checksums.has_live_definition_drift(ws.entry_key(i))
+            {
                 ctx.counters.skip += 1;
                 return ObjectDecision {
                     action: Action::SkipUnchanged,
@@ -53,10 +56,10 @@ pub(crate) fn decide_object_at(
         kind_code,
         obj,
         ws,
-        catalog: ctx.catalog,
         prior_digests: &ws.prior_by_row,
         child_row_id: row_id,
         has_transition_paths,
+        live_definition_drift: ctx.checksums.has_live_definition_drift(ws.entry_key(i)),
     });
     let c = &mut ctx.counters;
     match scenario.counter_kind() {

@@ -21,17 +21,17 @@ if ((${#BASELINE_SCENARIOS[@]} == 0)); then
   exit 1
 fi
 
-# Scenarios orchestrated by e2e_all.sh (order preserved for doc only).
-declare -a E2E_ALL_SCENARIOS=(
-  empty_db_plan
-  prod_gate_cold
-  warm_db_plan
-  skip_unchanged_plan
-  catalog_cache_plan
-  blocked_table_plan
-  apply_smoke_result
-  ddl_transition_apply
-)
+# Derive the matrix from the EXECUTABLE orchestrator: a hard-coded copy here
+# would stay green while e2e_all.sh silently loses scenarios.
+declare -a E2E_ALL_SCENARIOS=()
+while IFS= read -r s; do
+  [[ -n "$s" ]] && E2E_ALL_SCENARIOS+=("$s")
+done < <(grep -E '^run_scenario[[:space:]]' "$E2E_ALL" | awk '{print $2}')
+
+if ((${#E2E_ALL_SCENARIOS[@]} == 0)); then
+  echo "check-e2e-scenarios: e2e_all.sh invokes no scenarios (run_scenario lines missing)" >&2
+  exit 1
+fi
 
 fail=0
 report() {
@@ -44,8 +44,8 @@ for s in "${E2E_ALL_SCENARIOS[@]}"; do
   if [[ ! -f "$baseline" ]]; then
     report "missing baseline for e2e_all scenario '$s': $baseline"
   fi
-  if ! grep -q "\"$s\"" "$RUST_TEST" 2>/dev/null && ! grep -q "$s" "$RUST_TEST"; then
-    report "Rust harness missing scenario '$s' in $RUST_TEST"
+  if ! grep -q "\"$s\"" "$RUST_TEST" 2>/dev/null; then
+    report "Rust harness missing scenario string \"$s\" in $RUST_TEST"
   fi
 done
 
@@ -62,8 +62,8 @@ done
 # Plan scenarios must appear in is_plan_scenario match list.
 PLAN_SCENARIOS=(empty_db_plan warm_db_plan skip_unchanged_plan catalog_cache_plan)
 for s in "${PLAN_SCENARIOS[@]}"; do
-  if ! grep -q "$s" "$RUST_TEST"; then
-    report "plan scenario '$s' not referenced in $RUST_TEST"
+  if ! grep -q "\"$s\"" "$RUST_TEST"; then
+    report "plan scenario \"$s\" not referenced in $RUST_TEST"
   fi
 done
 

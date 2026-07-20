@@ -1,7 +1,7 @@
 //! `rmig` — CLI entry point for MSSQL schema migration operations.
 //!
 //! ### Purpose
-//! Parses argv, loads environment (dotenv), builds config, dispatches to
+//! Parses argv, loads typed TOML plus environment secrets, builds config, dispatches to
 //! [`migrator_core::engine::run_command`], and writes JSON/report output.
 //!
 //! ### Subcommands (delegated to `args`/`help` modules)
@@ -13,7 +13,7 @@
 //! - `version`      — print release + git commit
 //!
 //! ### Environment
-//! - `--env <path>` or `.env` — loaded via [`load_env_file_required`] / [`load_env_file`]
+//! - `--config <path>` or `config.toml` — typed non-secret settings
 //! - `RM_*` vars — see [`migrator_core::config`]
 //!
 //! ### Exit codes
@@ -26,10 +26,11 @@ mod help;
 mod logging;
 mod signals;
 
-use std::path::Path;
 use std::process::ExitCode;
 
-use migrator_core::config::{build_config, load_env_file, load_env_file_required, validate_config};
+use migrator_core::config::{
+    build_config, load_toml_config, load_toml_config_required, validate_config,
+};
 use migrator_core::engine::{
     print_timings_json, print_version, run_command, write_plan_stdout, Command,
 };
@@ -59,15 +60,15 @@ async fn run(args: Vec<String>) -> migrator_core::Result<i32> {
         }
         ParsedArgs::Run {
             cmd,
-            env_file,
+            config_file,
             json,
-        } => run_command_line(&cmd, env_file.as_deref(), json).await,
+        } => run_command_line(&cmd, config_file.as_deref(), json).await,
     }
 }
 
 async fn run_command_line(
     cmd: &str,
-    env_file: Option<&str>,
+    config_file: Option<&str>,
     json: bool,
 ) -> migrator_core::Result<i32> {
     if cmd == "version" {
@@ -75,11 +76,11 @@ async fn run_command_line(
         return Ok(0);
     }
     let command = parse_command(cmd)?;
-    let env = match env_file {
-        Some(path) => load_env_file_required(Path::new(path))?,
-        None => load_env_file(Path::new(".env"))?,
+    let file = match config_file {
+        Some(path) => load_toml_config_required(std::path::Path::new(path))?,
+        None => load_toml_config(std::path::Path::new("config.toml"))?,
     };
-    let mut cfg = build_config(&env, json);
+    let mut cfg = build_config(&file, json);
     init_tracing(&cfg.log_level);
     validate_config(&mut cfg)?;
     let outcome = tokio::select! {
@@ -105,6 +106,16 @@ async fn run_command_line(
                 );
             } else if json {
                 print_timings_json(&out.timings)?;
+            }
+            if out.exit_code == migrator_core::error::EXIT_PLAN_BLOCKED && !json {
+                // Blocked plans exit 10 through the Ok path; without this the
+                // console shows nothing and the blockers exist only in --json.
+                if let Some(plan) = &out.plan {
+                    for b in &plan.blockers {
+                        eprintln!("rmig: blocked: {b}");
+                    }
+                }
+                eprintln!("rmig: plan is blocked; run 'rmig plan --json' for details");
             }
             write_reports(&cfg, cmd, out.plan.as_ref(), None, out.exit_code)?;
             Ok(out.exit_code)

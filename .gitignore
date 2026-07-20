@@ -40,6 +40,11 @@ phase-report-run.log
 # Rust runtime cache (catalog snapshots)
 .rmig/
 
+# Local credentials (RM_DB_PASSWORD, RMIG_SESSION_TOKEN); commit only *.env.example
+.env
+.env.*
+!.env.example
+
 # Profiler bench output (never commit)
 dhat-heap.json
 **/dhat-heap.json

@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use migrator_core::config::{build_config, validate_config};
+use migrator_core::config::{build_config, validate_config, TomlConfig};
 use migrator_core::driver::TimingConn;
 use migrator_core::error::Result;
 use migrator_core::Config;
@@ -36,17 +36,16 @@ fn repo_root() -> PathBuf {
 }
 
 fn rmig_bin() -> PathBuf {
-    let bin = repo_root().join("target/release/rmig");
-    if !bin.exists() {
-        let ok = Command::new("cargo")
-            .args(["build", "--release", "-p", "rmig"])
-            .current_dir(repo_root())
-            .status()
-            .expect("build rmig")
-            .success();
-        assert!(ok, "rmig build failed");
-    }
-    bin
+    // Always build: an existence-only check can run a stale binary against
+    // current sources; cargo no-ops when the build is fresh.
+    let ok = Command::new("cargo")
+        .args(["build", "--release", "-p", "rmig"])
+        .current_dir(repo_root())
+        .status()
+        .expect("build rmig")
+        .success();
+    assert!(ok, "rmig build failed");
+    repo_root().join("target/release/rmig")
 }
 
 fn tables_dir(root: &Path) -> PathBuf {
@@ -59,13 +58,14 @@ fn write_table(root: &Path, rev: u32) {
     std::fs::write(base.join("chaos.sql"), table_sql(rev)).expect("table sql");
 }
 
-/// Write transition `001` (`waitfor_secs`=0 ⇒ fast). A long WAITFOR gives a kill
-/// window before the transition transaction commits.
+/// Write transition `001` (`waitfor_secs`=0 ⇒ fast). With a delay, the INSERT
+/// runs FIRST so its uncommitted row is a database-visible (NOLOCK) barrier
+/// proving the transaction started, then WAITFOR holds it open for the kill.
 fn write_transition(root: &Path, waitfor_secs: u32) {
     let migr = tables_dir(root).join("_migrations").join("chaos");
     std::fs::create_dir_all(&migr).expect("mkdir");
     let body = if waitfor_secs > 0 {
-        format!("WAITFOR DELAY '00:00:{waitfor_secs:02}';\n{INS}")
+        format!("{INS}WAITFOR DELAY '00:00:{waitfor_secs:02}';\n")
     } else {
         INS.to_string()
     };
@@ -100,7 +100,7 @@ fn migrate_cmd(bin: &Path, root: &Path) -> Command {
 }
 
 fn chaos_cfg() -> Config {
-    let mut cfg = build_config(&std::collections::HashMap::new(), true);
+    let mut cfg = build_config(&TomlConfig::default(), true);
     cfg.server = std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into());
     cfg.port = std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into());
     cfg.user = std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into());
@@ -158,11 +158,27 @@ async fn kill_mid_apply_no_partial_commit_and_reruns_exactly_once() {
     let mut child = migrate_cmd(&bin, dir.path())
         .spawn()
         .expect("spawn migrate");
-    tokio::time::sleep(Duration::from_millis(4000)).await;
+    // Barrier: wait until the transition transaction has demonstrably started
+    // (its uncommitted INSERT is visible under NOLOCK) before killing. A fixed
+    // sleep could kill during connect/planning, leaving the rollback guarantee
+    // untested while every later assertion passes vacuously.
+    let mut conn = state_smoke_conn::open_conn(&cfg).await.expect("connect");
+    let started = std::time::Instant::now();
+    loop {
+        let uncommitted = count(&mut conn, "SELECT COUNT(*) FROM smoke.chaos WITH (NOLOCK)")
+            .await
+            .unwrap_or(0);
+        if uncommitted > 0 {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "transition transaction never became observable; cannot prove mid-transaction kill"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     child.kill().expect("kill migrate");
     let _ = child.wait();
-
-    let mut conn = state_smoke_conn::open_conn(&cfg).await.expect("connect");
     let rows_after_kill = count(&mut conn, "SELECT COUNT(*) FROM smoke.chaos")
         .await
         .expect("count rows");

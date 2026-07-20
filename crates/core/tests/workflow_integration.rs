@@ -112,6 +112,9 @@ async fn workflow_git_scenarios_single_session() {
     git.add_tree_and_commit(&migration_dir, "test: track transition migration")
         .expect("commit migration dir");
 
+    let mig_before = state_smoke_conn::count_audit_rows(&mut conn, "migration", "applied")
+        .await
+        .expect("migration rows before ddl");
     let ddl_apply = workflow_engine::migrate(cfg).await.expect("ddl apply");
     workflow_engine::log_timings("2-ddl-apply", &ddl_apply.timings);
     workflow_engine::assert_plan_db_par_slo("2-ddl-apply", &ddl_apply.timings);
@@ -122,12 +125,23 @@ async fn workflow_git_scenarios_single_session() {
             .expect("col probe"),
         "added_at must exist after transition"
     );
+    // Transition persistence is kind='migration': the phase must prove that
+    // exact row appeared, not merely re-count unrelated object rows.
+    let mig_after = state_smoke_conn::count_audit_rows(&mut conn, "migration", "applied")
+        .await
+        .expect("migration rows after ddl");
+    assert_eq!(
+        mig_after,
+        mig_before + 1,
+        "exactly one migration audit row for the applied transition"
+    );
     let audit_after_ddl = state_smoke_conn::count_audit_rows(&mut conn, "object", "applied")
         .await
         .expect("audit after ddl");
     assert!(
-        audit_after_ddl >= audit,
-        "audit must grow after DDL transition (before={audit} after={audit_after_ddl})"
+        audit_after_ddl > audit,
+        "the completed transition also advances the table object baseline \
+         (before={audit} after={audit_after_ddl})"
     );
     eprintln!("phase 2 ddl OK (+{}ms)", t0.elapsed().as_millis());
 

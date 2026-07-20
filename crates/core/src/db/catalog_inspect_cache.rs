@@ -71,6 +71,20 @@ pub fn invalidate_db(db_fp: &str) {
     lock_inspect_cache().retain(|k: &String, _| !k.starts_with(db_fp));
 }
 
+/// [`try_get`] honouring the mutating-command cache bypass: mutating plans must
+/// re-inspect live catalog state, never a process-local snapshot.
+pub fn try_get_unless_bypassed(
+    bypass: bool,
+    db_fp: &str,
+    layout_digest: &[u8; 32],
+    scope_json: &str,
+) -> Option<CatalogState> {
+    if bypass {
+        return None;
+    }
+    try_get(db_fp, layout_digest, scope_json)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;

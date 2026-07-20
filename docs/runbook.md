@@ -9,7 +9,7 @@ Operator steps after a failed **`rmig`** run: what to read, safe re-run, and com
 ## Scope
 
 This runbook applies to the following repository paths and components:
-- Configuration validation: dotenv inputs, environment variables (`RM_DB_SERVER`, `RM_SQL_ROOT`, SQL credentials).
+- Configuration validation: `config.toml`, process overrides, and SQL credentials supplied only through the environment.
 - Run failure triage: stderr logs, structured JSON log outputs, and report directories.
 - Failure recovery procedures: exit code mapping and lock containment.
 

@@ -14,6 +14,7 @@ fail() {
 REQUIRED=(
   advisory_lock_guard_test
   advisory_lock_rmigd_test
+  rmigd_timeout_recovery_test
   multi_db_plan_test
   plan_deferred_bootstrap_test
   plan_collation_test
@@ -21,8 +22,11 @@ REQUIRED=(
   plan_no_db_side_effect_test
   session_fallback_test
   db_auth_test
+  apply_integrity_integration
   apply_e2e_integration
   existing_db_adoption_integration
+  adopt_e2e_integration
+  drift_e2e_integration
   chaos_kill_mid_apply_test
 )
 
@@ -41,6 +45,12 @@ fi
 
 if ! grep -q 'cargo build --release -p rmigd' "$REGRESSION"; then
   fail "negative path: sql_regression must build rmigd before daemon tests"
+fi
+
+if grep -qE 'if .*bin.*\.exists\(\)' \
+    "$ROOT/crates/core/tests/chaos_kill_mid_apply_test.rs" \
+    "$ROOT/crates/core/tests/common/rmigd.rs"; then
+  fail "BUG-013 regression: critical harness binaries must not use existence-only builds"
 fi
 
 if ! grep -q 'RMIG_RUN_SQLSERVER_INTEGRATION' "$ROOT/ops/perf/e2e_env.sh"; then

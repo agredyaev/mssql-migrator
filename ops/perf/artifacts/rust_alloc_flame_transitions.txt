@@ -1,14 +1,15 @@
+# rmig-profile revision=d6902d1e6057318f16b0ee8aca1461665e6af320 version=1.0.7 target=aarch64-apple-darwin dirty=false
 # Rust dhat allocation summary
-# total allocated (tb sum): 2.76 MB (2757634 B)
+# total allocated (tb sum): 2.51 MB (2507770 B)
 # loop iterations: 20
-# setup (one-time): 2.72 MB
-# warm (first compute_diff / plan resize): 33.6 KB
+# setup (one-time): 2.39 MB
+# warm (first compute_diff / plan resize): 118.9 KB
 # loop (warmed compute_diff x20): 0 B (0 B/iter)
 
 ## Phase totals
 Phase                 Bytes    Share
-setup               2.72 MB    98.8%
-warm                33.6 KB     1.2%
+setup               2.39 MB    95.3%
+warm               118.9 KB     4.7%
 loop                    0 B     0.0%
 
 ## Top categories (loop phase only)
@@ -20,14 +21,14 @@ Frame                                                                           
 
 ## Top rmig frames (deepest in stack, all phases)
 Frame                                                                           Bytes   Share
-plan_diff_dhat_transitions::main (core/benches/plan_diff_dhat_transition      2.72 MB   98.5%
-plan_diff_dhat_transitions::main (core/benches/plan_diff_dhat_transition      33.6 KB    1.2%
-migrator_core::plan::transitions::paths_by_row (src/plan/transitions.rs:       8.0 KB    0.3%
-plan_diff_dhat_transitions::main (core/benches/plan_diff_dhat_transition         64 B    0.0%
+plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi      2.38 MB   94.9%
+plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi     118.9 KB    4.7%
+migrator_core::domain::path_cache::paths_by_row (src/domain/path_cache.r       8.0 KB    0.3%
+plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi         64 B    0.0%
 
 ## Top leaf alloc frames (flat)
 Frame                                                                           Bytes
-plan_diff_dhat_transitions::main (core/benches/plan_diff_dhat_transition      2.72 MB
-plan_diff_dhat_transitions::main (core/benches/plan_diff_dhat_transition      33.6 KB
-migrator_core::plan::transitions::paths_by_row (src/plan/transitions.rs:       8.0 KB
-plan_diff_dhat_transitions::main (core/benches/plan_diff_dhat_transition         64 B
+plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi      2.38 MB
+plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi     118.9 KB
+migrator_core::domain::path_cache::paths_by_row (src/domain/path_cache.r       8.0 KB
+plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi         64 B

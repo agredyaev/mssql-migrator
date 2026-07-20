@@ -1,23 +1,185 @@
-# rmig profile summary - 2026-06-29T22:55:36Z
-# Regenerate: make bench-footprint-profile && make bench-footprint-alloc
+# rmig profile summary - 2026-07-19T20:26:13Z
+# rmig-profile revision=d6902d1e6057318f16b0ee8aca1461665e6af320 version=1.0.7 target=aarch64-apple-darwin dirty=false
+# Regenerate: make bench-footprint bench-footprint-profile bench-footprint-alloc
+# Then: ops/perf/footprint_bench.sh alloc transitions; ops/perf/footprint_bench.sh alloc scan
 
 == CPU flamegraph (5k skip-heavy diff) ==
-  /Users/fingerbib/project/mssql-reporting-migrator/ops/perf/artifacts/plan_diff_5k_flamegraph.svg
+  ops/perf/artifacts/rust_plan_diff_5k_flamegraph.svg
+
+== dhat summary: rust_plan_diff_dhat.txt ==
+# rmig-profile revision=d6902d1e6057318f16b0ee8aca1461665e6af320 version=1.0.7 target=aarch64-apple-darwin dirty=false
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.46
+   Compiling unicode-ident v1.0.24
+   Compiling libc v0.2.186
+   Compiling cfg-if v1.0.4
+   Compiling stable_deref_trait v1.2.1
+   Compiling memchr v2.8.3
+   Compiling serde_core v1.0.228
+   Compiling smallvec v1.15.2
+   Compiling writeable v0.6.3
+   Compiling litemap v0.8.2
+   Compiling once_cell v1.21.4
+   Compiling icu_properties_data v2.2.0
+   Compiling icu_normalizer_data v2.2.0
+   Compiling shlex v2.0.1
+   Compiling zerocopy v0.8.54
+   Compiling utf8_iter v1.0.4
+   Compiling find-msvc-tools v0.1.9
+   Compiling core-foundation-sys v0.8.7
+   Compiling cc v1.2.67
+   Compiling itoa v1.0.18
+   Compiling bitflags v2.13.0
+   Compiling syn v2.0.119
+   Compiling autocfg v1.5.1
+   Compiling getrandom v0.4.3
+   Compiling rustix v1.1.4
+   Compiling pin-project-lite v0.2.17
+   Compiling num-traits v0.2.19
+   Compiling crossbeam-utils v0.8.22
+   Compiling serde v1.0.228
+   Compiling errno v0.3.14
+   Compiling zmij v1.0.23
+   Compiling futures-sink v0.3.32
+   Compiling futures-io v0.3.32
+   Compiling futures-core v0.3.32
+   Compiling serde_json v1.0.150
+   Compiling fastrand v2.4.1
+   Compiling uuid v1.23.5
+   Compiling crossbeam-epoch v0.9.20
+
+== dhat summary: rust_plan_diff_dhat_transitions.txt ==
+# rmig-profile revision=d6902d1e6057318f16b0ee8aca1461665e6af320 version=1.0.7 target=aarch64-apple-darwin dirty=false
+   Compiling migrator-core-dev v1.0.7 (crates/core-dev)
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 3.01s
+     Running benches/plan_diff_dhat_transitions.rs (target/profiling/deps/plan_diff_dhat_transitions-441b195bc21a42c0)
+dhat: plan_diff_table_heavy_500 x20 complete
+dhat: Total:     2,507,770 bytes in 22,179 blocks
+dhat: At t-gmax: 1,051,044 bytes in 10,042 blocks
+dhat: At t-end:  112 bytes in 2 blocks
+dhat: The data has been saved to dhat-heap.json, and is viewable with dhat/dh_view.html
+
+== dhat summary: rust_plan_diff_dhat_scan.txt ==
+# rmig-profile revision=d6902d1e6057318f16b0ee8aca1461665e6af320 version=1.0.7 target=aarch64-apple-darwin dirty=false
+   Compiling migrator-core-dev v1.0.7 (crates/core-dev)
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 2.42s
+     Running benches/plan_diff_dhat_scan.rs (target/profiling/deps/plan_diff_dhat_scan-3965346bacbabbbb)
+dhat: scan_fixture_5000 x20 complete
+dhat: Total:     17,887,648 bytes in 195,254 blocks
+dhat: At t-gmax: 5,629,662 bytes in 40,031 blocks
+dhat: At t-end:  112 bytes in 2 blocks
+dhat: The data has been saved to dhat-heap.json, and is viewable with dhat/dh_view.html
+
+== alloc tree: rust_alloc_flame.txt ==
+# rmig-profile revision=d6902d1e6057318f16b0ee8aca1461665e6af320 version=1.0.7 target=aarch64-apple-darwin dirty=false
+# Rust dhat allocation summary
+# total allocated (tb sum): 11.15 MB (11145588 B)
+# loop iterations: 20
+# setup (one-time): 10.73 MB
+# warm (first compute_diff / plan resize): 413.9 KB
+# loop (warmed compute_diff x20): 0 B (0 B/iter)
+
+## Phase totals
+Phase                 Bytes    Share
+setup              10.73 MB    96.3%
+warm               413.9 KB     3.7%
+loop                    0 B     0.0%
+
+## Top categories (loop phase only)
+Category                                    Total       B/iter   Share  CASE-*
+(no loop-phase allocations detected)
+
+## Top rmig frames (loop phase)
+Frame                                                                           Bytes   Share
+
+## Top rmig frames (deepest in stack, all phases)
+Frame                                                                           Bytes   Share
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)              10.73 MB   96.3%
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:14:5)               413.9 KB    3.7%
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:18:5)                   64 B    0.0%
+
+## Top leaf alloc frames (flat)
+Frame                                                                           Bytes
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)              10.73 MB
+
+== alloc tree: rust_alloc_flame_transitions.txt ==
+# rmig-profile revision=d6902d1e6057318f16b0ee8aca1461665e6af320 version=1.0.7 target=aarch64-apple-darwin dirty=false
+# Rust dhat allocation summary
+# total allocated (tb sum): 2.51 MB (2507770 B)
+# loop iterations: 20
+# setup (one-time): 2.39 MB
+# warm (first compute_diff / plan resize): 118.9 KB
+# loop (warmed compute_diff x20): 0 B (0 B/iter)
+
+## Phase totals
+Phase                 Bytes    Share
+setup               2.39 MB    95.3%
+warm               118.9 KB     4.7%
+loop                    0 B     0.0%
+
+## Top categories (loop phase only)
+Category                                    Total       B/iter   Share  CASE-*
+(no loop-phase allocations detected)
+
+## Top rmig frames (loop phase)
+Frame                                                                           Bytes   Share
+
+## Top rmig frames (deepest in stack, all phases)
+Frame                                                                           Bytes   Share
+plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi      2.38 MB   94.9%
+plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi     118.9 KB    4.7%
+migrator_core::domain::path_cache::paths_by_row (src/domain/path_cache.r       8.0 KB    0.3%
+plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi         64 B    0.0%
+
+## Top leaf alloc frames (flat)
+Frame                                                                           Bytes
+
+== alloc tree: rust_alloc_flame_scan.txt ==
+# rmig-profile revision=d6902d1e6057318f16b0ee8aca1461665e6af320 version=1.0.7 target=aarch64-apple-darwin dirty=false
+# Rust dhat allocation summary
+# total allocated (tb sum): 17.89 MB (17887648 B)
+# loop iterations: 20
+# setup (one-time): 17.47 MB
+# warm (first compute_diff / plan resize): 413.9 KB
+# loop (warmed compute_diff x20): 0 B (0 B/iter)
+
+## Phase totals
+Phase                 Bytes    Share
+setup              17.47 MB    97.7%
+warm               413.9 KB     2.3%
+loop                    0 B     0.0%
+
+## Top categories (loop phase only)
+Category                                    Total       B/iter   Share  CASE-*
+(no loop-phase allocations detected)
+
+## Top rmig frames (loop phase)
+Frame                                                                           Bytes   Share
+
+## Top rmig frames (deepest in stack, all phases)
+Frame                                                                           Bytes   Share
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:14:14     11.04 MB   61.7%
+migrator_core::scan::parse_parallel::parse_objects::{{closure}}::{{closu      3.86 MB   21.6%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:23:19      1.19 MB    6.6%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:22:34     720.0 KB    4.0%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:22:14     671.7 KB    3.8%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:27:5)     413.9 KB    2.3%
+plan_diff_dhat_scan::main (core-dev/benches/plan_diff_dhat_scan.rs:13:16        230 B    0.0%
 
 == criterion bench log (tail) ==
    Compiling pprof v0.15.0
-   Compiling migrator-core v1.0.4 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core)
-   Compiling migrator-core-dev v1.0.4 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core-dev)
-    Finished `bench` profile [optimized + debuginfo] target(s) in 30.45s
-     Running benches/plan_diff.rs (target/release/deps/plan_diff-bfac2f11d02f0aba)
+    Finished `bench` profile [optimized + debuginfo] target(s) in 20.82s
+     Running benches/plan_diff.rs (target/release/deps/plan_diff-3076d181ce2f6c9d)
 Gnuplot not found, using plotters backend
 Benchmarking plan_diff_skip_heavy_5000
 Benchmarking plan_diff_skip_heavy_5000: Warming up for 3.0000 s
-Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.0387 s (101k iterations)
+Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.1534 s (35k iterations)
 Benchmarking plan_diff_skip_heavy_5000: Analyzing
 plan_diff_skip_heavy_5000
-                        time:   [49.603 µs 49.645 µs 49.703 µs]
-Found 1 outliers among 100 measurements (1.00%)
-  1 (1.00%) high severe
+                        time:   [145.65 µs 145.69 µs 145.74 µs]
+Found 9 outliers among 100 measurements (9.00%)
+  2 (2.00%) low mild
+  3 (3.00%) high mild
+  4 (4.00%) high severe
 
 

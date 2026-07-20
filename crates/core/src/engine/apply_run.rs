@@ -7,6 +7,7 @@ use crate::error::{Error, Result};
 use crate::export::MigrationPlan;
 use crate::timings::{self, PhaseTimings};
 
+use super::adopt_gate::ensure_adopt_allowed;
 use super::filter;
 use super::run::plan_phase::plan_phase;
 use super::run::Command;
@@ -56,12 +57,22 @@ async fn apply_plan(
             if plan.blocked {
                 return super::blocked::handle_blocked_migrate(conn, cfg, ws, plan).await;
             }
+            ensure_adopt_allowed(cfg, ws, plan)?;
             filter::filter_applied(conn, ws, plan, cfg.command_timeout).await?;
         }
         Command::Baseline | Command::RepairChecksum => {
-            if plan.blocked {
-                return Err(Error::PlanBlocked);
-            }
+            // Both are audit-metadata commands: never execute repository DDL,
+            // module bodies, or transitions through the generic executor.
+            let mode = if cmd == Command::Baseline {
+                crate::apply::MetadataMode::Baseline
+            } else {
+                crate::apply::MetadataMode::RepairChecksum
+            };
+            let t = Instant::now();
+            let apply = crate::apply::execute_metadata_plan(cfg, conn, ws, plan, mode).await?;
+            timings.apply_ms = timings::dur_ms(t.elapsed());
+            tracing::debug!(skipped = apply.skipped, "metadata apply finished");
+            return Ok(());
         }
         Command::Plan | Command::Validate | Command::Version => return Ok(()),
     }

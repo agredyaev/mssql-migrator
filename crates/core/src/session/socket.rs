@@ -40,11 +40,38 @@ pub fn resolve_socket_path() -> Result<PathBuf> {
         .unwrap_or_else(|_| default_socket_path());
     if let Some(parent) = path.parent() {
         if parent != Path::new("") {
-            std::fs::create_dir_all(parent).map_err(Error::Io)?;
-            restrict_dir_mode(parent)?;
+            ensure_private_parent(parent)?;
         }
     }
     Ok(path)
+}
+
+/// Create `parent` privately, or require an EXISTING parent to already be
+/// private. A pre-existing caller-selected directory (RMIGD_SOCKET) is never
+/// chmodded: silently revoking group/world access on, say, `/tmp` or a shared
+/// runtime dir would break unrelated software.
+pub(crate) fn ensure_private_parent(parent: &Path) -> Result<()> {
+    if !parent.exists() {
+        std::fs::create_dir_all(parent).map_err(Error::Io)?;
+        return restrict_dir_mode(parent);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(parent)
+            .map_err(Error::Io)?
+            .permissions()
+            .mode();
+        if mode & 0o077 != 0 {
+            return Err(Error::Config(format!(
+                "socket parent {} is group/world accessible (mode {:o}); \
+                 point RMIGD_SOCKET at a private directory (0700) or a new path",
+                parent.display(),
+                mode & 0o777
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Restrict socket to owner-only (`0o600`). No-op on non-Unix.
@@ -72,3 +99,7 @@ pub(crate) fn restrict_dir_mode(path: &Path) -> Result<()> {
 pub(crate) fn restrict_dir_mode(_path: &Path) -> Result<()> {
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../tests/socket_parent_test.rs"]
+mod socket_parent_tests;

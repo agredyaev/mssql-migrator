@@ -24,7 +24,13 @@ def check_index(root: Path, index_rel: Path) -> list[str]:
     if not index_path.is_file():
         return [f"missing {index_rel}"]
     text = index_path.read_text(encoding="utf-8")
-    listed = set(MODULE_RE.findall(text))
+    # Only real index entries count: a markdown link target or a table row.
+    # A prose TODO mentioning the filename is not discoverability.
+    link_re = re.compile(r"\((module-[a-z0-9-]+\.md)\)")
+    listed = set(link_re.findall(text))
+    for line in text.splitlines():
+        if line.lstrip().startswith("|"):
+            listed.update(MODULE_RE.findall(line))
     spec_dir = index_path.parent
     on_disk = {p.name for p in spec_dir.glob("module-*.md")}
     for name in sorted(on_disk):

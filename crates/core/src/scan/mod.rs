@@ -1,4 +1,4 @@
-//! SQL schema filesystem tree scans, filename parsing, and MD5 digests.
+//! SQL schema filesystem tree scans, filename parsing, and SHA-256 digests.
 //!
 //! ### Purpose
 //! Scans the configured filesystem schema layouts, parsing table directories, views, procedures,
@@ -13,7 +13,7 @@
 //! 1. Walk directory tree to identify structural SQL schemas (`scan_root`).
 //! 2. Parse structural parameters and git commit logs for individual scripts.
 //! 3. Build string caches and rebuild path lookups inside the workspace (`populate`).
-//! 4. Compute unique schema MD5 layout hashes to assert validation parity (`layout_digest`).
+//! 4. Compute unique schema SHA-256 layout hashes to assert validation parity (`layout_digest`).
 //!
 //! ### Off-Nominal & Failure Containment
 //! - **Malformed Schema Layout / Parse Failure**: Returns `Error::InvalidInput` immediately, preventing invalid schema trees from being processed by planning.
@@ -25,6 +25,8 @@ mod git_preload;
 mod git_repo;
 mod parse;
 mod parse_object;
+pub(crate) use parse_object::content_checksum;
+pub(crate) use parse_object::strip_sql_ext;
 mod parse_parallel;
 pub mod transition;
 mod walk;

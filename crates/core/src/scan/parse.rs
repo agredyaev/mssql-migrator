@@ -12,15 +12,18 @@ pub fn insert_parsed_object(
     ws: &mut Workspace,
     parsed: Option<ParsedObject>,
     rel: &str,
-    schemas: &mut HashMap<String, SchemaEntry>,
+    schemas: &mut HashMap<(String, String), SchemaEntry>,
 ) -> Result<()> {
     let Some((key, mut obj, script)) = parsed else {
         return Ok(());
     };
     let db = share(rel.split('/').next().unwrap_or(""));
     let schema_part = key.schema_part();
+    // Keyed by (database, schema): the same schema name in two catalog
+    // databases is two schemas — collapsing them drops CREATE SCHEMA for
+    // every database after the first.
     schemas
-        .entry(schema_part.to_string())
+        .entry((db.as_ref().to_string(), schema_part.to_string()))
         .or_insert_with(|| SchemaEntry {
             database: db.clone(),
             name: share(schema_part),
@@ -52,4 +55,16 @@ pub fn push_check(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
         scaffold: false,
     });
     Ok(())
+}
+
+/// True only for files directly inside a `checks/` folder at its contract
+/// positions: `<db>/checks/<file>.sql` or `<db>/<schema>/checks/<file>.sql`.
+/// Deeper paths (for example a schema literally named `checks` holding kind
+/// folders) stay ordinary objects.
+pub fn is_check_path(rel: &str) -> bool {
+    let parts: Vec<&str> = rel.split('/').collect();
+    matches!(
+        parts.as_slice(),
+        [_, "checks", f] | [_, _, "checks", f] if !f.is_empty()
+    )
 }

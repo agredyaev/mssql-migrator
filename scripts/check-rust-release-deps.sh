@@ -9,8 +9,14 @@ fail=0
 
 check_pkg() {
   local pkg="$1"
-  local hits
-  hits="$(cargo tree -p "$pkg" -e normal 2>/dev/null | rg -i "$FORBIDDEN" || true)"
+  local tree hits
+  # A failed cargo invocation must fail the gate: an empty tree is NOT proof
+  # that no forbidden dependency exists.
+  if ! tree="$(cargo tree -p "$pkg" -e normal)"; then
+    echo "release-deps: cargo tree failed for $pkg" >&2
+    exit 1
+  fi
+  hits="$(printf '%s\n' "$tree" | rg -i "$FORBIDDEN" || true)"
   if [[ -n "$hits" ]]; then
     echo "release-deps: $pkg normal dependency tree must not include dev-only crates:" >&2
     echo "$hits" >&2
@@ -23,7 +29,11 @@ check_pkg rmig
 check_pkg rmigd
 
 for pkg in rmig rmigd migrator-core; do
-  if cargo tree -p "$pkg" -e normal 2>/dev/null | rg -q 'migrator-core-dev'; then
+  if ! tree="$(cargo tree -p "$pkg" -e normal)"; then
+    echo "release-deps: cargo tree failed for $pkg" >&2
+    exit 1
+  fi
+  if printf '%s\n' "$tree" | rg -q 'migrator-core-dev'; then
     echo "release-deps: $pkg must not depend on migrator-core-dev (benches/footprint only)" >&2
     fail=1
   fi

@@ -11,7 +11,7 @@ static DB_WARM: OnceCell<()> = OnceCell::const_new();
 pub fn l1_fingerprint(cfg: &Config) -> String {
     // Must match the production L1 key exactly (see `audit::db_fingerprint`),
     // otherwise cache invalidation in the SLO test clears the wrong directory.
-    migrator_core::audit::db_fingerprint(&cfg.server, &cfg.database)
+    migrator_core::audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database)
 }
 
 /// One `plan` run per test process: audit ensure + catalog + L1 populate (no DROP DATABASE).

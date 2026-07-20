@@ -64,8 +64,12 @@ fn auto_add_sql(schema: &str, table: &str, added: &[ParsedColumn]) -> Result<Str
         let col_id = bracket_ident(&col.name)?;
         let null = if col.nullable { "NULL" } else { "NOT NULL" };
         b.push_str(&format!(
-            "ALTER TABLE {schema_id}.{table_id} ADD {col_id} {typ} {null};\n",
+            include_str!("../../../../sql/apply/add_column.sql"),
+            schema_id = schema_id,
+            table_id = table_id,
+            col_id = col_id,
             typ = col.type_name,
+            null = null,
         ));
     }
     Ok(b)

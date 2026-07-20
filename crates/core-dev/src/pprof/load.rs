@@ -28,11 +28,14 @@ pub fn write_load_profile(
     write_text_top_frames(&report, txt_path, meta)
 }
 
-fn write_text_top_frames(report: &pprof::Report, path: &Path, meta: &str) -> io::Result<()> {
+pub fn write_text_top_frames(report: &pprof::Report, path: &Path, meta: &str) -> io::Result<()> {
     let mut by_fn: HashMap<String, isize> = HashMap::new();
     let mut total: isize = 0;
     for (frames, count) in &report.data {
         total += count;
+        // Credit each function ONCE per sampled stack: recursive or repeated
+        // frames would otherwise push inclusive percentages past 100%.
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         for sym_stack in &frames.frames {
             if let Some(sym) = sym_stack.first() {
                 let name = sym.name();
@@ -41,7 +44,9 @@ fn write_text_top_frames(report: &pprof::Report, path: &Path, meta: &str) -> io:
                 } else {
                     name.as_str()
                 };
-                *by_fn.entry(name.to_string()).or_default() += count;
+                if seen.insert(name.to_string()) {
+                    *by_fn.entry(name.to_string()).or_default() += count;
+                }
             }
         }
     }

@@ -19,6 +19,20 @@ pub fn apply_scenario(
             ));
             scenario.action()
         }
+        PlanScenario::StructuralChangeBlocked => {
+            blockers.push(format!(
+                "{} changed but this object kind has no safe in-place update path",
+                obj.key_str(ws, i)
+            ));
+            scenario.action()
+        }
+        PlanScenario::LiveStructuralDriftBlocked => {
+            blockers.push(format!(
+                "live {} differs from its last audited structural state",
+                obj.key_str(ws, i)
+            ));
+            scenario.action()
+        }
         PlanScenario::TriggerBlockedParentMissing => {
             blockers.push(format!(
                 "trigger {} parent table {} not found",

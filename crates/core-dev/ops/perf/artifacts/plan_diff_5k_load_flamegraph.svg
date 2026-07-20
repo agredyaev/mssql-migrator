@@ -1,0 +1,491 @@
+<?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg version="1.1" width="1200" height="678" onload="init(evt)" viewBox="0 0 1200 678" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:fg="http://github.com/jonhoo/inferno"><!--Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples.--><!--NOTES: --><defs><linearGradient id="background" y1="0" y2="1" x1="0" x2="0"><stop stop-color="#eeeeee" offset="5%"/><stop stop-color="#eeeeb0" offset="95%"/></linearGradient></defs><style type="text/css">
+text { font-family:monospace; font-size:12px }
+#title { text-anchor:middle; font-size:17px; }
+#matched { text-anchor:end; }
+#search { text-anchor:end; opacity:0.1; cursor:pointer; }
+#search:hover, #search.show { opacity:1; }
+#subtitle { text-anchor:middle; font-color:rgb(160,160,160); }
+#unzoom { cursor:pointer; }
+#frames > *:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+.hide { display:none; }
+.parent { opacity:0.5; }
+</style><script type="text/ecmascript"><![CDATA[
+        var nametype = 'Function:';
+        var fontsize = 12;
+        var fontwidth = 0.59;
+        var xpad = 10;
+        var inverted = false;
+        var searchcolor = 'rgb(230,0,230)';
+        var fluiddrawing = true;
+        var truncate_text_right = false;
+    ]]><![CDATA["use strict";
+var details, searchbtn, unzoombtn, matchedtxt, svg, searching, frames, known_font_width;
+function init(evt) {
+    details = document.getElementById("details").firstChild;
+    searchbtn = document.getElementById("search");
+    unzoombtn = document.getElementById("unzoom");
+    matchedtxt = document.getElementById("matched");
+    svg = document.getElementsByTagName("svg")[0];
+    frames = document.getElementById("frames");
+    known_font_width = get_monospace_width(frames);
+    total_samples = parseInt(frames.attributes.total_samples.value);
+    searching = 0;
+
+    // Use GET parameters to restore a flamegraph's state.
+    var restore_state = function() {
+        var params = get_params();
+        if (params.x && params.y)
+            zoom(find_group(document.querySelector('[*|x="' + params.x + '"][y="' + params.y + '"]')));
+        if (params.s)
+            search(params.s);
+    };
+
+    if (fluiddrawing) {
+        // Make width dynamic so the SVG fits its parent's width.
+        svg.removeAttribute("width");
+        // Edge requires us to have a viewBox that gets updated with size changes.
+        var isEdge = /Edge\/\d./i.test(navigator.userAgent);
+        if (!isEdge) {
+            svg.removeAttribute("viewBox");
+        }
+        var update_for_width_change = function() {
+            if (isEdge) {
+                svg.attributes.viewBox.value = "0 0 " + svg.width.baseVal.value + " " + svg.height.baseVal.value;
+            }
+
+            // Keep consistent padding on left and right of frames container.
+            frames.attributes.width.value = svg.width.baseVal.value - xpad * 2;
+
+            // Text truncation needs to be adjusted for the current width.
+            update_text_for_elements(frames.children);
+
+            // Keep search elements at a fixed distance from right edge.
+            var svgWidth = svg.width.baseVal.value;
+            searchbtn.attributes.x.value = svgWidth - xpad;
+            matchedtxt.attributes.x.value = svgWidth - xpad;
+        };
+        window.addEventListener('resize', function() {
+            update_for_width_change();
+        });
+        // This needs to be done asynchronously for Safari to work.
+        setTimeout(function() {
+            unzoom();
+            update_for_width_change();
+            restore_state();
+        }, 0);
+    } else {
+        restore_state();
+    }
+}
+// event listeners
+window.addEventListener("click", function(e) {
+    var target = find_group(e.target);
+    if (target) {
+        if (target.nodeName == "a") {
+            if (e.ctrlKey === false) return;
+            e.preventDefault();
+        }
+        if (target.classList.contains("parent")) unzoom();
+        zoom(target);
+
+        // set parameters for zoom state
+        var el = target.querySelector("rect");
+        if (el && el.attributes && el.attributes.y && el.attributes["fg:x"]) {
+            var params = get_params()
+            params.x = el.attributes["fg:x"].value;
+            params.y = el.attributes.y.value;
+            history.replaceState(null, null, parse_params(params));
+        }
+    }
+    else if (e.target.id == "unzoom") {
+        unzoom();
+
+        // remove zoom state
+        var params = get_params();
+        if (params.x) delete params.x;
+        if (params.y) delete params.y;
+        history.replaceState(null, null, parse_params(params));
+    }
+    else if (e.target.id == "search") search_prompt();
+}, false)
+// mouse-over for info
+// show
+window.addEventListener("mouseover", function(e) {
+    var target = find_group(e.target);
+    if (target) details.nodeValue = nametype + " " + g_to_text(target);
+}, false)
+// clear
+window.addEventListener("mouseout", function(e) {
+    var target = find_group(e.target);
+    if (target) details.nodeValue = ' ';
+}, false)
+// ctrl-F for search
+window.addEventListener("keydown",function (e) {
+    if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+        e.preventDefault();
+        search_prompt();
+    }
+}, false)
+// functions
+function get_params() {
+    var params = {};
+    var paramsarr = window.location.search.substr(1).split('&');
+    for (var i = 0; i < paramsarr.length; ++i) {
+        var tmp = paramsarr[i].split("=");
+        if (!tmp[0] || !tmp[1]) continue;
+        params[tmp[0]]  = decodeURIComponent(tmp[1]);
+    }
+    return params;
+}
+function parse_params(params) {
+    var uri = "?";
+    for (var key in params) {
+        uri += key + '=' + encodeURIComponent(params[key]) + '&';
+    }
+    if (uri.slice(-1) == "&")
+        uri = uri.substring(0, uri.length - 1);
+    if (uri == '?')
+        uri = window.location.href.split('?')[0];
+    return uri;
+}
+function find_child(node, selector) {
+    var children = node.querySelectorAll(selector);
+    if (children.length) return children[0];
+    return;
+}
+function find_group(node) {
+    var parent = node.parentElement;
+    if (!parent) return;
+    if (parent.id == "frames") return node;
+    return find_group(parent);
+}
+function orig_save(e, attr, val) {
+    if (e.attributes["fg:orig_" + attr] != undefined) return;
+    if (e.attributes[attr] == undefined) return;
+    if (val == undefined) val = e.attributes[attr].value;
+    e.setAttribute("fg:orig_" + attr, val);
+}
+function orig_load(e, attr) {
+    if (e.attributes["fg:orig_"+attr] == undefined) return;
+    e.attributes[attr].value = e.attributes["fg:orig_" + attr].value;
+    e.removeAttribute("fg:orig_" + attr);
+}
+function g_to_text(e) {
+    var text = find_child(e, "title").firstChild.nodeValue;
+    return (text)
+}
+function g_to_func(e) {
+    var func = g_to_text(e);
+    // if there's any manipulation we want to do to the function
+    // name before it's searched, do it here before returning.
+    return (func);
+}
+function get_monospace_width(frames) {
+    // Given the id="frames" element, return the width of text characters if
+    // this is a monospace font, otherwise return 0.
+    text = find_child(frames.children[0], "text");
+    originalContent = text.textContent;
+    text.textContent = "!";
+    bangWidth = text.getComputedTextLength();
+    text.textContent = "W";
+    wWidth = text.getComputedTextLength();
+    text.textContent = originalContent;
+    if (bangWidth === wWidth) {
+        return bangWidth;
+    } else {
+        return 0;
+    }
+}
+function update_text_for_elements(elements) {
+    // In order to render quickly in the browser, you want to do one pass of
+    // reading attributes, and one pass of mutating attributes. See
+    // https://web.dev/avoid-large-complex-layouts-and-layout-thrashing/ for details.
+
+    // Fall back to inefficient calculation, if we're variable-width font.
+    // TODO This should be optimized somehow too.
+    if (known_font_width === 0) {
+        for (var i = 0; i < elements.length; i++) {
+            update_text(elements[i]);
+        }
+        return;
+    }
+
+    var textElemNewAttributes = [];
+    for (var i = 0; i < elements.length; i++) {
+        var e = elements[i];
+        var r = find_child(e, "rect");
+        var t = find_child(e, "text");
+        var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+        var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+        var newX = format_percent((parseFloat(r.attributes.x.value) + (100 * 3 / frames.attributes.width.value)));
+
+        // Smaller than this size won't fit anything
+        if (w < 2 * known_font_width) {
+            textElemNewAttributes.push([newX, ""]);
+            continue;
+        }
+
+        // Fit in full text width
+        if (txt.length * known_font_width < w) {
+            textElemNewAttributes.push([newX, txt]);
+            continue;
+        }
+
+        var substringLength = Math.floor(w / known_font_width) - 2;
+        if (truncate_text_right) {
+            // Truncate the right side of the text.
+            textElemNewAttributes.push([newX, txt.substring(0, substringLength) + ".."]);
+            continue;
+        } else {
+            // Truncate the left side of the text.
+            textElemNewAttributes.push([newX, ".." + txt.substring(txt.length - substringLength, txt.length)]);
+            continue;
+        }
+    }
+
+    console.assert(textElemNewAttributes.length === elements.length, "Resize failed, please file a bug at https://github.com/jonhoo/inferno/");
+
+    // Now that we know new textContent, set it all in one go so we don't refresh a bazillion times.
+    for (var i = 0; i < elements.length; i++) {
+        var e = elements[i];
+        var values = textElemNewAttributes[i];
+        var t = find_child(e, "text");
+        t.attributes.x.value = values[0];
+        t.textContent = values[1];
+    }
+}
+
+function update_text(e) {
+    var r = find_child(e, "rect");
+    var t = find_child(e, "text");
+    var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+    var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+    t.attributes.x.value = format_percent((parseFloat(r.attributes.x.value) + (100 * 3 / frames.attributes.width.value)));
+
+    // Smaller than this size won't fit anything
+    if (w < 2 * fontsize * fontwidth) {
+        t.textContent = "";
+        return;
+    }
+    t.textContent = txt;
+    // Fit in full text width
+    if (t.getComputedTextLength() < w)
+        return;
+    if (truncate_text_right) {
+        // Truncate the right side of the text.
+        for (var x = txt.length - 2; x > 0; x--) {
+            if (t.getSubStringLength(0, x + 2) <= w) {
+                t.textContent = txt.substring(0, x) + "..";
+                return;
+            }
+        }
+    } else {
+        // Truncate the left side of the text.
+        for (var x = 2; x < txt.length; x++) {
+            if (t.getSubStringLength(x - 2, txt.length) <= w) {
+                t.textContent = ".." + txt.substring(x, txt.length);
+                return;
+            }
+        }
+    }
+    t.textContent = "";
+}
+// zoom
+function zoom_reset(e) {
+    if (e.tagName == "rect") {
+        e.attributes.x.value = format_percent(100 * parseInt(e.attributes["fg:x"].value) / total_samples);
+        e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / total_samples);
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_reset(c[i]);
+    }
+}
+function zoom_child(e, x, zoomed_width_samples) {
+    if (e.tagName == "text") {
+        var parent_x = parseFloat(find_child(e.parentNode, "rect[x]").attributes.x.value);
+        e.attributes.x.value = format_percent(parent_x + (100 * 3 / frames.attributes.width.value));
+    } else if (e.tagName == "rect") {
+        e.attributes.x.value = format_percent(100 * (parseInt(e.attributes["fg:x"].value) - x) / zoomed_width_samples);
+        e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / zoomed_width_samples);
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_child(c[i], x, zoomed_width_samples);
+    }
+}
+function zoom_parent(e) {
+    if (e.attributes) {
+        if (e.attributes.x != undefined) {
+            e.attributes.x.value = "0.0%";
+        }
+        if (e.attributes.width != undefined) {
+            e.attributes.width.value = "100.0%";
+        }
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_parent(c[i]);
+    }
+}
+function zoom(node) {
+    var attr = find_child(node, "rect").attributes;
+    var width = parseInt(attr["fg:w"].value);
+    var xmin = parseInt(attr["fg:x"].value);
+    var xmax = xmin + width;
+    var ymin = parseFloat(attr.y.value);
+    unzoombtn.classList.remove("hide");
+    var el = frames.children;
+    var to_update_text = [];
+    for (var i = 0; i < el.length; i++) {
+        var e = el[i];
+        var a = find_child(e, "rect").attributes;
+        var ex = parseInt(a["fg:x"].value);
+        var ew = parseInt(a["fg:w"].value);
+        // Is it an ancestor
+        if (!inverted) {
+            var upstack = parseFloat(a.y.value) > ymin;
+        } else {
+            var upstack = parseFloat(a.y.value) < ymin;
+        }
+        if (upstack) {
+            // Direct ancestor
+            if (ex <= xmin && (ex+ew) >= xmax) {
+                e.classList.add("parent");
+                zoom_parent(e);
+                to_update_text.push(e);
+            }
+            // not in current path
+            else
+                e.classList.add("hide");
+        }
+        // Children maybe
+        else {
+            // no common path
+            if (ex < xmin || ex >= xmax) {
+                e.classList.add("hide");
+            }
+            else {
+                zoom_child(e, xmin, width);
+                to_update_text.push(e);
+            }
+        }
+    }
+    update_text_for_elements(to_update_text);
+}
+function unzoom() {
+    unzoombtn.classList.add("hide");
+    var el = frames.children;
+    for(var i = 0; i < el.length; i++) {
+        el[i].classList.remove("parent");
+        el[i].classList.remove("hide");
+        zoom_reset(el[i]);
+    }
+    update_text_for_elements(el);
+}
+// search
+function reset_search() {
+    var el = document.querySelectorAll("#frames rect");
+    for (var i = 0; i < el.length; i++) {
+        orig_load(el[i], "fill")
+    }
+    var params = get_params();
+    delete params.s;
+    history.replaceState(null, null, parse_params(params));
+}
+function search_prompt() {
+    if (!searching) {
+        var term = prompt("Enter a search term (regexp " +
+            "allowed, eg: ^ext4_)", "");
+        if (term != null) {
+            search(term)
+        }
+    } else {
+        reset_search();
+        searching = 0;
+        searchbtn.classList.remove("show");
+        searchbtn.firstChild.nodeValue = "Search"
+        matchedtxt.classList.add("hide");
+        matchedtxt.firstChild.nodeValue = ""
+    }
+}
+function search(term) {
+    var re = new RegExp(term);
+    var el = frames.children;
+    var matches = new Object();
+    var maxwidth = 0;
+    for (var i = 0; i < el.length; i++) {
+        var e = el[i];
+        // Skip over frames which are either not visible, or below the zoomed-to frame
+        if (e.classList.contains("hide") || e.classList.contains("parent")) {
+            continue;
+        }
+        var func = g_to_func(e);
+        var rect = find_child(e, "rect");
+        if (func == null || rect == null)
+            continue;
+        // Save max width. Only works as we have a root frame
+        var w = parseInt(rect.attributes["fg:w"].value);
+        if (w > maxwidth)
+            maxwidth = w;
+        if (func.match(re)) {
+            // highlight
+            var x = parseInt(rect.attributes["fg:x"].value);
+            orig_save(rect, "fill");
+            rect.attributes.fill.value = searchcolor;
+            // remember matches
+            if (matches[x] == undefined) {
+                matches[x] = w;
+            } else {
+                if (w > matches[x]) {
+                    // overwrite with parent
+                    matches[x] = w;
+                }
+            }
+            searching = 1;
+        }
+    }
+    if (!searching)
+        return;
+    var params = get_params();
+    params.s = term;
+    history.replaceState(null, null, parse_params(params));
+
+    searchbtn.classList.add("show");
+    searchbtn.firstChild.nodeValue = "Reset Search";
+    // calculate percent matched, excluding vertical overlap
+    var count = 0;
+    var lastx = -1;
+    var lastw = 0;
+    var keys = Array();
+    for (k in matches) {
+        if (matches.hasOwnProperty(k))
+            keys.push(k);
+    }
+    // sort the matched frames by their x location
+    // ascending, then width descending
+    keys.sort(function(a, b){
+        return a - b;
+    });
+    // Step through frames saving only the biggest bottom-up frames
+    // thanks to the sort order. This relies on the tree property
+    // where children are always smaller than their parents.
+    for (var k in keys) {
+        var x = parseInt(keys[k]);
+        var w = matches[keys[k]];
+        if (x >= lastx + lastw) {
+            count += w;
+            lastx = x;
+            lastw = w;
+        }
+    }
+    // display matched percent
+    matchedtxt.classList.remove("hide");
+    var pct = 100 * count / maxwidth;
+    if (pct != 100) pct = pct.toFixed(1);
+    matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+}
+function format_percent(n) {
+    return n.toFixed(4) + "%";
+}
+]]></script><rect x="0" y="0" width="100%" height="678" fill="url(#background)"/><text id="title" fill="rgb(0,0,0)" x="50.0000%" y="24.00">Flame Graph</text><text id="details" fill="rgb(0,0,0)" x="10" y="661.00"> </text><text id="unzoom" class="hide" fill="rgb(0,0,0)" x="10" y="24.00">Reset Zoom</text><text id="search" fill="rgb(0,0,0)" x="1190" y="24.00">Search</text><text id="matched" fill="rgb(0,0,0)" x="1190" y="661.00"> </text><svg id="frames" x="10" width="1180" total_samples="5320"><g><title>&lt;std::sys::pal::unix::time::Timespec&gt;::now (1 samples, 0.02%)</title><rect x="0.0000%" y="357" width="0.0188%" height="15" fill="rgb(227,0,7)" fg:x="0" fg:w="1"/><text x="0.2500%" y="367.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (1 samples, 0.02%)</title><rect x="0.0000%" y="341" width="0.0188%" height="15" fill="rgb(217,0,24)" fg:x="0" fg:w="1"/><text x="0.2500%" y="351.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (1 samples, 0.02%)</title><rect x="0.0000%" y="325" width="0.0188%" height="15" fill="rgb(221,193,54)" fg:x="0" fg:w="1"/><text x="0.2500%" y="335.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (1 samples, 0.02%)</title><rect x="0.0000%" y="309" width="0.0188%" height="15" fill="rgb(248,212,6)" fg:x="0" fg:w="1"/><text x="0.2500%" y="319.50"></text></g><g><title>&lt;alloc::vec::Vec&lt;T,A&gt; as core::ops::index::IndexMut&lt;I&gt;&gt;::index_mut (84 samples, 1.58%)</title><rect x="0.0188%" y="309" width="1.5789%" height="15" fill="rgb(208,68,35)" fg:x="1" fg:w="84"/><text x="0.2688%" y="319.50"></text></g><g><title>core::slice::index::&lt;impl core::ops::index::IndexMut&lt;I&gt; for [T]&gt;::index_mut (84 samples, 1.58%)</title><rect x="0.0188%" y="293" width="1.5789%" height="15" fill="rgb(232,128,0)" fg:x="1" fg:w="84"/><text x="0.2688%" y="303.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (84 samples, 1.58%)</title><rect x="0.0188%" y="277" width="1.5789%" height="15" fill="rgb(207,160,47)" fg:x="1" fg:w="84"/><text x="0.2688%" y="287.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (84 samples, 1.58%)</title><rect x="0.0188%" y="261" width="1.5789%" height="15" fill="rgb(228,23,34)" fg:x="1" fg:w="84"/><text x="0.2688%" y="271.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (84 samples, 1.58%)</title><rect x="0.0188%" y="245" width="1.5789%" height="15" fill="rgb(218,30,26)" fg:x="1" fg:w="84"/><text x="0.2688%" y="255.50"></text></g><g><title>&lt;alloc::vec::Vec&lt;T,A&gt; as core::ops::index::IndexMut&lt;I&gt;&gt;::index_mut (122 samples, 2.29%)</title><rect x="0.0188%" y="341" width="2.2932%" height="15" fill="rgb(220,122,19)" fg:x="1" fg:w="122"/><text x="0.2688%" y="351.50">&lt;..</text></g><g><title>core::slice::index::&lt;impl core::ops::index::IndexMut&lt;I&gt; for [T]&gt;::index_mut (122 samples, 2.29%)</title><rect x="0.0188%" y="325" width="2.2932%" height="15" fill="rgb(250,228,42)" fg:x="1" fg:w="122"/><text x="0.2688%" y="335.50">c..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (38 samples, 0.71%)</title><rect x="1.5977%" y="309" width="0.7143%" height="15" fill="rgb(240,193,28)" fg:x="85" fg:w="38"/><text x="1.8477%" y="319.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (38 samples, 0.71%)</title><rect x="1.5977%" y="293" width="0.7143%" height="15" fill="rgb(216,20,37)" fg:x="85" fg:w="38"/><text x="1.8477%" y="303.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (38 samples, 0.71%)</title><rect x="1.5977%" y="277" width="0.7143%" height="15" fill="rgb(206,188,39)" fg:x="85" fg:w="38"/><text x="1.8477%" y="287.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (322 samples, 6.05%)</title><rect x="2.3120%" y="341" width="6.0526%" height="15" fill="rgb(217,207,13)" fg:x="123" fg:w="322"/><text x="2.5620%" y="351.50">&lt;pprof::..</text></g><g><title>backtrace::backtrace::trace_unsynchronized (322 samples, 6.05%)</title><rect x="2.3120%" y="325" width="6.0526%" height="15" fill="rgb(231,73,38)" fg:x="123" fg:w="322"/><text x="2.5620%" y="335.50">backtrac..</text></g><g><title>backtrace::backtrace::libunwind::trace (322 samples, 6.05%)</title><rect x="2.3120%" y="309" width="6.0526%" height="15" fill="rgb(225,20,46)" fg:x="123" fg:w="322"/><text x="2.5620%" y="319.50">backtrac..</text></g><g><title>&lt;std::sys::pal::unix::time::Timespec&gt;::now (1 samples, 0.02%)</title><rect x="8.3647%" y="341" width="0.0188%" height="15" fill="rgb(210,31,41)" fg:x="445" fg:w="1"/><text x="8.6147%" y="351.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (1 samples, 0.02%)</title><rect x="8.3647%" y="325" width="0.0188%" height="15" fill="rgb(221,200,47)" fg:x="445" fg:w="1"/><text x="8.6147%" y="335.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (1 samples, 0.02%)</title><rect x="8.3647%" y="309" width="0.0188%" height="15" fill="rgb(226,26,5)" fg:x="445" fg:w="1"/><text x="8.6147%" y="319.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (1 samples, 0.02%)</title><rect x="8.3647%" y="293" width="0.0188%" height="15" fill="rgb(249,33,26)" fg:x="445" fg:w="1"/><text x="8.6147%" y="303.50"></text></g><g><title>&lt;std::time::Instant&gt;::elapsed (4 samples, 0.08%)</title><rect x="8.3835%" y="341" width="0.0752%" height="15" fill="rgb(235,183,28)" fg:x="446" fg:w="4"/><text x="8.6335%" y="351.50"></text></g><g><title>&lt;std::time::Instant&gt;::now (4 samples, 0.08%)</title><rect x="8.3835%" y="325" width="0.0752%" height="15" fill="rgb(221,5,38)" fg:x="446" fg:w="4"/><text x="8.6335%" y="335.50"></text></g><g><title>&lt;std::sys::time::unix::Instant&gt;::now (4 samples, 0.08%)</title><rect x="8.3835%" y="309" width="0.0752%" height="15" fill="rgb(247,18,42)" fg:x="446" fg:w="4"/><text x="8.6335%" y="319.50"></text></g><g><title>&lt;std::sys::pal::unix::time::Timespec&gt;::now (4 samples, 0.08%)</title><rect x="8.3835%" y="293" width="0.0752%" height="15" fill="rgb(241,131,45)" fg:x="446" fg:w="4"/><text x="8.6335%" y="303.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (4 samples, 0.08%)</title><rect x="8.3835%" y="277" width="0.0752%" height="15" fill="rgb(249,31,29)" fg:x="446" fg:w="4"/><text x="8.6335%" y="287.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (4 samples, 0.08%)</title><rect x="8.3835%" y="261" width="0.0752%" height="15" fill="rgb(225,111,53)" fg:x="446" fg:w="4"/><text x="8.6335%" y="271.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (4 samples, 0.08%)</title><rect x="8.3835%" y="245" width="0.0752%" height="15" fill="rgb(238,160,17)" fg:x="446" fg:w="4"/><text x="8.6335%" y="255.50"></text></g><g><title>&lt;core::ops::range::Range&lt;T&gt; as core::iter::range::RangeIteratorImpl&gt;::spec_next (17 samples, 0.32%)</title><rect x="8.4586%" y="309" width="0.3195%" height="15" fill="rgb(214,148,48)" fg:x="450" fg:w="17"/><text x="8.7086%" y="319.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (17 samples, 0.32%)</title><rect x="8.4586%" y="293" width="0.3195%" height="15" fill="rgb(232,36,49)" fg:x="450" fg:w="17"/><text x="8.7086%" y="303.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (17 samples, 0.32%)</title><rect x="8.4586%" y="277" width="0.3195%" height="15" fill="rgb(209,103,24)" fg:x="450" fg:w="17"/><text x="8.7086%" y="287.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (17 samples, 0.32%)</title><rect x="8.4586%" y="261" width="0.3195%" height="15" fill="rgb(229,88,8)" fg:x="450" fg:w="17"/><text x="8.7086%" y="271.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (70 samples, 1.32%)</title><rect x="8.7782%" y="309" width="1.3158%" height="15" fill="rgb(213,181,19)" fg:x="467" fg:w="70"/><text x="9.0282%" y="319.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (70 samples, 1.32%)</title><rect x="8.7782%" y="293" width="1.3158%" height="15" fill="rgb(254,191,54)" fg:x="467" fg:w="70"/><text x="9.0282%" y="303.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (70 samples, 1.32%)</title><rect x="8.7782%" y="277" width="1.3158%" height="15" fill="rgb(241,83,37)" fg:x="467" fg:w="70"/><text x="9.0282%" y="287.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (65 samples, 1.22%)</title><rect x="10.0940%" y="277" width="1.2218%" height="15" fill="rgb(233,36,39)" fg:x="537" fg:w="65"/><text x="10.3440%" y="287.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (65 samples, 1.22%)</title><rect x="10.0940%" y="261" width="1.2218%" height="15" fill="rgb(226,3,54)" fg:x="537" fg:w="65"/><text x="10.3440%" y="271.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (65 samples, 1.22%)</title><rect x="10.0940%" y="245" width="1.2218%" height="15" fill="rgb(245,192,40)" fg:x="537" fg:w="65"/><text x="10.3440%" y="255.50"></text></g><g><title>&lt;core::ops::range::Range&lt;T&gt; as core::iter::range::RangeIteratorImpl&gt;::spec_next (213 samples, 4.00%)</title><rect x="8.4586%" y="325" width="4.0038%" height="15" fill="rgb(238,167,29)" fg:x="450" fg:w="213"/><text x="8.7086%" y="335.50">&lt;cor..</text></g><g><title>&lt;usize as core::iter::range::Step&gt;::forward_unchecked (126 samples, 2.37%)</title><rect x="10.0940%" y="309" width="2.3684%" height="15" fill="rgb(232,182,51)" fg:x="537" fg:w="126"/><text x="10.3440%" y="319.50">&lt;u..</text></g><g><title>&lt;usize&gt;::unchecked_add (126 samples, 2.37%)</title><rect x="10.0940%" y="293" width="2.3684%" height="15" fill="rgb(231,60,39)" fg:x="537" fg:w="126"/><text x="10.3440%" y="303.50">&lt;u..</text></g><g><title>&lt;usize as core::iter::range::Step&gt;::forward_unchecked (61 samples, 1.15%)</title><rect x="11.3158%" y="277" width="1.1466%" height="15" fill="rgb(208,69,12)" fg:x="602" fg:w="61"/><text x="11.5658%" y="287.50"></text></g><g><title>&lt;usize&gt;::unchecked_add (61 samples, 1.15%)</title><rect x="11.3158%" y="261" width="1.1466%" height="15" fill="rgb(235,93,37)" fg:x="602" fg:w="61"/><text x="11.5658%" y="271.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (61 samples, 1.15%)</title><rect x="11.3158%" y="245" width="1.1466%" height="15" fill="rgb(213,116,39)" fg:x="602" fg:w="61"/><text x="11.5658%" y="255.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (61 samples, 1.15%)</title><rect x="11.3158%" y="229" width="1.1466%" height="15" fill="rgb(222,207,29)" fg:x="602" fg:w="61"/><text x="11.5658%" y="239.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (61 samples, 1.15%)</title><rect x="11.3158%" y="213" width="1.1466%" height="15" fill="rgb(206,96,30)" fg:x="602" fg:w="61"/><text x="11.5658%" y="223.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (50 samples, 0.94%)</title><rect x="12.4624%" y="325" width="0.9398%" height="15" fill="rgb(218,138,4)" fg:x="663" fg:w="50"/><text x="12.7124%" y="335.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (50 samples, 0.94%)</title><rect x="12.4624%" y="309" width="0.9398%" height="15" fill="rgb(250,191,14)" fg:x="663" fg:w="50"/><text x="12.7124%" y="319.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (50 samples, 0.94%)</title><rect x="12.4624%" y="293" width="0.9398%" height="15" fill="rgb(239,60,40)" fg:x="663" fg:w="50"/><text x="12.7124%" y="303.50"></text></g><g><title>core::iter::range::&lt;impl core::iter::traits::iterator::Iterator for core::ops::range::Range&lt;A&gt;&gt;::next (342 samples, 6.43%)</title><rect x="8.4586%" y="341" width="6.4286%" height="15" fill="rgb(206,27,48)" fg:x="450" fg:w="342"/><text x="8.7086%" y="351.50">core::it..</text></g><g><title>core::iter::range::&lt;impl core::iter::traits::iterator::Iterator for core::ops::range::Range&lt;A&gt;&gt;::next (79 samples, 1.48%)</title><rect x="13.4023%" y="325" width="1.4850%" height="15" fill="rgb(225,35,8)" fg:x="713" fg:w="79"/><text x="13.6523%" y="335.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (79 samples, 1.48%)</title><rect x="13.4023%" y="309" width="1.4850%" height="15" fill="rgb(250,213,24)" fg:x="713" fg:w="79"/><text x="13.6523%" y="319.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (79 samples, 1.48%)</title><rect x="13.4023%" y="293" width="1.4850%" height="15" fill="rgb(247,123,22)" fg:x="713" fg:w="79"/><text x="13.6523%" y="303.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (79 samples, 1.48%)</title><rect x="13.4023%" y="277" width="1.4850%" height="15" fill="rgb(231,138,38)" fg:x="713" fg:w="79"/><text x="13.6523%" y="287.50"></text></g><g><title>migrator_core::domain::shared::traits::&lt;impl core::convert::AsRef&lt;str&gt; for migrator_core::domain::shared::SharedStr&gt;::as_ref (1 samples, 0.02%)</title><rect x="14.8872%" y="341" width="0.0188%" height="15" fill="rgb(231,145,46)" fg:x="792" fg:w="1"/><text x="15.1372%" y="351.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (1 samples, 0.02%)</title><rect x="14.8872%" y="325" width="0.0188%" height="15" fill="rgb(251,118,11)" fg:x="792" fg:w="1"/><text x="15.1372%" y="335.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (1 samples, 0.02%)</title><rect x="14.8872%" y="309" width="0.0188%" height="15" fill="rgb(217,147,25)" fg:x="792" fg:w="1"/><text x="15.1372%" y="319.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (1 samples, 0.02%)</title><rect x="14.8872%" y="293" width="0.0188%" height="15" fill="rgb(247,81,37)" fg:x="792" fg:w="1"/><text x="15.1372%" y="303.50"></text></g><g><title>&lt;alloc::vec::Vec&lt;T,A&gt; as core::ops::index::Index&lt;I&gt;&gt;::index (68 samples, 1.28%)</title><rect x="14.9060%" y="293" width="1.2782%" height="15" fill="rgb(209,12,38)" fg:x="793" fg:w="68"/><text x="15.1560%" y="303.50"></text></g><g><title>core::slice::index::&lt;impl core::ops::index::Index&lt;I&gt; for [T]&gt;::index (68 samples, 1.28%)</title><rect x="14.9060%" y="277" width="1.2782%" height="15" fill="rgb(227,1,9)" fg:x="793" fg:w="68"/><text x="15.1560%" y="287.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (68 samples, 1.28%)</title><rect x="14.9060%" y="261" width="1.2782%" height="15" fill="rgb(248,47,43)" fg:x="793" fg:w="68"/><text x="15.1560%" y="271.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (68 samples, 1.28%)</title><rect x="14.9060%" y="245" width="1.2782%" height="15" fill="rgb(221,10,30)" fg:x="793" fg:w="68"/><text x="15.1560%" y="255.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (68 samples, 1.28%)</title><rect x="14.9060%" y="229" width="1.2782%" height="15" fill="rgb(210,229,1)" fg:x="793" fg:w="68"/><text x="15.1560%" y="239.50"></text></g><g><title>&lt;alloc::vec::Vec&lt;T,A&gt; as core::ops::index::Index&lt;I&gt;&gt;::index (111 samples, 2.09%)</title><rect x="14.9060%" y="325" width="2.0865%" height="15" fill="rgb(222,148,37)" fg:x="793" fg:w="111"/><text x="15.1560%" y="335.50">&lt;..</text></g><g><title>core::slice::index::&lt;impl core::ops::index::Index&lt;I&gt; for [T]&gt;::index (111 samples, 2.09%)</title><rect x="14.9060%" y="309" width="2.0865%" height="15" fill="rgb(234,67,33)" fg:x="793" fg:w="111"/><text x="15.1560%" y="319.50">c..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (43 samples, 0.81%)</title><rect x="16.1842%" y="293" width="0.8083%" height="15" fill="rgb(247,98,35)" fg:x="861" fg:w="43"/><text x="16.4342%" y="303.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (43 samples, 0.81%)</title><rect x="16.1842%" y="277" width="0.8083%" height="15" fill="rgb(247,138,52)" fg:x="861" fg:w="43"/><text x="16.4342%" y="287.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (43 samples, 0.81%)</title><rect x="16.1842%" y="261" width="0.8083%" height="15" fill="rgb(213,79,30)" fg:x="861" fg:w="43"/><text x="16.4342%" y="271.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (25 samples, 0.47%)</title><rect x="16.9925%" y="325" width="0.4699%" height="15" fill="rgb(246,177,23)" fg:x="904" fg:w="25"/><text x="17.2425%" y="335.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (25 samples, 0.47%)</title><rect x="16.9925%" y="309" width="0.4699%" height="15" fill="rgb(230,62,27)" fg:x="904" fg:w="25"/><text x="17.2425%" y="319.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (25 samples, 0.47%)</title><rect x="16.9925%" y="293" width="0.4699%" height="15" fill="rgb(216,154,8)" fg:x="904" fg:w="25"/><text x="17.2425%" y="303.50"></text></g><g><title>migrator_core::domain::workspace::Workspace::row (203 samples, 3.82%)</title><rect x="14.9060%" y="341" width="3.8158%" height="15" fill="rgb(244,35,45)" fg:x="793" fg:w="203"/><text x="15.1560%" y="351.50">migr..</text></g><g><title>migrator_core::domain::workspace::Workspace::row (67 samples, 1.26%)</title><rect x="17.4624%" y="325" width="1.2594%" height="15" fill="rgb(251,115,12)" fg:x="929" fg:w="67"/><text x="17.7124%" y="335.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (67 samples, 1.26%)</title><rect x="17.4624%" y="309" width="1.2594%" height="15" fill="rgb(240,54,50)" fg:x="929" fg:w="67"/><text x="17.7124%" y="319.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (67 samples, 1.26%)</title><rect x="17.4624%" y="293" width="1.2594%" height="15" fill="rgb(233,84,52)" fg:x="929" fg:w="67"/><text x="17.7124%" y="303.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (67 samples, 1.26%)</title><rect x="17.4624%" y="277" width="1.2594%" height="15" fill="rgb(207,117,47)" fg:x="929" fg:w="67"/><text x="17.7124%" y="287.50"></text></g><g><title>migrator_core::plan::diff::compute_diff_into (133 samples, 2.50%)</title><rect x="18.7218%" y="341" width="2.5000%" height="15" fill="rgb(249,43,39)" fg:x="996" fg:w="133"/><text x="18.9718%" y="351.50">mi..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (133 samples, 2.50%)</title><rect x="18.7218%" y="325" width="2.5000%" height="15" fill="rgb(209,38,44)" fg:x="996" fg:w="133"/><text x="18.9718%" y="335.50">&lt;p..</text></g><g><title>backtrace::backtrace::trace_unsynchronized (133 samples, 2.50%)</title><rect x="18.7218%" y="309" width="2.5000%" height="15" fill="rgb(236,212,23)" fg:x="996" fg:w="133"/><text x="18.9718%" y="319.50">ba..</text></g><g><title>backtrace::backtrace::libunwind::trace (133 samples, 2.50%)</title><rect x="18.7218%" y="293" width="2.5000%" height="15" fill="rgb(242,79,21)" fg:x="996" fg:w="133"/><text x="18.9718%" y="303.50">ba..</text></g><g><title>&lt;alloc::vec::Vec&lt;T,A&gt; as core::ops::index::Index&lt;I&gt;&gt;::index (72 samples, 1.35%)</title><rect x="21.2218%" y="293" width="1.3534%" height="15" fill="rgb(211,96,35)" fg:x="1129" fg:w="72"/><text x="21.4718%" y="303.50"></text></g><g><title>core::slice::index::&lt;impl core::ops::index::Index&lt;I&gt; for [T]&gt;::index (72 samples, 1.35%)</title><rect x="21.2218%" y="277" width="1.3534%" height="15" fill="rgb(253,215,40)" fg:x="1129" fg:w="72"/><text x="21.4718%" y="287.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (72 samples, 1.35%)</title><rect x="21.2218%" y="261" width="1.3534%" height="15" fill="rgb(211,81,21)" fg:x="1129" fg:w="72"/><text x="21.4718%" y="271.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (72 samples, 1.35%)</title><rect x="21.2218%" y="245" width="1.3534%" height="15" fill="rgb(208,190,38)" fg:x="1129" fg:w="72"/><text x="21.4718%" y="255.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (72 samples, 1.35%)</title><rect x="21.2218%" y="229" width="1.3534%" height="15" fill="rgb(235,213,38)" fg:x="1129" fg:w="72"/><text x="21.4718%" y="239.50"></text></g><g><title>&lt;alloc::vec::Vec&lt;T,A&gt; as core::ops::index::Index&lt;I&gt;&gt;::index (104 samples, 1.95%)</title><rect x="21.2218%" y="325" width="1.9549%" height="15" fill="rgb(237,122,38)" fg:x="1129" fg:w="104"/><text x="21.4718%" y="335.50">&lt;..</text></g><g><title>core::slice::index::&lt;impl core::ops::index::Index&lt;I&gt; for [T]&gt;::index (104 samples, 1.95%)</title><rect x="21.2218%" y="309" width="1.9549%" height="15" fill="rgb(244,218,35)" fg:x="1129" fg:w="104"/><text x="21.4718%" y="319.50">c..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (32 samples, 0.60%)</title><rect x="22.5752%" y="293" width="0.6015%" height="15" fill="rgb(240,68,47)" fg:x="1201" fg:w="32"/><text x="22.8252%" y="303.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (32 samples, 0.60%)</title><rect x="22.5752%" y="277" width="0.6015%" height="15" fill="rgb(210,16,53)" fg:x="1201" fg:w="32"/><text x="22.8252%" y="287.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (32 samples, 0.60%)</title><rect x="22.5752%" y="261" width="0.6015%" height="15" fill="rgb(235,124,12)" fg:x="1201" fg:w="32"/><text x="22.8252%" y="271.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (522 samples, 9.81%)</title><rect x="23.1767%" y="325" width="9.8120%" height="15" fill="rgb(224,169,11)" fg:x="1233" fg:w="522"/><text x="23.4267%" y="335.50">&lt;pprof::backtr..</text></g><g><title>backtrace::backtrace::trace_unsynchronized (522 samples, 9.81%)</title><rect x="23.1767%" y="309" width="9.8120%" height="15" fill="rgb(250,166,2)" fg:x="1233" fg:w="522"/><text x="23.4267%" y="319.50">backtrace::bac..</text></g><g><title>backtrace::backtrace::libunwind::trace (522 samples, 9.81%)</title><rect x="23.1767%" y="293" width="9.8120%" height="15" fill="rgb(242,216,29)" fg:x="1233" fg:w="522"/><text x="23.4267%" y="303.50">backtrace::bac..</text></g><g><title>&lt;T as core::array::equality::SpecArrayEq&lt;U,_&gt;&gt;::spec_eq (149 samples, 2.80%)</title><rect x="32.9887%" y="277" width="2.8008%" height="15" fill="rgb(230,116,27)" fg:x="1755" fg:w="149"/><text x="33.2387%" y="287.50">&lt;T..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (149 samples, 2.80%)</title><rect x="32.9887%" y="261" width="2.8008%" height="15" fill="rgb(228,99,48)" fg:x="1755" fg:w="149"/><text x="33.2387%" y="271.50">&lt;p..</text></g><g><title>backtrace::backtrace::trace_unsynchronized (149 samples, 2.80%)</title><rect x="32.9887%" y="245" width="2.8008%" height="15" fill="rgb(253,11,6)" fg:x="1755" fg:w="149"/><text x="33.2387%" y="255.50">ba..</text></g><g><title>backtrace::backtrace::libunwind::trace (149 samples, 2.80%)</title><rect x="32.9887%" y="229" width="2.8008%" height="15" fill="rgb(247,143,39)" fg:x="1755" fg:w="149"/><text x="33.2387%" y="239.50">ba..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (31 samples, 0.58%)</title><rect x="35.7895%" y="277" width="0.5827%" height="15" fill="rgb(236,97,10)" fg:x="1904" fg:w="31"/><text x="36.0395%" y="287.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (31 samples, 0.58%)</title><rect x="35.7895%" y="261" width="0.5827%" height="15" fill="rgb(233,208,19)" fg:x="1904" fg:w="31"/><text x="36.0395%" y="271.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (31 samples, 0.58%)</title><rect x="35.7895%" y="245" width="0.5827%" height="15" fill="rgb(216,164,2)" fg:x="1904" fg:w="31"/><text x="36.0395%" y="255.50"></text></g><g><title> N]&gt;::eq (204 samples, 3.83%)</title><rect x="32.9887%" y="293" width="3.8346%" height="15" fill="rgb(220,129,5)" fg:x="1755" fg:w="204"/><text x="33.2387%" y="303.50"> N]&gt;..</text></g><g><title>core::array::equality::&lt;impl core::cmp::PartialEq&lt;[U (24 samples, 0.45%)</title><rect x="36.3722%" y="277" width="0.4511%" height="15" fill="rgb(242,17,10)" fg:x="1935" fg:w="24"/><text x="36.6222%" y="287.50"></text></g><g><title> N]&gt; for [T (24 samples, 0.45%)</title><rect x="36.3722%" y="261" width="0.4511%" height="15" fill="rgb(242,107,0)" fg:x="1935" fg:w="24"/><text x="36.6222%" y="271.50"></text></g><g><title> N]&gt;::eq (24 samples, 0.45%)</title><rect x="36.3722%" y="245" width="0.4511%" height="15" fill="rgb(251,28,31)" fg:x="1935" fg:w="24"/><text x="36.6222%" y="255.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (24 samples, 0.45%)</title><rect x="36.3722%" y="229" width="0.4511%" height="15" fill="rgb(233,223,10)" fg:x="1935" fg:w="24"/><text x="36.6222%" y="239.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (24 samples, 0.45%)</title><rect x="36.3722%" y="213" width="0.4511%" height="15" fill="rgb(215,21,27)" fg:x="1935" fg:w="24"/><text x="36.6222%" y="223.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (24 samples, 0.45%)</title><rect x="36.3722%" y="197" width="0.4511%" height="15" fill="rgb(232,23,21)" fg:x="1935" fg:w="24"/><text x="36.6222%" y="207.50"></text></g><g><title>&lt;T as core::array::equality::SpecArrayEq&lt;U,_&gt;&gt;::spec_ne (456 samples, 8.57%)</title><rect x="36.8233%" y="277" width="8.5714%" height="15" fill="rgb(244,5,23)" fg:x="1959" fg:w="456"/><text x="37.0733%" y="287.50">&lt;T as core::..</text></g><g><title>&lt;T as core::array::equality::SpecArrayEq&lt;U,_&gt;&gt;::spec_eq (456 samples, 8.57%)</title><rect x="36.8233%" y="261" width="8.5714%" height="15" fill="rgb(226,81,46)" fg:x="1959" fg:w="456"/><text x="37.0733%" y="271.50">&lt;T as core::..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (456 samples, 8.57%)</title><rect x="36.8233%" y="245" width="8.5714%" height="15" fill="rgb(247,70,30)" fg:x="1959" fg:w="456"/><text x="37.0733%" y="255.50">&lt;pprof::back..</text></g><g><title>backtrace::backtrace::trace_unsynchronized (456 samples, 8.57%)</title><rect x="36.8233%" y="229" width="8.5714%" height="15" fill="rgb(212,68,19)" fg:x="1959" fg:w="456"/><text x="37.0733%" y="239.50">backtrace::b..</text></g><g><title>backtrace::backtrace::libunwind::trace (456 samples, 8.57%)</title><rect x="36.8233%" y="213" width="8.5714%" height="15" fill="rgb(240,187,13)" fg:x="1959" fg:w="456"/><text x="37.0733%" y="223.50">backtrace::b..</text></g><g><title>core::array::equality::&lt;impl core::cmp::PartialEq&lt;[U (672 samples, 12.63%)</title><rect x="32.9887%" y="325" width="12.6316%" height="15" fill="rgb(223,113,26)" fg:x="1755" fg:w="672"/><text x="33.2387%" y="335.50">core::array::equali..</text></g><g><title> N]&gt; for [T (672 samples, 12.63%)</title><rect x="32.9887%" y="309" width="12.6316%" height="15" fill="rgb(206,192,2)" fg:x="1755" fg:w="672"/><text x="33.2387%" y="319.50"> N]&gt; for [T</text></g><g><title> N]&gt;::ne (468 samples, 8.80%)</title><rect x="36.8233%" y="293" width="8.7970%" height="15" fill="rgb(241,108,4)" fg:x="1959" fg:w="468"/><text x="37.0733%" y="303.50"> N]&gt;::ne</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (12 samples, 0.23%)</title><rect x="45.3947%" y="277" width="0.2256%" height="15" fill="rgb(247,173,49)" fg:x="2415" fg:w="12"/><text x="45.6447%" y="287.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (12 samples, 0.23%)</title><rect x="45.3947%" y="261" width="0.2256%" height="15" fill="rgb(224,114,35)" fg:x="2415" fg:w="12"/><text x="45.6447%" y="271.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (12 samples, 0.23%)</title><rect x="45.3947%" y="245" width="0.2256%" height="15" fill="rgb(245,159,27)" fg:x="2415" fg:w="12"/><text x="45.6447%" y="255.50"></text></g><g><title>&lt;alloc::vec::Vec&lt;T,A&gt; as core::ops::index::Index&lt;I&gt;&gt;::index (142 samples, 2.67%)</title><rect x="45.6203%" y="277" width="2.6692%" height="15" fill="rgb(245,172,44)" fg:x="2427" fg:w="142"/><text x="45.8703%" y="287.50">&lt;a..</text></g><g><title>core::slice::index::&lt;impl core::ops::index::Index&lt;I&gt; for [T]&gt;::index (142 samples, 2.67%)</title><rect x="45.6203%" y="261" width="2.6692%" height="15" fill="rgb(236,23,11)" fg:x="2427" fg:w="142"/><text x="45.8703%" y="271.50">co..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (142 samples, 2.67%)</title><rect x="45.6203%" y="245" width="2.6692%" height="15" fill="rgb(205,117,38)" fg:x="2427" fg:w="142"/><text x="45.8703%" y="255.50">&lt;p..</text></g><g><title>backtrace::backtrace::trace_unsynchronized (142 samples, 2.67%)</title><rect x="45.6203%" y="229" width="2.6692%" height="15" fill="rgb(237,72,25)" fg:x="2427" fg:w="142"/><text x="45.8703%" y="239.50">ba..</text></g><g><title>backtrace::backtrace::libunwind::trace (142 samples, 2.67%)</title><rect x="45.6203%" y="213" width="2.6692%" height="15" fill="rgb(244,70,9)" fg:x="2427" fg:w="142"/><text x="45.8703%" y="223.50">ba..</text></g><g><title>&lt;alloc::vec::Vec&lt;T,A&gt; as core::ops::index::Index&lt;I&gt;&gt;::index (225 samples, 4.23%)</title><rect x="45.6203%" y="309" width="4.2293%" height="15" fill="rgb(217,125,39)" fg:x="2427" fg:w="225"/><text x="45.8703%" y="319.50">&lt;allo..</text></g><g><title>core::slice::index::&lt;impl core::ops::index::Index&lt;I&gt; for [T]&gt;::index (225 samples, 4.23%)</title><rect x="45.6203%" y="293" width="4.2293%" height="15" fill="rgb(235,36,10)" fg:x="2427" fg:w="225"/><text x="45.8703%" y="303.50">core:..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (83 samples, 1.56%)</title><rect x="48.2895%" y="277" width="1.5602%" height="15" fill="rgb(251,123,47)" fg:x="2569" fg:w="83"/><text x="48.5395%" y="287.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (83 samples, 1.56%)</title><rect x="48.2895%" y="261" width="1.5602%" height="15" fill="rgb(221,13,13)" fg:x="2569" fg:w="83"/><text x="48.5395%" y="271.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (83 samples, 1.56%)</title><rect x="48.2895%" y="245" width="1.5602%" height="15" fill="rgb(238,131,9)" fg:x="2569" fg:w="83"/><text x="48.5395%" y="255.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (70 samples, 1.32%)</title><rect x="49.8496%" y="309" width="1.3158%" height="15" fill="rgb(211,50,8)" fg:x="2652" fg:w="70"/><text x="50.0996%" y="319.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (70 samples, 1.32%)</title><rect x="49.8496%" y="293" width="1.3158%" height="15" fill="rgb(245,182,24)" fg:x="2652" fg:w="70"/><text x="50.0996%" y="303.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (70 samples, 1.32%)</title><rect x="49.8496%" y="277" width="1.3158%" height="15" fill="rgb(242,14,37)" fg:x="2652" fg:w="70"/><text x="50.0996%" y="287.50"></text></g><g><title>migrator_core::domain::workspace::objects::access::&lt;impl migrator_core::domain::workspace::Workspace&gt;::entry (396 samples, 7.44%)</title><rect x="45.6203%" y="325" width="7.4436%" height="15" fill="rgb(246,228,12)" fg:x="2427" fg:w="396"/><text x="45.8703%" y="335.50">migrator_c..</text></g><g><title>migrator_core::domain::workspace::objects::access::&lt;impl migrator_core::domain::workspace::Workspace&gt;::entry (101 samples, 1.90%)</title><rect x="51.1654%" y="309" width="1.8985%" height="15" fill="rgb(213,55,15)" fg:x="2722" fg:w="101"/><text x="51.4154%" y="319.50">m..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (101 samples, 1.90%)</title><rect x="51.1654%" y="293" width="1.8985%" height="15" fill="rgb(209,9,3)" fg:x="2722" fg:w="101"/><text x="51.4154%" y="303.50">&lt;..</text></g><g><title>backtrace::backtrace::trace_unsynchronized (101 samples, 1.90%)</title><rect x="51.1654%" y="277" width="1.8985%" height="15" fill="rgb(230,59,30)" fg:x="2722" fg:w="101"/><text x="51.4154%" y="287.50">b..</text></g><g><title>backtrace::backtrace::libunwind::trace (101 samples, 1.90%)</title><rect x="51.1654%" y="261" width="1.8985%" height="15" fill="rgb(209,121,21)" fg:x="2722" fg:w="101"/><text x="51.4154%" y="271.50">b..</text></g><g><title>migrator_core::plan::diff_decide::decide_object_at (1,912 samples, 35.94%)</title><rect x="21.2218%" y="341" width="35.9398%" height="15" fill="rgb(220,109,13)" fg:x="1129" fg:w="1912"/><text x="21.4718%" y="351.50">migrator_core::plan::diff_decide::decide_object_at</text></g><g><title>migrator_core::plan::diff_decide::decide_object_at (218 samples, 4.10%)</title><rect x="53.0639%" y="325" width="4.0977%" height="15" fill="rgb(232,18,1)" fg:x="2823" fg:w="218"/><text x="53.3139%" y="335.50">migr..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (218 samples, 4.10%)</title><rect x="53.0639%" y="309" width="4.0977%" height="15" fill="rgb(215,41,42)" fg:x="2823" fg:w="218"/><text x="53.3139%" y="319.50">&lt;ppr..</text></g><g><title>backtrace::backtrace::trace_unsynchronized (218 samples, 4.10%)</title><rect x="53.0639%" y="293" width="4.0977%" height="15" fill="rgb(224,123,36)" fg:x="2823" fg:w="218"/><text x="53.3139%" y="303.50">back..</text></g><g><title>backtrace::backtrace::libunwind::trace (218 samples, 4.10%)</title><rect x="53.0639%" y="277" width="4.0977%" height="15" fill="rgb(240,125,3)" fg:x="2823" fg:w="218"/><text x="53.3139%" y="287.50">back..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (49 samples, 0.92%)</title><rect x="57.1617%" y="325" width="0.9211%" height="15" fill="rgb(205,98,50)" fg:x="3041" fg:w="49"/><text x="57.4117%" y="335.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (49 samples, 0.92%)</title><rect x="57.1617%" y="309" width="0.9211%" height="15" fill="rgb(205,185,37)" fg:x="3041" fg:w="49"/><text x="57.4117%" y="319.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (49 samples, 0.92%)</title><rect x="57.1617%" y="293" width="0.9211%" height="15" fill="rgb(238,207,15)" fg:x="3041" fg:w="49"/><text x="57.4117%" y="303.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (881 samples, 16.56%)</title><rect x="58.0827%" y="309" width="16.5602%" height="15" fill="rgb(213,199,42)" fg:x="3090" fg:w="881"/><text x="58.3327%" y="319.50">&lt;pprof::backtrace::backtra..</text></g><g><title>backtrace::backtrace::trace_unsynchronized (881 samples, 16.56%)</title><rect x="58.0827%" y="293" width="16.5602%" height="15" fill="rgb(235,201,11)" fg:x="3090" fg:w="881"/><text x="58.3327%" y="303.50">backtrace::backtrace::trac..</text></g><g><title>backtrace::backtrace::libunwind::trace (881 samples, 16.56%)</title><rect x="58.0827%" y="277" width="16.5602%" height="15" fill="rgb(207,46,11)" fg:x="3090" fg:w="881"/><text x="58.3327%" y="287.50">backtrace::backtrace::libu..</text></g><g><title>&lt;T as core::array::equality::SpecArrayEq&lt;U,_&gt;&gt;::spec_eq (251 samples, 4.72%)</title><rect x="74.6429%" y="261" width="4.7180%" height="15" fill="rgb(241,35,35)" fg:x="3971" fg:w="251"/><text x="74.8929%" y="271.50">&lt;T as..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (251 samples, 4.72%)</title><rect x="74.6429%" y="245" width="4.7180%" height="15" fill="rgb(243,32,47)" fg:x="3971" fg:w="251"/><text x="74.8929%" y="255.50">&lt;ppro..</text></g><g><title>backtrace::backtrace::trace_unsynchronized (251 samples, 4.72%)</title><rect x="74.6429%" y="229" width="4.7180%" height="15" fill="rgb(247,202,23)" fg:x="3971" fg:w="251"/><text x="74.8929%" y="239.50">backt..</text></g><g><title>backtrace::backtrace::libunwind::trace (251 samples, 4.72%)</title><rect x="74.6429%" y="213" width="4.7180%" height="15" fill="rgb(219,102,11)" fg:x="3971" fg:w="251"/><text x="74.8929%" y="223.50">backt..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (23 samples, 0.43%)</title><rect x="79.3609%" y="261" width="0.4323%" height="15" fill="rgb(243,110,44)" fg:x="4222" fg:w="23"/><text x="79.6109%" y="271.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (23 samples, 0.43%)</title><rect x="79.3609%" y="245" width="0.4323%" height="15" fill="rgb(222,74,54)" fg:x="4222" fg:w="23"/><text x="79.6109%" y="255.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (23 samples, 0.43%)</title><rect x="79.3609%" y="229" width="0.4323%" height="15" fill="rgb(216,99,12)" fg:x="4222" fg:w="23"/><text x="79.6109%" y="239.50"></text></g><g><title>core::array::equality::&lt;impl core::cmp::PartialEq&lt;[U (284 samples, 5.34%)</title><rect x="74.6429%" y="309" width="5.3383%" height="15" fill="rgb(226,22,26)" fg:x="3971" fg:w="284"/><text x="74.8929%" y="319.50">core::a..</text></g><g><title> N]&gt; for [T (284 samples, 5.34%)</title><rect x="74.6429%" y="293" width="5.3383%" height="15" fill="rgb(217,163,10)" fg:x="3971" fg:w="284"/><text x="74.8929%" y="303.50"> N]&gt; fo..</text></g><g><title> N]&gt;::eq (284 samples, 5.34%)</title><rect x="74.6429%" y="277" width="5.3383%" height="15" fill="rgb(213,25,53)" fg:x="3971" fg:w="284"/><text x="74.8929%" y="287.50"> N]&gt;::eq</text></g><g><title>core::array::equality::&lt;impl core::cmp::PartialEq&lt;[U (10 samples, 0.19%)</title><rect x="79.7932%" y="261" width="0.1880%" height="15" fill="rgb(252,105,26)" fg:x="4245" fg:w="10"/><text x="80.0432%" y="271.50"></text></g><g><title> N]&gt; for [T (10 samples, 0.19%)</title><rect x="79.7932%" y="245" width="0.1880%" height="15" fill="rgb(220,39,43)" fg:x="4245" fg:w="10"/><text x="80.0432%" y="255.50"></text></g><g><title> N]&gt;::eq (10 samples, 0.19%)</title><rect x="79.7932%" y="229" width="0.1880%" height="15" fill="rgb(229,68,48)" fg:x="4245" fg:w="10"/><text x="80.0432%" y="239.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (10 samples, 0.19%)</title><rect x="79.7932%" y="213" width="0.1880%" height="15" fill="rgb(252,8,32)" fg:x="4245" fg:w="10"/><text x="80.0432%" y="223.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (10 samples, 0.19%)</title><rect x="79.7932%" y="197" width="0.1880%" height="15" fill="rgb(223,20,43)" fg:x="4245" fg:w="10"/><text x="80.0432%" y="207.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (10 samples, 0.19%)</title><rect x="79.7932%" y="181" width="0.1880%" height="15" fill="rgb(229,81,49)" fg:x="4245" fg:w="10"/><text x="80.0432%" y="191.50"></text></g><g><title>&lt;alloc::vec::Vec&lt;T,A&gt; as core::ops::index::Index&lt;I&gt;&gt;::index (61 samples, 1.15%)</title><rect x="79.9812%" y="261" width="1.1466%" height="15" fill="rgb(236,28,36)" fg:x="4255" fg:w="61"/><text x="80.2312%" y="271.50"></text></g><g><title>core::slice::index::&lt;impl core::ops::index::Index&lt;I&gt; for [T]&gt;::index (61 samples, 1.15%)</title><rect x="79.9812%" y="245" width="1.1466%" height="15" fill="rgb(249,185,26)" fg:x="4255" fg:w="61"/><text x="80.2312%" y="255.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (61 samples, 1.15%)</title><rect x="79.9812%" y="229" width="1.1466%" height="15" fill="rgb(249,174,33)" fg:x="4255" fg:w="61"/><text x="80.2312%" y="239.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (61 samples, 1.15%)</title><rect x="79.9812%" y="213" width="1.1466%" height="15" fill="rgb(233,201,37)" fg:x="4255" fg:w="61"/><text x="80.2312%" y="223.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (61 samples, 1.15%)</title><rect x="79.9812%" y="197" width="1.1466%" height="15" fill="rgb(221,78,26)" fg:x="4255" fg:w="61"/><text x="80.2312%" y="207.50"></text></g><g><title>&lt;alloc::vec::Vec&lt;T,A&gt; as core::ops::index::Index&lt;I&gt;&gt;::index (81 samples, 1.52%)</title><rect x="79.9812%" y="293" width="1.5226%" height="15" fill="rgb(250,127,30)" fg:x="4255" fg:w="81"/><text x="80.2312%" y="303.50"></text></g><g><title>core::slice::index::&lt;impl core::ops::index::Index&lt;I&gt; for [T]&gt;::index (81 samples, 1.52%)</title><rect x="79.9812%" y="277" width="1.5226%" height="15" fill="rgb(230,49,44)" fg:x="4255" fg:w="81"/><text x="80.2312%" y="287.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (20 samples, 0.38%)</title><rect x="81.1278%" y="261" width="0.3759%" height="15" fill="rgb(229,67,23)" fg:x="4316" fg:w="20"/><text x="81.3778%" y="271.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (20 samples, 0.38%)</title><rect x="81.1278%" y="245" width="0.3759%" height="15" fill="rgb(249,83,47)" fg:x="4316" fg:w="20"/><text x="81.3778%" y="255.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (20 samples, 0.38%)</title><rect x="81.1278%" y="229" width="0.3759%" height="15" fill="rgb(215,43,3)" fg:x="4316" fg:w="20"/><text x="81.3778%" y="239.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (46 samples, 0.86%)</title><rect x="81.5038%" y="293" width="0.8647%" height="15" fill="rgb(238,154,13)" fg:x="4336" fg:w="46"/><text x="81.7538%" y="303.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (46 samples, 0.86%)</title><rect x="81.5038%" y="277" width="0.8647%" height="15" fill="rgb(219,56,2)" fg:x="4336" fg:w="46"/><text x="81.7538%" y="287.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (46 samples, 0.86%)</title><rect x="81.5038%" y="261" width="0.8647%" height="15" fill="rgb(233,0,4)" fg:x="4336" fg:w="46"/><text x="81.7538%" y="271.50"></text></g><g><title>migrator_core::domain::workspace::objects::access::&lt;impl migrator_core::domain::workspace::Workspace&gt;::entry (132 samples, 2.48%)</title><rect x="79.9812%" y="309" width="2.4812%" height="15" fill="rgb(235,30,7)" fg:x="4255" fg:w="132"/><text x="80.2312%" y="319.50">mi..</text></g><g><title>migrator_core::domain::workspace::objects::access::&lt;impl migrator_core::domain::workspace::Workspace&gt;::entry (5 samples, 0.09%)</title><rect x="82.3684%" y="293" width="0.0940%" height="15" fill="rgb(250,79,13)" fg:x="4382" fg:w="5"/><text x="82.6184%" y="303.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (5 samples, 0.09%)</title><rect x="82.3684%" y="277" width="0.0940%" height="15" fill="rgb(211,146,34)" fg:x="4382" fg:w="5"/><text x="82.6184%" y="287.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (5 samples, 0.09%)</title><rect x="82.3684%" y="261" width="0.0940%" height="15" fill="rgb(228,22,38)" fg:x="4382" fg:w="5"/><text x="82.6184%" y="271.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (5 samples, 0.09%)</title><rect x="82.3684%" y="245" width="0.0940%" height="15" fill="rgb(235,168,5)" fg:x="4382" fg:w="5"/><text x="82.6184%" y="255.50"></text></g><g><title>migrator_core::export::plan_row::PlanRow::planned_action (391 samples, 7.35%)</title><rect x="82.4624%" y="309" width="7.3496%" height="15" fill="rgb(221,155,16)" fg:x="4387" fg:w="391"/><text x="82.7124%" y="319.50">migrator_c..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (391 samples, 7.35%)</title><rect x="82.4624%" y="293" width="7.3496%" height="15" fill="rgb(215,215,53)" fg:x="4387" fg:w="391"/><text x="82.7124%" y="303.50">&lt;pprof::ba..</text></g><g><title>backtrace::backtrace::trace_unsynchronized (391 samples, 7.35%)</title><rect x="82.4624%" y="277" width="7.3496%" height="15" fill="rgb(223,4,10)" fg:x="4387" fg:w="391"/><text x="82.7124%" y="287.50">backtrace:..</text></g><g><title>backtrace::backtrace::libunwind::trace (391 samples, 7.35%)</title><rect x="82.4624%" y="261" width="7.3496%" height="15" fill="rgb(234,103,6)" fg:x="4387" fg:w="391"/><text x="82.7124%" y="271.50">backtrace:..</text></g><g><title>migrator_core::plan::diff_object::fill_plan_row (2,274 samples, 42.74%)</title><rect x="57.1617%" y="341" width="42.7444%" height="15" fill="rgb(227,97,0)" fg:x="3041" fg:w="2274"/><text x="57.4117%" y="351.50">migrator_core::plan::diff_object::fill_plan_row</text></g><g><title>migrator_core::plan::diff_fill_skip::skip_fill_unchanged (2,225 samples, 41.82%)</title><rect x="58.0827%" y="325" width="41.8233%" height="15" fill="rgb(234,150,53)" fg:x="3090" fg:w="2225"/><text x="58.3327%" y="335.50">migrator_core::plan::diff_fill_skip::skip_fill_unchanged</text></g><g><title>migrator_core::plan::diff_fill_skip::skip_fill_unchanged (537 samples, 10.09%)</title><rect x="89.8120%" y="309" width="10.0940%" height="15" fill="rgb(228,201,54)" fg:x="4778" fg:w="537"/><text x="90.0620%" y="319.50">migrator_core::..</text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (537 samples, 10.09%)</title><rect x="89.8120%" y="293" width="10.0940%" height="15" fill="rgb(222,22,37)" fg:x="4778" fg:w="537"/><text x="90.0620%" y="303.50">&lt;pprof::backtra..</text></g><g><title>backtrace::backtrace::trace_unsynchronized (537 samples, 10.09%)</title><rect x="89.8120%" y="277" width="10.0940%" height="15" fill="rgb(237,53,32)" fg:x="4778" fg:w="537"/><text x="90.0620%" y="287.50">backtrace::back..</text></g><g><title>backtrace::backtrace::libunwind::trace (537 samples, 10.09%)</title><rect x="89.8120%" y="261" width="10.0940%" height="15" fill="rgb(233,25,53)" fg:x="4778" fg:w="537"/><text x="90.0620%" y="271.50">backtrace::back..</text></g><g><title>migrator_core::plan::diff_plan::ensure_plan_rows (1 samples, 0.02%)</title><rect x="99.9060%" y="341" width="0.0188%" height="15" fill="rgb(210,40,34)" fg:x="5315" fg:w="1"/><text x="100.1560%" y="351.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (1 samples, 0.02%)</title><rect x="99.9060%" y="325" width="0.0188%" height="15" fill="rgb(241,220,44)" fg:x="5315" fg:w="1"/><text x="100.1560%" y="335.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (1 samples, 0.02%)</title><rect x="99.9060%" y="309" width="0.0188%" height="15" fill="rgb(235,28,35)" fg:x="5315" fg:w="1"/><text x="100.1560%" y="319.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (1 samples, 0.02%)</title><rect x="99.9060%" y="293" width="0.0188%" height="15" fill="rgb(210,56,17)" fg:x="5315" fg:w="1"/><text x="100.1560%" y="303.50"></text></g><g><title>&lt;std::hash::random::DefaultHasher as core::hash::Hasher&gt;::finish (1 samples, 0.02%)</title><rect x="99.9248%" y="261" width="0.0188%" height="15" fill="rgb(224,130,29)" fg:x="5316" fg:w="1"/><text x="100.1748%" y="271.50"></text></g><g><title>&lt;core::hash::sip::SipHasher13 as core::hash::Hasher&gt;::finish (1 samples, 0.02%)</title><rect x="99.9248%" y="245" width="0.0188%" height="15" fill="rgb(235,212,8)" fg:x="5316" fg:w="1"/><text x="100.1748%" y="255.50"></text></g><g><title>&lt;core::hash::sip::Hasher&lt;S&gt; as core::hash::Hasher&gt;::finish (1 samples, 0.02%)</title><rect x="99.9248%" y="229" width="0.0188%" height="15" fill="rgb(223,33,50)" fg:x="5316" fg:w="1"/><text x="100.1748%" y="239.50"></text></g><g><title>&lt;core::hash::sip::Sip13Rounds as core::hash::sip::Sip&gt;::d_rounds (1 samples, 0.02%)</title><rect x="99.9248%" y="213" width="0.0188%" height="15" fill="rgb(219,149,13)" fg:x="5316" fg:w="1"/><text x="100.1748%" y="223.50"></text></g><g><title>&lt;u64&gt;::rotate_left (1 samples, 0.02%)</title><rect x="99.9248%" y="197" width="0.0188%" height="15" fill="rgb(250,156,29)" fg:x="5316" fg:w="1"/><text x="100.1748%" y="207.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (1 samples, 0.02%)</title><rect x="99.9248%" y="181" width="0.0188%" height="15" fill="rgb(216,193,19)" fg:x="5316" fg:w="1"/><text x="100.1748%" y="191.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (1 samples, 0.02%)</title><rect x="99.9248%" y="165" width="0.0188%" height="15" fill="rgb(216,135,14)" fg:x="5316" fg:w="1"/><text x="100.1748%" y="175.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (1 samples, 0.02%)</title><rect x="99.9248%" y="149" width="0.0188%" height="15" fill="rgb(241,47,5)" fg:x="5316" fg:w="1"/><text x="100.1748%" y="159.50"></text></g><g><title>core::hash::impls::&lt;impl core::hash::Hash for &amp;T&gt;::hash (1 samples, 0.02%)</title><rect x="99.9436%" y="245" width="0.0188%" height="15" fill="rgb(233,42,35)" fg:x="5317" fg:w="1"/><text x="100.1936%" y="255.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (1 samples, 0.02%)</title><rect x="99.9436%" y="229" width="0.0188%" height="15" fill="rgb(231,13,6)" fg:x="5317" fg:w="1"/><text x="100.1936%" y="239.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (1 samples, 0.02%)</title><rect x="99.9436%" y="213" width="0.0188%" height="15" fill="rgb(207,181,40)" fg:x="5317" fg:w="1"/><text x="100.1936%" y="223.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (1 samples, 0.02%)</title><rect x="99.9436%" y="197" width="0.0188%" height="15" fill="rgb(254,173,49)" fg:x="5317" fg:w="1"/><text x="100.1936%" y="207.50"></text></g><g><title>migrator_core::plan::diff::compute_diff_into (5,318 samples, 99.96%)</title><rect x="0.0188%" y="357" width="99.9624%" height="15" fill="rgb(221,1,38)" fg:x="1" fg:w="5318"/><text x="0.2688%" y="367.50">migrator_core::plan::diff::compute_diff_into</text></g><g><title>std::collections::hash::set::HashSet&lt;T,S,A&gt;::contains (3 samples, 0.06%)</title><rect x="99.9248%" y="341" width="0.0564%" height="15" fill="rgb(206,124,46)" fg:x="5316" fg:w="3"/><text x="100.1748%" y="351.50"></text></g><g><title>hashbrown::set::HashSet&lt;T,S,A&gt;::contains (3 samples, 0.06%)</title><rect x="99.9248%" y="325" width="0.0564%" height="15" fill="rgb(249,21,11)" fg:x="5316" fg:w="3"/><text x="100.1748%" y="335.50"></text></g><g><title>hashbrown::map::HashMap&lt;K,V,S,A&gt;::contains_key (3 samples, 0.06%)</title><rect x="99.9248%" y="309" width="0.0564%" height="15" fill="rgb(222,201,40)" fg:x="5316" fg:w="3"/><text x="100.1748%" y="319.50"></text></g><g><title>hashbrown::map::make_hash (3 samples, 0.06%)</title><rect x="99.9248%" y="293" width="0.0564%" height="15" fill="rgb(235,61,29)" fg:x="5316" fg:w="3"/><text x="100.1748%" y="303.50"></text></g><g><title>core::hash::BuildHasher::hash_one (3 samples, 0.06%)</title><rect x="99.9248%" y="277" width="0.0564%" height="15" fill="rgb(219,207,3)" fg:x="5316" fg:w="3"/><text x="100.1748%" y="287.50"></text></g><g><title>core::hash::impls::&lt;impl core::hash::Hash for &amp;T&gt;::hash (2 samples, 0.04%)</title><rect x="99.9436%" y="261" width="0.0376%" height="15" fill="rgb(222,56,46)" fg:x="5317" fg:w="2"/><text x="100.1936%" y="271.50"></text></g><g><title>core::hash::impls::&lt;impl core::hash::Hash for str&gt;::hash (1 samples, 0.02%)</title><rect x="99.9624%" y="245" width="0.0188%" height="15" fill="rgb(239,76,54)" fg:x="5318" fg:w="1"/><text x="100.2124%" y="255.50"></text></g><g><title>&lt;std::hash::random::DefaultHasher as core::hash::Hasher&gt;::write_str (1 samples, 0.02%)</title><rect x="99.9624%" y="229" width="0.0188%" height="15" fill="rgb(231,124,27)" fg:x="5318" fg:w="1"/><text x="100.2124%" y="239.50"></text></g><g><title>&lt;core::hash::sip::SipHasher13 as core::hash::Hasher&gt;::write_str (1 samples, 0.02%)</title><rect x="99.9624%" y="213" width="0.0188%" height="15" fill="rgb(249,195,6)" fg:x="5318" fg:w="1"/><text x="100.2124%" y="223.50"></text></g><g><title>&lt;core::hash::sip::Hasher&lt;S&gt; as core::hash::Hasher&gt;::write_str (1 samples, 0.02%)</title><rect x="99.9624%" y="197" width="0.0188%" height="15" fill="rgb(237,174,47)" fg:x="5318" fg:w="1"/><text x="100.2124%" y="207.50"></text></g><g><title>&lt;core::hash::sip::Hasher&lt;S&gt; as core::hash::Hasher&gt;::write (1 samples, 0.02%)</title><rect x="99.9624%" y="181" width="0.0188%" height="15" fill="rgb(206,201,31)" fg:x="5318" fg:w="1"/><text x="100.2124%" y="191.50"></text></g><g><title>core::hash::sip::u8to64_le (1 samples, 0.02%)</title><rect x="99.9624%" y="165" width="0.0188%" height="15" fill="rgb(231,57,52)" fg:x="5318" fg:w="1"/><text x="100.2124%" y="175.50"></text></g><g><title>core::ptr::copy_nonoverlapping (1 samples, 0.02%)</title><rect x="99.9624%" y="149" width="0.0188%" height="15" fill="rgb(248,177,22)" fg:x="5318" fg:w="1"/><text x="100.2124%" y="159.50"></text></g><g><title>core::ptr::copy_nonoverlapping::precondition_check (1 samples, 0.02%)</title><rect x="99.9624%" y="133" width="0.0188%" height="15" fill="rgb(215,211,37)" fg:x="5318" fg:w="1"/><text x="100.2124%" y="143.50"></text></g><g><title>core::ub_checks::maybe_is_nonoverlapping (1 samples, 0.02%)</title><rect x="99.9624%" y="117" width="0.0188%" height="15" fill="rgb(241,128,51)" fg:x="5318" fg:w="1"/><text x="100.2124%" y="127.50"></text></g><g><title>core::ptr::copy_nonoverlapping::precondition_check (1 samples, 0.02%)</title><rect x="99.9624%" y="101" width="0.0188%" height="15" fill="rgb(227,165,31)" fg:x="5318" fg:w="1"/><text x="100.2124%" y="111.50"></text></g><g><title>core::ub_checks::maybe_is_nonoverlapping (1 samples, 0.02%)</title><rect x="99.9624%" y="85" width="0.0188%" height="15" fill="rgb(228,167,24)" fg:x="5318" fg:w="1"/><text x="100.2124%" y="95.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (1 samples, 0.02%)</title><rect x="99.9624%" y="69" width="0.0188%" height="15" fill="rgb(228,143,12)" fg:x="5318" fg:w="1"/><text x="100.2124%" y="79.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (1 samples, 0.02%)</title><rect x="99.9624%" y="53" width="0.0188%" height="15" fill="rgb(249,149,8)" fg:x="5318" fg:w="1"/><text x="100.2124%" y="63.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (1 samples, 0.02%)</title><rect x="99.9624%" y="37" width="0.0188%" height="15" fill="rgb(243,35,44)" fg:x="5318" fg:w="1"/><text x="100.2124%" y="47.50"></text></g><g><title>all (5,320 samples, 100%)</title><rect x="0.0000%" y="629" width="100.0000%" height="15" fill="rgb(246,89,9)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="639.50"></text></g><g><title>8289115776 (5,320 samples, 100.00%)</title><rect x="0.0000%" y="613" width="100.0000%" height="15" fill="rgb(233,213,13)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="623.50">8289115776</text></g><g><title>_main (5,320 samples, 100.00%)</title><rect x="0.0000%" y="597" width="100.0000%" height="15" fill="rgb(233,141,41)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="607.50">_main</text></g><g><title>std::rt::lang_start (5,320 samples, 100.00%)</title><rect x="0.0000%" y="581" width="100.0000%" height="15" fill="rgb(239,167,4)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="591.50">std::rt::lang_start</text></g><g><title>std::rt::lang_start_internal (5,320 samples, 100.00%)</title><rect x="0.0000%" y="565" width="100.0000%" height="15" fill="rgb(209,217,16)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="575.50">std::rt::lang_start_internal</text></g><g><title>std::panic::catch_unwind::&lt;std::rt::lang_start_internal::{closure#0}, isize&gt; (5,320 samples, 100.00%)</title><rect x="0.0000%" y="549" width="100.0000%" height="15" fill="rgb(219,88,35)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="559.50">std::panic::catch_unwind::&lt;std::rt::lang_start_internal::{closure#0}, isize&gt;</text></g><g><title>std::panicking::catch_unwind::&lt;isize, std::rt::lang_start_internal::{closure#0}&gt; (5,320 samples, 100.00%)</title><rect x="0.0000%" y="533" width="100.0000%" height="15" fill="rgb(220,193,23)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="543.50">std::panicking::catch_unwind::&lt;isize, std::rt::lang_start_internal::{closure#0}&gt;</text></g><g><title>std::panicking::catch_unwind::do_call::&lt;std::rt::lang_start_internal::{closure#0}, isize&gt; (5,320 samples, 100.00%)</title><rect x="0.0000%" y="517" width="100.0000%" height="15" fill="rgb(230,90,52)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="527.50">std::panicking::catch_unwind::do_call::&lt;std::rt::lang_start_internal::{closure#0}, isize&gt;</text></g><g><title>std::rt::lang_start_internal::{closure#0} (5,320 samples, 100.00%)</title><rect x="0.0000%" y="501" width="100.0000%" height="15" fill="rgb(252,106,19)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="511.50">std::rt::lang_start_internal::{closure#0}</text></g><g><title>std::panic::catch_unwind::&lt;&amp;dyn core::ops::function::Fn&lt;(), Output = i32&gt; + core::marker::Sync + core::panic::unwind_safe::RefUnwindSafe, i32&gt; (5,320 samples, 100.00%)</title><rect x="0.0000%" y="485" width="100.0000%" height="15" fill="rgb(206,74,20)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="495.50">std::panic::catch_unwind::&lt;&amp;dyn core::ops::function::Fn&lt;(), Output = i32&gt; + core::marker::Sync + core::panic::unwind_safe::RefUnwindSafe, i32&gt;</text></g><g><title>std::panicking::catch_unwind::&lt;i32, &amp;dyn core::ops::function::Fn&lt;(), Output = i32&gt; + core::marker::Sync + core::panic::unwind_safe::RefUnwindSafe&gt; (5,320 samples, 100.00%)</title><rect x="0.0000%" y="469" width="100.0000%" height="15" fill="rgb(230,138,44)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="479.50">std::panicking::catch_unwind::&lt;i32, &amp;dyn core::ops::function::Fn&lt;(), Output = i32&gt; + core::marker::Sync + core::panic::unwind_safe::RefUnwindSafe&gt;</text></g><g><title>std::panicking::catch_unwind::do_call::&lt;&amp;dyn core::ops::function::Fn&lt;(), Output = i32&gt; + core::marker::Sync + core::panic::unwind_safe::RefUnwindSafe, i32&gt; (5,320 samples, 100.00%)</title><rect x="0.0000%" y="453" width="100.0000%" height="15" fill="rgb(235,182,43)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="463.50">std::panicking::catch_unwind::do_call::&lt;&amp;dyn core::ops::function::Fn&lt;(), Output = i32&gt; + core::marker::Sync + core::panic::unwind_safe::RefUnwindSafe, i32&gt;</text></g><g><title>&lt;&amp;dyn core::ops::function::Fn&lt;(), Output = i32&gt; + core::marker::Sync + core::panic::unwind_safe::RefUnwindSafe as core::ops::function::FnOnce&lt;()&gt;&gt;::call_once (5,320 samples, 100.00%)</title><rect x="0.0000%" y="437" width="100.0000%" height="15" fill="rgb(242,16,51)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="447.50">&lt;&amp;dyn core::ops::function::Fn&lt;(), Output = i32&gt; + core::marker::Sync + core::panic::unwind_safe::RefUnwindSafe as core::ops::function::FnOnce&lt;()&gt;&gt;::call_once</text></g><g><title>std::rt::lang_start::{{closure}} (5,320 samples, 100.00%)</title><rect x="0.0000%" y="421" width="100.0000%" height="15" fill="rgb(248,9,4)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="431.50">std::rt::lang_start::{{closure}}</text></g><g><title>std::sys::backtrace::__rust_begin_short_backtrace (5,320 samples, 100.00%)</title><rect x="0.0000%" y="405" width="100.0000%" height="15" fill="rgb(210,31,22)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="415.50">std::sys::backtrace::__rust_begin_short_backtrace</text></g><g><title>core::ops::function::FnOnce::call_once (5,320 samples, 100.00%)</title><rect x="0.0000%" y="389" width="100.0000%" height="15" fill="rgb(239,54,39)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="399.50">core::ops::function::FnOnce::call_once</text></g><g><title>plan_diff_load::main (5,320 samples, 100.00%)</title><rect x="0.0000%" y="373" width="100.0000%" height="15" fill="rgb(230,99,41)" fg:x="0" fg:w="5320"/><text x="0.2500%" y="383.50">plan_diff_load::main</text></g><g><title>std::io::stdio::_eprint (1 samples, 0.02%)</title><rect x="99.9812%" y="357" width="0.0188%" height="15" fill="rgb(253,106,12)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="367.50"></text></g><g><title>std::io::stdio::print_to::&lt;std::io::stdio::Stderr&gt; (1 samples, 0.02%)</title><rect x="99.9812%" y="341" width="0.0188%" height="15" fill="rgb(213,46,41)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="351.50"></text></g><g><title>&lt;std::io::stdio::Stderr as std::io::Write&gt;::write_fmt (1 samples, 0.02%)</title><rect x="99.9812%" y="325" width="0.0188%" height="15" fill="rgb(215,133,35)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="335.50"></text></g><g><title>&lt;&amp;std::io::stdio::Stderr as std::io::Write&gt;::write_fmt (1 samples, 0.02%)</title><rect x="99.9812%" y="309" width="0.0188%" height="15" fill="rgb(213,28,5)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="319.50"></text></g><g><title>&lt;std::io::stdio::StderrLock as std::io::Write&gt;::write_fmt (1 samples, 0.02%)</title><rect x="99.9812%" y="293" width="0.0188%" height="15" fill="rgb(215,77,49)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="303.50"></text></g><g><title>std::io::default_write_fmt::&lt;std::io::stdio::StderrLock&gt; (1 samples, 0.02%)</title><rect x="99.9812%" y="277" width="0.0188%" height="15" fill="rgb(248,100,22)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="287.50"></text></g><g><title>core::fmt::write (1 samples, 0.02%)</title><rect x="99.9812%" y="261" width="0.0188%" height="15" fill="rgb(208,67,9)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="271.50"></text></g><g><title>&lt;std::io::default_write_fmt::Adapter&lt;std::io::stdio::StderrLock&gt; as core::fmt::Write&gt;::write_str (1 samples, 0.02%)</title><rect x="99.9812%" y="245" width="0.0188%" height="15" fill="rgb(219,133,21)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="255.50"></text></g><g><title>&lt;std::io::stdio::StderrLock as std::io::Write&gt;::write_all (1 samples, 0.02%)</title><rect x="99.9812%" y="229" width="0.0188%" height="15" fill="rgb(246,46,29)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="239.50"></text></g><g><title>&lt;std::io::stdio::StderrRaw as std::io::Write&gt;::write_all (1 samples, 0.02%)</title><rect x="99.9812%" y="213" width="0.0188%" height="15" fill="rgb(246,185,52)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="223.50"></text></g><g><title>&lt;std::sys::stdio::unix::Stderr as std::io::Write&gt;::write_all (1 samples, 0.02%)</title><rect x="99.9812%" y="197" width="0.0188%" height="15" fill="rgb(252,136,11)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="207.50"></text></g><g><title>&lt;std::sys::stdio::unix::Stderr as std::io::Write&gt;::write (1 samples, 0.02%)</title><rect x="99.9812%" y="181" width="0.0188%" height="15" fill="rgb(219,138,53)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="191.50"></text></g><g><title>&lt;std::sys::fd::unix::FileDesc&gt;::write (1 samples, 0.02%)</title><rect x="99.9812%" y="165" width="0.0188%" height="15" fill="rgb(211,51,23)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="175.50"></text></g><g><title>&lt;pprof::backtrace::backtrace_rs::Trace as pprof::backtrace::Trace&gt;::trace (1 samples, 0.02%)</title><rect x="99.9812%" y="149" width="0.0188%" height="15" fill="rgb(247,221,28)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="159.50"></text></g><g><title>backtrace::backtrace::trace_unsynchronized (1 samples, 0.02%)</title><rect x="99.9812%" y="133" width="0.0188%" height="15" fill="rgb(251,222,45)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="143.50"></text></g><g><title>backtrace::backtrace::libunwind::trace (1 samples, 0.02%)</title><rect x="99.9812%" y="117" width="0.0188%" height="15" fill="rgb(217,162,53)" fg:x="5319" fg:w="1"/><text x="100.2312%" y="127.50"></text></g></svg></svg>

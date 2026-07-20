@@ -28,6 +28,11 @@ pub async fn filter_applied(
             .await
             .map_err(|_| Error::Sql(format!("history load timed out after {timeout:?}")))??
     };
-    filter_migrations::filter_applied_migrations(plan, ws, &applied);
-    Ok(())
+    filter_migrations::filter_applied_migrations(plan, ws, &applied).map_err(|tampered| {
+        Error::InvalidInput(format!(
+            "applied transition script(s) modified after apply: {}; \
+             restore the original contents or add a new transition",
+            tampered.join(", ")
+        ))
+    })
 }

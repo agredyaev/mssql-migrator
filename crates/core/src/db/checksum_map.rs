@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -10,6 +10,8 @@ pub struct ChecksumMap {
     by_fp: HashMap<u64, [u8; 32]>,
     /// Normalized keys retained for L1 JSON round-trip (wire uses `String` keys).
     key_by_fp: HashMap<u64, Box<str>>,
+    /// Module rows whose live SQL Server definition differs from audit history.
+    live_definition_drift: HashSet<u64>,
 }
 
 impl ChecksumMap {
@@ -18,6 +20,7 @@ impl ChecksumMap {
         Self {
             by_fp: HashMap::new(),
             key_by_fp: HashMap::new(),
+            live_definition_drift: HashSet::new(),
         }
     }
 
@@ -61,6 +64,16 @@ impl ChecksumMap {
     /// Returns the digest for an `ObjectKey`, if present.
     pub fn get_key(&self, key: &ObjectKey) -> Option<&[u8; 32]> {
         self.by_fp.get(&key.fingerprint())
+    }
+
+    /// Marks a module as requiring a live-definition restore.
+    pub fn mark_live_definition_drift(&mut self, key: &ObjectKey) {
+        self.live_definition_drift.insert(key.fingerprint());
+    }
+
+    /// Returns true when the live module body differs from the audited body.
+    pub fn has_live_definition_drift(&self, key: &ObjectKey) -> bool {
+        self.live_definition_drift.contains(&key.fingerprint())
     }
 
     /// Returns the digest for a raw fingerprint value, if present.

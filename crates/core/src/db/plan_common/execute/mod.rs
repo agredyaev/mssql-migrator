@@ -15,6 +15,13 @@ use super::types::PlanDbMode;
 use dispatch::run_plan_body;
 use setup::prepare_execute;
 
+/// How the DB phase runs: sequencing mode plus cache-bypass for mutating commands.
+pub struct ExecOpts {
+    pub mode: PlanDbMode,
+    pub bypass: bool,
+    pub allow_checksum_repair: bool,
+}
+
 pub async fn execute(
     cfg: &Config,
     conn: &mut TimingConn,
@@ -22,12 +29,21 @@ pub async fn execute(
     keys_json: &str,
     fp: &str,
     l1: &L1Cache,
-    mode: PlanDbMode,
+    opts: ExecOpts,
 ) -> Result<PlanDbResult> {
     let mut trace = PlanDbTrace::default();
-    let setup = prepare_execute(cfg, conn, ws, keys_json, &mut trace).await?;
+    let setup = prepare_execute(
+        cfg,
+        conn,
+        ws,
+        keys_json,
+        &mut trace,
+        opts.bypass,
+        opts.allow_checksum_repair,
+    )
+    .await?;
     let (ensure_ms, body, parallel_wall) =
-        run_plan_body(cfg, conn, ws, keys_json, &setup, mode, &mut trace).await?;
+        run_plan_body(cfg, conn, ws, keys_json, &setup, opts.mode, &mut trace).await?;
     let catalog = body.catalog;
 
     let io = conn.io_snapshot();

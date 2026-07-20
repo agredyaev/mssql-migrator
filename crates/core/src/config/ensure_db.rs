@@ -36,8 +36,7 @@ pub async fn target_database_exists(cfg: &Config, db: &str) -> Result<bool> {
     match connect(&target).await {
         Ok(_) => Ok(true),
         Err(err) => {
-            let msg = err.to_string().to_lowercase();
-            if msg.contains("cannot open database") || msg.contains("4060") {
+            if is_missing_db_error(&err.to_string()) {
                 tracing::debug!(database = %db, "target database absent");
                 Ok(false)
             } else {
@@ -84,13 +83,45 @@ async fn create_database_if_missing(conn: &mut MssqlConn, cfg: &Config, db: &str
     // is still needed for the `N'...'` string-literal context of the existence probe.
     let bracket = bracket_ident(db)?;
     let literal = db.replace('\'', "''");
-    let sql = format!("IF DB_ID(N'{literal}') IS NULL CREATE DATABASE {bracket}");
+    let sql = format!(
+        include_str!("../../../../sql/apply/create_database.sql"),
+        literal = literal,
+        bracket = bracket,
+    );
     tracing::info!(
         database = %db,
         sql_root = %cfg.sql_root,
         "creating missing catalog database via master fallback"
     );
-    mssql::exec(&mut conn.client, &sql).await
+    // First-deployment recovery must stay inside RM_COMMAND_TIMEOUT: this exec
+    // runs on a raw master connection with no TimingConn bound around it.
+    let t = cfg.command_timeout;
+    with_create_database_timeout(t, db, mssql::exec(&mut conn.client, &sql)).await
+}
+
+async fn with_create_database_timeout<F, T>(
+    timeout: std::time::Duration,
+    db: &str,
+    fut: F,
+) -> Result<T>
+where
+    F: std::future::Future<Output = Result<T>>,
+{
+    if timeout.is_zero() {
+        fut.await
+    } else {
+        tokio::time::timeout(timeout, fut).await.map_err(|_| {
+            crate::error::Error::Sql(format!("CREATE DATABASE {db} timed out after {timeout:?}"))
+            // sql-gate:allow error text
+        })?
+    }
+}
+
+// Match only SQL Server's own 4060 message text. A bare "4060" substring also
+// matches hostnames/ports in transport errors and would classify an outage as
+// "database absent".
+fn is_missing_db_error(msg: &str) -> bool {
+    msg.to_lowercase().contains("cannot open database")
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@ use crate::audit;
 use crate::config::Config;
 use crate::db::plan_db_trace::{PlanDbPath, PlanDbTrace};
 use crate::db::state::CatalogState;
+use crate::domain::is_module_kind_code;
 use crate::domain::Workspace;
 use crate::driver::TimingConn;
 use crate::error::Result;
@@ -21,6 +22,8 @@ pub(super) struct ExecuteSetup {
     pub defer_bootstrap: bool,
     pub bootstrap_in_sql: bool,
     pub catalog_base: Option<CatalogState>,
+    pub bypass: bool,
+    pub allow_checksum_repair: bool,
 }
 
 pub(super) async fn prepare_execute(
@@ -29,19 +32,37 @@ pub(super) async fn prepare_execute(
     ws: &Workspace,
     keys_json: &str,
     trace: &mut PlanDbTrace,
+    bypass: bool,
+    allow_checksum_repair: bool,
 ) -> Result<ExecuteSetup> {
-    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.database);
+    let db_fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
+    if bypass {
+        // Mutating commands promise live DB state: drop the process-local
+        // history-empty/nonempty probes so checksum loading re-queries the
+        // database instead of fabricating zero checksums from a stale probe.
+        audit::invalidate_audit_cache(&db_fp);
+    }
     audit::sync_tables_ensured(conn, &db_fp).await?;
     let git = resolve_changed_paths(&cfg.sql_root);
     let full = cfg.inspect_full() || cfg.skip_git() || git.full_inspect;
-    let git_delta = !full && !git.paths.is_empty();
-    let need_bootstrap = !audit::tables_ensured(&db_fp);
+    // Mutating commands must live-check every managed object; the git-delta
+    // body only queries git-changed paths, so it can never satisfy that.
+    let git_delta = !full && !git.paths.is_empty() && !bypass;
+    // Read-only commands (plan/validate) must not execute DDL: only mutating
+    // commands (bypass=true, running under the advisory lock) may bootstrap.
+    // Mutating commands also run the additive audit-schema migration. This is
+    // a no-op after upgrade and lets a legacy read-only plan be restored by
+    // the following migrate without relying on process-local table state.
+    let need_bootstrap = bypass;
     trace.flags.bootstrap = need_bootstrap;
     let need_checksums = keys_json != "[]";
 
     let clean_git_tree =
         git.paths.is_empty() && matches!(git.source, "git-head" | "git-merge-base");
-    let try_cache = cfg.catalog_cache()
+    let has_modules = (0..ws.object_count()).any(|i| is_module_kind_code(ws.row(i).kind_code));
+    let try_cache = !has_modules
+        && !bypass
+        && cfg.catalog_cache()
         && audit::tables_ensured(&db_fp)
         && git.paths.is_empty()
         && !full
@@ -80,5 +101,7 @@ pub(super) async fn prepare_execute(
         defer_bootstrap,
         bootstrap_in_sql: defer_bootstrap,
         catalog_base,
+        bypass,
+        allow_checksum_repair,
     })
 }

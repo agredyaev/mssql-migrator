@@ -5,7 +5,7 @@
 //! names via [`parse_command`].
 //!
 //! ### Flags
-//! - `--env <path>` — dotenv path (default `.env`)
+//! - `--config <path>` — typed TOML config path (default `config.toml`)
 //! - `--json` — JSON output mode
 //! - `-h` / `--help` — print help text and exit
 //!
@@ -25,8 +25,8 @@ pub enum ParsedArgs {
     Run {
         /// Subcommand string (`plan`, `migrate`, …).
         cmd: String,
-        /// Optional `--env <path>` value.
-        env_file: Option<String>,
+        /// Optional `--config <path>` value.
+        config_file: Option<String>,
         /// `--json` flag.
         json: bool,
     },
@@ -35,18 +35,22 @@ pub enum ParsedArgs {
 /// Tokenise argv into [`ParsedArgs`].
 pub fn parse_args(args: &[String]) -> migrator_core::Result<ParsedArgs> {
     let mut cmd = String::new();
-    let mut env_file = None;
+    let mut config_file = None;
     let mut json = false;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--env" => {
+            "--config" => {
                 i += 1;
-                env_file = Some(
-                    args.get(i)
-                        .ok_or_else(|| Error::InvalidInput("--env requires path".into()))?
-                        .clone(),
-                );
+                // A following flag is NOT a path: swallowing it would both
+                // lose that flag and skip the missing-value diagnostic.
+                let val = args.get(i).filter(|v| !v.starts_with('-')).ok_or_else(|| {
+                    Error::InvalidInput(format!(
+                        "--config requires a path argument\n\n{}",
+                        super::help::HELP_HINT
+                    ))
+                })?;
+                config_file = Some(val.clone());
             }
             "--json" => json = true,
             "-h" | "--help" => return Ok(ParsedArgs::Help),
@@ -70,7 +74,7 @@ pub fn parse_args(args: &[String]) -> migrator_core::Result<ParsedArgs> {
     }
     Ok(ParsedArgs::Run {
         cmd,
-        env_file,
+        config_file,
         json,
     })
 }

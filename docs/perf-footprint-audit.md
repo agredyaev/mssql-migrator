@@ -25,14 +25,14 @@ Footprint work validates layout policy under [`data-oriented-layout-policy.md`](
 | Input | Output |
 |-------|--------|
 | `make bench-footprint` | `artifacts/footprint_bench.txt`, struct size JSON |
-| `make bench-footprint-alloc` | `artifacts/plan_diff_dhat.txt`, `artifacts/alloc_flame.txt` |
+| `make bench-footprint-alloc` | `artifacts/rust_plan_diff_dhat.txt`, `artifacts/rust_alloc_flame.txt` |
 | `footprint_baseline_match` test | pass/fail vs committed JSON |
 
 ## Assumptions and constraints
 
 - Skip-heavy 5k workspace is the headline diff benchmark.
 - dhat **loop** phase B/iter is the allocation regression signal (target **0 B/iter** after warmup).
-- Struct sizes are platform-dependent; committed baseline is checked on maintainer platforms via `make check` / local bench.
+- Struct sizes are platform-dependent; the committed baseline is validated by `make bench-footprint` (which runs `footprint_baseline_match` in `migrator-core-dev`); `make check` does not select that crate.
 
 ## Nominal flow
 
@@ -68,8 +68,8 @@ cargo test -p migrator-core-dev --test footprint_baseline footprint_baseline_mat
 |----------|---------|
 | `artifacts/struct_sizes.json` | `sizeof` snapshot |
 | `artifacts/footprint_bench.txt` | criterion log |
-| `artifacts/plan_diff_5k_flamegraph.svg` | CPU hot path |
-| `artifacts/plan_diff_dhat.txt` | dhat summary (skip-heavy) |
+| `artifacts/rust_plan_diff_5k_flamegraph.svg` | CPU hot path |
+| `artifacts/rust_plan_diff_dhat.txt` | dhat summary (skip-heavy) |
 | `artifacts/dhat_heap.json` | raw dhat heap (input to Python tree) |
 | `artifacts/alloc_flame.txt` | human alloc tree from `dhat_alloc_tree.py` |
 | `artifacts/scan_5k_load_flamegraph.svg`, `artifacts/scan_dhat.txt` | scan_root CPU + heap |
@@ -92,5 +92,5 @@ Recovery: re-run full bench suite after layout PR; attach artifacts to the PR wh
 ## References
 
 - [`ops/perf/README.md`](../ops/perf/README.md)
-- [`docs/dod.md`](dod.md)
+- [`docs/data-oriented-layout-policy.md`](data-oriented-layout-policy.md)
 - [`docs/specs/rust/module-domain.md`](specs/rust/module-domain.md)

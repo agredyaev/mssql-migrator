@@ -17,6 +17,7 @@ tiberius = { version = "0.12.3", default-features = false, features = ["tds73", 
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+toml = { workspace = true }
 
 [features]
 default = []

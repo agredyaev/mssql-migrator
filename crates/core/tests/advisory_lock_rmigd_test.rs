@@ -44,6 +44,8 @@ fn parity_cfg(database: &str) -> Config {
     cfg.set_trust_server_certificate(true);
     if let Some(sock) = rmigd::ensure_started() {
         cfg.session_socket = sock;
+        cfg.session_token = std::env::var("RMIG_SESSION_TOKEN")
+            .expect("rmigd harness must publish its token through process environment");
     }
     validate_config(&mut cfg).expect("valid cfg");
     cfg

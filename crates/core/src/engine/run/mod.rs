@@ -62,6 +62,7 @@ pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput>
     merged.set_l1_cache_hit(true);
     let mut exit_code = 0i32;
     let mut last_plan: Option<MigrationPlan> = None;
+    let mut missing_dbs: Vec<String> = Vec::new();
     let multi = databases.len() > 1;
 
     for db in &databases {
@@ -84,7 +85,10 @@ pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput>
             match crate::config::target_database_exists(cfg, db).await? {
                 true => {}
                 false => {
-                    tracing::warn!(database = %db, "skipping catalog database that does not exist on server");
+                    // The layout names this database; silently skipping it
+                    // would validate only part of the declared deployment and
+                    // still exit 0. Collect and fail after the loop.
+                    missing_dbs.push(db.clone());
                     continue;
                 }
             }
@@ -107,6 +111,10 @@ pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput>
             }
             Err(e) => return Err(e),
         }
+    }
+
+    if !missing_dbs.is_empty() {
+        return Err(types::missing_databases_error(&missing_dbs));
     }
 
     merged.plan_wall_ms = timings::dur_ms(cli_start.elapsed());

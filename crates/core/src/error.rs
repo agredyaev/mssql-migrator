@@ -14,13 +14,14 @@
 //! - `1`: Uncategorized / OS errors (`EXIT_GENERAL`)
 //! - `2`: Environmental config errors (`EXIT_CONFIG`)
 //! - `3`: Database connection failures (`EXIT_CONN`)
+//! - `4`: Undecodable persisted audit checksum; run `repair-checksum` (`EXIT_CHECKSUM`)
 //! - `5`: SQL execution runtime exceptions (`EXIT_SQL`)
 //! - `7`: Advisory lock timeout / contention (`EXIT_LOCK_TIMEOUT`)
 //! - `8`: Invalid input / bad repository structure or identifier (`EXIT_INVALID_INPUT`)
 //! - `10`: Structural layout plan is blocked (`EXIT_PLAN_BLOCKED`)
 //!
-//! Codes `4` (`EXIT_CHECKSUM`), `6` (`EXIT_VALIDATION`), and `9` (`EXIT_CRITICAL`)
-//! are reserved constants not currently returned by [`Error::exit_code`].
+//! Codes `6` (`EXIT_VALIDATION`) and `9` (`EXIT_CRITICAL`) are reserved
+//! constants not currently returned by [`Error::exit_code`].
 
 use std::fmt;
 
@@ -40,6 +41,8 @@ pub enum Error {
     Conn(String),
     /// Migration plan is structurally blocked and cannot proceed.
     PlanBlocked,
+    /// Persisted audit checksum is malformed and cannot be trusted.
+    Checksum(String),
     /// Advisory lock could not be acquired within the timeout.
     LockTimeout,
     /// Uncategorized error from a dependency.
@@ -79,6 +82,7 @@ impl Error {
             Self::Config(_) => EXIT_CONFIG,
             Self::InvalidInput(_) => EXIT_INVALID_INPUT,
             Self::PlanBlocked => EXIT_PLAN_BLOCKED,
+            Self::Checksum(_) => EXIT_CHECKSUM,
             Self::LockTimeout => EXIT_LOCK_TIMEOUT,
             Self::Conn(_) => EXIT_CONN,
             Self::Sql(_) => EXIT_SQL,
@@ -97,6 +101,7 @@ impl fmt::Display for Error {
             Self::Sql(m) => write!(f, "{m}"),
             Self::Conn(m) => write!(f, "{m}"),
             Self::PlanBlocked => write!(f, "plan is blocked"),
+            Self::Checksum(m) => write!(f, "checksum integrity error: {m}"),
             Self::LockTimeout => write!(f, "lock timeout"),
             Self::Other(e) => write!(f, "{e}"),
         }

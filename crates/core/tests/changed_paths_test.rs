@@ -66,9 +66,10 @@ fn resolve_changed_paths_git_diff() {
 }
 
 #[test]
-fn parse_commit_line_matches_go_format() {
+fn parse_commit_line_matches_batched_format() {
     use migrator_core::git::parse_commit_line;
-    let m = parse_commit_line("COMMIT|abc123|Jane|2026-01-02T15:04:05Z").expect("meta");
+    let m =
+        parse_commit_line("COMMIT\u{1f}abc123\u{1f}Jane\u{1f}2026-01-02T15:04:05Z").expect("meta");
     assert_eq!(m.hash, "abc123");
     assert_eq!(m.author, "Jane");
     assert_eq!(m.date, "2026-01-02T15:04:05Z");

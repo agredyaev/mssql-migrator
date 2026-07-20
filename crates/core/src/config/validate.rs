@@ -2,11 +2,14 @@ use crate::error::{Error, Result};
 
 use super::auth_mode::sql_credentials_required;
 use super::catalog_paths::normalize_catalog_paths;
+use super::env_parse::validate_boolean_envs;
 use super::Config;
 
 /// Validates required fields in `cfg`, returning an error if any mandatory env vars are absent.
 pub fn validate_config(cfg: &mut Config) -> Result<()> {
+    validate_boolean_envs()?;
     let mut missing = Vec::new();
+    let mut missing_secrets = Vec::new();
     let requires_sql_credentials = sql_credentials_required(&cfg.db_auth);
     if cfg.server.is_empty() {
         missing.push("RM_DB_SERVER");
@@ -16,11 +19,22 @@ pub fn validate_config(cfg: &mut Config) -> Result<()> {
     }
     if requires_sql_credentials {
         if cfg.user.is_empty() {
-            missing.push("RM_DB_USER");
+            missing_secrets.push("RM_DB_USER");
         }
         if cfg.password.is_empty() {
-            missing.push("RM_DB_PASSWORD");
+            missing_secrets.push("RM_DB_PASSWORD");
         }
+    }
+    if !missing_secrets.is_empty() {
+        return Err(Error::Config(format!(
+            "missing required process environment variable(s): {}; SQL credentials are not read from config.toml",
+            missing_secrets.join(", ")
+        )));
+    }
+    if !cfg.session_socket.is_empty() && cfg.session_token.is_empty() {
+        return Err(Error::Config(
+            "RMIG_SESSION_TOKEN is required in the process environment when using rmigd; the token is not read from config.toml".into(),
+        ));
     }
     if !missing.is_empty() {
         return Err(Error::Config(format!(
@@ -33,14 +47,27 @@ pub fn validate_config(cfg: &mut Config) -> Result<()> {
     // instances use `host\INSTANCE`.
     reject_control_chars("RM_DB_SERVER", &cfg.server)?;
     reject_control_chars("database name", &cfg.database)?;
-    // Empty means "use the driver default"; a non-empty value must be a real port.
-    if !cfg.port.is_empty() && cfg.port.parse::<u16>().is_err() {
+    // Empty means "use the driver default"; a non-empty value must be a real
+    // port. Zero parses as u16 but is not a reachable TCP destination.
+    if !cfg.port.is_empty() && !matches!(cfg.port.parse::<u16>(), Ok(1..)) {
         return Err(Error::Config(format!(
             "RM_DB_PORT is not a valid TCP port (1-65535): {}",
             cfg.port
         )));
     }
     normalize_catalog_paths(cfg)?;
+    Ok(())
+}
+
+/// Daemons always expose a token-authenticated transport, even when their
+/// socket path uses the platform default rather than `RMIG_SESSION`.
+pub fn validate_daemon_config(cfg: &mut Config) -> Result<()> {
+    validate_config(cfg)?;
+    if cfg.session_token.is_empty() {
+        return Err(Error::Config(
+            "RMIG_SESSION_TOKEN is required in the process environment for rmigd; the token is not read from config.toml".into(),
+        ));
+    }
     Ok(())
 }
 
@@ -53,6 +80,6 @@ fn reject_control_chars(field: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
-#[path = "validate_test.rs"]
+#[path = "../tests/validate_test.rs"]
 #[cfg(test)]
 mod tests;

@@ -7,7 +7,7 @@ mod common;
 mod warm;
 
 use migrator_core::config::{
-    build_config, discover_catalog_databases, ensure_catalog_databases_exist, load_env_file,
+    build_config, discover_catalog_databases, ensure_catalog_databases_exist, load_toml_config,
     validate_config,
 };
 use migrator_core::engine::{run_command, Command};
@@ -50,8 +50,9 @@ fn ensure_slo_harness_env() {
 async fn ensure_catalog_databases_ready() {
     DB_ENSURE
         .get_or_init(|| async {
-            let env = load_env_file(&common::repo_root().join(".env")).unwrap_or_default();
-            let mut cfg = build_config(&env, true);
+            let file =
+                load_toml_config(&common::repo_root().join("config.toml")).expect("load config");
+            let mut cfg = build_config(&file, true);
             validate_config(&mut cfg).expect("valid slo config");
             let dbs = discover_catalog_databases(&cfg.sql_root).expect("discover catalog dbs");
             // #region agent log
@@ -166,7 +167,8 @@ async fn integration_plan_sqlserver_suite() {
     );
     assert!(!out.timings.l1_cache_hit());
 
-    // L1 hit: second plan should be fast without reconnecting to an empty DB.
+    // Module workspaces must bypass L1 so out-of-band definition drift remains
+    // visible; the second live plan must still meet the CLI SLO.
     let out = match run_command(Command::Plan, cfg).await {
         Ok(out) => out,
         Err(err) => {
@@ -174,20 +176,20 @@ async fn integration_plan_sqlserver_suite() {
             debug_log(
                 "H8",
                 "crates/core/tests/integration_plan.rs:integration_plan_sqlserver_suite",
-                "l1 hit plan command failed",
+                "second live plan command failed",
                 serde_json::json!({
                     "error": err.to_string(),
                 }),
             );
             // #endregion
-            panic!("plan l1 hit: {err}");
+            panic!("second live plan: {err}");
         }
     };
     // #region agent log
     debug_log(
         "H8",
         "crates/core/tests/integration_plan.rs:integration_plan_sqlserver_suite",
-        "l1 hit timings captured",
+        "second live plan timings captured",
         serde_json::json!({
             "slo_ms": cfg.slo_max_cli_wall_ms,
             "slo_exceeded": out.timings.cli_wall_ms >= cfg.slo_max_cli_wall_ms,
@@ -196,13 +198,17 @@ async fn integration_plan_sqlserver_suite() {
     );
     // #endregion
     eprintln!(
-        "l1_hit timings: {}",
+        "live_plan timings: {}",
         serde_json::to_string(&out.timings).unwrap()
     );
-    assert!(out.timings.l1_cache_hit());
+    assert!(!out.timings.l1_cache_hit());
+    assert!(
+        out.timings.plan_db_query_calls > 0,
+        "module drift check must query SQL Server"
+    );
     assert!(
         out.timings.cli_wall_ms < cfg.slo_max_cli_wall_ms,
-        "L1 hit cli_wall {}ms",
+        "live plan cli_wall {}ms",
         out.timings.cli_wall_ms
     );
 }

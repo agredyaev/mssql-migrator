@@ -24,8 +24,16 @@ pub(crate) async fn plan_phase(
 ) -> Result<MigrationPlan> {
     // Mutating commands must plan from live DB state under the lock, never a
     // possibly-stale local cache.
-    let db = crate::db::run_plan_db_phase(cfg, conn, ws, super::command_mutates(cmd)).await?;
-    let server_database = crate::audit::db_fingerprint(&cfg.server, &cfg.database);
+    let db = crate::db::run_plan_db_phase(
+        cfg,
+        conn,
+        ws,
+        super::command_mutates(cmd),
+        cmd == Command::RepairChecksum,
+    )
+    .await?;
+    let server_database =
+        crate::audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     super::super::warm_store::store_plan_db_snapshot(
         &server_database,
         &ws.layout_digest,

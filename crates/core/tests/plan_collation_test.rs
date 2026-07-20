@@ -77,7 +77,12 @@ async fn recreate_collation_database(database: &str, contained_user: &str, passw
         .expect("create contained user");
 
     let cfg = sa_cfg(database);
-    invalidate_audit_cache_all(&db_fingerprint(&cfg.server, &cfg.database));
+    invalidate_audit_cache_all(&db_fingerprint(
+        &cfg.server,
+        &cfg.port,
+        &cfg.user,
+        &cfg.database,
+    ));
 }
 
 fn write_sql_layout(root: &std::path::Path) {

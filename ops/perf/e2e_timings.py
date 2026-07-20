@@ -57,6 +57,14 @@ def fmt_val(key: str, v) -> str:
 def delta_str(base_v, run_v) -> str:
     if base_v is None and run_v is None:
         return "n/a"
+    # Categorical (str) and boolean fields have no millisecond arithmetic:
+    # render them as a transition instead of crashing on int() or printing
+    # a bogus "+1ms" for a flipped flag.
+    if isinstance(base_v, bool) or isinstance(run_v, bool) \
+            or isinstance(base_v, str) or isinstance(run_v, str):
+        b = fmt_val("", base_v)
+        r = fmt_val("", run_v)
+        return "=" if b == r else f"{b} -> {r}"
     b = 0 if base_v is None else int(base_v)
     r = 0 if run_v is None else int(run_v)
     if b == r:
@@ -135,6 +143,10 @@ def main() -> int:
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(out_path)
     print("\n".join(lines))
+    if missing:
+        # Partial evidence must not look like success: warm/cache/skip
+        # regressions would vanish behind a green timing report.
+        return 1
     return 0 if rows else 1
 
 

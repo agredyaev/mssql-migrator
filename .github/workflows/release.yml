@@ -43,7 +43,8 @@ jobs:
     runs-on: ubuntu-latest
 
     # For workflow_run: only run if CI succeeded and it was a push (not PR).
-    # For workflow_dispatch: always run.
+    # For workflow_dispatch: the "Require green CI" step below verifies the
+    # dispatched commit has a successful CI run before anything is published.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (
@@ -59,6 +60,42 @@ jobs:
           # Release the exact commit CI validated, not whatever is at branch tip
           # now (a later merge could otherwise be tagged/published untested).
           ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+
+      - name: Resolve release state
+        id: release_state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.ref_type }}" != "branch" ]]; then
+            echo "ERROR: manual releases must be dispatched from a branch, not ${{ github.ref_type }}" >&2
+            exit 1
+          fi
+          current_tag="v$(cat VERSION)"
+          if git tag --points-at HEAD --list "$current_tag" | grep -qx "$current_tag"; then
+            echo "validated_sha=$(git rev-parse HEAD^)" >> "$GITHUB_OUTPUT"
+            if gh release view "$current_tag" >/dev/null 2>&1; then
+              echo "resume=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "resume=true" >> "$GITHUB_OUTPUT"
+              echo "tag=$current_tag" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "resume=false" >> "$GITHUB_OUTPUT"
+            echo "validated_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Require green CI for this exact commit (manual dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sha="${{ steps.release_state.outputs.validated_sha }}"
+          conclusion="$(gh run list --commit "$sha" --workflow CI --json conclusion \
+            --jq 'map(select(.conclusion == "success")) | length')"
+          if [ "${conclusion:-0}" -lt 1 ]; then
+            echo "ERROR: no successful CI run recorded for $sha; refusing to publish untested code" >&2
+            exit 1
+          fi
 
       - name: Configure git identity
         run: |
@@ -123,7 +160,9 @@ jobs:
         id: version
         run: |
           OLD=$(cat VERSION)
-          python3 scripts/bump-version.py "${{ steps.bump_type.outputs.bump }}"
+          if [[ "${{ steps.release_state.outputs.resume }}" != "true" ]]; then
+            python3 scripts/bump-version.py "${{ steps.bump_type.outputs.bump }}"
+          fi
           NEW=$(cat VERSION)
           echo "old=$OLD"   >> "$GITHUB_OUTPUT"
           echo "new=$NEW"   >> "$GITHUB_OUTPUT"
@@ -146,25 +185,35 @@ jobs:
         if: steps.filter.outputs.skip != 'true'
         run: make release-build
 
-      - name: Commit & push version bump
+      - name: Commit, tag & push version bump
         if: steps.filter.outputs.skip != 'true'
+        id: pushed
         run: |
+          if [[ "${{ steps.release_state.outputs.resume }}" == "true" ]]; then
+            echo "Resuming publication for existing tag ${{ steps.version.outputs.tag }}"
+            echo "released_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           # Stage Cargo.lock too: `make release-build` above re-synced the
           # workspace-member versions, so omitting it leaves the committed lock
           # stale and breaks `cargo install --locked` from the release tag.
           git add VERSION Cargo.toml Cargo.lock
           git commit -m "chore: bump ${{ steps.version.outputs.old }} → ${{ steps.version.outputs.new }} [skip ci]"
-          # Checkout above is detached at the CI-validated head_sha (see `ref:`),
-          # so a bare `git push` has no branch. Push HEAD onto main explicitly;
-          # this also keeps the non-fast-forward safety the concurrency group
-          # relies on if another commit raced onto main after CI ran.
-          git push origin HEAD:main
-
-      - name: Create git tag
-        if: steps.filter.outputs.skip != 'true'
-        run: |
+          # Push to the branch that was actually validated (workflow_run) or
+          # dispatched — hard-coding main would detach releases from a
+          # supported master branch or a manual ref.
+          branch="${{ github.event.workflow_run.head_branch || github.ref_name }}"
+          # Idempotence: if a previous partially-failed run already created
+          # this tag, do not bump again on rerun — fail with a clear message.
+          if git ls-remote --exit-code --tags origin "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "ERROR: tag ${{ steps.version.outputs.tag }} already exists; resume/publish that release instead of re-bumping" >&2
+            exit 1
+          fi
           git tag "${{ steps.version.outputs.tag }}"
-          git push origin "${{ steps.version.outputs.tag }}"
+          # One atomic push for branch + tag: a failure after the branch push
+          # alone would leave a permanent unpublished version on the branch.
+          git push --atomic origin "HEAD:refs/heads/${branch}" "refs/tags/${{ steps.version.outputs.tag }}"
+          echo "released_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub Release
         if: steps.filter.outputs.skip != 'true'
@@ -177,7 +226,8 @@ jobs:
             **Version:** `${{ steps.version.outputs.new }}`
             **Bump:** `${{ steps.bump_type.outputs.bump }}`
 
-            Automated release from `${{ github.sha }}`.
+            Tagged commit: `${{ steps.pushed.outputs.released_sha }}`
+            Validated source: `${{ github.event.workflow_run.head_sha || github.sha }}`
           generate_release_notes: true
           files: |
             bin/rmig

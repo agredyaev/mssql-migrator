@@ -82,7 +82,7 @@ produce a destructive operation.
 
 - Contracts and checks: `crates/core/tests/scan_walk_test.rs` (duplicate ordinal, backslash, symlink), `crates/core/src/tests/sql_ident_test.rs` (path/identifier rules, 128-char limit), `crates/core/src/domain/workspace/objects/ingest.rs` tests (duplicate key).
 - Safety guards: `crates/core/tests/unmanaged_objects_test.rs` (unmanaged objects are never planned, partial repositories leave others untouched, removal does not drop) and `crates/core/tests/existing_db_adoption_integration.rs` (real-database preservation across `migrate`).
-- Evidence artifacts: test output from `cargo test -p migrator-core --lib --tests`.
+- Evidence artifacts: test output from `cargo test -p migrator-core --all-features --lib --tests`.
 - Exit criteria: every invalid layout above produces a clear error; every valid layout produces an identical plan across runs.
 
 ## Operations And Recovery
