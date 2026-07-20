@@ -35,6 +35,9 @@ pub enum Request {
         sql: String,
         params: Vec<String>,
     },
+    /// Daemon metrics/health pull: returns counters and warm-connection state in
+    /// `Response.stats`. Handled at the daemon level; does not touch SQL Server.
+    Stats {},
 }
 
 impl Request {
@@ -79,33 +82,44 @@ impl std::fmt::Debug for Request {
                 .field("sql", sql)
                 .field("params", params)
                 .finish(),
+            Self::Stats {} => f.debug_struct("Stats").finish(),
         }
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Response {
     pub ok: bool,
     #[serde(default)]
     pub error: String,
     #[serde(default)]
     pub rows: Vec<RowData>,
+    /// JSON metrics blob for a `Stats` request; empty for all other responses.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub stats: String,
 }
 
 impl Response {
     pub fn ok_empty() -> Self {
         Self {
             ok: true,
-            error: String::new(),
-            rows: Vec::new(),
+            ..Self::default()
         }
     }
 
     pub fn err(msg: impl Into<String>) -> Self {
         Self {
-            ok: false,
             error: msg.into(),
-            rows: Vec::new(),
+            ..Self::default()
+        }
+    }
+
+    /// Response carrying a daemon metrics JSON blob (see `daemon::metrics`).
+    pub fn stats(json: String) -> Self {
+        Self {
+            ok: true,
+            stats: json,
+            ..Self::default()
         }
     }
 

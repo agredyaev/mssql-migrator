@@ -17,11 +17,6 @@ use super::reply::write_response;
 /// client cannot hold one of the bounded handler slots indefinitely.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Warn when acquiring the single warm session took longer than this (ms):
-/// evidence that concurrent clients are queueing head-of-line (the documented
-/// risk that would justify a session pool).
-const WARM_SESSION_WAIT_WARN_MS: u64 = 100;
-
 pub(super) async fn serve_loop(
     reader: &mut BufReader<OwnedReadHalf>,
     write_half: &mut OwnedWriteHalf,
@@ -84,6 +79,14 @@ pub(super) async fn serve_loop(
             break;
         }
 
+        // Daemon-level metrics/health pull: no warm session or SQL Server needed.
+        if matches!(&req, Request::Stats {}) {
+            let warm = client.try_lock().map(|g| g.is_some()).unwrap_or(true);
+            let resp = Response::stats(super::metrics::snapshot_json(warm));
+            write_response(write_half, resp).await?;
+            continue;
+        }
+
         // Refuse a session whose declared SQL endpoint differs from the warm
         // connection's: the CLI would otherwise plan and apply against the
         // daemon's server while reporting its own configured target.
@@ -92,23 +95,13 @@ pub(super) async fn serve_loop(
             break;
         }
 
-        if session.is_none() {
-            let t_wait = std::time::Instant::now();
-            let mut guard = client.clone().lock_owned().await;
-            let waited_ms = t_wait.elapsed().as_millis() as u64;
-            if waited_ms > WARM_SESSION_WAIT_WARN_MS {
-                tracing::warn!(waited_ms, "rmigd: queued for warm session");
-            }
-            if let Err(e) = super::serve::reconnect(&mut guard, reconnect_cfg).await {
-                let message = format!("rmigd: database reconnect failed: {e}");
-                write_response(write_half, Response::err(message)).await?;
-                break;
-            }
-            *session = Some(guard);
+        if !super::serve::acquire_session(session, client, reconnect_cfg, write_half).await? {
+            break;
         }
         let Some(guard) = session.as_deref_mut() else {
             break;
         };
+        super::metrics::record_request();
         match super::serve::dispatch(guard, req, command_timeout).await? {
             Some(resp) => write_response(write_half, resp).await?,
             None => {
