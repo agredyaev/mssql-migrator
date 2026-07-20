@@ -3,9 +3,13 @@
 use crate::db::catalog;
 use crate::sql;
 
-/// Plan-path bootstrap: tables only (index deferred to apply).
+/// Plan-path bootstrap: tables + drift trigger (index deferred to apply).
 pub fn plan_bootstrap_tables_sql() -> String {
-    format!("{}\n", sql::audit::BOOTSTRAP_TABLES)
+    format!(
+        "{}\n{}\n",
+        sql::audit::BOOTSTRAP_TABLES,
+        sql::audit::BOOTSTRAP_DRIFT
+    )
 }
 
 struct PlanDbBatchSqlOpts<'a> {
@@ -46,6 +50,8 @@ fn plan_db_batch_sql_inner(opts: &PlanDbBatchSqlOpts<'_>) -> String {
     let mut b = String::with_capacity(16_384);
     if opts.bootstrap {
         b.push_str(sql::audit::BOOTSTRAP_TABLES);
+        b.push('\n');
+        b.push_str(sql::audit::BOOTSTRAP_DRIFT);
         b.push('\n');
         if opts.bootstrap_include_index {
             b.push_str(sql::audit::BOOTSTRAP_INDEX);

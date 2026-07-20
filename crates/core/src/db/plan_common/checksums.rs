@@ -9,6 +9,7 @@ use super::conn::PlanDbConn;
 
 pub(crate) async fn ensure_tables_plan(conn: &mut PlanDbConn<'_>, db_fp: &str) -> Result<()> {
     conn.exec(sql::audit::BOOTSTRAP_TABLES).await?;
+    conn.exec(sql::audit::BOOTSTRAP_DRIFT).await?;
     audit::mark_tables_ensured(db_fp);
     Ok(())
 }

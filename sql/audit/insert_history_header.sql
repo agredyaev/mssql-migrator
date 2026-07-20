@@ -4,6 +4,7 @@ DECLARE @prepared TABLE (
     object_kind nvarchar(32) NULL,
     checksum varchar(64) NOT NULL,
     live_definition_checksum varbinary(32) NULL,
+    applied_ddl_version bigint NULL,
     git_hash varchar(64) NOT NULL,
     git_author nvarchar(256) NOT NULL,
     git_date datetime2 NOT NULL,
@@ -26,14 +27,20 @@ WITH (
 )
 ), parts AS (
     SELECT rows.*,
+        -- The insert path always captures a fresh live fingerprint (it is the
+        -- baseline the read path later compares against), so every row is a
+        -- "suspect" for the shared canonical-state block.
+        CAST(1 AS bit) AS is_suspect,
         LEFT(normalized_key, CHARINDEX('/', normalized_key) - 1) AS schema_name,
         SUBSTRING(normalized_key, CHARINDEX('/', normalized_key) + 1,
             CHARINDEX('/', normalized_key, CHARINDEX('/', normalized_key) + 1) - CHARINDEX('/', normalized_key) - 1) AS object_kind,
         SUBSTRING(normalized_key, CHARINDEX('/', normalized_key, CHARINDEX('/', normalized_key) + 1) + 1, 512) AS object_name
     FROM input_rows AS rows
 )
-INSERT INTO @prepared (normalized_key, kind, object_kind, checksum, live_definition_checksum, git_hash, git_author, git_date, event, error_text)
+INSERT INTO @prepared (normalized_key, kind, object_kind, checksum, live_definition_checksum, applied_ddl_version, git_hash, git_author, git_date, event, error_text)
 SELECT rows.normalized_key, rows.kind, rows.object_kind, rows.checksum, live.definition_checksum,
+    (SELECT od.ddl_version FROM azdo_deploy_meta.object_ddl AS od
+        WHERE od.schema_name = rows.schema_name AND od.object_name = rows.object_name),
     rows.git_hash, rows.git_author,
     COALESCE(TRY_CONVERT(datetime2, NULLIF(rows.git_date, ''), 127), CONVERT(datetime2, '1900-01-01T00:00:00')),
     rows.event, NULLIF(rows.error_text, '')

@@ -23,6 +23,10 @@ mod sql_assets_tests;
 pub mod audit {
     pub const BOOTSTRAP_TABLES: &str = include_str!("../../../../sql/audit/bootstrap_tables.sql");
     pub const BOOTSTRAP_INDEX: &str = include_str!("../../../../sql/audit/bootstrap_index.sql");
+    /// Best-effort database DDL trigger for incremental drift tracking. Run after
+    /// [`BOOTSTRAP_TABLES`] (which creates the tables it writes to); its failure
+    /// is tolerated and degrades the plan to full fingerprinting.
+    pub const BOOTSTRAP_DRIFT: &str = include_str!("../../../../sql/audit/bootstrap_drift.sql");
     pub const HISTORY_EMPTY: &str = include_str!("../../../../sql/audit/history_empty_probe.sql");
     pub const HISTORY_EXISTS: &str = include_str!("../../../../sql/audit/history_exists.sql");
     // Header/tail fragments are not runnable alone; the shared canonical-state

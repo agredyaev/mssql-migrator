@@ -11,11 +11,13 @@ Describe **azdo_deploy_meta audit tables**: repository checksums, live managed-o
 - `crates/core/src/audit/load/mod.rs` - bootstrap, checksum load, cache flags (`tables_ensured`, history probes)
 - `crates/core/src/audit/history.rs` - flush applied/adopted records, index ensure
 - `crates/core/src/audit/migrations.rs` - transition migration history
-- SQL: `sql/audit/bootstrap_tables.sql`, `bootstrap_index.sql`, `history_exists.sql`; `INSERT_HISTORY`/`LOAD_CHECKSUMS` are composed in `crates/core/src/sql/mod.rs` from `insert_history_header.sql` / `load_checksums_header.sql` + the shared `_object_canonical_state.sql` fingerprint block (+ `insert_history_tail.sql`)
+- SQL: `sql/audit/bootstrap_tables.sql`, `bootstrap_index.sql`, `bootstrap_drift.sql`, `history_exists.sql`; `INSERT_HISTORY`/`LOAD_CHECKSUMS` are composed in `crates/core/src/sql/mod.rs` from `insert_history_header.sql` / `load_checksums_header.sql` + the shared `_object_canonical_state.sql` fingerprint block (+ `insert_history_tail.sql`)
 
 ## System context
 
 Plan loads the latest repository checksum and compares `history.live_definition_checksum` with a fresh SQL Server fingerprint. Despite its legacy column name, that field covers all managed kinds: tables, indexes, types, sequences, synonyms, views, functions, procedures, and triggers. Apply captures the fingerprint after successful DDL and invalidates process-local checksum state.
+
+Recomputing that fingerprint for every object on every plan is O(catalog size). To make it O(objects changed since their last apply), a best-effort database DDL trigger (`bootstrap_drift.sql`) stamps a monotonic version onto each managed object in `azdo_deploy_meta.object_ddl` whenever it changes; apply records the version it observed in `history.applied_ddl_version`. The read path fingerprints only "suspects" — objects whose current version exceeds the recorded one, plus any with no recorded version — and reports no drift for the rest without touching them. If the trigger is absent or disabled the read path cannot trust the versions and fingerprints every object, so drift is never missed. The stored fingerprint and the blocking semantics are unchanged; only which objects are re-fingerprinted differs.
 
 ## Interfaces and boundaries
 

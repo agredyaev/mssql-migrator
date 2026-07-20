@@ -32,6 +32,31 @@ IF COL_LENGTH('azdo_deploy_meta.history', 'live_definition_checksum') IS NULL
     ALTER TABLE azdo_deploy_meta.history
         ADD live_definition_checksum VARBINARY(32) NULL;
 
+-- Incremental-drift bookkeeping (safe, permission-free half; the DDL trigger
+-- that populates object_ddl lives in bootstrap_drift.sql). object_ddl holds one
+-- monotonic version per managed object; history.applied_ddl_version records the
+-- version seen when the migrator last applied it. A NULL applied version means
+-- "never tracked", which the read path treats as a drift suspect.
+IF OBJECT_ID('azdo_deploy_meta.ddl_seq') IS NULL
+    EXEC('CREATE SEQUENCE azdo_deploy_meta.ddl_seq AS BIGINT START WITH 1 INCREMENT BY 1');
+
+IF COL_LENGTH('azdo_deploy_meta.history', 'applied_ddl_version') IS NULL
+    ALTER TABLE azdo_deploy_meta.history ADD applied_ddl_version BIGINT NULL;
+
+BEGIN TRY
+    IF OBJECT_ID('azdo_deploy_meta.object_ddl') IS NULL
+    CREATE TABLE azdo_deploy_meta.object_ddl (
+        schema_name NVARCHAR(128) NOT NULL,
+        object_name NVARCHAR(256) NOT NULL,
+        ddl_version BIGINT        NOT NULL,
+        updated_at  DATETIME2     NOT NULL,
+        CONSTRAINT PK_object_ddl PRIMARY KEY (schema_name, object_name)
+    );
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER() <> 2714 THROW;
+END CATCH;
+
 BEGIN TRY
     IF OBJECT_ID('azdo_deploy_meta.catalog_meta') IS NULL
     CREATE TABLE azdo_deploy_meta.catalog_meta (

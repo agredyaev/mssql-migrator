@@ -8,8 +8,8 @@ IF EXISTS (
 )
     THROW 51000, 'cannot capture live managed-object state checksum', 1;
 
-INSERT INTO azdo_deploy_meta.history (normalized_key, kind, checksum, live_definition_checksum, git_hash, git_author, git_date, event, error_text, created_at)
+INSERT INTO azdo_deploy_meta.history (normalized_key, kind, checksum, live_definition_checksum, applied_ddl_version, git_hash, git_author, git_date, event, error_text, created_at)
 SELECT
-    normalized_key, kind, checksum, live_definition_checksum, git_hash, git_author,
+    normalized_key, kind, checksum, live_definition_checksum, applied_ddl_version, git_hash, git_author,
     git_date, event, error_text, SYSUTCDATETIME()
 FROM @prepared;
