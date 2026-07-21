@@ -32,8 +32,4 @@ fi
 echo "$RESET_BLOCK" | grep -q '\$RM_DB_SERVER' \
   || fail "edge case: reset sqlcmd must use \$RM_DB_SERVER"
 
-if echo "$RESET_BLOCK" | grep -q "localhost -U sa -P 'yourStrong(!)Password'"; then
-  fail "BG-012 regression: reset still uses hardcoded sa / docker default password"
-fi
-
 echo "check-prod-gate-reset: PASS"

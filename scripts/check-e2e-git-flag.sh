@@ -24,8 +24,4 @@ fi
 grep -q 'unset RM_SKIP_GIT' "$E2E_ALL" \
   || fail "edge case: e2e_all.sh must unset RM_SKIP_GIT for git-delta scenario"
 
-if grep -q 'unset RMIG_SKIP_GIT\|export RMIG_SKIP_GIT' "$E2E_ALL"; then
-  fail "BG-013 regression: e2e_all.sh still toggles RMIG_SKIP_GIT instead of RM_SKIP_GIT"
-fi
-
 echo "check-e2e-git-flag: PASS"

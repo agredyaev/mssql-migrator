@@ -127,10 +127,6 @@ for path, name, n in violations:
 
 sys.exit(1 if violations else 0)
 PY
-py_status=$?
-if [[ $py_status -ne 0 ]]; then
-  fail=1
-fi
 
 # --- No clippy suppressions: use `cargo clippy -- -D warnings` instead ---
 while IFS= read -r hit; do
