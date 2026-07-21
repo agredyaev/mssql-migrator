@@ -12,7 +12,8 @@ use crate::error::Result;
 use crate::plan::scope::build_scope_and_json;
 use crate::timings;
 
-use super::super::conn::PlanDbConn;
+use crate::driver::TimingConn;
+
 use super::super::helpers::{merge_stable_catalog, schemas_json, should_query_catalog};
 use super::super::types::{BodyOutput, RunBodyContext};
 
@@ -22,7 +23,7 @@ use incremental::{load_incremental_catalog, IncrementalCatalogParams};
 
 pub(super) async fn run_standard_body(
     ctx: &mut RunBodyContext<'_>,
-    conn: &mut PlanDbConn<'_>,
+    conn: &mut TimingConn,
 ) -> Result<BodyOutput> {
     let mut checksums = ChecksumMap::new();
     let mut checksums_ms = 0i64;

@@ -8,12 +8,13 @@ use crate::timings;
 use super::super::super::checksums::{
     checksum_query_round_trips, ensure_tables_plan, load_checksums_plan, set_checksum_trace,
 };
-use super::super::super::conn::PlanDbConn;
+use crate::driver::TimingConn;
+
 use super::super::super::types::RunBodyContext;
 
 pub(super) async fn load_standard_checksums(
     ctx: &RunBodyContext<'_>,
-    conn: &mut PlanDbConn<'_>,
+    conn: &mut TimingConn,
     round_trips: &mut i64,
     local_trace: &mut PlanDbTrace,
 ) -> Result<(ChecksumMap, i64)> {

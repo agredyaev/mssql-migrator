@@ -37,13 +37,6 @@ pub struct CatalogObject {
     pub parent: Option<SharedStr>,
 }
 
-impl CatalogState {
-    /// True when the given key is present in the objects map.
-    pub fn exists_key(&self, key: &ObjectKey) -> bool {
-        self.objects.contains_key(key)
-    }
-}
-
 /// A single table column descriptor from the SQL type/index inspect queries.
 #[derive(Clone, Debug)]
 pub struct TableColumn {

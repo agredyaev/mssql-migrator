@@ -8,7 +8,6 @@ pub async fn open_conn(cfg: &Config) -> Result<TimingConn> {
     Ok(TimingConn::new(
         DbClient::Direct(connect(cfg).await?.client),
         std::sync::Arc::new(std::sync::Mutex::new(IoProfile::default())),
-        0,
     ))
 }
 

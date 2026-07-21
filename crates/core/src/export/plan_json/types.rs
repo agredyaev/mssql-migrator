@@ -38,28 +38,6 @@ pub struct MigrationPlan {
     pub blocked: bool,
 }
 
-/// JSON ingest shape for plan deserialization.
-///
-/// `#[serde(default)]` on optional fields provides backward compatibility
-/// with plans that omit empty fields (e.g. plans produced before a field
-/// was added).  This is the wire format counterpart of [`MigrationPlan`].
-#[derive(Debug, Deserialize)]
-pub(super) struct MigrationPlanWire {
-    #[serde(default)]
-    pub(super) command: String,
-    #[serde(rename = "plannedAt", default)]
-    pub(super) planned_at: String,
-    #[serde(default)]
-    pub(super) blocked: bool,
-    #[serde(default)]
-    pub(super) blockers: Vec<String>,
-    #[serde(default)]
-    pub(super) schemas: Vec<PlannedSchema>,
-    pub(super) objects: Vec<PlannedObject>,
-    #[serde(default)]
-    pub(super) summary: PlanSummary,
-}
-
 /// Schema entry in a plan: action (create / exists) and its SQL-qualified name.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PlannedSchema {

@@ -44,7 +44,7 @@ async fn prod_gate_incremental_plan() {
     let baseline = read_snapshot_json(&baseline_data).expect("parse baseline");
 
     let mut ws = Workspace::default();
-    scan::populate(&mut ws, &cfg.sql_root, cfg.skip_git())
+    scan::populate(&mut ws, &cfg.sql_root, cfg.skip_git)
         .await
         .expect("scan");
     let paths = resolve_changed_paths(&cfg.sql_root);

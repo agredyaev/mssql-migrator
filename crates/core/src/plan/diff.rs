@@ -11,7 +11,7 @@ use super::diff_ctx::{DecideCtx, DiffCounters};
 use super::diff_decide::decide_object_at;
 use super::diff_object::fill_plan_row;
 use super::diff_plan::{ensure_plan_rows, ensure_plan_schemas};
-use super::path_cache::ensure_path_caches;
+use crate::domain::ensure_path_caches;
 
 /// Computes a structural diff of the workspace against the live catalog and returns the plan.
 pub fn compute_diff(

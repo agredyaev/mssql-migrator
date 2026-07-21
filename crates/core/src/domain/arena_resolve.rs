@@ -47,11 +47,6 @@ impl StrOff {
     /// The zero-length offset sentinel (offset 0, length 0).
     pub const EMPTY: StrOff = StrOff(0, 0);
 
-    /// Creates a `StrOff` from a raw byte offset and length.
-    pub fn new(off: u32, len: u32) -> Self {
-        Self(off, len)
-    }
-
     /// Creates a `StrOff` for the given string already present in `arena`.
     pub fn from_arena(arena: &LayoutArena, s: &str) -> Self {
         let (off, len) = arena.offset_len(s);

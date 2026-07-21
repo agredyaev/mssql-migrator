@@ -12,7 +12,8 @@ use crate::timings;
 use super::super::super::checksums::{
     checksum_query_round_trips, load_checksums_plan, set_checksum_trace,
 };
-use super::super::super::conn::PlanDbConn;
+use crate::driver::TimingConn;
+
 use super::super::super::types::RunBodyContext;
 
 pub(super) struct GitDeltaWarmup {
@@ -28,13 +29,13 @@ pub(super) struct GitDeltaWarmup {
 
 pub(super) async fn warmup_git_delta(
     ctx: &mut RunBodyContext<'_>,
-    conn: &mut PlanDbConn<'_>,
+    conn: &mut TimingConn,
 ) -> Result<GitDeltaWarmup> {
     let mut checksums = ChecksumMap::new();
     let mut checksums_ms = 0i64;
     let mut round_trips = ctx.round_trips_start;
     let mut local_trace = PlanDbTrace::default();
-    let want_cache = ctx.cfg.catalog_cache() && audit::tables_ensured(ctx.db_fp);
+    let want_cache = ctx.cfg.catalog_cache && audit::tables_ensured(ctx.db_fp);
     let mut loaded = ctx.catalog_base.take().unwrap_or_default();
     let mut relaxed = false;
     let partial_cache;
@@ -55,7 +56,7 @@ pub(super) async fn warmup_git_delta(
     }
 
     if want_cache && loaded.objects.is_empty() {
-        let sql = batch::plan_db_batch_sql(&[], false, false, false, false, false, true);
+        let sql = batch::plan_db_batch_sql(&[], false, false, false, true);
         let count = ctx.ws.object_count().to_string();
         if !sql.trim().is_empty() {
             let sets = conn

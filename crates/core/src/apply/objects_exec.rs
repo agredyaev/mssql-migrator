@@ -33,14 +33,14 @@ pub async fn exec_object(
 }
 
 fn object_records(ws: &Workspace, obj: &PlannedObject) -> Vec<HistoryRecord> {
-    let mut recs = vec![audit::record_applied(
+    let mut recs = vec![audit::record_event(
         &obj.normalized_key,
-        &obj.kind,
         obj.checksum,
         obj.git_hash(),
         obj.git_author(),
         obj.git_date(),
         "object",
+        "applied",
     )];
     if obj.planned_action == crate::domain::Action::CreateObject {
         recs.extend(super::history_write::create_table_transition_records(

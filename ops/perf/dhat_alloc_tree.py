@@ -35,8 +35,6 @@ SETUP_MARKERS = (
     "scan_fixture_workspace",
     "scan_root",
     "adopt_dense_entries",
-    "StringInterner::intern",
-    "StringInterner::with_capacity",
 )
 
 WARM_MARKERS = ("bench_warm",)
@@ -88,8 +86,6 @@ def categorize(stack: list[str], phase: str) -> str:
             return "setup:bench_support"
         if "scan_fixture" in joined or "scan_root" in joined:
             return "setup:scan_fixture"
-        if "StringInterner" in joined:
-            return "setup:string_interner"
         return "setup:other"
 
     if "push_planned" in joined or "fill_planned" in joined:

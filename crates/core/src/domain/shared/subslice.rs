@@ -10,9 +10,6 @@ pub fn subslice_of(base: &SharedStr, part: &str) -> SharedStr {
     let Some(off) = full.find(part) else {
         return share(part);
     };
-    if &full[off..off + part.len()] != part {
-        return share(part);
-    }
     match &*base.0 {
         SharedStrInner::Slice { buf, start, .. } => SharedStr(Arc::new(SharedStrInner::Slice {
             buf: buf.clone(),

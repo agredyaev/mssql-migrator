@@ -86,9 +86,4 @@ impl Workspace {
     pub fn key_index(&self, key: &ObjectKey) -> u32 {
         self.cold.key_index.get(key).copied().unwrap_or(0)
     }
-
-    /// 1-based row id for [`crate::domain::key_fingerprint`].
-    pub fn row_id_for_fingerprint(&self, fp: u64) -> u32 {
-        self.cold.fp_index.get(&fp).copied().unwrap_or(0)
-    }
 }

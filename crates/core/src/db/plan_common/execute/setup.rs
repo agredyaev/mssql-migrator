@@ -20,7 +20,6 @@ pub(super) struct ExecuteSetup {
     pub need_checksums: bool,
     pub need_catalog: bool,
     pub defer_bootstrap: bool,
-    pub bootstrap_in_sql: bool,
     pub catalog_base: Option<CatalogState>,
     pub bypass: bool,
     pub allow_checksum_repair: bool,
@@ -44,7 +43,7 @@ pub(super) async fn prepare_execute(
     }
     audit::sync_tables_ensured(conn, &db_fp).await?;
     let git = resolve_changed_paths(&cfg.sql_root);
-    let full = cfg.inspect_full() || cfg.skip_git() || git.full_inspect;
+    let full = cfg.inspect_full || cfg.skip_git || git.full_inspect;
     // Mutating commands must live-check every managed object; the git-delta
     // body only queries git-changed paths, so it can never satisfy that.
     let git_delta = !full && !git.paths.is_empty() && !bypass;
@@ -62,7 +61,7 @@ pub(super) async fn prepare_execute(
     let has_modules = (0..ws.object_count()).any(|i| is_module_kind_code(ws.row(i).kind_code));
     let try_cache = !has_modules
         && !bypass
-        && cfg.catalog_cache()
+        && cfg.catalog_cache
         && audit::tables_ensured(&db_fp)
         && git.paths.is_empty()
         && !full
@@ -99,7 +98,6 @@ pub(super) async fn prepare_execute(
         need_checksums,
         need_catalog,
         defer_bootstrap,
-        bootstrap_in_sql: defer_bootstrap,
         catalog_base,
         bypass,
         allow_checksum_repair,

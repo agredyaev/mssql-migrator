@@ -11,8 +11,6 @@ pub struct ObjectRow {
     pub schema_id: u16,
     /// Numeric kind code derived from the object kind path segment.
     pub kind_code: u8,
-    /// Reserved bit flags for future use.
-    pub flags: u8,
 }
 
 /// Output tuple produced by `finalize_sorted_entries`.
@@ -53,7 +51,6 @@ pub fn finalize_sorted_entries(
         rows.push(ObjectRow {
             schema_id,
             kind_code: kind_code(key.kind_part()),
-            flags: 0,
         });
         object_keys.push(key.clone());
         let row_id = (i + 1) as u32;

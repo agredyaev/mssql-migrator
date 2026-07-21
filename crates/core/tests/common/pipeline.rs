@@ -15,7 +15,7 @@ pub async fn run_plan_pipeline(cfg: &Config) -> Result<(MigrationPlan, PhaseTimi
     let skip_l1_invalidate = io_debug_skip_l1_invalidate();
 
     let mut ws = Workspace::default();
-    timings.scan_ms = migrator_core::scan::populate(&mut ws, &cfg.sql_root, cfg.skip_git()).await?;
+    timings.scan_ms = migrator_core::scan::populate(&mut ws, &cfg.sql_root, cfg.skip_git).await?;
 
     if !skip_l1_invalidate {
         // MUST be the production fingerprint: a legacy key would invalidate a
@@ -29,11 +29,7 @@ pub async fn run_plan_pipeline(cfg: &Config) -> Result<(MigrationPlan, PhaseTimi
 
     let t_conn = Instant::now();
     let io_arc = Arc::new(Mutex::new(IoProfile::default()));
-    let mut conn = TimingConn::new(
-        DbClient::Direct(connect(cfg).await?.client),
-        io_arc.clone(),
-        timings::dur_ms(t_conn.elapsed()),
-    );
+    let mut conn = TimingConn::new(DbClient::Direct(connect(cfg).await?.client), io_arc.clone());
     timings.connect_ms = timings::dur_ms(t_conn.elapsed());
 
     let db = migrator_core::db::run_plan_db_phase(cfg, &mut conn, &ws, false, false).await?;
@@ -45,7 +41,7 @@ pub async fn run_plan_pipeline(cfg: &Config) -> Result<(MigrationPlan, PhaseTimi
     } else {
         db.ensure_ms.max(db.checksums_ms + db.inspect_ms)
     };
-    timings.set_l1_cache_hit(db.l1_hit);
+    timings.l1_cache_hit = db.l1_hit;
     timings.plan_db_path = db.trace.path_label().to_string();
     timings.plan_db_query_calls = db.trace.timings.query_calls;
     timings.plan_db_query_ms = db.trace.timings.query_ms;
@@ -66,17 +62,8 @@ pub async fn run_plan_pipeline(cfg: &Config) -> Result<(MigrationPlan, PhaseTimi
 }
 
 fn io_debug_skip_l1_invalidate() -> bool {
-    if matches!(
-        std::env::var("RMIG_IO_DEBUG_SKIP_L1_INVALIDATE").as_deref(),
-        Ok("1") | Ok("true") | Ok("yes")
-    ) {
-        return true;
-    }
-    if matches!(
+    matches!(
         std::env::var("RMIG_E2E_SCENARIO").as_deref(),
         Ok("skip_unchanged_plan") | Ok("catalog_cache_plan")
-    ) {
-        return true;
-    }
-    false
+    )
 }

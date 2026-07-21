@@ -38,7 +38,7 @@ async fn adopt_e2e_preexisting_identical_object_is_adopted_without_ddl() {
     }
 
     let mut cfg = workflow_config::workflow_config().clone();
-    cfg.set_skip_git(true);
+    cfg.skip_git = true;
 
     db_reset::reset_test_database(&cfg).await.expect("reset db");
 

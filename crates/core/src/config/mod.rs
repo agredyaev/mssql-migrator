@@ -17,8 +17,6 @@
 //! ### Off-Nominal & Failure Containment
 //! - **Missing Variables / Bad Formats**: Halts processing, formats error outputs, and returns `Error::Config`.
 
-mod accessors;
-mod auth_mode;
 mod catalog;
 mod catalog_paths;
 mod cold;
@@ -27,16 +25,14 @@ mod default;
 mod ensure_db;
 mod env_build;
 mod env_parse;
-mod flags;
 mod toml_config;
 mod validate;
 
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-pub use auth_mode::sql_credentials_required;
 pub use catalog::discover_catalog_databases;
-pub use catalog_paths::{normalize_catalog_paths, resolve_single_database};
+pub use catalog_paths::normalize_catalog_paths;
 pub use cold::ConfigCold;
 pub use ensure_db::{ensure_catalog_databases_exist, target_database_exists};
 pub use env_build::build_config;
@@ -59,8 +55,19 @@ pub struct Config {
     /// Wall-clock SLO ceiling for CLI runs, in milliseconds.
     pub slo_max_cli_wall_ms: i64,
     pub(crate) cold: Arc<ConfigCold>,
-    /// Bitfield of run-mode flags.
-    pub flags: u8,
+    /// Whether run reports should be written.
+    pub report_sync: bool,
+    /// Whether git operations should be skipped.
+    pub skip_git: bool,
+    /// Whether JSON-format logging is enabled.
+    pub json_logs: bool,
+    /// Whether full-inspect mode is enabled.
+    pub inspect_full: bool,
+    /// Whether the catalog cache is enabled.
+    pub catalog_cache: bool,
+    /// Whether `migrate` may adopt existing unrecorded objects (`RMIG_ALLOW_ADOPT`).
+    /// Adoption trusts live objects by name alone, so it requires explicit opt-in.
+    pub allow_adopt: bool,
 }
 
 impl Deref for Config {

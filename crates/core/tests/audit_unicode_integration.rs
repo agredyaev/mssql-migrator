@@ -32,19 +32,19 @@ async fn unicode_keys_and_sha256_hashes_round_trip_regression() {
         return;
     }
     let mut cfg = workflow_config::workflow_config().clone();
-    cfg.set_skip_git(true);
+    cfg.skip_git = true;
     db_reset::reset_test_database(&cfg).await.expect("reset db");
     let mut conn = state_smoke_conn::open_conn(&cfg).await.expect("connect");
 
     let recs = [CJK_KEY_A, CJK_KEY_B].map(|key| {
-        audit::record_applied(
+        audit::record_event(
             key,
-            "tables",
             [3; 32],
             SHA256_HASH,
             CJK_AUTHOR,
             "2026-01-02T03:04:05+00:00",
             "object",
+            "applied",
         )
     });
     flush_history(&mut conn, &recs).await.expect("insert rows");

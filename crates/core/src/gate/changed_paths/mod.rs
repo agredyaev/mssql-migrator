@@ -31,9 +31,9 @@ pub fn resolve_changed_paths(sql_root: &str) -> ChangedPathsResult {
             return match git_diff::find_repo_root(sql_root) {
                 Some(root) => match git_diff::changed_paths_from_git(&root, base) {
                     Some(paths) => normalize::git_paths_result(sql_root, paths, "env-git-base"),
-                    None => normalize::fail("env-git-base-failed"),
+                    None => normalize::full("env-git-base-failed"),
                 },
-                None => normalize::fail("env-git-base-no-git"),
+                None => normalize::full("env-git-base-no-git"),
             };
         }
     }

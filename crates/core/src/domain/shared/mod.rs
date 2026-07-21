@@ -49,11 +49,6 @@ impl SharedStr {
         Self(Arc::new(SharedStrInner::Slice { buf, start, len }))
     }
 
-    /// Returns the canonical empty `SharedStr` singleton.
-    pub fn empty() -> Self {
-        empty_str()
-    }
-
     /// Returns `true` if the string is empty.
     pub fn is_empty(&self) -> bool {
         self.as_str().is_empty()
@@ -73,11 +68,6 @@ impl SharedStr {
             }
             SharedStrInner::Owned(s) => s,
         }
-    }
-
-    /// Returns the byte length of the string.
-    pub fn len(&self) -> usize {
-        self.as_str().len()
     }
 
     /// Stable map key from backing bytes (slice/owned use the same rules as [`super::key_fingerprint`]).

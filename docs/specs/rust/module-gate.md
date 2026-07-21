@@ -14,7 +14,7 @@ Describe **incremental prod gate**: git delta resolution, plan snapshot wire for
 - `crates/core/src/gate/compare/` - baseline comparison, parity, snapshot I/O
 - `crates/core/src/gate/evaluate.rs` - gate verdict
 - `crates/core/src/gate/e2e_report/` - e2e scenario report wire types and strict readers
-- `crates/core/src/gate/repo_root.rs`, `git_diff.rs` - repo discovery helpers
+- `crates/core/src/gate/git_diff.rs` - repo discovery helpers
 - Tests: `crates/core/tests/prod_gate_integration.rs`, `scenario_e2e_integration.rs`
 
 ## System context

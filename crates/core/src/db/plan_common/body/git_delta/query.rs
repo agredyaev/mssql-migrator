@@ -9,14 +9,15 @@ use crate::plan::git_hot_scope_json;
 use crate::plan::scope::InspectScope;
 use crate::timings;
 
-use super::super::super::conn::PlanDbConn;
+use crate::driver::TimingConn;
+
 use super::super::super::helpers::{kinds_for_git_delta, kinds_for_scope, store_inspect_cache};
 use super::super::super::types::RunBodyContext;
 use super::warmup::GitDeltaWarmup;
 
 pub(super) async fn load_git_delta_catalog(
     ctx: &RunBodyContext<'_>,
-    conn: &mut PlanDbConn<'_>,
+    conn: &mut TimingConn,
     warm: &mut GitDeltaWarmup,
     scope: &InspectScope,
     scope_json: &str,
@@ -54,7 +55,7 @@ pub(super) async fn load_git_delta_catalog(
 
 async fn query_partial_cache(
     ctx: &RunBodyContext<'_>,
-    conn: &mut PlanDbConn<'_>,
+    conn: &mut TimingConn,
     warm: &mut GitDeltaWarmup,
     scope: &InspectScope,
     scope_json: &str,
@@ -62,7 +63,7 @@ async fn query_partial_cache(
     loaded: &mut CatalogState,
 ) -> Result<()> {
     let kinds = kinds_for_scope(ctx.ws, scope);
-    let sql = batch::plan_db_batch_sql(&kinds, false, false, false, true, true, false);
+    let sql = batch::plan_db_batch_sql(&kinds, false, true, true, false);
     let t_sql = Instant::now();
     let sets = conn
         .query_all(&sql, &["[]", scope_json, schemas_json])
@@ -74,14 +75,14 @@ async fn query_partial_cache(
 
 async fn query_delta_paths(
     ctx: &RunBodyContext<'_>,
-    conn: &mut PlanDbConn<'_>,
+    conn: &mut TimingConn,
     warm: &mut GitDeltaWarmup,
     schemas_json: &str,
     loaded: &mut CatalogState,
 ) -> Result<()> {
     let hit_scope = git_hot_scope_json(ctx.ws, &ctx.git.paths);
     let kinds = kinds_for_git_delta(ctx.ws, &ctx.git.paths);
-    let sql = batch::plan_db_batch_sql(&kinds, false, false, false, true, false, false);
+    let sql = batch::plan_db_batch_sql(&kinds, false, true, false, false);
     let t_sql = Instant::now();
     let sets = conn
         .query_all(&sql, &["[]", &hit_scope, schemas_json])

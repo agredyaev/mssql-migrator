@@ -65,25 +65,7 @@ jobs:
         run: ./scripts/setup-temp-fixtures.sh
 
       - name: Start SQL Server
-        run: |
-          docker compose up -d
-          echo "Waiting for MSSQL to be ready..."
-          ready=0
-          for i in {1..20}; do
-            if docker compose exec -T mssql /opt/mssql-tools18/bin/sqlcmd \
-              -S localhost -U sa -P "yourStrong(!)Password" -C \
-              -Q "SELECT 1" >/dev/null 2>&1; then
-              echo "MSSQL is ready!"
-              ready=1
-              break
-            fi
-            sleep 3
-          done
-          if [ "$ready" -ne 1 ]; then
-            echo "MSSQL never became ready within the timeout" >&2
-            docker compose logs mssql || true
-            exit 1
-          fi
+        run: docker compose up -d --wait || { docker compose logs mssql; exit 1; }
 
       - name: SQL regression + E2E matrix + SLO + prod gate
         run: make check-e2e

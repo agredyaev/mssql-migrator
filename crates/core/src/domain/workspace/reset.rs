@@ -20,7 +20,6 @@ impl Workspace {
         self.transitions_by_row.clear();
         self.transitions_staging.clear();
         self.parent_by_row.clear();
-        self.parent_by_object.clear();
         self.invalidate_transition_paths();
         self.schemas.clear();
         self.string_arena_bytes = 0;

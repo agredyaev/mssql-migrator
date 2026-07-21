@@ -70,7 +70,7 @@ pub async fn prepare_blocked_table_change(cfg: &Config) -> Result<(BlockedSetup,
 
     let mut blocked_cfg = cfg.clone();
     blocked_cfg.session_socket.clear();
-    blocked_cfg.set_skip_git(false);
+    blocked_cfg.skip_git = false;
 
     let fp = migrator_core::audit::db_fingerprint(
         &blocked_cfg.server,
@@ -141,7 +141,6 @@ pub async fn run_blocked_table_plan(cfg: &Config) -> Result<E2EBlockedReport> {
     let mut conn = TimingConn::new(
         DbClient::Direct(connect(&blocked_cfg).await?.client),
         io_arc,
-        0,
     );
     e2e_verify::verify_blocked_after_migrate(&mut conn, &sql_root).await?;
 
@@ -197,7 +196,6 @@ pub async fn run_ddl_transition_apply(cfg: &Config) -> Result<migrator_core::gat
     let mut conn = TimingConn::new(
         DbClient::Direct(connect(&blocked_cfg).await?.client),
         io_arc,
-        0,
     );
     e2e_verify::verify_blocked_after_migrate(&mut conn, &sql_root).await?;
 

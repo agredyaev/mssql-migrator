@@ -1,16 +1,7 @@
 use migrator_core::domain::{
     share, ObjectEntry, ObjectKey, Script, ScriptKey, ScriptKind, StrOff, StringArenaBuilder,
-    StringInterner, Workspace,
+    Workspace,
 };
-
-#[test]
-fn dedups_repeated_strings() {
-    let mut interner = StringInterner::with_capacity(4);
-    let a = interner.intern("schema");
-    let b = interner.intern("schema");
-    assert_eq!(a, b);
-    assert_eq!(interner.unique_count(), 1);
-}
 
 #[test]
 fn arena_single_buffer() {
@@ -82,7 +73,7 @@ fn scan_links_non_scaffold_transition_to_table() {
     let mut ws = Workspace::default();
     migrator_core::scan::scan_root(&mut ws, root.to_str().unwrap()).unwrap();
     migrator_core::domain::intern_workspace_strings(&mut ws);
-    migrator_core::plan::rebuild_path_caches(&mut ws);
+    migrator_core::domain::rebuild_path_caches(&mut ws);
 
     let key = ObjectKey::new("smoke", "tables", "smoke_table");
     let row = ws.key_index(&key);

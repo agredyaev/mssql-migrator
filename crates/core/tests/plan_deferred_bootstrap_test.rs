@@ -21,8 +21,8 @@ fn connect_cfg(database: &str) -> Config {
     cfg.password =
         std::env::var("RM_DB_PASSWORD").unwrap_or_else(|_| "yourStrong(!)Password".into());
     cfg.database = database.into();
-    cfg.set_encrypt(false);
-    cfg.set_trust_server_certificate(true);
+    cfg.encrypt = false;
+    cfg.trust_server_certificate = true;
     cfg
 }
 
@@ -30,7 +30,7 @@ fn plan_cfg(database: &str, sql_root: &str) -> Config {
     let mut cfg = connect_cfg(database);
     cfg.sql_root = sql_root.into();
     cfg.sql_base = sql_root.into();
-    cfg.set_skip_git(true);
+    cfg.skip_git = true;
     // The SAME per-database directory recreate_empty_database clears: with the
     // default .rmig/cache a prior run's L1 entry could satisfy the plan and
     // skip the bootstrap path this suite exists to exercise.

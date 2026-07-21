@@ -23,9 +23,9 @@ use migrator_core::driver::TimingConn;
 
 async fn fresh_cold_db() -> Config {
     let mut cfg = workflow_config::workflow_config().clone();
-    cfg.set_skip_git(true);
+    cfg.skip_git = true;
     // Out-of-band drift must reach the diff engine, not be masked by a cache.
-    cfg.set_catalog_cache(false);
+    cfg.catalog_cache = false;
     db_reset::reset_test_database(&cfg).await.expect("reset db");
     cfg
 }

@@ -35,10 +35,10 @@ pub async fn verify_cold_apply(
         )));
     }
     assert_catalog_cache_when_enabled(cfg, snap)?;
-    if cfg.catalog_cache() {
+    if cfg.catalog_cache {
         verify_catalog_index_parents(conn).await?;
     }
-    if cfg.catalog_cache() {
+    if cfg.catalog_cache {
         let meta_count = catalog_meta_object_count(conn).await?;
         if meta_count != snap.audit_object_rows {
             return Err(Error::Other(anyhow::anyhow!(
@@ -109,7 +109,7 @@ pub async fn verify_ddl_transition_applied(
             snap.audit_object_rows
         )));
     }
-    if cfg.catalog_cache() {
+    if cfg.catalog_cache {
         verify_catalog_index_parents(conn).await?;
         // Object history is an event log: a transition apply appends an extra
         // baseline record for its parent table, so compare distinct keys.

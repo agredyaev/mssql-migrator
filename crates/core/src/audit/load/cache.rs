@@ -16,6 +16,8 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
+use crate::driver::io_profile::lock_unpoisoned;
+
 static ENSURED_DBS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 static HISTORY_EMPTY: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
 
@@ -23,26 +25,18 @@ fn ensured_dbs() -> &'static Mutex<HashSet<String>> {
     ENSURED_DBS.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-fn history_nonempty_cache() -> &'static Mutex<HashSet<String>> {
-    static HISTORY_NONEMPTY: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    HISTORY_NONEMPTY.get_or_init(|| Mutex::new(HashSet::new()))
-}
-
 fn history_empty_cache() -> &'static Mutex<HashMap<String, bool>> {
     HISTORY_EMPTY.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn lock_cache<'a, T>(cache: &'a Mutex<T>, cache_name: &'static str) -> MutexGuard<'a, T> {
-    match cache.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            tracing::warn!(
-                cache = cache_name,
-                "process-local audit cache mutex was poisoned; recovering cached state"
-            );
-            poisoned.into_inner()
-        }
+    if cache.is_poisoned() {
+        tracing::warn!(
+            cache = cache_name,
+            "process-local audit cache mutex was poisoned; recovering cached state"
+        );
     }
+    lock_unpoisoned(cache)
 }
 
 pub fn tables_ensured(db_fp: &str) -> bool {
@@ -60,7 +54,7 @@ pub fn history_known_empty(db_fp: &str) -> bool {
 }
 
 pub fn history_known_nonempty(db_fp: &str) -> bool {
-    lock_cache(history_nonempty_cache(), "history_nonempty").contains(db_fp)
+    history_empty_cached(db_fp) == Some(false)
 }
 
 pub fn history_empty_cached(db_fp: &str) -> Option<bool> {
@@ -71,14 +65,6 @@ pub fn history_empty_cached(db_fp: &str) -> Option<bool> {
 
 pub fn cache_history_empty(db_fp: &str, empty: bool) {
     lock_cache(history_empty_cache(), "history_empty").insert(db_fp.to_string(), empty);
-    if !empty {
-        mark_history_nonempty(db_fp);
-    }
-}
-
-pub fn mark_history_nonempty(db_fp: &str) {
-    lock_cache(history_nonempty_cache(), "history_nonempty").insert(db_fp.to_string());
-    lock_cache(history_empty_cache(), "history_empty").insert(db_fp.to_string(), false);
 }
 
 pub fn db_fingerprint(server: &str, port: &str, user: &str, database: &str) -> String {
@@ -95,7 +81,6 @@ pub fn db_fingerprint(server: &str, port: &str, user: &str, database: &str) -> S
 /// Drop cached history probes (after audit writes). Does not clear bootstrap cache.
 pub fn invalidate_audit_cache(db_fp: &str) {
     lock_cache(history_empty_cache(), "history_empty").remove(db_fp);
-    lock_cache(history_nonempty_cache(), "history_nonempty").remove(db_fp);
 }
 
 /// Full process-local audit cache drop (e.g. after DROP/CREATE test database).
@@ -107,25 +92,3 @@ pub fn invalidate_audit_cache_all(db_fp: &str) {
 #[cfg(test)]
 #[path = "../../tests/cache_identity_test.rs"]
 mod cache_identity_tests;
-
-#[cfg(test)]
-mod tests {
-    use std::panic;
-    use std::sync::Mutex;
-
-    use super::lock_cache;
-
-    #[test]
-    fn lock_cache_recovers_poisoned_mutex_regression() {
-        let cache = Mutex::new(41usize);
-        let _ = panic::catch_unwind(|| {
-            let _guard = cache.lock().expect("test lock");
-            panic!("poison test cache");
-        });
-
-        let mut guard = lock_cache(&cache, "test_cache");
-        *guard += 1;
-
-        assert_eq!(*guard, 42);
-    }
-}

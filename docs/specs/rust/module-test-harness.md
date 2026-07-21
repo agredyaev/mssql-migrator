@@ -10,7 +10,7 @@ Document how `crates/core/tests/` runs against Docker SQL Server: which helpers 
 
 - Integration tests: `apply_e2e_integration.rs`, `workflow_integration.rs`, `scenario_e2e_integration.rs`, `integration_plan.rs`, `prod_gate_integration.rs`, bugslog regression crates (`multi_db_plan_test.rs`, `plan_deferred_bootstrap_test.rs`, `advisory_lock_guard_test.rs`, `advisory_lock_rmigd_test.rs`, and others).
 - Shared helpers under `crates/core/tests/common/`.
-- Orchestrators: `ops/perf/sql_regression.sh`, `ops/perf/integration.sh`, `ops/perf/workflow_fast.sh`, `ops/perf/e2e_all.sh`.
+- Orchestrators: `ops/perf/sql_regression.sh`, `ops/perf/workflow_fast.sh`, `ops/perf/e2e_all.sh`.
 
 ## System context
 
@@ -59,7 +59,6 @@ Tests point `RM_SQL_ROOT` at `$REPO/.temp/sql` (fixture in `.temp/`, not committ
 3. `make check` - arch guard, release dep check, `clippy -D warnings`, unit + non-SQL integration tests (SQL suites skip without `RMIG_RUN_SQLSERVER_INTEGRATION=1`).
 4. `make sql-regression` - bugslog SQL regression battery via `ops/perf/sql_regression.sh` (includes `apply_integrity_integration`, `rmigd` lock tests, and timeout cleanup recovery).
 5. `make check-e2e` - `sql-regression` + scenario matrix + workflow + SLO + prod gate (ADO merge gate).
-6. `make integration` - `apply_e2e_integration` + `adopt_e2e_integration` + `drift_e2e_integration` + `workflow_integration` on `.temp/sql` (subset; prefer `make check-e2e` before merge).
 
 Critical bug regressions are mandatory:
 

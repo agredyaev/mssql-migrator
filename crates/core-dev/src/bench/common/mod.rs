@@ -51,5 +51,5 @@ pub fn finalize_bench_ws(
 ) {
     ws.adopt_dense_entries(pairs);
     install_layout_arena(ws, arena);
-    migrator_core::plan::rebuild_path_caches(ws);
+    migrator_core::domain::rebuild_path_caches(ws);
 }

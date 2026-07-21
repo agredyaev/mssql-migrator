@@ -10,7 +10,7 @@
 ///
 /// Order: types (0), sequences (1), tables (2), synonyms (3), indexes (4),
 /// views (5), functions (6), procedures (7), triggers (8), unknown (99).
-pub fn kind_rank(kind: &str) -> i32 {
+fn kind_rank(kind: &str) -> i32 {
     match kind {
         "types" => 0,
         "sequences" => 1,

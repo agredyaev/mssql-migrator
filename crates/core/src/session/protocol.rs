@@ -41,22 +41,13 @@ pub enum Request {
 }
 
 impl Request {
-    pub(super) fn ping(cfg: Option<&Config>) -> Self {
-        let Some(cfg) = cfg else {
-            return Self::Ping {
-                server: String::new(),
-                port: String::new(),
-                user: String::new(),
-                encrypt: None,
-                trust_server_certificate: None,
-            };
-        };
+    pub(super) fn ping(cfg: &Config) -> Self {
         Self::Ping {
             server: cfg.server.clone(),
             port: cfg.port.clone(),
             user: cfg.user.clone(),
-            encrypt: Some(cfg.encrypt()),
-            trust_server_certificate: Some(cfg.trust_server_certificate()),
+            encrypt: Some(cfg.encrypt),
+            trust_server_certificate: Some(cfg.trust_server_certificate),
         }
     }
 }

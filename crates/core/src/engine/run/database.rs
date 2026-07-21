@@ -31,7 +31,7 @@ pub(super) async fn run_command_for_database(
     let connect_ms = timings::dur_ms(t_conn.elapsed());
     timings.connect_ms = connect_ms;
     let io_arc = Arc::new(Mutex::new(crate::driver::IoProfile::default()));
-    let mut conn = TimingConn::new(db_client, io_arc.clone(), connect_ms);
+    let mut conn = TimingConn::new(db_client, io_arc.clone());
     conn.set_command_timeout(cfg.command_timeout);
 
     // Mutating commands inspect + diff + apply entirely under the advisory lock

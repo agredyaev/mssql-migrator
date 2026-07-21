@@ -2,12 +2,11 @@ use crate::audit;
 use crate::db::catalog_inspect_cache;
 use crate::db::plan_db_trace::PlanDbTrace;
 use crate::db::state::ChecksumMap;
+use crate::driver::TimingConn;
 use crate::error::Result;
 use crate::sql;
 
-use super::conn::PlanDbConn;
-
-pub(crate) async fn ensure_tables_plan(conn: &mut PlanDbConn<'_>, db_fp: &str) -> Result<()> {
+pub(crate) async fn ensure_tables_plan(conn: &mut TimingConn, db_fp: &str) -> Result<()> {
     conn.exec(sql::audit::BOOTSTRAP_TABLES).await?;
     conn.exec(sql::audit::BOOTSTRAP_DRIFT).await?;
     audit::mark_tables_ensured(db_fp);
@@ -15,7 +14,7 @@ pub(crate) async fn ensure_tables_plan(conn: &mut PlanDbConn<'_>, db_fp: &str) -
 }
 
 pub(crate) async fn load_checksums_plan(
-    conn: &mut PlanDbConn<'_>,
+    conn: &mut TimingConn,
     db_fp: &str,
     keys_json: &str,
     allow_bootstrap: bool,
@@ -34,7 +33,7 @@ pub(crate) async fn load_checksums_plan(
 }
 
 async fn history_table_is_empty_plan(
-    conn: &mut PlanDbConn<'_>,
+    conn: &mut TimingConn,
     db_fp: &str,
     allow_bootstrap: bool,
 ) -> Result<bool> {
@@ -70,7 +69,7 @@ async fn history_table_is_empty_plan(
 }
 
 async fn load_checksums_query_plan(
-    conn: &mut PlanDbConn<'_>,
+    conn: &mut TimingConn,
     keys_json: &str,
     allow_repair: bool,
 ) -> Result<ChecksumMap> {

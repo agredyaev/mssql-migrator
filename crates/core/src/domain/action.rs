@@ -76,8 +76,3 @@ pub fn is_transactional_kind(kind: &str) -> bool {
         "tables" | "indexes" | "types" | "sequences" | "synonyms"
     )
 }
-
-/// True when the kind is a module that requires `ALTER` instead of `CREATE` (`views`, `procedures`, `functions`, `triggers`).
-pub fn is_module_kind(kind: &str) -> bool {
-    matches!(kind, "views" | "procedures" | "functions" | "triggers")
-}

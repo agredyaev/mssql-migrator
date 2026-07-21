@@ -108,9 +108,9 @@ fn chaos_cfg() -> Config {
         std::env::var("RM_DB_PASSWORD").unwrap_or_else(|_| "yourStrong(!)Password".into());
     cfg.database = DB.into();
     cfg.sql_root = ".".into();
-    cfg.set_skip_git(true);
-    cfg.set_encrypt(false);
-    cfg.set_trust_server_certificate(true);
+    cfg.skip_git = true;
+    cfg.encrypt = false;
+    cfg.trust_server_certificate = true;
     validate_config(&mut cfg).expect("valid cfg");
     cfg
 }

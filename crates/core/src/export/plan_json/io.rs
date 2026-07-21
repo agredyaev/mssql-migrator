@@ -1,10 +1,9 @@
-use std::collections::HashMap;
 use std::io::Write;
 
 use crate::domain::Workspace;
 use crate::error::Result;
 
-use super::types::{MigrationPlan, MigrationPlanWire};
+use super::types::MigrationPlan;
 
 /// Serializes `plan` as pretty-printed JSON and writes it to `w`.
 pub fn write_plan_json(
@@ -29,22 +28,4 @@ pub fn write_plan_json(
     w.write_all(v.as_bytes()).map_err(crate::error::Error::Io)?;
     w.write_all(b"\n").map_err(crate::error::Error::Io)?;
     Ok(())
-}
-
-/// Deserializes a `MigrationPlan` from JSON.
-pub fn read_plan_json(s: &str) -> Result<MigrationPlan> {
-    let wire: MigrationPlanWire =
-        serde_json::from_str(s).map_err(|e| crate::error::Error::InvalidInput(e.to_string()))?;
-    Ok(MigrationPlan {
-        command: wire.command,
-        planned_at: wire.planned_at,
-        blockers: wire.blockers,
-        schemas: wire.schemas,
-        rows: Vec::new(),
-        plan_git: HashMap::new(),
-        plan_transitions: HashMap::new(),
-        objects: wire.objects,
-        summary: wire.summary,
-        blocked: wire.blocked,
-    })
 }

@@ -29,7 +29,7 @@ fn workspace_from_layout(root: &Path) -> Workspace {
     let mut ws = Workspace::default();
     scan_root(&mut ws, root.to_str().unwrap()).unwrap();
     migrator_core::domain::intern_workspace_strings(&mut ws);
-    migrator_core::plan::rebuild_path_caches(&mut ws);
+    migrator_core::domain::rebuild_path_caches(&mut ws);
     ws
 }
 

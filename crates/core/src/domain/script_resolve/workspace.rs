@@ -9,11 +9,6 @@ impl Workspace {
         &self.script_rows[(script_id - 1) as usize]
     }
 
-    /// Returns a mutable reference to the `ScriptRow` for `script_id` (1-based).
-    pub fn script_row_mut(&mut self, script_id: u32) -> &mut crate::domain::ScriptRow {
-        &mut self.script_rows[(script_id - 1) as usize]
-    }
-
     /// Returns a `ScriptRef` view for `script_id` (1-based).
     pub fn script(&self, script_id: u32) -> ScriptRef<'_> {
         ScriptRef {

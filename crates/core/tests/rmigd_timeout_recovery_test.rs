@@ -39,10 +39,10 @@ fn config(socket: String) -> Config {
     cfg.session_socket = socket;
     cfg.session_token = std::env::var("RMIG_SESSION_TOKEN").expect("rmigd test token");
     cfg.command_timeout = Duration::from_secs(8);
-    cfg.set_skip_git(true);
+    cfg.skip_git = true;
     // The checked-in Docker SQL Server fixture has no TLS endpoint.
-    cfg.set_encrypt(false);
-    cfg.set_trust_server_certificate(true);
+    cfg.encrypt = false;
+    cfg.trust_server_certificate = true;
     validate_config(&mut cfg).expect("valid rmigd test config");
     cfg
 }
@@ -58,7 +58,7 @@ async fn timed_out_transaction_and_session_lock_are_cleaned_before_reuse() {
     let socket = rmigd::ensure_started().expect("rmigd enabled");
     let cfg = config(socket.clone());
 
-    let mut timed_out = ProxyClient::connect(&socket, Some(&cfg))
+    let mut timed_out = ProxyClient::connect(&socket, &cfg)
         .await
         .expect("connect timeout client");
     let error = timed_out
@@ -82,7 +82,7 @@ async fn timed_out_transaction_and_session_lock_are_cleaned_before_reuse() {
     drop(timed_out);
 
     let recovery = tokio::time::timeout(Duration::from_secs(8), async {
-        let mut client = ProxyClient::connect(&socket, Some(&cfg)).await?;
+        let mut client = ProxyClient::connect(&socket, &cfg).await?;
         client
             .query(
                 r#"DECLARE @lock_result int;

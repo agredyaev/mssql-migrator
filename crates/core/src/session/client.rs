@@ -4,7 +4,7 @@ use crate::error::Result;
 
 /// Open a CLI connection via `rmigd` (warm TDS held in the daemon process).
 pub async fn connect_daemon(socket_path: &str, cfg: &Config) -> Result<DbClient> {
-    let mut proxy = super::proxy::ProxyClient::connect(socket_path, Some(cfg)).await?;
+    let mut proxy = super::proxy::ProxyClient::connect(socket_path, cfg).await?;
     if !cfg.database.is_empty() {
         let quoted = crate::sql_ident::bracket_ident(&cfg.database)?;
         let use_stmt = format!("USE {quoted}");

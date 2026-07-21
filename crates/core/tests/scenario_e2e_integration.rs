@@ -152,10 +152,10 @@ async fn run_apply_scenario(baseline_data: &str) {
         failed: out.failed,
         skipped: out.skipped,
         errors: Vec::new(),
-        audit_object_rows: out.audit_object_rows,
-        audit_migration_rows: out.audit_migration_rows,
-        catalog_meta_rows: out.catalog_meta_rows,
-        catalog_cache_rows: out.catalog_cache_rows,
+        audit_object_rows: out.audit.audit_object_rows,
+        audit_migration_rows: out.audit.audit_migration_rows,
+        catalog_meta_rows: out.audit.catalog_meta_rows,
+        catalog_cache_rows: out.audit.catalog_cache_rows,
         timings: Default::default(),
     };
     write_rust_report(&rust_rep, write_e2e_apply_file);
@@ -174,7 +174,7 @@ async fn run_apply_scenario(baseline_data: &str) {
 async fn run_ddl_transition_scenario(baseline_data: &str) {
     let baseline_rep = read_e2e_apply_json(baseline_data).expect("parse baseline apply report");
     let mut cfg = common::direct_config().clone();
-    cfg.set_skip_git(false);
+    cfg.skip_git = false;
     if !db_reset_skip::skip_db_reset() {
         db_reset::reset_test_database(&cfg)
             .await
@@ -226,7 +226,7 @@ async fn run_blocked_scenario(baseline_data: &str) {
             .expect("reset db for blocked_table_plan");
     }
     let mut blocked_cfg = cfg.clone();
-    blocked_cfg.set_skip_git(false);
+    blocked_cfg.skip_git = false;
     let rust_rep = blocked::run_blocked_table_plan(&blocked_cfg)
         .await
         .expect("blocked table plan");

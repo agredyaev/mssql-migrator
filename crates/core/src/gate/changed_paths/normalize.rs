@@ -42,11 +42,3 @@ pub(super) fn full(source: &'static str) -> ChangedPathsResult {
         source,
     }
 }
-
-pub(super) fn fail(source: &'static str) -> ChangedPathsResult {
-    ChangedPathsResult {
-        paths: Vec::new(),
-        full_inspect: true,
-        source,
-    }
-}

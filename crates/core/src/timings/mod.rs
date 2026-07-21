@@ -17,15 +17,8 @@
 //! ### Off-Nominal & Failure Containment
 //! - **Timings Overflow**: Keeps metrics in 64-bit integer values to eliminate integer overflows during long-running migrations.
 
-mod flags;
 mod phase;
-mod serde_impl;
-mod wire;
 
-pub use flags::{
-    PHASE_FLAG_L1_CACHE_HIT, PHASE_FLAG_PLAN_DB_BOOTSTRAP, PHASE_FLAG_PLAN_DB_CATALOG_QUERIED,
-    PHASE_FLAG_PLAN_DB_CHECKSUMS_SKIPPED, PHASE_FLAG_PLAN_DB_HISTORY_EMPTY,
-};
 pub use phase::PhaseTimings;
 
 /// Converts `d` to whole milliseconds as an `i64`.

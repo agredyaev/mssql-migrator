@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::db::state::{catalog_object_parts, CatalogObject, ChecksumMap};
-use crate::domain::{is_module_kind_code, ObjectKey, Workspace};
+use crate::domain::{is_module_kind_code, ObjectEntry, ObjectKey, Workspace};
 use crate::gate::{expand_delta_closure, keys_for_changed_paths};
 
 use super::scope::InspectScope;
@@ -56,7 +56,7 @@ pub fn build_inspect_scope(
                 obj.name_shared(ws, i),
                 obj.parent_ref_for_row(ws, ws.row_id_at(i))
                     .filter(|p| p.parent_row_id > 0)
-                    .map(|_| obj.parent_name(ws, i, ws.row_id_at(i))),
+                    .map(|_| ObjectEntry::parent_name(ws, ws.row_id_at(i))),
             ),
         );
     }

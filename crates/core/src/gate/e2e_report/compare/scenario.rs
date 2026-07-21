@@ -31,11 +31,10 @@ pub fn compare_e2e_reports(
             baseline.io.query_calls, actual.io.query_calls
         ));
     }
-    if baseline.timings.l1_cache_hit() != actual.timings.l1_cache_hit() {
+    if baseline.timings.l1_cache_hit != actual.timings.l1_cache_hit {
         msgs.push(format!(
             "timings.l1_cache_hit: baseline={} actual={}",
-            baseline.timings.l1_cache_hit(),
-            actual.timings.l1_cache_hit()
+            baseline.timings.l1_cache_hit, actual.timings.l1_cache_hit
         ));
     }
     if !baseline.timings.plan_db_path.is_empty()

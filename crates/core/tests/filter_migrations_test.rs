@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use migrator_core::domain::{share, Action, Script, ScriptKey, ScriptKind, Workspace};
+use migrator_core::export::filter_applied_migrations_on_plan;
 use migrator_core::export::{MigrationPlan, PlannedObject};
-use migrator_core::plan::filter_migrations;
 
 const T1: &str = "r/tables/_migrations/t1/001_abc_def.sql";
 const T2: &str = "r/tables/_migrations/t1/002_abc_ghi.sql";
@@ -45,7 +45,7 @@ fn drops_already_applied_transition_paths() {
     let ws = ws_with_transition(T1, [7; 32]);
     let mut applied = HashMap::new();
     applied.insert(T1.to_string(), hex_of([7; 32]));
-    filter_migrations::filter_applied_migrations(&mut plan, &ws, &applied)
+    filter_applied_migrations_on_plan(&mut plan, &ws, &applied)
         .expect("matching checksum is not tampering");
     assert_eq!(plan.objects[0].transition_paths.len(), 1);
     assert!(plan.objects[0].transition_paths[0].contains("002"));
@@ -58,7 +58,7 @@ fn empty_recorded_checksum_is_trusted_edge_case() {
     let ws = ws_with_transition(T1, [7; 32]);
     let mut applied = HashMap::new();
     applied.insert(T1.to_string(), String::new());
-    filter_migrations::filter_applied_migrations(&mut plan, &ws, &applied)
+    filter_applied_migrations_on_plan(&mut plan, &ws, &applied)
         .expect("legacy rows have nothing to compare");
     assert_eq!(plan.objects[0].transition_paths.len(), 1);
 }
@@ -71,7 +71,7 @@ fn edited_applied_transition_is_reported_as_tampered_regression() {
     let ws = ws_with_transition(T1, [9; 32]);
     let mut applied = HashMap::new();
     applied.insert(T1.to_string(), hex_of([7; 32]));
-    let tampered = filter_migrations::filter_applied_migrations(&mut plan, &ws, &applied)
+    let tampered = filter_applied_migrations_on_plan(&mut plan, &ws, &applied)
         .expect_err("changed bytes under an applied path must be rejected");
     assert_eq!(tampered, vec![T1.to_string()]);
 }

@@ -14,13 +14,10 @@ pub struct ApplySmokeOut {
     pub applied: i32,
     pub failed: i32,
     pub skipped: i32,
-    pub audit_object_rows: i32,
-    pub audit_migration_rows: i32,
-    pub catalog_meta_rows: i32,
-    pub catalog_cache_rows: i32,
+    pub audit: AuditDbSnapshot,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct AuditDbSnapshot {
     pub audit_object_rows: i32,
     pub audit_migration_rows: i32,
@@ -31,7 +28,7 @@ pub struct AuditDbSnapshot {
 /// Fast path for blocked/ddl e2e: skip cold apply when smoke baseline is already in SQL.
 pub async fn ensure_smoke_baseline(cfg: &Config) -> Result<()> {
     let io_arc = Arc::new(Mutex::new(IoProfile::default()));
-    let mut conn = TimingConn::new(DbClient::Direct(connect(cfg).await?.client), io_arc, 0);
+    let mut conn = TimingConn::new(DbClient::Direct(connect(cfg).await?.client), io_arc);
     if smoke_baseline_ready(cfg, &mut conn).await? {
         return Ok(());
     }
@@ -80,7 +77,7 @@ pub async fn smoke_baseline_ready(cfg: &Config, conn: &mut TimingConn) -> Result
     if row.get_i32(5).unwrap_or(0) != 0 {
         return Ok(false);
     }
-    if cfg.catalog_cache() {
+    if cfg.catalog_cache {
         if row.get_i32(6).unwrap_or(0) < 1 {
             return Err(Error::Other(anyhow::anyhow!(
                 "catalog_meta empty with RMIG_CATALOG_CACHE enabled"
@@ -97,7 +94,7 @@ pub async fn smoke_baseline_ready(cfg: &Config, conn: &mut TimingConn) -> Result
 
 pub async fn run_apply_smoke(cfg: &Config) -> Result<ApplySmokeOut> {
     let mut ws = Workspace::default();
-    scan::populate(&mut ws, &cfg.sql_root, cfg.skip_git()).await?;
+    scan::populate(&mut ws, &cfg.sql_root, cfg.skip_git).await?;
 
     let db_fp = db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     invalidate_audit_cache(&db_fp);
@@ -106,7 +103,7 @@ pub async fn run_apply_smoke(cfg: &Config) -> Result<ApplySmokeOut> {
     let _ = l1.invalidate_all(&db_fp);
 
     let io_arc = Arc::new(Mutex::new(IoProfile::default()));
-    let mut conn = TimingConn::new(DbClient::Direct(connect(cfg).await?.client), io_arc, 0);
+    let mut conn = TimingConn::new(DbClient::Direct(connect(cfg).await?.client), io_arc);
     ensure_tables(&mut conn, &db_fp).await?;
 
     let db = migrator_core::db::run_plan_db_phase(cfg, &mut conn, &ws, false, false).await?;
@@ -119,7 +116,7 @@ pub async fn run_apply_smoke(cfg: &Config) -> Result<ApplySmokeOut> {
             &mut conn,
             &ws.layout_digest,
             &ws,
-            cfg.catalog_cache(),
+            cfg.catalog_cache,
         )
         .await?;
     }
@@ -130,10 +127,7 @@ pub async fn run_apply_smoke(cfg: &Config) -> Result<ApplySmokeOut> {
         applied: i32::try_from(apply.applied).unwrap_or(i32::MAX),
         failed: i32::try_from(apply.failed).unwrap_or(i32::MAX),
         skipped: i32::try_from(apply.skipped).unwrap_or(i32::MAX),
-        audit_object_rows: snap.audit_object_rows,
-        audit_migration_rows: snap.audit_migration_rows,
-        catalog_meta_rows: snap.catalog_meta_rows,
-        catalog_cache_rows: snap.catalog_cache_rows,
+        audit: snap,
     })
 }
 
@@ -177,7 +171,7 @@ async fn count_table_rows(conn: &mut TimingConn, table: &str) -> Result<i32> {
 }
 
 pub fn assert_catalog_cache_when_enabled(cfg: &Config, snap: &AuditDbSnapshot) -> Result<()> {
-    if !cfg.catalog_cache() {
+    if !cfg.catalog_cache {
         return Ok(());
     }
     if snap.catalog_meta_rows < 1 {
@@ -218,20 +212,12 @@ pub async fn verify_cold_apply_report(cfg: &Config, out: &ApplySmokeOut) -> Resu
     let mut conn = TimingConn::new(
         DbClient::Direct(connect(cfg).await?.client),
         Arc::new(Mutex::new(IoProfile::default())),
-        0,
     );
     let snap = snapshot_audit_db(&mut conn).await?;
-    if snap.audit_object_rows != out.audit_object_rows
-        || snap.audit_migration_rows != out.audit_migration_rows
-        || snap.catalog_meta_rows != out.catalog_meta_rows
-        || snap.catalog_cache_rows != out.catalog_cache_rows
-    {
+    if snap != out.audit {
         return Err(Error::Other(anyhow::anyhow!(
-            "audit snapshot mismatch: db={snap:?} report object={} migration={} meta={} cache={}",
-            out.audit_object_rows,
-            out.audit_migration_rows,
-            out.catalog_meta_rows,
-            out.catalog_cache_rows,
+            "audit snapshot mismatch: db={snap:?} report={:?}",
+            out.audit
         )));
     }
     super::e2e_verify::verify_cold_apply(cfg, &mut conn, &snap).await

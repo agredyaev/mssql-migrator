@@ -11,7 +11,6 @@ impl Workspace {
     /// Resets all catalog facts loaded from the database.
     pub fn invalidate_catalog_facts(&mut self) {
         self.catalog_flags &= !(CATALOG_APPLIED | CHECKSUMS_APPLIED);
-        self.parent_by_object.clear();
         self.parent_by_row.clear();
         self.prior_by_row.clear();
         self.catalog_row.clear();

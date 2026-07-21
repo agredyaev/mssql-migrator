@@ -63,8 +63,8 @@ async fn recreate_database(database: &str) {
     cfg.password =
         std::env::var("RM_DB_PASSWORD").unwrap_or_else(|_| "yourStrong(!)Password".into());
     cfg.database = "master".into();
-    cfg.set_encrypt(false);
-    cfg.set_trust_server_certificate(true);
+    cfg.encrypt = false;
+    cfg.trust_server_certificate = true;
     let mut master = connect(&cfg).await.expect("connect master");
     let escaped = database.replace('\'', "''");
     let sql = format!(
@@ -100,9 +100,9 @@ async fn sql_auth_plan_still_connects_integration_happy_path() {
     cfg.sql_root = root.to_str().expect("utf8").into();
     cfg.sql_base = cfg.sql_root.clone();
     cfg.db_auth = "sql".into();
-    cfg.set_skip_git(true);
-    cfg.set_encrypt(false);
-    cfg.set_trust_server_certificate(true);
+    cfg.skip_git = true;
+    cfg.encrypt = false;
+    cfg.trust_server_certificate = true;
     validate_config(&mut cfg).expect("valid cfg");
     let out = run_command(Command::Plan, &cfg)
         .await

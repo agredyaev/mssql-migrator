@@ -17,9 +17,6 @@ pub struct PlanSnapshot {
     pub objects: HashMap<String, SnapshotObject>,
     /// Format version string; compared against `SNAPSHOT_VERSION` on load.
     pub version: String,
-    /// Hash of the script-layout on disk at snapshot time; empty when unused.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub layout_hash: String,
     /// Whether the plan was blocked when this snapshot was taken.
     pub blocked: bool,
 }
@@ -47,7 +44,6 @@ impl PlanSnapshot {
         Self {
             version: SNAPSHOT_VERSION.into(),
             blocked: plan.blocked,
-            layout_hash: String::new(),
             objects,
         }
     }

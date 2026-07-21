@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 
-use super::shared::SharedStr;
-
 mod builder;
-mod interner;
 mod slice;
 mod ws_apply;
 mod ws_git;
@@ -28,9 +25,4 @@ pub struct StringArenaBuilder {
 pub struct StringArena {
     pub(super) buf: std::sync::Arc<[u8]>,
     pub(super) index: HashMap<Box<str>, u32>,
-}
-
-/// Arc-dedup interner for synthetic benches (pre-finalize); scan uses [`StringArena`].
-pub struct StringInterner {
-    pub(super) index: HashMap<Box<str>, SharedStr>,
 }

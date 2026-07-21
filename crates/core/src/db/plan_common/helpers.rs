@@ -3,15 +3,14 @@ use std::collections::HashMap;
 use crate::db::catalog_inspect_cache;
 use crate::db::state::{CatalogObject, CatalogState};
 use crate::domain::{ObjectKey, Workspace};
+use crate::driver::TimingConn;
 use crate::error::Result;
 use crate::gate::{expand_delta_closure, keys_for_changed_paths};
 use crate::plan::scope::InspectScope;
 use crate::sql;
 
-use super::conn::PlanDbConn;
-
 pub(crate) async fn try_fast_empty_catalog(
-    conn: &mut PlanDbConn<'_>,
+    conn: &mut TimingConn,
     scope_json: &str,
 ) -> Result<Option<CatalogState>> {
     if scope_json == "[]" {

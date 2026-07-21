@@ -26,10 +26,6 @@ pub(super) fn command_mutates(cmd: types::Command) -> bool {
     )
 }
 
-fn command_ensures_catalog_databases(cmd: types::Command) -> bool {
-    command_mutates(cmd)
-}
-
 /// Runs `cmd` for all configured catalog databases and returns the merged output.
 pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput> {
     if cmd == types::Command::Version {
@@ -46,20 +42,20 @@ pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput>
     } else {
         discover_catalog_databases(&cfg.sql_root)?
     };
-    if command_ensures_catalog_databases(cmd) {
+    if command_mutates(cmd) {
         ensure_catalog_databases_exist(cfg, &databases).await?;
     }
 
     let t_scan = Instant::now();
     let mut ws_full = Workspace::default();
-    let scan_ms = crate::scan::populate(&mut ws_full, &cfg.sql_root, cfg.skip_git()).await?;
+    let scan_ms = crate::scan::populate(&mut ws_full, &cfg.sql_root, cfg.skip_git).await?;
     let scan_elapsed = t_scan.elapsed();
 
     let mut merged = PhaseTimings {
         scan_ms,
         ..Default::default()
     };
-    merged.set_l1_cache_hit(true);
+    merged.l1_cache_hit = true;
     let mut exit_code = 0i32;
     let mut last_plan: Option<MigrationPlan> = None;
     let mut missing_dbs: Vec<String> = Vec::new();
@@ -78,7 +74,7 @@ pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput>
         // and must not create it, so plan the reachable catalogs only and skip
         // the rest. Mutating commands already created their catalogs above via
         // `ensure_catalog_databases_exist`, so this probe is skipped for them.
-        if multi && !command_ensures_catalog_databases(cmd) {
+        if multi && !command_mutates(cmd) {
             // Absent database → skip; a server outage/auth failure must NOT be
             // silently treated as "absent" (that would exit 0 having validated
             // nothing), so propagate it.

@@ -26,49 +26,10 @@ pub struct HistoryRecord {
     pub error_text: String,
 }
 
-/// Builds a `HistoryRecord` representing a successful apply event.
-pub fn record_applied(
-    key: &str,
-    _object_kind: &str,
-    checksum: [u8; 32],
-    git_hash: &str,
-    git_author: &str,
-    git_date: &str,
-    record_kind: &str,
-) -> HistoryRecord {
-    record_event(
-        key,
-        checksum,
-        git_hash,
-        git_author,
-        git_date,
-        record_kind,
-        "applied",
-    )
-}
-
-/// Builds a `HistoryRecord` recording adoption of a pre-existing object as
-/// baseline (event `adopted`), so later edits to it are detected as changes.
-pub fn record_adopted(
-    key: &str,
-    checksum: [u8; 32],
-    git_hash: &str,
-    git_author: &str,
-    git_date: &str,
-    record_kind: &str,
-) -> HistoryRecord {
-    record_event(
-        key,
-        checksum,
-        git_hash,
-        git_author,
-        git_date,
-        record_kind,
-        "adopted",
-    )
-}
-
-fn record_event(
+/// Builds a `HistoryRecord` for a lifecycle `event` (e.g. `"applied"` after a
+/// successful apply, `"adopted"` when a pre-existing object is taken as
+/// baseline so later edits are detected as changes).
+pub fn record_event(
     key: &str,
     checksum: [u8; 32],
     git_hash: &str,

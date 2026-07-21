@@ -25,7 +25,6 @@ mod blocked;
 mod filter;
 mod io;
 mod run;
-mod warm_store;
 
 pub use io::{print_timings_json, print_version, write_plan_stdout};
 pub use run::{run_command, Command, RunOutput};

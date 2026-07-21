@@ -22,7 +22,7 @@ pub fn ingest(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
     };
     let data = std::fs::read(abs).map_err(crate::error::Error::Io)?;
     let cs: [u8; 32] = super::content_checksum(&data);
-    let scaffold = is_scaffold(abs);
+    let scaffold = is_scaffold(&data);
     let sk = ScriptKey::from_path(&meta.path);
     ws.insert_script(Script {
         key: sk.clone(),
@@ -60,7 +60,7 @@ fn parse_meta(rel: &str) -> Result<Option<TransitionMeta>> {
     crate::sql_ident::validate_path_component(&schema)?;
     crate::sql_ident::validate_path_component(&table)?;
     crate::sql_ident::validate_path_component(file)?;
-    let Some((ordinal, _, _)) = parse_filename(file) else {
+    let Some(ordinal) = parse_filename(file) else {
         return Ok(None);
     };
     if rel.encode_utf16().count() > MAX_KEY_UTF16_UNITS {
@@ -77,7 +77,7 @@ fn parse_meta(rel: &str) -> Result<Option<TransitionMeta>> {
     }))
 }
 
-fn parse_filename(file: &str) -> Option<(String, String, String)> {
+fn parse_filename(file: &str) -> Option<String> {
     let stripped = super::strip_sql_ext(file);
     if stripped.len() == file.len() {
         return None;
@@ -94,17 +94,14 @@ fn parse_filename(file: &str) -> Option<(String, String, String)> {
     if slug.is_empty() {
         return None;
     }
-    Some((ordinal.into(), commit.into(), slug.into()))
+    Some(ordinal.into())
 }
 
 #[cfg(test)]
 #[path = "../tests/scan_transition_test.rs"]
 mod scan_transition_tests;
 
-fn is_scaffold(path: &Path) -> bool {
-    let Ok(data) = std::fs::read(path) else {
-        return false;
-    };
+fn is_scaffold(data: &[u8]) -> bool {
     let line = data.split(|&b| b == b'\n').next().unwrap_or(&[]);
     let line = std::str::from_utf8(line)
         .unwrap_or("")

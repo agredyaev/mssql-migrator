@@ -25,14 +25,6 @@ pub fn rmig_dir() -> PathBuf {
     }
 }
 
-/// Create `~/.rmig` with mode `0700` and return the path.
-pub fn ensure_rmig_dir() -> Result<PathBuf> {
-    let dir = rmig_dir();
-    std::fs::create_dir_all(&dir).map_err(Error::Io)?;
-    restrict_dir_mode(&dir)?;
-    Ok(dir)
-}
-
 /// Resolve socket path: `RMIGD_SOCKET` env, else [`default_socket_path`].
 pub fn resolve_socket_path() -> Result<PathBuf> {
     let path = std::env::var("RMIGD_SOCKET")

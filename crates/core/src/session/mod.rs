@@ -30,7 +30,7 @@ mod daemon;
 #[cfg(feature = "session-daemon")]
 mod daemon_rpc;
 
-pub use auth::{apply_session_token_from_config, resolve_session_token, session_token_from_env};
+pub use auth::{apply_session_token_from_config, resolve_session_token};
 #[cfg(feature = "session-daemon")]
 pub use auth::{token_required, verify_token};
 pub use client::{connect_daemon, connect_session_or_direct};

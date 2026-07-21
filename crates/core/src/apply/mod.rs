@@ -82,12 +82,12 @@ async fn finish(cfg: &Config, conn: &mut TimingConn, result: ApplyResult) -> Res
     let db_fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     if result.wrote_history {
         invalidate_audit_cache(&db_fp);
-        audit::mark_history_nonempty(&db_fp);
+        audit::cache_history_empty(&db_fp, false);
     }
     // Invalidate whenever objects were applied, even if a later object failed —
     // the caches otherwise serve pre-apply state and wedge the next run.
     if result.applied > 0 {
-        if let Err(e) = db::invalidate(conn, cfg.catalog_cache()).await {
+        if let Err(e) = db::invalidate(conn, cfg.catalog_cache).await {
             tracing::warn!(error = %e, "post-apply catalog cache invalidation failed");
         }
         let l1 = crate::cache::l1::L1Cache::new(&cfg.l1_cache_dir);

@@ -21,34 +21,18 @@ pub struct IoProfile {
     pub extra_connect_ms: i64,
 }
 
-impl IoProfile {
-    /// Returns total time spent at the SQL boundary (query + exec), in milliseconds.
-    pub fn db_boundary_ms(&self) -> i64 {
-        self.query_ms + self.exec_ms
-    }
-
-    /// Accumulates counters from `other` into `self`.
-    pub fn merge_from(&mut self, other: Self) {
-        self.query_ms += other.query_ms;
-        self.query_calls += other.query_calls;
-        self.exec_ms += other.exec_ms;
-        self.exec_calls += other.exec_calls;
-        self.extra_connects += other.extra_connects;
-        self.extra_connect_ms += other.extra_connect_ms;
-    }
-}
-
-pub(crate) fn lock_profile(io: &Mutex<IoProfile>) -> MutexGuard<'_, IoProfile> {
-    io.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+/// Locks `m`, recovering the guard if a prior panic poisoned the mutex.
+pub(crate) fn lock_unpoisoned<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{lock_profile, IoProfile};
+    use super::{lock_unpoisoned, IoProfile};
     use std::sync::{Arc, Mutex};
 
     #[test]
-    fn lock_profile_recovers_poisoned_mutex_regression() {
+    fn lock_unpoisoned_recovers_poisoned_mutex_regression() {
         let io = Arc::new(Mutex::new(IoProfile::default()));
         let poisoned = Arc::clone(&io);
         let _ = std::thread::spawn(move || {
@@ -57,7 +41,7 @@ mod tests {
         })
         .join();
 
-        lock_profile(&io).query_calls = 7;
-        assert_eq!(lock_profile(&io).query_calls, 7);
+        lock_unpoisoned(&io).query_calls = 7;
+        assert_eq!(lock_unpoisoned(&io).query_calls, 7);
     }
 }

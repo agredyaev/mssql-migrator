@@ -12,7 +12,6 @@ Describe the **Rust orchestration engine**: connect (or session proxy), scan SQL
 - `crates/core/src/engine/apply_run.rs` - migrate / baseline apply dispatch, post-apply catalog snapshot
 - `crates/core/src/engine/blocked.rs` - blocked migrate scaffold path
 - `crates/core/src/engine/filter.rs` - filter already-applied migrations
-- `crates/core/src/engine/warm_store.rs` - in-process plan DB snapshot for warm paths
 - `crates/core/src/engine/io.rs` - stdout JSON helpers
 
 ## System context

@@ -4,26 +4,6 @@ use crate::db::state::{CatalogState, ChecksumMap};
 use crate::domain::Workspace;
 use crate::gate::ChangedPathsResult;
 
-pub enum PlanDbMode {
-    Sequential,
-    Parallel,
-}
-
-pub(super) struct RunParallelContext<'a> {
-    pub cfg: &'a Config,
-    pub ws: &'a Workspace,
-    pub keys_json: &'a str,
-    pub db_fp: &'a str,
-    pub git: &'a ChangedPathsResult,
-    pub full: bool,
-    pub git_delta: bool,
-    pub need_checksums: bool,
-    pub need_catalog: bool,
-    pub catalog_base: Option<CatalogState>,
-    pub bypass: bool,
-    pub allow_checksum_repair: bool,
-}
-
 pub(super) struct RunBodyContext<'a> {
     pub cfg: &'a Config,
     pub ws: &'a Workspace,

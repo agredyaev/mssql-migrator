@@ -41,14 +41,14 @@ pub(super) fn create_table_transition_records(
                         obj.git_date().into(),
                     )
                 });
-            audit::record_applied(
+            audit::record_event(
                 path,
-                &obj.kind,
                 cs,
                 hash.as_ref(),
                 author.as_ref(),
                 date.as_ref(),
                 "migration",
+                "applied",
             )
         })
         .collect()

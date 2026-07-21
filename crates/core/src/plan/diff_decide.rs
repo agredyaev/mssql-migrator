@@ -1,4 +1,4 @@
-use crate::domain::{Action, Workspace, KIND_TABLES};
+use crate::domain::{Workspace, KIND_TABLES};
 
 use super::diff_ctx::DecideCtx;
 use super::diff_object::ObjectDecision;
@@ -15,37 +15,6 @@ pub(crate) fn decide_object_at(
     let exists = ws.entry(i).db_exists();
     let prior = ws.prior_by_row[i];
     let checksum = ws.entry(i).checksum;
-
-    if exists {
-        if let Some(p) = prior {
-            if p != [0; 32]
-                && p == checksum
-                && !ctx.checksums.has_live_definition_drift(ws.entry_key(i))
-            {
-                ctx.counters.skip += 1;
-                return ObjectDecision {
-                    action: Action::SkipUnchanged,
-                    with_git: false,
-                    exists,
-                };
-            }
-        }
-        if prior.is_none() || prior == Some([0; 32]) {
-            ctx.counters.adopt += 1;
-            return ObjectDecision {
-                action: Action::AdoptExisting,
-                with_git: true,
-                exists,
-            };
-        }
-    } else {
-        ctx.counters.create += 1;
-        return ObjectDecision {
-            action: Action::CreateObject,
-            with_git: true,
-            exists,
-        };
-    }
 
     let has_transition_paths = kind_code == KIND_TABLES && ws.row_has_transition_paths(i);
     let obj = ws.entry(i);
