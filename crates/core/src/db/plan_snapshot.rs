@@ -6,9 +6,7 @@ use crate::domain::Workspace;
 use crate::driver::TimingConn;
 use crate::error::Result;
 
-use super::plan_batch::run_batch;
-use super::plan_common::{ExecOpts, PlanDbMode};
-use super::plan_parallel::run_parallel;
+use super::plan_common::{execute, ExecOpts};
 
 /// Output of the plan DB phase containing catalog state, checksums, and timing data.
 pub struct PlanDbResult {
@@ -69,21 +67,19 @@ pub async fn run_plan_db_phase(
 
     let keys_json = ws.normalized_keys_json();
 
-    if cfg.session_socket.is_empty() {
-        let opts = ExecOpts {
-            mode: PlanDbMode::Parallel,
+    execute(
+        cfg,
+        conn,
+        ws,
+        &keys_json,
+        &fp,
+        &l1,
+        ExecOpts {
             bypass: bypass_cache,
             allow_checksum_repair,
-        };
-        run_parallel(cfg, conn, ws, &keys_json, &fp, &l1, opts).await
-    } else {
-        let opts = ExecOpts {
-            mode: PlanDbMode::Sequential,
-            bypass: bypass_cache,
-            allow_checksum_repair,
-        };
-        run_batch(cfg, conn, ws, &keys_json, &fp, &l1, opts).await
-    }
+        },
+    )
+    .await
 }
 
 /// Cache/snapshot hit result: catalog state served with zero DB-phase timings.

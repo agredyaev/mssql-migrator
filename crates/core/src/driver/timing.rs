@@ -41,22 +41,6 @@ impl TimingConn {
             .ok_or_else(|| Error::Sql("TimingConn client is temporarily unavailable".into()))
     }
 
-    /// Removes and returns the inner `DbClient`, leaving the slot empty.
-    pub fn take_client(&mut self) -> Result<DbClient> {
-        self.inner
-            .take()
-            .ok_or_else(|| Error::Sql("TimingConn client was already taken".into()))
-    }
-
-    /// Restores a previously taken `DbClient` back into the slot.
-    pub fn restore_client(&mut self, client: DbClient) -> Result<()> {
-        if self.inner.is_some() {
-            return Err(Error::Sql("TimingConn client already present".into()));
-        }
-        self.inner = Some(client);
-        Ok(())
-    }
-
     /// Returns a clone of the current `IoProfile` accumulated by this connection.
     pub fn io_snapshot(&self) -> IoProfile {
         lock_unpoisoned(&self.io).clone()

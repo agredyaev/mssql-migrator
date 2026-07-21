@@ -30,10 +30,8 @@ pub mod warm_snapshot;
 pub use catalog_cache::invalidate;
 pub use catalog_cache_save::{save_batched, save_workspace_snapshot};
 pub use columns::load_table_columns;
-mod plan_batch;
 mod plan_common;
 mod plan_db_trace;
-mod plan_parallel;
 mod plan_snapshot;
 
 mod checksum_map;

@@ -8,7 +8,8 @@ use crate::error::Result;
 use crate::plan::scope::{build_inspect_scope, build_scope_json, InspectScope};
 use crate::timings;
 
-use super::super::super::conn::PlanDbConn;
+use crate::driver::TimingConn;
+
 use super::super::super::helpers::{merge_stable_catalog, schemas_json, should_query_catalog};
 use super::super::super::types::RunBodyContext;
 use super::query::load_git_delta_catalog;
@@ -16,7 +17,7 @@ use super::warmup::GitDeltaWarmup;
 
 pub(super) async fn query_git_delta_catalog(
     ctx: &RunBodyContext<'_>,
-    conn: &mut PlanDbConn<'_>,
+    conn: &mut TimingConn,
     mut warm: GitDeltaWarmup,
 ) -> Result<(CatalogState, i64, GitDeltaWarmup)> {
     let schemas_json = schemas_json(ctx.ws);

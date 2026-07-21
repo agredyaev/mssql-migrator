@@ -52,7 +52,7 @@ Database **drop/create** is optional and **excluded** from plan wall SLO when `R
 | `inspect_ms` | Wall time of `InspectWithScope` after checksums (schemas + objects; **no** table columns) |
 | `checksums_ms` | Wall time of checksum load (runs before scope build in plan DB batch) |
 | `ensure_ms` | `audit::ensure_tables` when run inside the harness |
-| `parallel_wall_ms` | Wall time of the inspect ‖ checksums join (Rust: [`plan_batch.rs`](../crates/core/src/db/plan_batch.rs) through catalog save boundary) |
+| `parallel_wall_ms` | Wall time of the plan body — ensure, checksums, inspect (Rust: [`plan_common::execute`](../crates/core/src/db/plan_common/execute/mod.rs) through catalog save boundary) |
 | `audit_ms` | `ensure_ms` + `checksums_ms` (summed; **not** parallel overlap) |
 | `plan_wall_ms` | Scan through diff end-to-end |
 

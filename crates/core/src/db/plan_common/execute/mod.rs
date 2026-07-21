@@ -10,14 +10,11 @@ use crate::domain::Workspace;
 use crate::driver::TimingConn;
 use crate::error::Result;
 
-use super::types::PlanDbMode;
-
 use dispatch::run_plan_body;
 use setup::prepare_execute;
 
-/// How the DB phase runs: sequencing mode plus cache-bypass for mutating commands.
+/// Cache-bypass and checksum-repair flags for the DB phase.
 pub struct ExecOpts {
-    pub mode: PlanDbMode,
     pub bypass: bool,
     pub allow_checksum_repair: bool,
 }
@@ -43,7 +40,7 @@ pub async fn execute(
     )
     .await?;
     let (ensure_ms, body, parallel_wall) =
-        run_plan_body(cfg, conn, ws, keys_json, &setup, opts.mode, &mut trace).await?;
+        run_plan_body(cfg, conn, ws, keys_json, &setup, &mut trace).await?;
     let catalog = body.catalog;
 
     let io = conn.io_snapshot();

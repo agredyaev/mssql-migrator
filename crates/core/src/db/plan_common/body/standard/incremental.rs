@@ -8,8 +8,9 @@ use crate::error::Result;
 use crate::plan::scope::InspectScope;
 use crate::timings;
 
+use crate::driver::TimingConn;
+
 use super::super::super::checksums::ensure_tables_plan;
-use super::super::super::conn::PlanDbConn;
 use super::super::super::helpers::{kinds_for_scope, store_inspect_cache};
 use super::super::super::types::RunBodyContext;
 use crate::db::plan_db_trace::PlanDbTrace;
@@ -26,7 +27,7 @@ pub(super) struct IncrementalCatalogParams<'a> {
 }
 
 pub(super) async fn load_incremental_catalog(
-    conn: &mut PlanDbConn<'_>,
+    conn: &mut TimingConn,
     p: &mut IncrementalCatalogParams<'_>,
 ) -> Result<CatalogState> {
     let single_rt = p.ctx.bootstrap_in_sql && p.local_trace.flags.checksums_skipped;

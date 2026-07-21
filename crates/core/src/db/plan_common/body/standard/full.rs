@@ -7,13 +7,14 @@ use crate::error::Result;
 use crate::plan::scope::InspectScope;
 use crate::timings;
 
-use super::super::super::conn::PlanDbConn;
+use crate::driver::TimingConn;
+
 use super::super::super::helpers::{kinds_for_scope, store_inspect_cache, try_fast_empty_catalog};
 use super::super::super::types::RunBodyContext;
 
 pub(super) async fn load_full_catalog(
     ctx: &RunBodyContext<'_>,
-    conn: &mut PlanDbConn<'_>,
+    conn: &mut TimingConn,
     scope: &InspectScope,
     scope_json: &str,
     schemas_json: &str,

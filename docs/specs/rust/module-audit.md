@@ -22,7 +22,7 @@ Recomputing that fingerprint for every object on every plan is O(catalog size). 
 ## Interfaces and boundaries
 
 - Public: `ensure_tables`, `flush_history`, `invalidate_audit_cache`, `invalidate_audit_cache_all`, `db_fingerprint`
-- Used by: `db::plan_batch`, `apply::execute_plan`
+- Used by: `db::plan_common`, `apply::execute_plan`
 
 ## Assumptions and constraints
 
@@ -35,7 +35,7 @@ Recomputing that fingerprint for every object on every plan is O(catalog size). 
 ## Nominal flow
 
 1. `ensure_tables` or pre-bootstrap creates schema/tables.
-2. Plan: plan-side `load_checksums_plan` / batched equivalent in `plan_batch`.
+2. Plan: plan-side `load_checksums_plan` / batched equivalent in `plan_common`.
 3. Diff: module drift selects the idempotent update path; non-module live drift or an unsupported repository change sets `plan.blocked` and action `fail`.
 4. Apply: collect `HistoryRecord`; `flush_history` captures the post-DDL live fingerprint in the same object transaction where applicable.
 

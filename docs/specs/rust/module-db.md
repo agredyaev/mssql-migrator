@@ -9,8 +9,7 @@ Describe **SQL Server catalog and audit I/O for the plan phase**: batched TDS ro
 ## Scope
 
 - `crates/core/src/db/plan_snapshot.rs` - L1 + warm snapshot + `run_plan_db_phase` entry
-- `crates/core/src/db/plan_parallel.rs` - direct-connect runner with a shared TDS session
-- `crates/core/src/db/plan_batch.rs` - sequential runner (`RMIG_SESSION` / rmigd)
+- `crates/core/src/db/plan_common/execute/mod.rs` - plan-body runner (`execute`): sequential ensure-then-body, direct or via rmigd
 - `crates/core/src/db/plan_common/mod.rs` - shared cold / incremental / git-delta logic
 - `crates/core/src/db/plan_db_trace.rs` - `PlanDbTrace` (`PlanDbTimings`, `PlanDbFlags`), SLO env, trace JSON
 - `crates/core/src/db/catalog_inspect_cache.rs` - in-process inspector scope cache
@@ -24,7 +23,7 @@ Describe **SQL Server catalog and audit I/O for the plan phase**: batched TDS ro
 
 ## System context
 
-`engine::run_command` calls `run_plan_db_phase`. Managed workspaces always perform plan DB I/O because every object needs a fresh live-state fingerprint; an L1 or warm snapshot cannot prove that SQL Server was not changed out of band. Empty workspaces may still use those snapshots. On **direct connect** (`session_socket` empty), `plan_parallel::run_parallel` keeps the primary TDS session and serialises bootstrap ensure + plan-body queries through an async mutex. With `RMIG_SESSION`, `plan_batch::run_batch` runs the same logic sequentially through `rmigd`.
+`engine::run_command` calls `run_plan_db_phase`. Managed workspaces always perform plan DB I/O because every object needs a fresh live-state fingerprint; an L1 or warm snapshot cannot prove that SQL Server was not changed out of band. Empty workspaces may still use those snapshots. `plan_common::execute` runs a single sequential ensure-then-body path on the primary TDS session, whether **direct connect** (`session_socket` empty) or through `rmigd` (`RMIG_SESSION`).
 
 Paths: `cold_full`, `git_delta`, `incremental`, `cache_hit`, `warm_snapshot`. Empty audit history skips OPENJSON checksum load (plan-side `load_checksums_plan` zero-digest map). Plan-path bootstrap omits `BOOTSTRAP_INDEX` (deferred to apply). Catalog save runs **outside** `parallel_wall_ms`.
 
@@ -47,7 +46,7 @@ Paths: `cold_full`, `git_delta`, `incremental`, `cache_hit`, `warm_snapshot`. Em
 1. Resolve git delta (`gate::resolve_changed_paths`).
 2. For an empty workspace only, an optional L1/warm-snapshot hit may return immediately.
 3. For a managed workspace, load fresh audit/live-state checksums; local snapshots are bypassed.
-4. **Direct connect:** if bootstrap is needed, `tokio::join!` coordinates ensure and plan-body tasks, but both use the same TDS session through an async mutex; `parallel_wall_ms` records the coordinated wall time.
+4. **Bootstrap ensure:** when bootstrap is needed it runs before the plan body — eager under the command timeout on direct connect, or deferred into the body SQL batch under `rmigd`; `parallel_wall_ms` records the ensure-through-body wall time.
 5. **Git delta:** plan-side `load_checksums_plan` fast path; optional relaxed cache load; hot catalog SQL or inspector cache hit.
 6. **Cold / incremental:** plan-side `load_checksums_plan` (skip OPENJSON when history empty); scoped catalog batch or single RT bootstrap+catalog when cold full + empty history.
 7. `save_batched` after plan when cache enabled; `save_workspace_snapshot` after apply (engine).
