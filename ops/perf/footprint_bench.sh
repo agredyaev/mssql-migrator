@@ -49,24 +49,6 @@ case "$MODE" in
     echo "CPU flamegraph: $ARTIFACTS/rust_plan_diff_5k_flamegraph.svg (source: $FG)"
     "$ROOT/ops/perf/profile_summary.sh"
     ;;
-  profile-load)
-    RMIG_REPO_ROOT="$ROOT" \
-    RMIG_PROFILE_SECS="${RMIG_PROFILE_SECS:-30}" \
-    RMIG_PPROF_FREQ="${RMIG_PPROF_FREQ:-1000}" \
-      cargo bench -p "$PKG" --bench plan_diff_load --features bench-skip --profile profiling 2>&1 \
-      | tee "$ARTIFACTS/plan_diff_load_run.txt"
-    echo "CPU flamegraph: $ARTIFACTS/plan_diff_5k_load_flamegraph.svg"
-    echo "text summary:  $ARTIFACTS/plan_diff_load_profile.txt"
-    ;;
-  profile-load-transitions)
-    RMIG_REPO_ROOT="$ROOT" \
-    RMIG_PROFILE_SECS="${RMIG_PROFILE_SECS:-30}" \
-    RMIG_PPROF_FREQ="${RMIG_PPROF_FREQ:-1000}" \
-      cargo bench -p "$PKG" --bench plan_diff_load_transitions --features bench-transitions --profile profiling 2>&1 \
-      | tee "$ARTIFACTS/plan_diff_transitions_load_run.txt"
-    echo "CPU flamegraph: $ARTIFACTS/plan_diff_transitions_load_flamegraph.svg"
-    echo "text summary:  $ARTIFACTS/plan_diff_transitions_load_profile.txt"
-    ;;
   profile-load-scan)
     RMIG_REPO_ROOT="$ROOT" \
     RMIG_PROFILE_SECS="${RMIG_PROFILE_SECS:-30}" \
@@ -131,12 +113,8 @@ case "$MODE" in
     cp -f "$ROOT/crates/core/tests/testdata/perf/footprint_baseline.json" "$ARTIFACTS/footprint_baseline.json" 2>/dev/null || true
     echo "Baseline: crates/core/tests/testdata/perf/footprint_baseline.json"
     ;;
-  regression)
-    cargo test -p "$PKG" --test footprint_baseline footprint_baseline_match -v -- --nocapture
-    ;;
   *)
-    echo "usage: $0 {bench|profile|profile-load|profile-load-scan|profile-load-cache|alloc|update-baseline|regression} [args...]" >&2
-    echo "  profile-load  RMIG_PROFILE_SECS=30 RMIG_PPROF_FREQ=1000 (sustained compute_diff_into loop)" >&2
+    echo "usage: $0 {bench|profile|profile-load-scan|profile-load-cache|alloc|update-baseline} [args...]" >&2
     echo "  profile-load-scan / profile-load-cache  (sustained scan_root / L1 serde loop)" >&2
     echo "  alloc [skip_heavy|transitions|scan|scan_root|cache]" >&2
     exit 2

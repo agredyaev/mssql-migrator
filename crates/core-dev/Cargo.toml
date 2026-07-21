@@ -28,16 +28,6 @@ harness = false
 required-features = ["bench-skip"]
 
 [[bench]]
-name = "plan_diff_load"
-harness = false
-required-features = ["bench-skip"]
-
-[[bench]]
-name = "plan_diff_load_transitions"
-harness = false
-required-features = ["bench-transitions"]
-
-[[bench]]
 name = "plan_diff_dhat"
 harness = false
 required-features = ["bench-skip"]
@@ -71,7 +61,3 @@ required-features = ["bench-skip"]
 name = "cache_serde_dhat"
 harness = false
 required-features = ["bench-skip"]
-
-[[bench]]
-name = "scan_digest"
-harness = false
