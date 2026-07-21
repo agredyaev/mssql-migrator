@@ -7,7 +7,7 @@
     {
       "package": "domain",
       "type": "WorkspaceCold",
-      "bytes": 928
+      "bytes": 880
     },
     {
       "package": "export",
@@ -35,14 +35,14 @@
       "bytes": 144
     },
     {
-      "package": "gate",
-      "type": "PlanSnapshot",
-      "bytes": 104
-    },
-    {
       "package": "domain",
       "type": "Workspace",
       "bytes": 88
+    },
+    {
+      "package": "gate",
+      "type": "PlanSnapshot",
+      "bytes": 80
     },
     {
       "package": "gate",

@@ -1,29 +1,16 @@
-# rmig-profile revision=d6902d1e6057318f16b0ee8aca1461665e6af320 version=1.0.7 target=aarch64-apple-darwin dirty=false
-   Compiling getrandom v0.3.4
-   Compiling parking_lot_core v0.9.12
-   Compiling regex-automata v0.4.15
-   Compiling migrator-core-dev v1.0.7 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core-dev)
-   Compiling rustc-hash v1.1.0
-   Compiling thousands v0.2.0
-   Compiling mintex v0.1.4
-   Compiling parking_lot v0.12.5
-   Compiling dhat v0.3.3
-   Compiling regex v1.13.0
-   Compiling ahash v0.8.12
-   Compiling inferno v0.11.21
-   Compiling criterion v0.8.2
-   Compiling pprof v0.15.0
-    Finished `bench` profile [optimized + debuginfo] target(s) in 20.82s
-     Running benches/plan_diff.rs (target/release/deps/plan_diff-3076d181ce2f6c9d)
+# rmig-profile revision=77dfe72948456688a99903f8a86fef9255bacfdf version=1.0.10 target=aarch64-apple-darwin dirty=true
+   Compiling migrator-core-dev v1.0.10 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core-dev)
+    Finished `bench` profile [optimized + debuginfo] target(s) in 4.91s
+     Running benches/plan_diff.rs (target/release/deps/plan_diff-b44e4e0d05ee17a0)
 Gnuplot not found, using plotters backend
 Benchmarking plan_diff_skip_heavy_5000
 Benchmarking plan_diff_skip_heavy_5000: Warming up for 3.0000 s
-Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.1534 s (35k iterations)
+Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.6956 s (30k iterations)
 Benchmarking plan_diff_skip_heavy_5000: Analyzing
 plan_diff_skip_heavy_5000
-                        time:   [145.65 µs 145.69 µs 145.74 µs]
-Found 9 outliers among 100 measurements (9.00%)
-  2 (2.00%) low mild
-  3 (3.00%) high mild
-  4 (4.00%) high severe
+                        time:   [189.80 µs 190.30 µs 190.96 µs]
+Found 14 outliers among 100 measurements (14.00%)
+  12 (12.00%) low mild
+  1 (1.00%) high mild
+  1 (1.00%) high severe
 
