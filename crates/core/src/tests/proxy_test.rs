@@ -116,7 +116,7 @@ async fn timing_conn_exec_times_out_when_server_stalls() {
 
     let proxy = proxy_client(client_stream);
     let io = Arc::new(Mutex::new(IoProfile::default()));
-    let mut conn = TimingConn::new(DbClient::Proxy(proxy), io, 0);
+    let mut conn = TimingConn::new(DbClient::Proxy(proxy), io);
     conn.set_command_timeout(Duration::from_millis(50));
 
     let err = conn

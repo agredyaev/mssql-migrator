@@ -13,7 +13,6 @@ pub struct TimingConn {
     inner: Option<DbClient>,
     /// Shared I/O profile accumulator; updated after every exec/query call.
     pub io: Arc<Mutex<IoProfile>>,
-    _connect_done: Instant,
     /// Per-command execution timeout. `Duration::ZERO` disables it (the default,
     /// so test connections constructed via `new` run unbounded).
     command_timeout: Duration,
@@ -21,11 +20,10 @@ pub struct TimingConn {
 
 impl TimingConn {
     /// Creates a `TimingConn` wrapping `client` and sharing the given `io` profile.
-    pub fn new(client: DbClient, io: Arc<Mutex<IoProfile>>, _connect_ms: i64) -> Self {
+    pub fn new(client: DbClient, io: Arc<Mutex<IoProfile>>) -> Self {
         Self {
             inner: Some(client),
             io,
-            _connect_done: Instant::now(),
             command_timeout: Duration::ZERO,
         }
     }

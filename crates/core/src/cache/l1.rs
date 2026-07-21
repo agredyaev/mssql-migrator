@@ -7,9 +7,6 @@ use crate::db::state::{CatalogState, ChecksumMap};
 use crate::error::{Error, Result};
 use crate::session::limits::MAX_L1_CACHE_BYTES;
 
-/// Loaded L1 cache entry: checksum map paired with catalog state.
-pub type L1Hit = (ChecksumMap, CatalogState);
-
 #[derive(Serialize, Deserialize, Default)]
 struct L1Payload {
     layout_digest: [u8; 32],
@@ -31,7 +28,11 @@ impl L1Cache {
     }
 
     /// Loads a cached entry for `fingerprint` / `digest`, returning `None` on miss, corruption, or size overflow.
-    pub fn try_load(&self, fingerprint: &str, digest: &[u8; 32]) -> Result<Option<L1Hit>> {
+    pub fn try_load(
+        &self,
+        fingerprint: &str,
+        digest: &[u8; 32],
+    ) -> Result<Option<(ChecksumMap, CatalogState)>> {
         let path = self.path(fingerprint, digest);
         // Check size via metadata BEFORE reading, so an oversized/corrupt file is
         // never fully buffered into memory.

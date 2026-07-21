@@ -19,9 +19,6 @@
 //! - `7`: Advisory lock timeout / contention (`EXIT_LOCK_TIMEOUT`)
 //! - `8`: Invalid input / bad repository structure or identifier (`EXIT_INVALID_INPUT`)
 //! - `10`: Structural layout plan is blocked (`EXIT_PLAN_BLOCKED`)
-//!
-//! Codes `6` (`EXIT_VALIDATION`) and `9` (`EXIT_CRITICAL`) are reserved
-//! constants not currently returned by [`Error::exit_code`].
 
 use std::fmt;
 
@@ -64,14 +61,10 @@ pub const EXIT_CONN: i32 = 3;
 pub const EXIT_CHECKSUM: i32 = 4;
 /// Exit code returned on SQL execution errors (5).
 pub const EXIT_SQL: i32 = 5;
-/// Exit code reserved for validation failures (6).
-pub const EXIT_VALIDATION: i32 = 6;
 /// Exit code returned when the advisory lock times out (7).
 pub const EXIT_LOCK_TIMEOUT: i32 = 7;
 /// Exit code returned on invalid input or bad repository structure (8).
 pub const EXIT_INVALID_INPUT: i32 = 8;
-/// Exit code reserved for critical internal failures (9).
-pub const EXIT_CRITICAL: i32 = 9;
 /// Exit code returned when the migration plan is blocked (10).
 pub const EXIT_PLAN_BLOCKED: i32 = 10;
 

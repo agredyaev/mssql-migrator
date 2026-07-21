@@ -40,24 +40,4 @@ impl Workspace {
         }
         None
     }
-
-    /// Calls `f` for each object entry in the workspace.
-    pub fn for_each_entry<F>(&self, mut f: F)
-    where
-        F: FnMut(&ObjectEntry),
-    {
-        for obj in &self.object_entries {
-            f(obj);
-        }
-    }
-
-    /// Calls `f` mutably for each object entry in the workspace.
-    pub fn for_each_entry_mut<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut ObjectEntry),
-    {
-        for obj in &mut self.object_entries {
-            f(obj);
-        }
-    }
 }

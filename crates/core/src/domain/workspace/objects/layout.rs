@@ -26,7 +26,6 @@ impl Workspace {
             rows.push(ObjectRow {
                 schema_id,
                 kind_code: kind_code(key.kind_part()),
-                flags: 0,
             });
             let row_id = (i + 1) as u32;
             fp_index.insert(key.fingerprint(), row_id);

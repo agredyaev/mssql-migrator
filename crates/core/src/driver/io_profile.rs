@@ -21,23 +21,6 @@ pub struct IoProfile {
     pub extra_connect_ms: i64,
 }
 
-impl IoProfile {
-    /// Returns total time spent at the SQL boundary (query + exec), in milliseconds.
-    pub fn db_boundary_ms(&self) -> i64 {
-        self.query_ms + self.exec_ms
-    }
-
-    /// Accumulates counters from `other` into `self`.
-    pub fn merge_from(&mut self, other: Self) {
-        self.query_ms += other.query_ms;
-        self.query_calls += other.query_calls;
-        self.exec_ms += other.exec_ms;
-        self.exec_calls += other.exec_calls;
-        self.extra_connects += other.extra_connects;
-        self.extra_connect_ms += other.extra_connect_ms;
-    }
-}
-
 pub(crate) fn lock_profile(io: &Mutex<IoProfile>) -> MutexGuard<'_, IoProfile> {
     io.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }

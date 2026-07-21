@@ -25,7 +25,6 @@ mod delta;
 mod e2e_report;
 mod evaluate;
 pub mod git_diff;
-pub mod repo_root;
 mod snapshot;
 
 pub use changed_paths::{resolve_changed_paths, ChangedPathsResult};

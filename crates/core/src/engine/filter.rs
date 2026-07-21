@@ -4,8 +4,8 @@ use crate::audit;
 use crate::domain::{Action, Workspace};
 use crate::driver::TimingConn;
 use crate::error::{Error, Result};
+use crate::export::filter_applied_migrations_on_plan;
 use crate::export::MigrationPlan;
-use crate::plan::filter_migrations;
 
 pub async fn filter_applied(
     conn: &mut TimingConn,
@@ -28,7 +28,7 @@ pub async fn filter_applied(
             .await
             .map_err(|_| Error::Sql(format!("history load timed out after {timeout:?}")))??
     };
-    filter_migrations::filter_applied_migrations(plan, ws, &applied).map_err(|tampered| {
+    filter_applied_migrations_on_plan(plan, ws, &applied).map_err(|tampered| {
         Error::InvalidInput(format!(
             "applied transition script(s) modified after apply: {}; \
              restore the original contents or add a new transition",

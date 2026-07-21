@@ -43,7 +43,6 @@ async fn timing_conn(cfg: &Config) -> TimingConn {
     TimingConn::new(
         DbClient::Direct(connect(cfg).await.expect("connect").client),
         io,
-        0,
     )
 }
 

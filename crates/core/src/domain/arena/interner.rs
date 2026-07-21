@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::StringInterner;
-use crate::domain::SharedStr;
+use crate::domain::{empty_str, SharedStr};
 
 impl StringInterner {
     /// Creates a `StringInterner` with a pre-allocated index table for `unique_hint` strings.
@@ -14,7 +14,7 @@ impl StringInterner {
     /// Interns `s`, returning a deduplicated shared handle.
     pub fn intern(&mut self, s: &str) -> SharedStr {
         if s.is_empty() {
-            return SharedStr::empty();
+            return empty_str();
         }
         if let Some(existing) = self.index.get(s) {
             return existing.clone();

@@ -55,16 +55,6 @@ pub async fn save_batched(
     Ok(())
 }
 
-/// Persists the catalog state to the cache in a single TDS round-trip.
-pub async fn save(
-    conn: &mut TimingConn,
-    layout_digest: &[u8; 32],
-    ws: &Workspace,
-    state: &CatalogState,
-) -> Result<()> {
-    save_batched(conn, layout_digest, ws, state).await
-}
-
 #[cfg(test)]
 #[path = "../../tests/cache_save_batch_test.rs"]
 mod cache_save_batch_tests;

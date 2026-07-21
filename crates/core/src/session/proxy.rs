@@ -18,22 +18,22 @@ pub struct ProxyClient {
 
 impl ProxyClient {
     /// Connects to the daemon at `socket_path`, performing auth and a ping handshake.
-    pub async fn connect(socket_path: &str, cfg: Option<&Config>) -> Result<Self> {
+    pub async fn connect(socket_path: &str, cfg: &Config) -> Result<Self> {
         // Bound the whole connect (socket + auth + ping) so a wedged daemon causes
         // a fallback to direct SQL (see `session::client`) instead of hanging CI.
-        match cfg.map(|c| c.command_timeout).filter(|d| !d.is_zero()) {
-            Some(t) => tokio::time::timeout(t, Self::connect_inner(socket_path, cfg))
+        match cfg.command_timeout {
+            t if !t.is_zero() => tokio::time::timeout(t, Self::connect_inner(socket_path, cfg))
                 .await
                 .map_err(|_| {
                     Error::Config(format!(
                         "rmigd connect {socket_path}: timed out after {t:?}"
                     ))
                 })?,
-            None => Self::connect_inner(socket_path, cfg).await,
+            _ => Self::connect_inner(socket_path, cfg).await,
         }
     }
 
-    async fn connect_inner(socket_path: &str, cfg: Option<&Config>) -> Result<Self> {
+    async fn connect_inner(socket_path: &str, cfg: &Config) -> Result<Self> {
         let stream = UnixStream::connect(socket_path)
             .await
             .map_err(|e| Error::Config(format!("rmigd connect {}: {e}", socket_path)))?;
@@ -42,7 +42,7 @@ impl ProxyClient {
             reader: BufReader::new(read_half),
             writer: write_half,
         };
-        let token = resolve_session_token(cfg);
+        let token = resolve_session_token(Some(cfg));
         if !token.is_empty() {
             client
                 .call(Request::Auth {

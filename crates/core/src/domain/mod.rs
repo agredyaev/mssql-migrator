@@ -36,7 +36,7 @@ mod str_off;
 mod transition;
 mod workspace;
 
-pub use action::{is_module_kind, is_transactional_kind, Action, SchemaAction};
+pub use action::{is_transactional_kind, Action, SchemaAction};
 pub use arena::{
     install_layout_arena, intern_script_git_strings, intern_workspace_strings, LayoutArena,
     StringArena, StringArenaBuilder, StringInterner,
@@ -44,9 +44,9 @@ pub use arena::{
 pub use fingerprint::key_fingerprint;
 pub use key::{ObjectKey, ScriptKey};
 pub use kind_code::{
-    is_module_kind_code, is_transactional_kind_code, kind_code, KindCode, KIND_FUNCTIONS,
-    KIND_INDEXES, KIND_PROCEDURES, KIND_SEQUENCES, KIND_SYNONYMS, KIND_TABLES, KIND_TRIGGERS,
-    KIND_TYPES, KIND_VIEWS,
+    is_module_kind_code, is_transactional_kind_code, kind_code, KIND_FUNCTIONS, KIND_INDEXES,
+    KIND_PROCEDURES, KIND_SEQUENCES, KIND_SYNONYMS, KIND_TABLES, KIND_TRIGGERS, KIND_TYPES,
+    KIND_VIEWS,
 };
 pub use layout_path::{object_path_for_entry, path_lookup_candidates, with_database_prefix};
 pub use object::{ObjectEntry, ParentRef};

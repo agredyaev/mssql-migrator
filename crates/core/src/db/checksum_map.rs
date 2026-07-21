@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::domain::{key_fingerprint, ObjectKey, StrOff, Workspace};
+use crate::domain::{key_fingerprint, ObjectKey};
 
 /// Prior checksum digests keyed by [`key_fingerprint`] (no `ObjectKey` / `SharedStr::as_str` in hot lookups).
 #[derive(Clone, Debug, Default)]
@@ -22,16 +22,6 @@ impl ChecksumMap {
             key_by_fp: HashMap::new(),
             live_definition_drift: HashSet::new(),
         }
-    }
-
-    /// Returns `true` if the map contains no digests.
-    pub fn is_empty(&self) -> bool {
-        self.by_fp.is_empty()
-    }
-
-    /// Returns the number of stored digests.
-    pub fn len(&self) -> usize {
-        self.by_fp.len()
     }
 
     /// Reserves capacity for at least `additional` more entries.
@@ -74,22 +64,6 @@ impl ChecksumMap {
     /// Returns true when the live module body differs from the audited body.
     pub fn has_live_definition_drift(&self, key: &ObjectKey) -> bool {
         self.live_definition_drift.contains(&key.fingerprint())
-    }
-
-    /// Returns the digest for a raw fingerprint value, if present.
-    pub fn get_fingerprint(&self, fp: u64) -> Option<&[u8; 32]> {
-        self.by_fp.get(&fp)
-    }
-
-    /// Lookup by dense row `key_off` after scan finalize.
-    pub fn get_key_off(&self, ws: &Workspace, key_off: StrOff) -> Option<[u8; 32]> {
-        self.get_fingerprint(ws.key_off_fingerprint(key_off))
-            .copied()
-    }
-
-    /// Iterate stored digests (for [`crate::plan::scope::apply_checksums_if_needed`] via `fp_index`).
-    pub fn iter_digests(&self) -> impl Iterator<Item = (u64, [u8; 32])> + '_ {
-        self.by_fp.iter().map(|(&fp, &cs)| (fp, cs))
     }
 }
 

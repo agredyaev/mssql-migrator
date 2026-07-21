@@ -31,7 +31,7 @@ pub struct AuditDbSnapshot {
 /// Fast path for blocked/ddl e2e: skip cold apply when smoke baseline is already in SQL.
 pub async fn ensure_smoke_baseline(cfg: &Config) -> Result<()> {
     let io_arc = Arc::new(Mutex::new(IoProfile::default()));
-    let mut conn = TimingConn::new(DbClient::Direct(connect(cfg).await?.client), io_arc, 0);
+    let mut conn = TimingConn::new(DbClient::Direct(connect(cfg).await?.client), io_arc);
     if smoke_baseline_ready(cfg, &mut conn).await? {
         return Ok(());
     }
@@ -106,7 +106,7 @@ pub async fn run_apply_smoke(cfg: &Config) -> Result<ApplySmokeOut> {
     let _ = l1.invalidate_all(&db_fp);
 
     let io_arc = Arc::new(Mutex::new(IoProfile::default()));
-    let mut conn = TimingConn::new(DbClient::Direct(connect(cfg).await?.client), io_arc, 0);
+    let mut conn = TimingConn::new(DbClient::Direct(connect(cfg).await?.client), io_arc);
     ensure_tables(&mut conn, &db_fp).await?;
 
     let db = migrator_core::db::run_plan_db_phase(cfg, &mut conn, &ws, false, false).await?;
@@ -218,7 +218,6 @@ pub async fn verify_cold_apply_report(cfg: &Config, out: &ApplySmokeOut) -> Resu
     let mut conn = TimingConn::new(
         DbClient::Direct(connect(cfg).await?.client),
         Arc::new(Mutex::new(IoProfile::default())),
-        0,
     );
     let snap = snapshot_audit_db(&mut conn).await?;
     if snap.audit_object_rows != out.audit_object_rows

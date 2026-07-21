@@ -2,18 +2,17 @@ use std::collections::HashMap;
 
 use crate::domain::{share, ScriptKey, Workspace};
 
-use super::git_log::{self, GitMeta};
-use super::git_repo;
+use crate::git::{self as git_log, GitMeta};
 
 pub fn preload(ws: &mut Workspace, sql_root: &str) {
-    if !git_repo::has_git_repo(sql_root) {
+    if !crate::git::has_git_repo(sql_root) {
         return;
     }
-    let root = match git_repo::git_work_tree(sql_root) {
+    let root = match git_work_tree(sql_root) {
         Some(r) => r,
         None => return,
     };
-    let prefix = git_repo::sql_path_prefix(sql_root);
+    let prefix = crate::git::sql_path_prefix(sql_root);
     let targets = build_targets(ws);
     if targets.is_empty() {
         return;
@@ -91,4 +90,11 @@ fn apply_meta(ws: &mut Workspace, script_id: u32, meta: &GitMeta) {
     st.author = Some(share(&meta.author));
     st.date = Some(share(&meta.date));
     let _ = ws.ensure_script_git(script_id);
+}
+
+fn git_work_tree(sql_root: &str) -> Option<String> {
+    std::path::Path::new(sql_root)
+        .canonicalize()
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
 }

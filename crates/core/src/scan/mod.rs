@@ -20,9 +20,7 @@
 
 mod digest;
 pub use digest::layout_digest;
-mod git_log;
 mod git_preload;
-mod git_repo;
 mod parse;
 mod parse_object;
 pub(crate) use parse_object::content_checksum;

@@ -12,8 +12,6 @@ Describe **migration plan computation**: apply catalog/checksums to workspace, b
 - `crates/core/src/plan/scope.rs`, `scope_build.rs` - inspect scope, stable vs hot keys
 - `crates/core/src/plan/git_scope.rs` - git hot scope JSON for catalog SQL
 - `crates/core/src/plan/scenario.rs` - action scenarios (create, update, adopt, blocked)
-- `crates/core/src/plan/transitions.rs` - transition migration handling
-- `crates/core/src/plan/filter_migrations.rs` - applied migration filter
 
 ## System context
 

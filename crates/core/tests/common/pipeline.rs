@@ -29,11 +29,7 @@ pub async fn run_plan_pipeline(cfg: &Config) -> Result<(MigrationPlan, PhaseTimi
 
     let t_conn = Instant::now();
     let io_arc = Arc::new(Mutex::new(IoProfile::default()));
-    let mut conn = TimingConn::new(
-        DbClient::Direct(connect(cfg).await?.client),
-        io_arc.clone(),
-        timings::dur_ms(t_conn.elapsed()),
-    );
+    let mut conn = TimingConn::new(DbClient::Direct(connect(cfg).await?.client), io_arc.clone());
     timings.connect_ms = timings::dur_ms(t_conn.elapsed());
 
     let db = migrator_core::db::run_plan_db_phase(cfg, &mut conn, &ws, false, false).await?;

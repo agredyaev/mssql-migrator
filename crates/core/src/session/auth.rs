@@ -54,11 +54,6 @@ pub fn token_required() -> bool {
     !resolve_session_token(None).is_empty()
 }
 
-/// Returns the session token from the process environment.
-pub fn session_token_from_env() -> String {
-    resolve_session_token(None)
-}
-
 /// Constant-time byte comparison so token verification does not leak how many
 /// leading bytes matched via response timing. The length difference is allowed to
 /// short-circuit (token length is not sensitive).

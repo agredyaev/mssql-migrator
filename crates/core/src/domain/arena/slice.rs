@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use super::StringArena;
-use crate::domain::shared::{SharedStr, SharedStrInner};
+use crate::domain::shared::{empty_str, SharedStr, SharedStrInner};
 use crate::domain::str_off::StrOff;
 
 impl StringArena {
     /// Returns the interned string for `s` as a `SharedStr`.
     pub fn get(&self, s: &str) -> SharedStr {
         if s.is_empty() {
-            return SharedStr::empty();
+            return empty_str();
         }
         let (off, len) = self.offset_len(s);
         SharedStr::from_arena_slice(self.buf.clone(), off, len)
@@ -48,7 +48,7 @@ impl StringArena {
     /// Returns a `SharedStr` backed by the arena slice at `(off, len)`.
     pub fn shared_at(&self, off: u32, len: u32) -> SharedStr {
         if len == 0 {
-            return SharedStr::empty();
+            return empty_str();
         }
         SharedStr::from_arena_slice(self.buf.clone(), off, len)
     }

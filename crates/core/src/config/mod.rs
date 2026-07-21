@@ -17,7 +17,6 @@
 //! ### Off-Nominal & Failure Containment
 //! - **Missing Variables / Bad Formats**: Halts processing, formats error outputs, and returns `Error::Config`.
 
-mod auth_mode;
 mod catalog;
 mod catalog_paths;
 mod cold;
@@ -32,9 +31,8 @@ mod validate;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-pub use auth_mode::sql_credentials_required;
 pub use catalog::discover_catalog_databases;
-pub use catalog_paths::{normalize_catalog_paths, resolve_single_database};
+pub use catalog_paths::normalize_catalog_paths;
 pub use cold::ConfigCold;
 pub use ensure_db::{ensure_catalog_databases_exist, target_database_exists};
 pub use env_build::build_config;

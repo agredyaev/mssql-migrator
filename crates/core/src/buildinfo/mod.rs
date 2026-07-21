@@ -60,7 +60,7 @@ fn short_rev(s: &str) -> &str {
     // `git rev-parse --short` already chose a collision-free abbreviation
     // (which can exceed 7 in large repos); truncating further would alias
     // distinct commits in version output.
-    s.strip_prefix("vcs:").unwrap_or(s).trim()
+    s.trim()
 }
 
 #[cfg(test)]
@@ -108,6 +108,5 @@ mod tests {
     fn short_rev_preserves_git_abbreviation_regression() {
         assert_eq!(short_rev("abcdef1"), "abcdef1");
         assert_eq!(short_rev("abcdef123456"), "abcdef123456");
-        assert_eq!(short_rev("vcs:abcdef123456 "), "abcdef123456");
     }
 }

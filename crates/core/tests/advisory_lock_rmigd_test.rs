@@ -66,7 +66,6 @@ async fn timing_conn(cfg: &Config) -> TimingConn {
     TimingConn::new(
         connect_session_or_direct(cfg).await.expect("rmigd connect"),
         io,
-        0,
     )
 }
 

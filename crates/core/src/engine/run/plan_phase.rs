@@ -34,11 +34,11 @@ pub(crate) async fn plan_phase(
     .await?;
     let server_database =
         crate::audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
-    super::super::warm_store::store_plan_db_snapshot(
+    crate::db::warm_snapshot::store(
         &server_database,
-        &ws.layout_digest,
-        &db.checksums,
-        &db.catalog,
+        ws.layout_digest,
+        db.checksums.clone(),
+        db.catalog.clone(),
     );
     timings.ensure_ms = db.ensure_ms;
     timings.checksums_ms = db.checksums_ms;

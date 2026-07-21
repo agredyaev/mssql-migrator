@@ -58,7 +58,7 @@ async fn timed_out_transaction_and_session_lock_are_cleaned_before_reuse() {
     let socket = rmigd::ensure_started().expect("rmigd enabled");
     let cfg = config(socket.clone());
 
-    let mut timed_out = ProxyClient::connect(&socket, Some(&cfg))
+    let mut timed_out = ProxyClient::connect(&socket, &cfg)
         .await
         .expect("connect timeout client");
     let error = timed_out
@@ -82,7 +82,7 @@ async fn timed_out_transaction_and_session_lock_are_cleaned_before_reuse() {
     drop(timed_out);
 
     let recovery = tokio::time::timeout(Duration::from_secs(8), async {
-        let mut client = ProxyClient::connect(&socket, Some(&cfg)).await?;
+        let mut client = ProxyClient::connect(&socket, &cfg).await?;
         client
             .query(
                 r#"DECLARE @lock_result int;

@@ -2,9 +2,7 @@ mod bootstrap;
 mod cache;
 mod checksum;
 
-pub use bootstrap::{
-    ensure_tables, ensure_tables_on, probe_audit_tables_exist, sync_tables_ensured,
-};
+pub use bootstrap::{ensure_tables, ensure_tables_on, sync_tables_ensured};
 pub use cache::{
     cache_history_empty, db_fingerprint, history_empty_cached, history_known_empty,
     history_known_nonempty, invalidate_audit_cache, invalidate_audit_cache_all,
