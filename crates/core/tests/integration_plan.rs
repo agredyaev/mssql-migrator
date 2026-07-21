@@ -16,9 +16,6 @@ use tokio::sync::OnceCell;
 
 static DB_ENSURE: OnceCell<()> = OnceCell::const_new();
 
-#[allow(dead_code)]
-fn debug_log(_hypothesis_id: &str, _location: &str, _message: &str, _data: serde_json::Value) {}
-
 /// Same env contract as `ops/perf/cli_phase.sh` / `make slo`.
 fn ensure_slo_harness_env() {
     if std::env::var("RMIG_USE_RMIGD").is_err() {
@@ -55,31 +52,9 @@ async fn ensure_catalog_databases_ready() {
             let mut cfg = build_config(&file, true);
             validate_config(&mut cfg).expect("valid slo config");
             let dbs = discover_catalog_databases(&cfg.sql_root).expect("discover catalog dbs");
-            // #region agent log
-            debug_log(
-                "H7",
-                "crates/core/tests/integration_plan.rs:ensure_catalog_databases_ready",
-                "catalog databases discovered for slo suite",
-                serde_json::json!({
-                    "sql_root": cfg.sql_root,
-                    "database_count": dbs.len(),
-                    "databases": dbs,
-                }),
-            );
-            // #endregion
             ensure_catalog_databases_exist(&cfg, &dbs)
                 .await
                 .expect("ensure catalog databases");
-            // #region agent log
-            debug_log(
-                "H7",
-                "crates/core/tests/integration_plan.rs:ensure_catalog_databases_ready",
-                "catalog databases ensured for slo suite",
-                serde_json::json!({
-                    "sql_root": cfg.sql_root,
-                }),
-            );
-            // #endregion
         })
         .await;
 }
@@ -93,21 +68,6 @@ async fn integration_plan_sqlserver_suite() {
     ensure_slo_harness_env();
     ensure_catalog_databases_ready().await;
     let cfg = common::config();
-    // #region agent log
-    debug_log(
-        "H5",
-        "crates/core/tests/integration_plan.rs:integration_plan_sqlserver_suite",
-        "slo suite configured",
-        serde_json::json!({
-            "slo_ms": cfg.slo_max_cli_wall_ms,
-            "session_socket_present": !cfg.session_socket.is_empty(),
-            "session_socket": cfg.session_socket,
-            "database": cfg.database,
-            "catalog_cache": cfg.catalog_cache(),
-            "inspect_full": cfg.inspect_full(),
-        }),
-    );
-    // #endregion
     warm::warm_db_once().await;
 
     let l1 = migrator_core::cache::l1::L1Cache::new(&cfg.l1_cache_dir);
@@ -115,46 +75,11 @@ async fn integration_plan_sqlserver_suite() {
 
     // Cache-miss SLO: invalidate L1 only; SQL catalog stays warm from warm_db_once.
     let _ = l1.invalidate_all(&fp);
-    // #region agent log
-    debug_log(
-        "H6",
-        "crates/core/tests/integration_plan.rs:integration_plan_sqlserver_suite",
-        "l1 invalidated before cache miss run",
-        serde_json::json!({
-            "fingerprint": fp,
-            "l1_cache_dir": cfg.l1_cache_dir,
-        }),
-    );
-    // #endregion
     let _prof = PprofGuard::new("plan_cache_miss_slo");
     let out = match run_command(Command::Plan, cfg).await {
         Ok(out) => out,
-        Err(err) => {
-            // #region agent log
-            debug_log(
-                "H8",
-                "crates/core/tests/integration_plan.rs:integration_plan_sqlserver_suite",
-                "cache miss plan command failed",
-                serde_json::json!({
-                    "error": err.to_string(),
-                }),
-            );
-            // #endregion
-            panic!("plan cache miss: {err}");
-        }
+        Err(err) => panic!("plan cache miss: {err}"),
     };
-    // #region agent log
-    debug_log(
-        "H8",
-        "crates/core/tests/integration_plan.rs:integration_plan_sqlserver_suite",
-        "cache miss timings captured",
-        serde_json::json!({
-            "slo_ms": cfg.slo_max_cli_wall_ms,
-            "slo_exceeded": out.timings.cli_wall_ms >= cfg.slo_max_cli_wall_ms,
-            "timings": serde_json::to_value(&out.timings).unwrap_or(serde_json::Value::Null),
-        }),
-    );
-    // #endregion
     eprintln!(
         "cache_miss timings: {}",
         serde_json::to_string(&out.timings).unwrap()
@@ -171,32 +96,8 @@ async fn integration_plan_sqlserver_suite() {
     // visible; the second live plan must still meet the CLI SLO.
     let out = match run_command(Command::Plan, cfg).await {
         Ok(out) => out,
-        Err(err) => {
-            // #region agent log
-            debug_log(
-                "H8",
-                "crates/core/tests/integration_plan.rs:integration_plan_sqlserver_suite",
-                "second live plan command failed",
-                serde_json::json!({
-                    "error": err.to_string(),
-                }),
-            );
-            // #endregion
-            panic!("second live plan: {err}");
-        }
+        Err(err) => panic!("second live plan: {err}"),
     };
-    // #region agent log
-    debug_log(
-        "H8",
-        "crates/core/tests/integration_plan.rs:integration_plan_sqlserver_suite",
-        "second live plan timings captured",
-        serde_json::json!({
-            "slo_ms": cfg.slo_max_cli_wall_ms,
-            "slo_exceeded": out.timings.cli_wall_ms >= cfg.slo_max_cli_wall_ms,
-            "timings": serde_json::to_value(&out.timings).unwrap_or(serde_json::Value::Null),
-        }),
-    );
-    // #endregion
     eprintln!(
         "live_plan timings: {}",
         serde_json::to_string(&out.timings).unwrap()

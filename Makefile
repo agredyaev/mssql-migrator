@@ -98,7 +98,6 @@ prod-gate: db-up
 	ops/perf/prod_gate.sh $(ARGS)
 
 slo: db-up
-	@printf 'make slo debug session=1200a9 run_id=%s\n' "$${RMIG_DEBUG_RUN_ID:-manual}" >&2
 	RMIG_USE_RMIGD=1 ops/perf/cli_phase.sh slo $(ARGS)
 
 plan-db-perf: db-up

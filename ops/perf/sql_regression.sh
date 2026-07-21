@@ -57,20 +57,6 @@ export RMIGD_SOCKET="${RMIGD_SOCKET:-$ROOT/.rmig/rmigd-sql-regression.sock}"
 LOCK_DIR="$ROOT/.rmig/sql-regression.lock"
 LOCK_PID="$LOCK_DIR/pid"
 
-debug_log() {
-  true
-}
-
-debug_log_failure() {
-  true
-}
-
-on_error() {
-  local status="$?"
-  debug_log_failure "$status" "${BASH_COMMAND:-}"
-  exit "$status"
-}
-
 cleanup_lock() {
   if [ -d "$LOCK_DIR" ] && [ "$(sed -n '1p' "$LOCK_PID" 2>/dev/null || true)" = "$$" ]; then
     rm -rf "$LOCK_DIR"
@@ -98,9 +84,6 @@ claim_lock() {
   # time to match the live process too.
   if [ -n "$holder_pid" ] && kill -0 "$holder_pid" 2>/dev/null \
       && [ -n "$holder_start" ] && [ "$(proc_start "$holder_pid")" = "$holder_start" ]; then
-    # #region agent log
-    debug_log "H12" "ops/perf/sql_regression.sh:claim_lock" "sql_regression lock already held" "lock-busy"
-    # #endregion
     echo "sql-regression: another run is active (pid $holder_pid, lock $LOCK_DIR)" >&2
     exit 1
   fi
@@ -111,15 +94,7 @@ claim_lock() {
 }
 
 trap cleanup_lock EXIT INT TERM HUP
-trap on_error ERR
-# #region agent log
-debug_log "H10" "ops/perf/sql_regression.sh:entry" "sql_regression script invoked" "entry"
-printf 'sql_regression debug session=1200a9 run_id=%s\n' "${RMIG_DEBUG_RUN_ID:-manual}" >&2
-# #endregion
 claim_lock
-# #region agent log
-debug_log "H12" "ops/perf/sql_regression.sh:claim_lock" "sql_regression lock claimed" "lock-claimed"
-# #endregion
 
 # Orphaned rmigd processes keep warm TDS sessions and can hold advisory locks.
 # Cleanup is restricted to sockets under the repo's .rmig/ and to processes
@@ -157,9 +132,6 @@ run_suite() {
   echo "${label}: PASS"
 }
 
-# #region agent log
-debug_log "H11" "ops/perf/sql_regression.sh:build" "sql_regression building rmigd" "build-rmigd"
-# #endregion
 echo "== sql-regression: build rmigd =="
 cargo build --release -p rmigd
 
@@ -193,13 +165,7 @@ run_suite "migrator-core" \
     "${CORE_ARGS[@]}" \
     -- --nocapture --test-threads=1
 
-# #region agent log
-debug_log "H13" "ops/perf/sql_regression.sh:rmig-cli" "sql_regression starting rmig-cli suite" "rmig-cli-suite"
-# #endregion
 run_suite "rmig-cli" \
   cargo test --release -p rmig -- --nocapture --test-threads=1
 
-# #region agent log
-debug_log "H13" "ops/perf/sql_regression.sh:done" "sql_regression completed successfully" "done"
-# #endregion
 echo "sql-regression: ALL PASS"
