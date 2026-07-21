@@ -3,31 +3,6 @@ use crate::domain::ObjectKey;
 use crate::driver::RowData;
 use crate::error::{Error, Result};
 
-/// Builds a checksum map from audit history query rows.
-pub fn checksum_map_from_rows(rows: &[RowData], allow_repair: bool) -> Result<ChecksumMap> {
-    let mut out = ChecksumMap::new();
-    for row in rows {
-        let key = row.get_str(0).unwrap_or("");
-        match parse_history_checksum(row, 1) {
-            Some(arr) => {
-                out.insert_normalized(key, arr);
-                if arr != [0; 32] && row.get_i32(2).is_some_and(|n| n != 0) {
-                    out.mark_live_definition_drift(&ObjectKey::from_normalized(key));
-                }
-            }
-            None if allow_repair => {
-                tracing::warn!(
-                    key,
-                    "audit history checksum is undecodable; repair-checksum will replace it"
-                );
-                out.insert_normalized(key, [0; 32]);
-            }
-            None => return Err(corrupt_checksum(key)),
-        }
-    }
-    Ok(out)
-}
-
 /// Map wire keys via layout fingerprints (no duplicate normalized `String` in `ChecksumMap`).
 pub fn checksum_map_from_rows_ws(rows: &[RowData], allow_repair: bool) -> Result<ChecksumMap> {
     let mut out = ChecksumMap::new();

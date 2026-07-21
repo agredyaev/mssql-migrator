@@ -36,7 +36,7 @@ impl<'a> ScriptRef<'a> {
 
     /// Returns the script kind (SQL, scaffold, etc.).
     pub fn kind(&self) -> ScriptKind {
-        self.row().kind()
+        self.row().kind
     }
 
     /// Returns `true` if this script is a scaffold script.

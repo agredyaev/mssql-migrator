@@ -85,11 +85,6 @@ pub fn looks_like_cache_load_rows(rows: &[crate::driver::RowData]) -> bool {
         .is_some_and(|r| r.cells.len() >= 5 && r.get_str(0).is_some_and(|k| k.contains('/')))
 }
 
-/// Scoped hit for plan batch (scope=@p2 when checksums use @p1).
-pub fn scoped_hit_sql_batch() -> String {
-    sql::catalog::SCOPED_HIT.replace("@p1", "@p2")
-}
-
 /// Merge catalog SQL result rows into a [`CatalogState`].
 pub fn merge_rows(state: &mut CatalogState, rows: &[crate::driver::RowData]) -> Result<()> {
     for row in rows {

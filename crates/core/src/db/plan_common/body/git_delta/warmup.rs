@@ -55,7 +55,7 @@ pub(super) async fn warmup_git_delta(
     }
 
     if want_cache && loaded.objects.is_empty() {
-        let sql = batch::plan_db_batch_sql(&[], false, false, false, false, false, true);
+        let sql = batch::plan_db_batch_sql(&[], false, false, false, true);
         let count = ctx.ws.object_count().to_string();
         if !sql.trim().is_empty() {
             let sets = conn

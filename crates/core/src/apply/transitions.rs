@@ -49,27 +49,27 @@ async fn apply_one_transition(
     };
     // Audit provenance belongs to the transition SCRIPT's commit, not the
     // parent table file's.
-    let mut recs = vec![audit::record_applied(
+    let mut recs = vec![audit::record_event(
         path,
-        &obj.kind,
         cs,
         script.git_hash().as_ref(),
         script.git_author().as_ref(),
         script.git_date().as_ref(),
         "migration",
+        "applied",
     )];
     if is_last {
         // The final pending transition brings the live table up to the current
         // repository definition: advance the table's object baseline in the
         // SAME transaction, or every later plan stays ReprocessChanged forever.
-        recs.push(audit::record_applied(
+        recs.push(audit::record_event(
             &obj.normalized_key,
-            &obj.kind,
             obj.checksum,
             obj.git_hash(),
             obj.git_author(),
             obj.git_date(),
             "object",
+            "applied",
         ));
     }
     // Migration body + its history rows commit atomically (no replay window).

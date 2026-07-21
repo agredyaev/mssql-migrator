@@ -29,7 +29,7 @@ pub(super) async fn load_full_catalog(
             return Ok(empty);
         }
     }
-    let sql = batch::plan_db_batch_sql(&kinds, false, false, false, true, false, false);
+    let sql = batch::plan_db_batch_sql(&kinds, false, true, false, false);
     let sets = conn
         .query_all(&sql, &["[]", scope_json, schemas_json])
         .await?;

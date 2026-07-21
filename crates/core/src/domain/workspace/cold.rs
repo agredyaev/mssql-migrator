@@ -40,8 +40,6 @@ pub struct WorkspaceCold {
     pub transitions_staging: HashMap<(SharedStr, ObjectKey), Vec<(SharedStr, ScriptKey)>>,
     /// Parent references keyed by child object row index.
     pub parent_by_row: HashMap<u32, ParentRef>,
-    /// Parent references keyed by child object key.
-    pub parent_by_object: HashMap<ObjectKey, ParentRef>,
     /// Cached string offsets for transition paths, populated after layout finalize.
     pub transition_path_cache: Option<HashMap<u32, Vec<StrOff>>>,
     /// Cached string offsets for object paths, populated after layout finalize.

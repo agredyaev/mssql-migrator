@@ -65,13 +65,14 @@ pub async fn apply_objects(
 }
 
 pub(super) fn adopt_record(obj: &PlannedObject) -> HistoryRecord {
-    audit::record_adopted(
+    audit::record_event(
         &obj.normalized_key,
         obj.checksum,
         obj.git_hash(),
         obj.git_author(),
         obj.git_date(),
         "object",
+        "adopted",
     )
 }
 

@@ -23,11 +23,6 @@ fn ensured_dbs() -> &'static Mutex<HashSet<String>> {
     ENSURED_DBS.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-fn history_nonempty_cache() -> &'static Mutex<HashSet<String>> {
-    static HISTORY_NONEMPTY: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    HISTORY_NONEMPTY.get_or_init(|| Mutex::new(HashSet::new()))
-}
-
 fn history_empty_cache() -> &'static Mutex<HashMap<String, bool>> {
     HISTORY_EMPTY.get_or_init(|| Mutex::new(HashMap::new()))
 }
@@ -60,7 +55,7 @@ pub fn history_known_empty(db_fp: &str) -> bool {
 }
 
 pub fn history_known_nonempty(db_fp: &str) -> bool {
-    lock_cache(history_nonempty_cache(), "history_nonempty").contains(db_fp)
+    history_empty_cached(db_fp) == Some(false)
 }
 
 pub fn history_empty_cached(db_fp: &str) -> Option<bool> {
@@ -71,14 +66,6 @@ pub fn history_empty_cached(db_fp: &str) -> Option<bool> {
 
 pub fn cache_history_empty(db_fp: &str, empty: bool) {
     lock_cache(history_empty_cache(), "history_empty").insert(db_fp.to_string(), empty);
-    if !empty {
-        mark_history_nonempty(db_fp);
-    }
-}
-
-pub fn mark_history_nonempty(db_fp: &str) {
-    lock_cache(history_nonempty_cache(), "history_nonempty").insert(db_fp.to_string());
-    lock_cache(history_empty_cache(), "history_empty").insert(db_fp.to_string(), false);
 }
 
 pub fn db_fingerprint(server: &str, port: &str, user: &str, database: &str) -> String {
@@ -95,7 +82,6 @@ pub fn db_fingerprint(server: &str, port: &str, user: &str, database: &str) -> S
 /// Drop cached history probes (after audit writes). Does not clear bootstrap cache.
 pub fn invalidate_audit_cache(db_fp: &str) {
     lock_cache(history_empty_cache(), "history_empty").remove(db_fp);
-    lock_cache(history_nonempty_cache(), "history_nonempty").remove(db_fp);
 }
 
 /// Full process-local audit cache drop (e.g. after DROP/CREATE test database).

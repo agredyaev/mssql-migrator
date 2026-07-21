@@ -2,25 +2,6 @@ use super::*;
 use crate::driver::row::{Cell, RowData};
 
 #[test]
-fn undecodable_checksum_is_repair_only_regression() {
-    let mut row = RowData::default();
-    row.cells.push(Cell::Str("dbo/views/v".into()));
-    row.cells.push(Cell::Str("not-hex!".into()));
-    let err = checksum_map_from_rows(std::slice::from_ref(&row), false)
-        .expect_err("normal planning must reject corrupt audit history");
-    assert_eq!(err.exit_code(), crate::error::EXIT_CHECKSUM);
-    assert!(err.to_string().contains("dbo/views/v"), "{err}");
-
-    let map = checksum_map_from_rows(std::slice::from_ref(&row), true)
-        .expect("repair-checksum may replace the corrupt row");
-    assert_eq!(
-        map.get_normalized("dbo/views/v"),
-        Some(&[0u8; 32]),
-        "repair must receive a zero baseline"
-    );
-}
-
-#[test]
 fn parse_history_checksum_hex_string() {
     let mut row = RowData::default();
     row.cells.push(Cell::Str(

@@ -1,16 +1,7 @@
 use migrator_core::domain::{
     share, ObjectEntry, ObjectKey, Script, ScriptKey, ScriptKind, StrOff, StringArenaBuilder,
-    StringInterner, Workspace,
+    Workspace,
 };
-
-#[test]
-fn dedups_repeated_strings() {
-    let mut interner = StringInterner::with_capacity(4);
-    let a = interner.intern("schema");
-    let b = interner.intern("schema");
-    assert_eq!(a, b);
-    assert_eq!(interner.unique_count(), 1);
-}
 
 #[test]
 fn arena_single_buffer() {

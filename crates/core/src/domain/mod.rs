@@ -39,7 +39,7 @@ mod workspace;
 pub use action::{is_transactional_kind, Action, SchemaAction};
 pub use arena::{
     install_layout_arena, intern_script_git_strings, intern_workspace_strings, LayoutArena,
-    StringArena, StringArenaBuilder, StringInterner,
+    StringArena, StringArenaBuilder,
 };
 pub use fingerprint::key_fingerprint;
 pub use key::{ObjectKey, ScriptKey};

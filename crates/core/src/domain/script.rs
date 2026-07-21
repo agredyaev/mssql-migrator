@@ -15,8 +15,7 @@ pub const SCRIPT_FLAG_HAS_CHECKSUM: u8 = 1 << 1;
 
 /// Classification of a script file in the SQL tree.
 ///
-/// `#[repr(u8)]` — zero-cost numeric conversion for compact serialization
-/// (`as_repr` / `from_repr`).
+/// `#[repr(u8)]` keeps the enum a single byte so [`ScriptRow`] stays dense.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ScriptKind {
@@ -28,23 +27,6 @@ pub enum ScriptKind {
     Check = 2,
 }
 
-impl ScriptKind {
-    /// Numeric representation (`u8`).
-    pub const fn as_repr(self) -> u8 {
-        self as u8
-    }
-
-    /// Decode from numeric representation.
-    pub fn from_repr(v: u8) -> Option<Self> {
-        match v {
-            0 => Some(Self::Object),
-            1 => Some(Self::Transition),
-            2 => Some(Self::Check),
-            _ => None,
-        }
-    }
-}
-
 /// Dense script row: kind + arena path offsets only.
 #[derive(Clone, Debug)]
 pub struct ScriptRow {
@@ -52,8 +34,8 @@ pub struct ScriptRow {
     pub path_off: StrOff,
     /// Offset into arena for the absolute path.
     pub abs_path_off: StrOff,
-    /// Numeric kind (0=Object, 1=Transition, 2=Check).
-    pub kind: u8,
+    /// Script classification.
+    pub kind: ScriptKind,
     /// Bit-field: SCRIPT_FLAG_SCAFFOLD | SCRIPT_FLAG_HAS_CHECKSUM.
     pub flags: u8,
 }
@@ -109,7 +91,7 @@ impl Script {
         let row = ScriptRow {
             path_off: StrOff::EMPTY,
             abs_path_off: StrOff::EMPTY,
-            kind: self.kind.as_repr(),
+            kind: self.kind,
             flags,
         };
         (row, checksum)
@@ -117,11 +99,6 @@ impl Script {
 }
 
 impl ScriptRow {
-    /// Decode the numeric kind into a [`ScriptKind`].
-    pub fn kind(&self) -> ScriptKind {
-        ScriptKind::from_repr(self.kind).unwrap_or(ScriptKind::Object)
-    }
-
     /// True when the script is a generated scaffold.
     pub fn scaffold(&self) -> bool {
         self.flags & SCRIPT_FLAG_SCAFFOLD != 0

@@ -5,9 +5,9 @@
 //! inspected within the same process lifetime.
 //!
 //! ### Non-obvious
-//! - `try_get` returns `None` when the cached state is empty (both objects and
-//!   schemas empty) to force a re-inspect rather than treating an empty catalog
-//!   as a cache hit.
+//! - `try_get_unless_bypassed` returns `None` when the cached state is empty
+//!   (both objects and schemas empty) to force a re-inspect rather than
+//!   treating an empty catalog as a cache hit.
 //! - Uses a process-global `OnceLock<Mutex<HashMap<...>>>`. Accessors recover
 //!   poisoned mutexes and log the event so one panicked worker does not crash
 //!   all later commands in the same process.
@@ -51,17 +51,6 @@ fn cache_key(db_fp: &str, layout_digest: &[u8; 32], scope_json: &str) -> String 
     format!("{db_fp}:{:x}", h.finish())
 }
 
-pub fn try_get(db_fp: &str, layout_digest: &[u8; 32], scope_json: &str) -> Option<CatalogState> {
-    let key = cache_key(db_fp, layout_digest, scope_json);
-    let state = lock_inspect_cache().get(&key).cloned()?;
-    // Empty catalog could mean the database has no objects — a cache hit would
-    // cause us to skip inspection permanently. Force re-inspect instead.
-    if state.objects.is_empty() && state.schemas.is_empty() {
-        return None;
-    }
-    Some(state)
-}
-
 pub fn store(db_fp: &str, layout_digest: &[u8; 32], scope_json: &str, state: &CatalogState) {
     let key = cache_key(db_fp, layout_digest, scope_json);
     lock_inspect_cache().insert(key, state.clone());
@@ -71,8 +60,9 @@ pub fn invalidate_db(db_fp: &str) {
     lock_inspect_cache().retain(|k: &String, _| !k.starts_with(db_fp));
 }
 
-/// [`try_get`] honouring the mutating-command cache bypass: mutating plans must
-/// re-inspect live catalog state, never a process-local snapshot.
+/// Catalog inspect cache read honouring the mutating-command cache bypass:
+/// mutating plans must re-inspect live catalog state, never a process-local
+/// snapshot.
 pub fn try_get_unless_bypassed(
     bypass: bool,
     db_fp: &str,
@@ -82,7 +72,14 @@ pub fn try_get_unless_bypassed(
     if bypass {
         return None;
     }
-    try_get(db_fp, layout_digest, scope_json)
+    let key = cache_key(db_fp, layout_digest, scope_json);
+    let state = lock_inspect_cache().get(&key).cloned()?;
+    // Empty catalog could mean the database has no objects — a cache hit would
+    // cause us to skip inspection permanently. Force re-inspect instead.
+    if state.objects.is_empty() && state.schemas.is_empty() {
+        return None;
+    }
+    Some(state)
 }
 
 #[cfg(test)]

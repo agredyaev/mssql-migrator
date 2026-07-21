@@ -8,7 +8,6 @@ use super::Workspace;
 impl Workspace {
     pub(crate) fn compact_sparse_maps(&mut self) {
         self.compact_transitions();
-        self.compact_parents();
     }
 
     fn compact_transitions(&mut self) {
@@ -50,17 +49,6 @@ impl Workspace {
             }
             if !row_entries.is_empty() {
                 self.transitions_by_row.insert(row_id, row_entries);
-            }
-        }
-    }
-
-    fn compact_parents(&mut self) {
-        let staging = std::mem::take(&mut self.parent_by_object);
-        self.parent_by_row.clear();
-        for (key, parent) in staging {
-            let row_id = self.key_index(&key);
-            if row_id > 0 {
-                self.parent_by_row.insert(row_id, parent);
             }
         }
     }

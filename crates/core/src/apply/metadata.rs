@@ -61,13 +61,13 @@ pub async fn execute_metadata_plan(
 }
 
 fn repair_record(obj: &PlannedObject) -> audit::HistoryRecord {
-    audit::record_applied(
+    audit::record_event(
         &obj.normalized_key,
-        &obj.kind,
         obj.checksum,
         obj.git_hash(),
         obj.git_author(),
         obj.git_date(),
         "object",
+        "applied",
     )
 }
