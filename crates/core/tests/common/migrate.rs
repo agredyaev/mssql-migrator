@@ -14,13 +14,10 @@ pub struct ApplySmokeOut {
     pub applied: i32,
     pub failed: i32,
     pub skipped: i32,
-    pub audit_object_rows: i32,
-    pub audit_migration_rows: i32,
-    pub catalog_meta_rows: i32,
-    pub catalog_cache_rows: i32,
+    pub audit: AuditDbSnapshot,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct AuditDbSnapshot {
     pub audit_object_rows: i32,
     pub audit_migration_rows: i32,
@@ -130,10 +127,7 @@ pub async fn run_apply_smoke(cfg: &Config) -> Result<ApplySmokeOut> {
         applied: i32::try_from(apply.applied).unwrap_or(i32::MAX),
         failed: i32::try_from(apply.failed).unwrap_or(i32::MAX),
         skipped: i32::try_from(apply.skipped).unwrap_or(i32::MAX),
-        audit_object_rows: snap.audit_object_rows,
-        audit_migration_rows: snap.audit_migration_rows,
-        catalog_meta_rows: snap.catalog_meta_rows,
-        catalog_cache_rows: snap.catalog_cache_rows,
+        audit: snap,
     })
 }
 
@@ -220,17 +214,10 @@ pub async fn verify_cold_apply_report(cfg: &Config, out: &ApplySmokeOut) -> Resu
         Arc::new(Mutex::new(IoProfile::default())),
     );
     let snap = snapshot_audit_db(&mut conn).await?;
-    if snap.audit_object_rows != out.audit_object_rows
-        || snap.audit_migration_rows != out.audit_migration_rows
-        || snap.catalog_meta_rows != out.catalog_meta_rows
-        || snap.catalog_cache_rows != out.catalog_cache_rows
-    {
+    if snap != out.audit {
         return Err(Error::Other(anyhow::anyhow!(
-            "audit snapshot mismatch: db={snap:?} report object={} migration={} meta={} cache={}",
-            out.audit_object_rows,
-            out.audit_migration_rows,
-            out.catalog_meta_rows,
-            out.catalog_cache_rows,
+            "audit snapshot mismatch: db={snap:?} report={:?}",
+            out.audit
         )));
     }
     super::e2e_verify::verify_cold_apply(cfg, &mut conn, &snap).await

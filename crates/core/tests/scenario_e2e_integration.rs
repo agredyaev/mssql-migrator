@@ -152,10 +152,10 @@ async fn run_apply_scenario(baseline_data: &str) {
         failed: out.failed,
         skipped: out.skipped,
         errors: Vec::new(),
-        audit_object_rows: out.audit_object_rows,
-        audit_migration_rows: out.audit_migration_rows,
-        catalog_meta_rows: out.catalog_meta_rows,
-        catalog_cache_rows: out.catalog_cache_rows,
+        audit_object_rows: out.audit.audit_object_rows,
+        audit_migration_rows: out.audit.audit_migration_rows,
+        catalog_meta_rows: out.audit.catalog_meta_rows,
+        catalog_cache_rows: out.audit.catalog_cache_rows,
         timings: Default::default(),
     };
     write_rust_report(&rust_rep, write_e2e_apply_file);
