@@ -16,7 +16,6 @@ export RMIG_SESSION_TOKEN="${RMIG_SESSION_TOKEN:-rmig-integration-test-token}"
 export RMIG_INTEGRATION_WARM_SNAPSHOT="${RMIG_INTEGRATION_WARM_SNAPSHOT:-1}"
 
 MODE="${1:-slo}"
-export MODE
 case "$MODE" in
   slo|warm|all)
     export RMIG_CLI_PHASE_REPORT="$ARTIFACTS/cli_phase_slo.json"

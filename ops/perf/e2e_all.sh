@@ -14,23 +14,6 @@ export RM_SKIP_GIT="${RM_SKIP_GIT:-1}"
 REPORT="$ARTIFACTS/e2e_all_report.txt"
 : > "$REPORT"
 
-# Database names reach privileged T-SQL as literals/identifiers: restrict to a
-# safe charset so a crafted directory or env value cannot inject statements.
-require_safe_db_name() {
-  if ! [[ "$1" =~ ^[A-Za-z0-9_]+$ ]]; then
-    echo "ERROR: unsafe database name (allowed: [A-Za-z0-9_]+): $1" >&2
-    exit 1
-  fi
-}
-
-reset_test_db() {
-  echo "== reset ${RM_DB_DATABASE} (orchestrator) =="
-  require_safe_db_name "$RM_DB_DATABASE"
-  docker compose exec -T mssql /opt/mssql-tools18/bin/sqlcmd \
-    -S "$RM_DB_SERVER" -U "$RM_DB_USER" -P "$RM_DB_PASSWORD" -C \
-    -Q "IF DB_ID('${RM_DB_DATABASE}') IS NOT NULL BEGIN ALTER DATABASE [${RM_DB_DATABASE}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${RM_DB_DATABASE}]; END; CREATE DATABASE [${RM_DB_DATABASE}];"
-}
-
 run_scenario() {
   local scenario="$1"
   local skip_reset="${2:-1}"

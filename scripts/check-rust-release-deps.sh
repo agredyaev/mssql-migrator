@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-FORBIDDEN='pprof|criterion|dhat|plotters|inferno'
+FORBIDDEN='pprof|criterion|dhat|plotters|inferno|migrator-core-dev'
 fail=0
 
 check_pkg() {
@@ -27,17 +27,6 @@ check_pkg() {
 check_pkg migrator-core
 check_pkg rmig
 check_pkg rmigd
-
-for pkg in rmig rmigd migrator-core; do
-  if ! tree="$(cargo tree -p "$pkg" -e normal)"; then
-    echo "release-deps: cargo tree failed for $pkg" >&2
-    exit 1
-  fi
-  if printf '%s\n' "$tree" | rg -q 'migrator-core-dev'; then
-    echo "release-deps: $pkg must not depend on migrator-core-dev (benches/footprint only)" >&2
-    fail=1
-  fi
-done
 
 if [[ -e "$ROOT/rust" ]]; then
   echo "release-deps: legacy rust/ directory must not exist (moved to repo-root crates/)" >&2

@@ -7,12 +7,7 @@ TEMP_DIR="$REPO_ROOT/.temp"
 echo "Setting up temporary git fixture repository at $TEMP_DIR..."
 
 rm -rf "$TEMP_DIR"
-mkdir -p "$TEMP_DIR/sql/dactests/smoke/checks"
-mkdir -p "$TEMP_DIR/sql/dactests/smoke/functions"
-mkdir -p "$TEMP_DIR/sql/dactests/smoke/indexes"
-mkdir -p "$TEMP_DIR/sql/dactests/smoke/procedures"
-mkdir -p "$TEMP_DIR/sql/dactests/smoke/tables"
-mkdir -p "$TEMP_DIR/sql/dactests/smoke/views"
+mkdir -p "$TEMP_DIR/sql/dactests/smoke"/{checks,functions,indexes,procedures,tables,views}
 
 # Create non-secret config. SQL credentials stay in process environment.
 cat << 'EOF' > "$TEMP_DIR/config.toml"
