@@ -36,12 +36,12 @@ pub fn workflow_config() -> &'static Config {
         if cfg.sql_base.is_empty() {
             cfg.sql_base = cfg.sql_root.clone();
         }
-        cfg.set_skip_git(false);
+        cfg.skip_git = false;
         cfg.session_socket.clear();
         // Explicit test-only opt-out for the local Docker SQL Server fixture.
-        cfg.set_encrypt(false);
-        cfg.set_trust_server_certificate(true);
-        cfg.set_catalog_cache(true);
+        cfg.encrypt = false;
+        cfg.trust_server_certificate = true;
+        cfg.catalog_cache = true;
         validate_config(&mut cfg).expect("valid workflow config");
         cfg
     })

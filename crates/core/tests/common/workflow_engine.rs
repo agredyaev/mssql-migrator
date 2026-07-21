@@ -11,7 +11,7 @@ use migrator_core::timings::PhaseTimings;
 
 pub async fn migrate(cfg: &Config) -> Result<RunOutput> {
     let mut c = cfg.clone();
-    c.set_skip_git(false);
+    c.skip_git = false;
     c.session_socket.clear();
     run_command(Command::Migrate, &c).await
 }

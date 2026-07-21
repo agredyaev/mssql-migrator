@@ -11,7 +11,7 @@ pub(super) fn ensure_adopt_allowed(
     ws: &Workspace,
     plan: &mut MigrationPlan,
 ) -> Result<()> {
-    if cfg.allow_adopt() {
+    if cfg.allow_adopt {
         return Ok(());
     }
     plan.ensure_objects_materialized(ws);

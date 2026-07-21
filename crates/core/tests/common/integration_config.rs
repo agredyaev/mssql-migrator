@@ -33,15 +33,15 @@ pub fn parity_config_base() -> Config {
     if cfg.sql_base.is_empty() {
         cfg.sql_base = cfg.sql_root.clone();
     }
-    cfg.set_skip_git(true);
+    cfg.skip_git = true;
     // The checked-in Docker fixture has no TLS endpoint. Production defaults
     // and the repository config remain encrypted and certificate-verified.
-    cfg.set_encrypt(false);
-    cfg.set_trust_server_certificate(true);
-    cfg.set_catalog_cache(!matches!(
+    cfg.encrypt = false;
+    cfg.trust_server_certificate = true;
+    cfg.catalog_cache = !matches!(
         std::env::var("RMIG_CATALOG_CACHE").as_deref(),
         Ok("0") | Ok("false")
-    ));
+    );
     if let Some(n) = std::env::var("RMIG_INTEGRATION_SLO_MS")
         .ok()
         .and_then(|s| s.parse().ok())

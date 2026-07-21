@@ -20,9 +20,9 @@ fn sa_cfg(database: &str, sql_root: &str) -> Config {
     cfg.database = database.into();
     cfg.sql_root = sql_root.into();
     cfg.sql_base = sql_root.into();
-    cfg.set_skip_git(true);
-    cfg.set_encrypt(false);
-    cfg.set_trust_server_certificate(true);
+    cfg.skip_git = true;
+    cfg.encrypt = false;
+    cfg.trust_server_certificate = true;
     cfg
 }
 

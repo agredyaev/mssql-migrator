@@ -51,7 +51,7 @@ pub fn write_reports(
         result: result.into(),
         exit_code,
     };
-    let sync = cfg.report_sync();
+    let sync = cfg.report_sync;
     write_atomic(&dir.join(".report.json"), |f| write_json(f, &report, sync))?;
     Ok(())
 }

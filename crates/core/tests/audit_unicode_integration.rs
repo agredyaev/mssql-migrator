@@ -32,7 +32,7 @@ async fn unicode_keys_and_sha256_hashes_round_trip_regression() {
         return;
     }
     let mut cfg = workflow_config::workflow_config().clone();
-    cfg.set_skip_git(true);
+    cfg.skip_git = true;
     db_reset::reset_test_database(&cfg).await.expect("reset db");
     let mut conn = state_smoke_conn::open_conn(&cfg).await.expect("connect");
 

@@ -70,7 +70,7 @@ fn merge_row(state: &mut CatalogState, row: &crate::driver::RowData) -> Result<(
     Ok(())
 }
 
-/// Marks the catalog cache stale when `enabled` (`cfg.catalog_cache()`).
+/// Marks the catalog cache stale when `enabled` (`cfg.catalog_cache`).
 pub async fn invalidate(conn: &mut TimingConn, enabled: bool) -> Result<()> {
     if !enabled {
         return Ok(());

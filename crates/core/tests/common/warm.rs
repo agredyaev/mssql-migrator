@@ -26,7 +26,7 @@ pub async fn warm_db_once() {
             let fingerprint = l1_fingerprint(cfg);
             let _ = l1.invalidate_all(&fingerprint);
             let mut warm = cfg.clone();
-            warm.set_inspect_full(false);
+            warm.inspect_full = false;
             run_command(Command::Plan, &warm)
                 .await
                 .expect("integration warm_db_once plan");

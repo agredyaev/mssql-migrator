@@ -33,7 +33,7 @@ use migrator_core::driver::TimingConn;
 /// Fresh database + a managed-objects config (skip_git for deterministic plans).
 async fn fresh_cold_db() -> Config {
     let mut cold = workflow_config::workflow_config().clone();
-    cold.set_skip_git(true);
+    cold.skip_git = true;
     db_reset::reset_test_database(&cold)
         .await
         .expect("reset db");

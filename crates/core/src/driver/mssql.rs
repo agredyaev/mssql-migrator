@@ -48,10 +48,10 @@ async fn connect_once(cfg: &Config) -> Result<MssqlConn> {
     }
     tds.database(&cfg.database);
     tds.authentication(select_auth_method(cfg)?);
-    if cfg.trust_server_certificate() {
+    if cfg.trust_server_certificate {
         tds.trust_cert();
     }
-    if cfg.encrypt() {
+    if cfg.encrypt {
         tds.encryption(tiberius::EncryptionLevel::Required);
     } else {
         tds.encryption(tiberius::EncryptionLevel::NotSupported);

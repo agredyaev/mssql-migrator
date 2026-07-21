@@ -80,24 +80,20 @@ pub(super) fn set_timeout(raw: &str, name: &str, slot: &mut Duration) {
 
 pub(super) fn apply_tls(cfg: &mut Config, file: &TomlConfig) {
     let get = |name: &str, value: Option<String>| std::env::var(name).ok().or(value);
-    let encrypt_default = cfg.encrypt();
-    cfg.set_encrypt(
-        get(
-            "RM_DB_ENCRYPT",
-            file.database.encrypt.map(|v| v.to_string()),
-        )
-        .map_or(encrypt_default, |v| parse_bool(&v)),
-    );
-    let trust_default = cfg.trust_server_certificate();
-    cfg.set_trust_server_certificate(
-        get(
-            "RM_DB_TRUST_SERVER_CERTIFICATE",
-            file.database
-                .trust_server_certificate
-                .map(|v| v.to_string()),
-        )
-        .map_or(trust_default, |v| parse_bool(&v)),
-    );
+    let encrypt_default = cfg.encrypt;
+    cfg.encrypt = get(
+        "RM_DB_ENCRYPT",
+        file.database.encrypt.map(|v| v.to_string()),
+    )
+    .map_or(encrypt_default, |v| parse_bool(&v));
+    let trust_default = cfg.trust_server_certificate;
+    cfg.trust_server_certificate = get(
+        "RM_DB_TRUST_SERVER_CERTIFICATE",
+        file.database
+            .trust_server_certificate
+            .map(|v| v.to_string()),
+    )
+    .map_or(trust_default, |v| parse_bool(&v));
 }
 
 #[cfg(test)]

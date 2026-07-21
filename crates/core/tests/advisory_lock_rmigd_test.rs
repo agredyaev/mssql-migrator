@@ -39,9 +39,9 @@ fn parity_cfg(database: &str) -> Config {
     cfg.database = database.into();
     cfg.sql_root = ".".into();
     cfg.sql_base = ".".into();
-    cfg.set_skip_git(true);
-    cfg.set_encrypt(false);
-    cfg.set_trust_server_certificate(true);
+    cfg.skip_git = true;
+    cfg.encrypt = false;
+    cfg.trust_server_certificate = true;
     if let Some(sock) = rmigd::ensure_started() {
         cfg.session_socket = sock;
         cfg.session_token = std::env::var("RMIG_SESSION_TOKEN")

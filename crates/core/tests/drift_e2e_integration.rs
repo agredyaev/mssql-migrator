@@ -195,8 +195,8 @@ async fn type_sequence_and_synonym_live_drift_is_blocked() {
     let mut cfg = workflow_config::workflow_config().clone();
     cfg.sql_root = root.to_string_lossy().into();
     cfg.sql_base = cfg.sql_root.clone();
-    cfg.set_skip_git(true);
-    cfg.set_catalog_cache(false);
+    cfg.skip_git = true;
+    cfg.catalog_cache = false;
     db_reset::reset_test_database(&cfg).await.expect("reset db");
     assert_eq!(migrate(&cfg).await, 0, "create transactional kinds");
     let mut conn = state_smoke_conn::open_conn(&cfg).await.expect("connect");
@@ -441,7 +441,7 @@ async fn malformed_checksum_blocks_every_command_except_repair_regression() {
         Command::Baseline,
     ] {
         let mut command_cfg = cfg.clone();
-        command_cfg.set_allow_adopt(true);
+        command_cfg.allow_adopt = true;
         let err = match run_fresh(cmd, &command_cfg).await {
             Ok(out) => panic!(
                 "{cmd:?} accepted corrupt audit history with exit {}",
@@ -469,10 +469,10 @@ async fn malformed_checksum_blocks_every_command_except_repair_regression() {
 
 async fn fresh_cold_db() -> Config {
     let mut cfg = workflow_config::workflow_config().clone();
-    cfg.set_skip_git(true);
+    cfg.skip_git = true;
     // These pins exercise the diff engine, not the cache layers: the DB
     // catalog_cache would otherwise mask out-of-band changes (hazard H2).
-    cfg.set_catalog_cache(false);
+    cfg.catalog_cache = false;
     db_reset::reset_test_database(&cfg).await.expect("reset db");
     cfg
 }
@@ -501,7 +501,7 @@ async fn repair(cfg: &Config) -> migrator_core::error::Result<RunOutput> {
 async fn run_fresh(cmd: Command, cfg: &Config) -> migrator_core::error::Result<RunOutput> {
     oob_barrier(cfg).await;
     let mut c = cfg.clone();
-    c.set_skip_git(true);
+    c.skip_git = true;
     c.session_socket.clear();
     run_command(cmd, &c).await
 }

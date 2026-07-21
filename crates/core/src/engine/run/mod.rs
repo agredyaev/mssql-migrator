@@ -52,7 +52,7 @@ pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput>
 
     let t_scan = Instant::now();
     let mut ws_full = Workspace::default();
-    let scan_ms = crate::scan::populate(&mut ws_full, &cfg.sql_root, cfg.skip_git()).await?;
+    let scan_ms = crate::scan::populate(&mut ws_full, &cfg.sql_root, cfg.skip_git).await?;
     let scan_elapsed = t_scan.elapsed();
 
     let mut merged = PhaseTimings {

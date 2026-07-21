@@ -78,8 +78,8 @@ pub async fn run_daemon(socket: &Path, cfg: Config) -> anyhow::Result<()> {
         server: cfg.server.clone(),
         port: cfg.port.clone(),
         user: cfg.user.clone(),
-        encrypt: cfg.encrypt(),
-        trust_server_certificate: cfg.trust_server_certificate(),
+        encrypt: cfg.encrypt,
+        trust_server_certificate: cfg.trust_server_certificate,
     });
     loop {
         // A transient accept error (e.g. EMFILE under fd pressure) must not kill

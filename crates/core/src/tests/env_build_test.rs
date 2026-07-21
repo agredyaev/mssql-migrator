@@ -7,9 +7,9 @@ static ENV_LOCK: Mutex<()> = Mutex::new(());
 #[test]
 fn connection_security_defaults_fail_closed() {
     let cfg = crate::Config::default();
-    assert!(cfg.encrypt(), "TLS encryption must default on");
+    assert!(cfg.encrypt, "TLS encryption must default on");
     assert!(
-        !cfg.trust_server_certificate(),
+        !cfg.trust_server_certificate,
         "certificate validation must default on"
     );
 }

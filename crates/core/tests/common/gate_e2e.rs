@@ -27,7 +27,7 @@ pub async fn build_gate_report(
         .map_err(|e| migrator_core::error::Error::Other(e.into()))?;
 
     let mut ws = Workspace::default();
-    scan::populate(&mut ws, &cfg.sql_root, cfg.skip_git()).await?;
+    scan::populate(&mut ws, &cfg.sql_root, cfg.skip_git).await?;
     let paths = migrator_core::gate::resolve_changed_paths(&cfg.sql_root);
     let mut delta = migrator_core::gate::keys_for_changed_paths(&ws, &paths.paths);
     delta = migrator_core::gate::expand_delta_closure(&ws, delta);

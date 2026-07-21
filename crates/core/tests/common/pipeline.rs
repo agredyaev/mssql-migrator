@@ -15,7 +15,7 @@ pub async fn run_plan_pipeline(cfg: &Config) -> Result<(MigrationPlan, PhaseTimi
     let skip_l1_invalidate = io_debug_skip_l1_invalidate();
 
     let mut ws = Workspace::default();
-    timings.scan_ms = migrator_core::scan::populate(&mut ws, &cfg.sql_root, cfg.skip_git()).await?;
+    timings.scan_ms = migrator_core::scan::populate(&mut ws, &cfg.sql_root, cfg.skip_git).await?;
 
     if !skip_l1_invalidate {
         // MUST be the production fingerprint: a legacy key would invalidate a

@@ -50,8 +50,7 @@ pub async fn execute(
     trace.timings.query_calls = io.query_calls;
     trace.timings.query_ms = io.query_ms;
 
-    if cfg.catalog_cache() && !catalog.objects.is_empty() && (setup.need_catalog || setup.git_delta)
-    {
+    if cfg.catalog_cache && !catalog.objects.is_empty() && (setup.need_catalog || setup.git_delta) {
         if let Err(e) = crate::db::save_batched(conn, &ws.layout_digest, ws, &catalog).await {
             tracing::warn!(error = %e, "catalog cache save failed");
         }

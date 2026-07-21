@@ -35,7 +35,7 @@ async fn apply_e2e_cold_migrate_creates_objects_and_audit() {
 
     let cfg = workflow_config::workflow_config();
     let mut cold = cfg.clone();
-    cold.set_skip_git(true);
+    cold.skip_git = true;
 
     db_reset::reset_test_database(&cold)
         .await

@@ -34,7 +34,7 @@ pub(super) async fn warmup_git_delta(
     let mut checksums_ms = 0i64;
     let mut round_trips = ctx.round_trips_start;
     let mut local_trace = PlanDbTrace::default();
-    let want_cache = ctx.cfg.catalog_cache() && audit::tables_ensured(ctx.db_fp);
+    let want_cache = ctx.cfg.catalog_cache && audit::tables_ensured(ctx.db_fp);
     let mut loaded = ctx.catalog_base.take().unwrap_or_default();
     let mut relaxed = false;
     let partial_cache;

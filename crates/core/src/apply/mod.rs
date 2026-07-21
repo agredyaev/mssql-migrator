@@ -87,7 +87,7 @@ async fn finish(cfg: &Config, conn: &mut TimingConn, result: ApplyResult) -> Res
     // Invalidate whenever objects were applied, even if a later object failed —
     // the caches otherwise serve pre-apply state and wedge the next run.
     if result.applied > 0 {
-        if let Err(e) = db::invalidate(conn, cfg.catalog_cache()).await {
+        if let Err(e) = db::invalidate(conn, cfg.catalog_cache).await {
             tracing::warn!(error = %e, "post-apply catalog cache invalidation failed");
         }
         let l1 = crate::cache::l1::L1Cache::new(&cfg.l1_cache_dir);

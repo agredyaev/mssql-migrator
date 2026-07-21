@@ -51,9 +51,9 @@ fn test_cfg(sql_root: &Path) -> Config {
     }
     cfg.sql_root = sql_root.to_string_lossy().into();
     cfg.sql_base = cfg.sql_root.clone();
-    cfg.set_skip_git(true);
-    cfg.set_trust_server_certificate(true);
-    cfg.set_catalog_cache(false);
+    cfg.skip_git = true;
+    cfg.trust_server_certificate = true;
+    cfg.catalog_cache = false;
     cfg.session_socket.clear();
     validate_config(&mut cfg).expect("valid config");
     cfg
@@ -133,7 +133,7 @@ async fn transition_rollback_body_cannot_commit_history_regression() {
     let root = dir.path();
     write(root, &format!("{DB}/smoke/tables/guarded.sql"), TABLE_V1);
     let (mut cfg, mut conn) = fresh(root).await;
-    cfg.set_allow_adopt(true);
+    cfg.allow_adopt = true;
     assert_eq!(run(&cfg, Command::Migrate).await.expect("cold"), 0);
 
     // Change the table and add a transition whose body escapes the transaction.
@@ -234,7 +234,7 @@ async fn baseline_and_repair_never_execute_ddl_regression() {
     // Migrate (with adoption satisfied) creates the view; then change the repo
     // body and prove repair-checksum re-baselines WITHOUT touching the live view.
     let mut allow = cfg.clone();
-    allow.set_allow_adopt(true);
+    allow.allow_adopt = true;
     assert_eq!(run(&allow, Command::Migrate).await.expect("migrate"), 0);
     write(root, &format!("{DB}/smoke/views/v_guard.sql"), VIEW_V2);
     write(root, &format!("{DB}/smoke/tables/guarded.sql"), TABLE_V2);
@@ -320,7 +320,7 @@ async fn migrate_blocks_implicit_adoption_without_flag_regression() {
     );
 
     let mut allow = cfg.clone();
-    allow.set_allow_adopt(true);
+    allow.allow_adopt = true;
     assert_eq!(run(&allow, Command::Migrate).await.expect("allowed"), 0);
     assert_eq!(
         state_smoke_conn::count_audit_rows(&mut conn, "object", "adopted")
@@ -342,7 +342,7 @@ async fn validate_blocked_plan_exits_nonzero_regression() {
     let root = dir.path();
     write(root, &format!("{DB}/smoke/tables/guarded.sql"), TABLE_V1);
     let (mut cfg, _conn) = fresh(root).await;
-    cfg.set_allow_adopt(true);
+    cfg.allow_adopt = true;
     assert_eq!(run(&cfg, Command::Migrate).await.expect("cold"), 0);
 
     // Table changed, no transition → blocked plan; validate must fail.
@@ -363,7 +363,7 @@ async fn transition_runs_before_dependent_objects_regression() {
     let root = dir.path();
     write(root, &format!("{DB}/smoke/tables/guarded.sql"), TABLE_V1);
     let (mut cfg, mut conn) = fresh(root).await;
-    cfg.set_allow_adopt(true);
+    cfg.allow_adopt = true;
     assert_eq!(run(&cfg, Command::Migrate).await.expect("cold"), 0);
 
     // One change set: table gains `extra`, a transition adds it, and a NEW

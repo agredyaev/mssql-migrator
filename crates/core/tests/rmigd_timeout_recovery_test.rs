@@ -39,10 +39,10 @@ fn config(socket: String) -> Config {
     cfg.session_socket = socket;
     cfg.session_token = std::env::var("RMIG_SESSION_TOKEN").expect("rmigd test token");
     cfg.command_timeout = Duration::from_secs(8);
-    cfg.set_skip_git(true);
+    cfg.skip_git = true;
     // The checked-in Docker SQL Server fixture has no TLS endpoint.
-    cfg.set_encrypt(false);
-    cfg.set_trust_server_certificate(true);
+    cfg.encrypt = false;
+    cfg.trust_server_certificate = true;
     validate_config(&mut cfg).expect("valid rmigd test config");
     cfg
 }

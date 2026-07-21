@@ -16,8 +16,8 @@ fn sa_cfg(database: &str) -> Config {
     cfg.password =
         std::env::var("RM_DB_PASSWORD").unwrap_or_else(|_| "yourStrong(!)Password".into());
     cfg.database = database.into();
-    cfg.set_encrypt(false);
-    cfg.set_trust_server_certificate(true);
+    cfg.encrypt = false;
+    cfg.trust_server_certificate = true;
     cfg
 }
 
@@ -28,8 +28,8 @@ fn contained_cfg(database: &str) -> Config {
     cfg.user = "rmig_plan_contained".into();
     cfg.password = "ContainedPass123".into();
     cfg.database = database.into();
-    cfg.set_encrypt(false);
-    cfg.set_trust_server_certificate(true);
+    cfg.encrypt = false;
+    cfg.trust_server_certificate = true;
     cfg
 }
 

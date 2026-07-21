@@ -52,8 +52,8 @@ impl Request {
             server: cfg.server.clone(),
             port: cfg.port.clone(),
             user: cfg.user.clone(),
-            encrypt: Some(cfg.encrypt()),
-            trust_server_certificate: Some(cfg.trust_server_certificate()),
+            encrypt: Some(cfg.encrypt),
+            trust_server_certificate: Some(cfg.trust_server_certificate),
         }
     }
 }

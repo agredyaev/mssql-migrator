@@ -15,11 +15,11 @@ impl fmt::Debug for Config {
             .field("password", &"<redacted>")
             .field("session_socket", &self.session_socket)
             .field("session_token", &mask_token(&self.session_token))
-            .field("encrypt", &self.encrypt())
-            .field("trust_server_certificate", &self.trust_server_certificate())
-            .field("report_sync", &self.report_sync())
-            .field("skip_git", &self.skip_git())
-            .field("catalog_cache", &self.catalog_cache())
+            .field("encrypt", &self.encrypt)
+            .field("trust_server_certificate", &self.trust_server_certificate)
+            .field("report_sync", &self.report_sync)
+            .field("skip_git", &self.skip_git)
+            .field("catalog_cache", &self.catalog_cache)
             .finish_non_exhaustive()
     }
 }

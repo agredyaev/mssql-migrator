@@ -70,7 +70,7 @@ pub async fn prepare_blocked_table_change(cfg: &Config) -> Result<(BlockedSetup,
 
     let mut blocked_cfg = cfg.clone();
     blocked_cfg.session_socket.clear();
-    blocked_cfg.set_skip_git(false);
+    blocked_cfg.skip_git = false;
 
     let fp = migrator_core::audit::db_fingerprint(
         &blocked_cfg.server,

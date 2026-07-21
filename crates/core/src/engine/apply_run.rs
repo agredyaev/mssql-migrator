@@ -87,9 +87,8 @@ async fn apply_plan(
     );
     if apply.failed == 0 && apply.applied > 0 {
         super::warm_store::clear_plan_db_snapshot();
-        let _ =
-            crate::db::save_workspace_snapshot(conn, &ws.layout_digest, ws, cfg.catalog_cache())
-                .await;
+        let _ = crate::db::save_workspace_snapshot(conn, &ws.layout_digest, ws, cfg.catalog_cache)
+            .await;
     }
     Ok(())
 }

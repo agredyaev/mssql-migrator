@@ -80,7 +80,7 @@ pub async fn smoke_baseline_ready(cfg: &Config, conn: &mut TimingConn) -> Result
     if row.get_i32(5).unwrap_or(0) != 0 {
         return Ok(false);
     }
-    if cfg.catalog_cache() {
+    if cfg.catalog_cache {
         if row.get_i32(6).unwrap_or(0) < 1 {
             return Err(Error::Other(anyhow::anyhow!(
                 "catalog_meta empty with RMIG_CATALOG_CACHE enabled"
@@ -97,7 +97,7 @@ pub async fn smoke_baseline_ready(cfg: &Config, conn: &mut TimingConn) -> Result
 
 pub async fn run_apply_smoke(cfg: &Config) -> Result<ApplySmokeOut> {
     let mut ws = Workspace::default();
-    scan::populate(&mut ws, &cfg.sql_root, cfg.skip_git()).await?;
+    scan::populate(&mut ws, &cfg.sql_root, cfg.skip_git).await?;
 
     let db_fp = db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     invalidate_audit_cache(&db_fp);
@@ -119,7 +119,7 @@ pub async fn run_apply_smoke(cfg: &Config) -> Result<ApplySmokeOut> {
             &mut conn,
             &ws.layout_digest,
             &ws,
-            cfg.catalog_cache(),
+            cfg.catalog_cache,
         )
         .await?;
     }
@@ -177,7 +177,7 @@ async fn count_table_rows(conn: &mut TimingConn, table: &str) -> Result<i32> {
 }
 
 pub fn assert_catalog_cache_when_enabled(cfg: &Config, snap: &AuditDbSnapshot) -> Result<()> {
-    if !cfg.catalog_cache() {
+    if !cfg.catalog_cache {
         return Ok(());
     }
     if snap.catalog_meta_rows < 1 {
