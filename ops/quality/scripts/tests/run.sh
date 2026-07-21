@@ -356,7 +356,7 @@ else
   bad "compose invariants"
 fi
 
-# db-up: all probes failing must fail the target
+# db-up: an unhealthy server (compose up --wait) must fail the target
 t="$(tmp_root)"
 mkdir -p "$t/ops/perf" "$t/bin"
 cp "$ROOT/Makefile" "$t/"
@@ -364,13 +364,11 @@ cp "$ROOT/ops/perf/e2e_env.sh" "$t/ops/perf/"
 cat > "$t/bin/docker" <<'EOF'
 #!/bin/sh
 case "$1 $2" in
-  "compose up") exit 0 ;;
-  "compose exec") exit 1 ;;
+  "compose up") exit 1 ;;
 esac
 exit 0
 EOF
 chmod +x "$t/bin/docker"
-printf '#!/bin/sh\nexit 0\n' > "$t/bin/sleep"; chmod +x "$t/bin/sleep"
 check "make db-up fails when SQL Server never becomes ready" 2 \
   env PATH="$t/bin:/usr/bin:/bin" make -C "$t" db-up
 rm -rf "$t"
