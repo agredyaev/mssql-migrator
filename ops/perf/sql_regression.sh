@@ -167,6 +167,7 @@ CORE_TESTS=(
   advisory_lock_guard_test
   advisory_lock_rmigd_test
   rmigd_timeout_recovery_test
+  rmigd_stats_test
   multi_db_plan_test
   plan_deferred_bootstrap_test
   plan_collation_test

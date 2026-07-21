@@ -30,6 +30,7 @@ use crate::driver::connect;
 use crate::session::limits::MAX_DAEMON_CLIENTS;
 
 mod endpoint;
+pub(super) mod metrics;
 mod reply;
 mod serve;
 mod serve_loop;
@@ -38,6 +39,7 @@ use serve::serve;
 
 /// Starts the rmigd Unix-socket daemon, accepting connections until the process exits.
 pub async fn run_daemon(socket: &Path, cfg: Config) -> anyhow::Result<()> {
+    metrics::mark_started();
     super::auth::apply_session_token_from_config(&cfg);
     let conn = connect(&cfg).await?;
     let shared = Arc::new(Mutex::new(Some(conn.client)));
