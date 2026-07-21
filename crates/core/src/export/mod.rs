@@ -28,8 +28,7 @@ pub use materialize::{
     filter_applied_migrations_on_plan, materialize_planned_object, PlanJsonFromObjects,
 };
 pub use plan_json::{
-    read_plan_json, write_plan_json, MigrationPlan, PlanSummary, PlannedGit, PlannedObject,
-    PlannedSchema,
+    write_plan_json, MigrationPlan, PlanSummary, PlannedGit, PlannedObject, PlannedSchema,
 };
 pub use plan_row::PlanRow;
 pub use plan_side::{

@@ -1,9 +1,42 @@
 use migrator_core::domain::Action;
 use migrator_core::export::{
-    read_plan_json, write_plan_json, MigrationPlan, PlanJsonFromObjects, PlanRow, PlanSummary,
-    PlannedObject,
+    write_plan_json, MigrationPlan, PlanJsonFromObjects, PlanRow, PlanSummary, PlannedObject,
+    PlannedSchema,
 };
 use proptest::prelude::*;
+
+/// Re-ingest of `write_plan_json` output. Production never reads plans back, so
+/// this mirror lives with the round-trip test rather than the shipped crate.
+#[derive(serde::Deserialize)]
+struct MigrationPlanWire {
+    #[serde(default)]
+    command: String,
+    #[serde(rename = "plannedAt", default)]
+    planned_at: String,
+    #[serde(default)]
+    blocked: bool,
+    #[serde(default)]
+    blockers: Vec<String>,
+    #[serde(default)]
+    schemas: Vec<PlannedSchema>,
+    objects: Vec<PlannedObject>,
+    #[serde(default)]
+    summary: PlanSummary,
+}
+
+fn read_plan_json(s: &str) -> Result<MigrationPlan, String> {
+    let wire: MigrationPlanWire = serde_json::from_str(s).map_err(|e| e.to_string())?;
+    Ok(MigrationPlan {
+        command: wire.command,
+        planned_at: wire.planned_at,
+        blockers: wire.blockers,
+        schemas: wire.schemas,
+        objects: wire.objects,
+        summary: wire.summary,
+        blocked: wire.blocked,
+        ..Default::default()
+    })
+}
 
 #[test]
 fn migration_plan_checksum_base64_roundtrip() {
