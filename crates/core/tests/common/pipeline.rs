@@ -41,7 +41,7 @@ pub async fn run_plan_pipeline(cfg: &Config) -> Result<(MigrationPlan, PhaseTimi
     } else {
         db.ensure_ms.max(db.checksums_ms + db.inspect_ms)
     };
-    timings.set_l1_cache_hit(db.l1_hit);
+    timings.l1_cache_hit = db.l1_hit;
     timings.plan_db_path = db.trace.path_label().to_string();
     timings.plan_db_query_calls = db.trace.timings.query_calls;
     timings.plan_db_query_ms = db.trace.timings.query_ms;

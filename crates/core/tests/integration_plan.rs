@@ -90,7 +90,7 @@ async fn integration_plan_sqlserver_suite() {
         out.timings.cli_wall_ms,
         cfg.slo_max_cli_wall_ms
     );
-    assert!(!out.timings.l1_cache_hit());
+    assert!(!out.timings.l1_cache_hit);
 
     // Module workspaces must bypass L1 so out-of-band definition drift remains
     // visible; the second live plan must still meet the CLI SLO.
@@ -102,7 +102,7 @@ async fn integration_plan_sqlserver_suite() {
         "live_plan timings: {}",
         serde_json::to_string(&out.timings).unwrap()
     );
-    assert!(!out.timings.l1_cache_hit());
+    assert!(!out.timings.l1_cache_hit);
     assert!(
         out.timings.plan_db_query_calls > 0,
         "module drift check must query SQL Server"

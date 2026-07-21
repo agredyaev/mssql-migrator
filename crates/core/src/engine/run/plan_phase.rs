@@ -48,18 +48,18 @@ pub(crate) async fn plan_phase(
     } else {
         db.ensure_ms.max(db.checksums_ms + db.inspect_ms)
     };
-    timings.set_l1_cache_hit(db.l1_hit);
+    timings.l1_cache_hit = db.l1_hit;
     timings.plan_db_path = db.trace.path_label().to_string();
     timings.plan_db_query_calls = db.trace.timings.query_calls;
     timings.plan_db_query_ms = db.trace.timings.query_ms;
-    timings.set_plan_db_bootstrap(db.trace.flags.bootstrap);
-    timings.set_plan_db_catalog_queried(db.trace.flags.catalog_queried);
+    timings.plan_db_bootstrap = db.trace.flags.bootstrap;
+    timings.plan_db_catalog_queried = db.trace.flags.catalog_queried;
     timings.plan_db_checksums_batch_ms = db.trace.timings.checksums_batch_ms;
     timings.plan_db_catalog_ms = db.trace.timings.catalog_ms;
     timings.plan_db_catalog_sql_ms = db.trace.timings.catalog_sql_ms;
     timings.plan_db_intern_catalog_ms = db.trace.timings.intern_catalog_ms;
-    timings.set_plan_db_history_empty(db.trace.flags.history_empty);
-    timings.set_plan_db_checksums_skipped(db.trace.flags.checksums_skipped);
+    timings.plan_db_history_empty = db.trace.flags.history_empty;
+    timings.plan_db_checksums_skipped = db.trace.flags.checksums_skipped;
     timings.plan_db_round_trips = db.trace.timings.round_trips;
     timings.finish_audit_ms();
 

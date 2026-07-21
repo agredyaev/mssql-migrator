@@ -55,7 +55,7 @@ pub async fn run_command(cmd: types::Command, cfg: &Config) -> Result<RunOutput>
         scan_ms,
         ..Default::default()
     };
-    merged.set_l1_cache_hit(true);
+    merged.l1_cache_hit = true;
     let mut exit_code = 0i32;
     let mut last_plan: Option<MigrationPlan> = None;
     let mut missing_dbs: Vec<String> = Vec::new();

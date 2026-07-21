@@ -64,7 +64,7 @@ async fn oob_drop_recreated_and_oob_modify_is_restored_after_warm_cache() {
     // queried live on the next plan.
     let (_, warm_timings) = engine_smoke::plan(&cfg).await.expect("warm plan");
     assert!(
-        !warm_timings.l1_cache_hit(),
+        !warm_timings.l1_cache_hit,
         "live-state checks bypass top-level L1"
     );
 
@@ -73,10 +73,7 @@ async fn oob_drop_recreated_and_oob_modify_is_restored_after_warm_cache() {
         .await
         .expect("oob modify view");
     let (plan, timings) = engine_smoke::plan(&cfg).await.expect("live drift plan");
-    assert!(
-        !timings.l1_cache_hit(),
-        "warm cache cannot hide module drift"
-    );
+    assert!(!timings.l1_cache_hit, "warm cache cannot hide module drift");
     assert_eq!(
         action_of(&plan),
         Action::UpdateExistingModule,

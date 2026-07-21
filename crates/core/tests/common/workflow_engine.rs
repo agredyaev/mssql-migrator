@@ -25,7 +25,7 @@ pub fn log_timings(label: &str, t: &PhaseTimings) {
         t.inspect_ms,
         t.parallel_wall_ms,
         t.apply_ms,
-        t.l1_cache_hit(),
+        t.l1_cache_hit,
         t.plan_db_path,
         t.plan_db_query_calls,
         t.plan_db_query_ms
@@ -43,10 +43,10 @@ pub fn log_timings(label: &str, t: &PhaseTimings) {
             ..PlanDbTimings::default()
         },
         flags: PlanDbFlags {
-            bootstrap: t.plan_db_bootstrap(),
-            catalog_queried: t.plan_db_catalog_queried(),
-            history_empty: t.plan_db_history_empty(),
-            checksums_skipped: t.plan_db_checksums_skipped(),
+            bootstrap: t.plan_db_bootstrap,
+            catalog_queried: t.plan_db_catalog_queried,
+            history_empty: t.plan_db_history_empty,
+            checksums_skipped: t.plan_db_checksums_skipped,
             ..PlanDbFlags::default()
         },
     };
@@ -54,7 +54,7 @@ pub fn log_timings(label: &str, t: &PhaseTimings) {
 }
 
 pub fn assert_plan_db_par_slo(label: &str, t: &PhaseTimings) {
-    if plan_db_slo_exempt(&t.plan_db_path, t.l1_cache_hit()) {
+    if plan_db_slo_exempt(&t.plan_db_path, t.l1_cache_hit) {
         return;
     }
     let max = max_parallel_wall_ms();

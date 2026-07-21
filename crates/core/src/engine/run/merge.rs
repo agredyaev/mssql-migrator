@@ -13,8 +13,8 @@ pub(super) fn merge_timings(dst: &mut PhaseTimings, src: &PhaseTimings) {
     dst.plan_db_query_calls = dst
         .plan_db_query_calls
         .saturating_add(src.plan_db_query_calls);
-    if !src.l1_cache_hit() {
-        dst.set_l1_cache_hit(false);
+    if !src.l1_cache_hit {
+        dst.l1_cache_hit = false;
     }
     if !src.plan_db_path.is_empty() {
         dst.plan_db_path.clone_from(&src.plan_db_path);
