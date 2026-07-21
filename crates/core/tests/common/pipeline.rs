@@ -66,17 +66,8 @@ pub async fn run_plan_pipeline(cfg: &Config) -> Result<(MigrationPlan, PhaseTimi
 }
 
 fn io_debug_skip_l1_invalidate() -> bool {
-    if matches!(
-        std::env::var("RMIG_IO_DEBUG_SKIP_L1_INVALIDATE").as_deref(),
-        Ok("1") | Ok("true") | Ok("yes")
-    ) {
-        return true;
-    }
-    if matches!(
+    matches!(
         std::env::var("RMIG_E2E_SCENARIO").as_deref(),
         Ok("skip_unchanged_plan") | Ok("catalog_cache_plan")
-    ) {
-        return true;
-    }
-    false
+    )
 }

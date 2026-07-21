@@ -1443,7 +1443,6 @@ version = "1.0.10"
 dependencies = [
  "migrator-core",
  "serde_json",
- "tempfile",
  "tokio",
  "tracing-subscriber",
 ]
