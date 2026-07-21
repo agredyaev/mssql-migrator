@@ -21,17 +21,18 @@ pub struct IoProfile {
     pub extra_connect_ms: i64,
 }
 
-pub(crate) fn lock_profile(io: &Mutex<IoProfile>) -> MutexGuard<'_, IoProfile> {
-    io.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+/// Locks `m`, recovering the guard if a prior panic poisoned the mutex.
+pub(crate) fn lock_unpoisoned<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{lock_profile, IoProfile};
+    use super::{lock_unpoisoned, IoProfile};
     use std::sync::{Arc, Mutex};
 
     #[test]
-    fn lock_profile_recovers_poisoned_mutex_regression() {
+    fn lock_unpoisoned_recovers_poisoned_mutex_regression() {
         let io = Arc::new(Mutex::new(IoProfile::default()));
         let poisoned = Arc::clone(&io);
         let _ = std::thread::spawn(move || {
@@ -40,7 +41,7 @@ mod tests {
         })
         .join();
 
-        lock_profile(&io).query_calls = 7;
-        assert_eq!(lock_profile(&io).query_calls, 7);
+        lock_unpoisoned(&io).query_calls = 7;
+        assert_eq!(lock_unpoisoned(&io).query_calls, 7);
     }
 }

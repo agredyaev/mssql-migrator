@@ -12,13 +12,8 @@ impl ObjectEntry {
     }
 
     /// Materialize for JSON export only.
-    pub fn parent_name(
-        &self,
-        ws: &super::super::Workspace,
-        _i: usize,
-        child_row_id: u32,
-    ) -> SharedStr {
-        let Some(pref) = self.parent_ref_for_row(ws, child_row_id) else {
+    pub fn parent_name(ws: &super::super::Workspace, child_row_id: u32) -> SharedStr {
+        let Some(pref) = ws.parent_by_row.get(&child_row_id) else {
             return empty_str();
         };
         if pref.parent_row_id == 0 {

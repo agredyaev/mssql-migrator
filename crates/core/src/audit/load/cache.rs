@@ -16,6 +16,8 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
+use crate::driver::io_profile::lock_unpoisoned;
+
 static ENSURED_DBS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 static HISTORY_EMPTY: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
 
@@ -28,16 +30,13 @@ fn history_empty_cache() -> &'static Mutex<HashMap<String, bool>> {
 }
 
 fn lock_cache<'a, T>(cache: &'a Mutex<T>, cache_name: &'static str) -> MutexGuard<'a, T> {
-    match cache.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            tracing::warn!(
-                cache = cache_name,
-                "process-local audit cache mutex was poisoned; recovering cached state"
-            );
-            poisoned.into_inner()
-        }
+    if cache.is_poisoned() {
+        tracing::warn!(
+            cache = cache_name,
+            "process-local audit cache mutex was poisoned; recovering cached state"
+        );
     }
+    lock_unpoisoned(cache)
 }
 
 pub fn tables_ensured(db_fp: &str) -> bool {
@@ -93,25 +92,3 @@ pub fn invalidate_audit_cache_all(db_fp: &str) {
 #[cfg(test)]
 #[path = "../../tests/cache_identity_test.rs"]
 mod cache_identity_tests;
-
-#[cfg(test)]
-mod tests {
-    use std::panic;
-    use std::sync::Mutex;
-
-    use super::lock_cache;
-
-    #[test]
-    fn lock_cache_recovers_poisoned_mutex_regression() {
-        let cache = Mutex::new(41usize);
-        let _ = panic::catch_unwind(|| {
-            let _guard = cache.lock().expect("test lock");
-            panic!("poison test cache");
-        });
-
-        let mut guard = lock_cache(&cache, "test_cache");
-        *guard += 1;
-
-        assert_eq!(*guard, 42);
-    }
-}

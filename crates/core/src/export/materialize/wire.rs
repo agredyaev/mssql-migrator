@@ -1,7 +1,9 @@
+use serde::Serialize;
+
 use crate::domain::Workspace;
 
 use super::object::materialize_planned_object;
-use crate::export::plan_json::{MigrationPlan, PlannedObject};
+use crate::export::plan_json::{MigrationPlan, PlanSummary, PlannedObject, PlannedSchema};
 
 /// Wire plan for JSON serialization.
 pub struct WireMigrationPlan<'a> {
@@ -33,48 +35,47 @@ impl<'a> WireMigrationPlan<'a> {
     }
 }
 
-/// Custom `Serialize`: fields with empty/`None` values are omitted for
-/// compact JSON output (`command` when empty, `blockers` when empty).
-impl serde::Serialize for WireMigrationPlan<'_> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let mut st = serializer.serialize_struct("MigrationPlan", 7)?;
-        if !self.inner.command.is_empty() {
-            st.serialize_field("command", &self.inner.command)?;
-        }
-        st.serialize_field("plannedAt", &self.inner.planned_at)?;
-        st.serialize_field("blocked", &self.inner.blocked)?;
-        if !self.inner.blockers.is_empty() {
-            st.serialize_field("blockers", &self.inner.blockers)?;
-        }
-        st.serialize_field("schemas", &self.inner.schemas)?;
-        st.serialize_field("objects", &self.objects)?;
-        st.serialize_field("summary", &self.inner.summary)?;
-        st.end()
-    }
-}
-
 /// Serialize plan that already has materialized `objects` (no workspace).
 pub struct PlanJsonFromObjects<'a>(pub &'a MigrationPlan);
 
-/// Custom `Serialize`: fields with empty/`None` values are omitted for
-/// compact JSON output, matching the `WireMigrationPlan` behaviour.
-impl serde::Serialize for PlanJsonFromObjects<'_> {
+/// Exact wire shape: `command`/`blockers` omitted when empty, `plannedAt`
+/// renamed, fields emitted in this declared order.
+#[derive(Serialize)]
+struct PlanWire<'a> {
+    #[serde(skip_serializing_if = "str::is_empty")]
+    command: &'a str,
+    #[serde(rename = "plannedAt")]
+    planned_at: &'a str,
+    blocked: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    blockers: &'a Vec<String>,
+    schemas: &'a [PlannedSchema],
+    objects: &'a [PlannedObject],
+    summary: &'a PlanSummary,
+}
+
+impl<'a> PlanWire<'a> {
+    fn new(inner: &'a MigrationPlan, objects: &'a [PlannedObject]) -> Self {
+        Self {
+            command: &inner.command,
+            planned_at: &inner.planned_at,
+            blocked: inner.blocked,
+            blockers: &inner.blockers,
+            schemas: &inner.schemas,
+            objects,
+            summary: &inner.summary,
+        }
+    }
+}
+
+impl Serialize for WireMigrationPlan<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let p = self.0;
-        let mut st = serializer.serialize_struct("MigrationPlan", 7)?;
-        if !p.command.is_empty() {
-            st.serialize_field("command", &p.command)?;
-        }
-        st.serialize_field("plannedAt", &p.planned_at)?;
-        st.serialize_field("blocked", &p.blocked)?;
-        if !p.blockers.is_empty() {
-            st.serialize_field("blockers", &p.blockers)?;
-        }
-        st.serialize_field("schemas", &p.schemas)?;
-        st.serialize_field("objects", &p.objects)?;
-        st.serialize_field("summary", &p.summary)?;
-        st.end()
+        PlanWire::new(self.inner, &self.objects).serialize(serializer)
+    }
+}
+
+impl Serialize for PlanJsonFromObjects<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        PlanWire::new(self.0, &self.0.objects).serialize(serializer)
     }
 }

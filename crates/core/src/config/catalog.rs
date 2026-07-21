@@ -15,7 +15,7 @@ pub fn discover_catalog_databases(sql_root: &str) -> Result<Vec<String>> {
     for entry in std::fs::read_dir(root).map_err(Error::Io)? {
         let entry = entry.map_err(Error::Io)?;
         let ft = entry.file_type().map_err(Error::Io)?;
-        if !ft.is_dir() || ft.is_symlink() {
+        if !ft.is_dir() {
             continue;
         }
         let name = entry.file_name();
@@ -54,7 +54,7 @@ fn catalog_database_dir_has_schema(db_dir: &Path) -> Result<bool> {
         let ft = entry
             .file_type()
             .map_err(|e| Error::Config(format!("cannot stat {}: {e}", entry.path().display())))?;
-        if ft.is_dir() && !ft.is_symlink() {
+        if ft.is_dir() {
             return Ok(true);
         }
     }

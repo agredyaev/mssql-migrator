@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::domain::Workspace;
+use crate::domain::{ObjectEntry, Workspace};
 use crate::export::plan_json::{MigrationPlan, PlannedObject};
 use crate::export::plan_side::{materialize_planned_git, materialize_transition_paths, PlanGitOff};
 use crate::export::PlanRow;
@@ -22,7 +22,7 @@ pub fn materialize_planned_object(
         kind: obj.kind_shared(ws, i),
         object_name: obj.name_shared(ws, i),
         database_name: obj.database_name(ws),
-        parent_name: obj.parent_name(ws, i, ws.row_id_at(i)),
+        parent_name: ObjectEntry::parent_name(ws, ws.row_id_at(i)),
         planned_action: row.planned_action(),
         exists: row.exists(),
         checksum: row.checksum,

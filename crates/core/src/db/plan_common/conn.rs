@@ -16,7 +16,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::driver::{io_profile::lock_profile, DbClient, IoProfile, RowData, TimingConn};
+use crate::driver::{io_profile::lock_unpoisoned, DbClient, IoProfile, RowData, TimingConn};
 use crate::error::{Error, Result};
 use crate::timings;
 
@@ -52,7 +52,7 @@ impl SharedConn {
         let mut c = self.client.lock().await;
         let r = bounded(self.timeout, "exec", c.exec(sql)).await;
         let ms = timings::dur_ms(t0.elapsed());
-        let mut io = lock_profile(&self.io);
+        let mut io = lock_unpoisoned(&self.io);
         io.exec_ms += ms;
         io.exec_calls += 1;
         r
@@ -64,7 +64,7 @@ impl SharedConn {
         let mut c = self.client.lock().await;
         let r = bounded(self.timeout, "query", c.query(sql, params)).await;
         let ms = timings::dur_ms(t0.elapsed());
-        let mut io = lock_profile(&self.io);
+        let mut io = lock_unpoisoned(&self.io);
         io.query_ms += ms;
         io.query_calls += 1;
         r
@@ -76,7 +76,7 @@ impl SharedConn {
         let mut c = self.client.lock().await;
         let r = bounded(self.timeout, "query", c.query_all(sql, params)).await;
         let ms = timings::dur_ms(t0.elapsed());
-        let mut io = lock_profile(&self.io);
+        let mut io = lock_unpoisoned(&self.io);
         io.query_ms += ms;
         io.query_calls += 1;
         r

@@ -17,6 +17,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use crate::db::state::CatalogState;
+use crate::driver::io_profile::lock_unpoisoned;
 
 static INSPECT_CACHE: OnceLock<Mutex<HashMap<String, CatalogState>>> = OnceLock::new();
 
@@ -27,16 +28,13 @@ fn inspect_cache() -> &'static Mutex<HashMap<String, CatalogState>> {
 fn lock_cache<'a>(
     cache: &'a Mutex<HashMap<String, CatalogState>>,
 ) -> MutexGuard<'a, HashMap<String, CatalogState>> {
-    match cache.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            tracing::warn!(
-                cache = "catalog_inspect",
-                "process-local catalog inspect cache mutex was poisoned; recovering cached state"
-            );
-            poisoned.into_inner()
-        }
+    if cache.is_poisoned() {
+        tracing::warn!(
+            cache = "catalog_inspect",
+            "process-local catalog inspect cache mutex was poisoned; recovering cached state"
+        );
     }
+    lock_unpoisoned(cache)
 }
 
 fn lock_inspect_cache() -> MutexGuard<'static, HashMap<String, CatalogState>> {
@@ -80,28 +78,4 @@ pub fn try_get_unless_bypassed(
         return None;
     }
     Some(state)
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-    use std::panic;
-    use std::sync::Mutex;
-
-    use super::lock_cache;
-    use crate::db::state::CatalogState;
-
-    #[test]
-    fn lock_cache_recovers_poisoned_mutex_regression() {
-        let cache = Mutex::new(HashMap::<String, CatalogState>::new());
-        let _ = panic::catch_unwind(|| {
-            let _guard = cache.lock().expect("test lock");
-            panic!("poison test cache");
-        });
-
-        let mut guard = lock_cache(&cache);
-        guard.insert("db:scope".into(), CatalogState::default());
-
-        assert!(guard.contains_key("db:scope"));
-    }
 }

@@ -51,34 +51,14 @@ fn merge_plan_into(dst: &mut MigrationPlan, mut src: MigrationPlan) {
         dst.plan_transitions.insert(row_offset + idx, transitions);
     }
 
-    dst.summary.schema_count = dst
-        .summary
-        .schema_count
-        .saturating_add(src.summary.schema_count);
-    dst.summary.object_count = dst
-        .summary
-        .object_count
-        .saturating_add(src.summary.object_count);
-    dst.summary.create_count = dst
-        .summary
-        .create_count
-        .saturating_add(src.summary.create_count);
-    dst.summary.adopt_count = dst
-        .summary
-        .adopt_count
-        .saturating_add(src.summary.adopt_count);
-    dst.summary.skip_count = dst
-        .summary
-        .skip_count
-        .saturating_add(src.summary.skip_count);
-    dst.summary.changed_count = dst
-        .summary
-        .changed_count
-        .saturating_add(src.summary.changed_count);
-    dst.summary.blocked_count = dst
-        .summary
-        .blocked_count
-        .saturating_add(src.summary.blocked_count);
+    let sum = &mut dst.summary;
+    sum.schema_count = sum.schema_count.saturating_add(src.summary.schema_count);
+    sum.object_count = sum.object_count.saturating_add(src.summary.object_count);
+    sum.create_count = sum.create_count.saturating_add(src.summary.create_count);
+    sum.adopt_count = sum.adopt_count.saturating_add(src.summary.adopt_count);
+    sum.skip_count = sum.skip_count.saturating_add(src.summary.skip_count);
+    sum.changed_count = sum.changed_count.saturating_add(src.summary.changed_count);
+    sum.blocked_count = sum.blocked_count.saturating_add(src.summary.blocked_count);
 }
 
 #[cfg(test)]

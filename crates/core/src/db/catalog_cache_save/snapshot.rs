@@ -1,6 +1,6 @@
 use super::save::save_batched;
 use crate::db::state::{catalog_object_parts, CatalogState};
-use crate::domain::{share, Workspace};
+use crate::domain::{share, ObjectEntry, Workspace};
 use crate::driver::TimingConn;
 use crate::error::Result;
 use crate::sql;
@@ -28,7 +28,7 @@ pub async fn save_workspace_snapshot(
                 obj.name_shared(ws, i),
                 obj.parent_ref_for_row(ws, row_id)
                     .filter(|p| p.parent_row_id > 0)
-                    .map(|_| obj.parent_name(ws, i, row_id)),
+                    .map(|_| ObjectEntry::parent_name(ws, row_id)),
             ),
         );
     }

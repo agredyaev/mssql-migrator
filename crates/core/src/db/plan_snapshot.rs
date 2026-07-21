@@ -51,19 +51,7 @@ pub async fn run_plan_db_phase(
 
     if !bypass_cache && !requires_live_state {
         if let Some((checksums, catalog)) = l1.try_load(&fp, &ws.layout_digest)? {
-            return Ok(PlanDbResult {
-                checksums,
-                catalog,
-                ensure_ms: 0,
-                checksums_ms: 0,
-                inspect_ms: 0,
-                parallel_wall_ms: 0,
-                l1_hit: true,
-                trace: PlanDbTrace {
-                    path: Some(PlanDbPath::CacheHit),
-                    ..PlanDbTrace::default()
-                },
-            });
+            return Ok(empty_result(checksums, catalog, true, PlanDbPath::CacheHit));
         }
     }
 
@@ -71,19 +59,12 @@ pub async fn run_plan_db_phase(
         .filter(|_| !bypass_cache && !requires_live_state)
     {
         l1.save(&fp, &ws.layout_digest, &checksums, &catalog)?;
-        return Ok(PlanDbResult {
+        return Ok(empty_result(
             checksums,
             catalog,
-            ensure_ms: 0,
-            checksums_ms: 0,
-            inspect_ms: 0,
-            parallel_wall_ms: 0,
-            l1_hit: false,
-            trace: PlanDbTrace {
-                path: Some(PlanDbPath::WarmSnapshot),
-                ..PlanDbTrace::default()
-            },
-        });
+            false,
+            PlanDbPath::WarmSnapshot,
+        ));
     }
 
     let keys_json = ws.normalized_keys_json();
@@ -102,5 +83,27 @@ pub async fn run_plan_db_phase(
             allow_checksum_repair,
         };
         run_batch(cfg, conn, ws, &keys_json, &fp, &l1, opts).await
+    }
+}
+
+/// Cache/snapshot hit result: catalog state served with zero DB-phase timings.
+fn empty_result(
+    checksums: ChecksumMap,
+    catalog: crate::db::state::CatalogState,
+    l1_hit: bool,
+    path: PlanDbPath,
+) -> PlanDbResult {
+    PlanDbResult {
+        checksums,
+        catalog,
+        ensure_ms: 0,
+        checksums_ms: 0,
+        inspect_ms: 0,
+        parallel_wall_ms: 0,
+        l1_hit,
+        trace: PlanDbTrace {
+            path: Some(path),
+            ..PlanDbTrace::default()
+        },
     }
 }

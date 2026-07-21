@@ -21,14 +21,13 @@ pub fn preload(ws: &mut Workspace, sql_root: &str) {
     if let Some(out) = git_log::batched_git_log(&root) {
         apply_batched(&out, prefix.as_deref(), &mut remaining, ws);
     }
-    for (path, key) in remaining {
+    for (_, key) in remaining {
         let Some(&id) = ws.script_key_index.get(&key) else {
             continue;
         };
         let script = ws.script(id);
         if let Some(meta) = git_log::git_info_file(script.abs_path().as_ref()) {
             apply_meta(ws, id, &meta);
-            let _ = path;
         }
     }
 }
