@@ -105,6 +105,7 @@ Verify the workspace using the following verification suite:
 | Topic | Canonical Path |
 | :--- | :--- |
 | Architecture walkthrough (start here) | [docs/architecture-walkthrough.md](docs/architecture-walkthrough.md) |
+| Architecture decision records | [adr/README.md](adr/README.md) |
 | Core specifications | [docs/specs/rust/README.md](docs/specs/rust/README.md) |
 | Operator reference | [docs/rmig-rust.md](docs/rmig-rust.md) |
 | Production gate | [docs/prod-gate.md](docs/prod-gate.md) |
