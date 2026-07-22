@@ -26,8 +26,8 @@ mod migrations;
 pub use history::{ensure_history_index, flush_history, record_event, HistoryRecord};
 pub use load::{
     cache_history_empty, checksum_map_from_rows_ws, db_fingerprint, empty_checksums_from_keys_json,
-    ensure_tables, ensure_tables_on, history_empty_cached, history_known_empty,
-    history_known_nonempty, invalidate_audit_cache, invalidate_audit_cache_all,
-    looks_like_checksum_rows, mark_tables_ensured, sync_tables_ensured, tables_ensured,
+    ensure_tables, history_empty_cached, history_known_empty, history_known_nonempty,
+    invalidate_audit_cache, invalidate_audit_cache_all, mark_tables_ensured, sync_tables_ensured,
+    tables_ensured,
 };
 pub use migrations::load_all_applied;
