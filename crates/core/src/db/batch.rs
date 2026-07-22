@@ -1,15 +1,7 @@
 //! Batch catalog operations: bootstrap SQL generation for plan-phase DB setup.
 
-use crate::db::catalog;
+use crate::db::catalog::build_catalog_sql_batch;
 use crate::sql;
-
-struct PlanDbBatchSqlOpts<'a> {
-    kinds: &'a [&'a str],
-    bootstrap: bool,
-    catalog: bool,
-    skip_schema_rows: bool,
-    relaxed_cache: bool,
-}
 
 /// Combined TDS batch: bootstrap, relaxed cache load (@p4 object count), catalog
 /// (@p2 scope, @p3 schemas).
@@ -20,32 +12,19 @@ pub fn plan_db_batch_sql(
     skip_schema_rows: bool,
     relaxed_cache: bool,
 ) -> String {
-    plan_db_batch_sql_inner(&PlanDbBatchSqlOpts {
-        kinds,
-        bootstrap,
-        catalog,
-        skip_schema_rows,
-        relaxed_cache,
-    })
-}
-
-fn plan_db_batch_sql_inner(opts: &PlanDbBatchSqlOpts<'_>) -> String {
     let mut b = String::with_capacity(16_384);
-    if opts.bootstrap {
+    if bootstrap {
         b.push_str(sql::audit::BOOTSTRAP_TABLES);
         b.push('\n');
         b.push_str(sql::audit::BOOTSTRAP_DRIFT);
         b.push('\n');
     }
-    if opts.relaxed_cache {
+    if relaxed_cache {
         b.push_str(sql::catalog::CACHE_LOAD_RELAXED);
         b.push('\n');
     }
-    if opts.catalog {
-        b.push_str(&catalog::build_catalog_sql_batch(
-            opts.kinds,
-            opts.skip_schema_rows,
-        ));
+    if catalog {
+        b.push_str(&build_catalog_sql_batch(kinds, skip_schema_rows));
     }
     b
 }
