@@ -13,10 +13,7 @@ struct CacheRow<'a> {
     p: &'a str,
 }
 
-pub(super) fn marshal_rows(state: &CatalogState, want: usize) -> Result<Option<String>> {
-    if state.objects.len() != want {
-        return Ok(None);
-    }
+pub(super) fn marshal_rows(state: &CatalogState) -> Result<String> {
     let rows: Vec<CacheRow<'_>> = state
         .objects
         .iter()
@@ -28,9 +25,7 @@ pub(super) fn marshal_rows(state: &CatalogState, want: usize) -> Result<Option<S
             p: o.parent.as_ref().map(|s| s.as_ref()).unwrap_or(""),
         })
         .collect();
-    Ok(Some(
-        serde_json::to_string(&rows).map_err(|e| crate::error::Error::Other(e.into()))?,
-    ))
+    serde_json::to_string(&rows).map_err(|e| crate::error::Error::Other(e.into()))
 }
 
 pub(super) fn filter_for_layout(ws: &Workspace, state: &CatalogState) -> CatalogState {

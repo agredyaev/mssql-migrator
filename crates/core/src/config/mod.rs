@@ -18,7 +18,6 @@
 //! - **Missing Variables / Bad Formats**: Halts processing, formats error outputs, and returns `Error::Config`.
 
 mod catalog;
-mod catalog_paths;
 mod cold;
 mod debug;
 mod default;

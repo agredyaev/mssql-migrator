@@ -27,9 +27,8 @@
 #![forbid(unsafe_code)]
 use std::process::ExitCode;
 
+use migrator_core::session::{default_log_filter, shutdown_signal};
 use tracing_subscriber::EnvFilter;
-
-mod shutdown;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -69,7 +68,7 @@ async fn run() -> Result<(), i32> {
             eprintln!("rmigd: {e:#}");
             migrator_core::error::EXIT_GENERAL
         }),
-        sig = shutdown::shutdown_signal() => {
+        sig = shutdown_signal() => {
             // Dropping the run_daemon future closes the listener and the warm
             // TDS connection; SQL Server rolls back any open transaction.
             let _ = std::fs::remove_file(&effective_socket);
@@ -92,38 +91,4 @@ fn init_tracing(default_level: &str) {
         .with_env_filter(filter)
         .with_writer(std::io::stderr)
         .try_init();
-}
-
-fn default_log_filter(log_level: &str) -> String {
-    let level = if log_level.trim().is_empty() {
-        "info"
-    } else {
-        log_level.trim()
-    };
-    if level.contains('=') || level.contains(',') {
-        level.to_string()
-    } else {
-        format!("warn,migrator_core={level},rmig={level},rmigd={level}")
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::default_log_filter;
-
-    #[test]
-    fn default_log_filter_scopes_simple_level_to_project_crates() {
-        assert_eq!(
-            default_log_filter("debug"),
-            "warn,migrator_core=debug,rmig=debug,rmigd=debug"
-        );
-    }
-
-    #[test]
-    fn default_log_filter_preserves_explicit_env_filter() {
-        assert_eq!(
-            default_log_filter("migrator_core=trace,tiberius=warn"),
-            "migrator_core=trace,tiberius=warn"
-        );
-    }
 }

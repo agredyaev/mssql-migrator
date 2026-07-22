@@ -46,7 +46,7 @@ pub(super) async fn run_standard_body(
         let (scope, scope_json) =
             build_scope_and_json(ctx.ws, &ctx.git.paths, ctx.full || ctx.bypass, &checksums);
         let schemas_json = schemas_json(ctx.ws);
-        let query_catalog = should_query_catalog(ctx.full, &scope, &scope_json, &checksums).await?;
+        let query_catalog = should_query_catalog(ctx.full, &scope, &scope_json);
         local_trace.flags.catalog_queried = query_catalog;
 
         let mut catalog_sql_ms = 0i64;

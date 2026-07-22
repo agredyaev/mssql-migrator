@@ -24,7 +24,6 @@
 mod args;
 mod help;
 mod logging;
-mod signals;
 
 use std::process::ExitCode;
 
@@ -32,14 +31,13 @@ use migrator_core::config::{
     build_config, load_toml_config, load_toml_config_required, validate_config,
 };
 use migrator_core::engine::{
-    eprint_timings_json, print_timings_json, print_version, run_command, write_plan_stdout, Command,
+    print_version, run_command, shutdown_signal, write_plan_stdout, write_timings_json, Command,
 };
 use migrator_core::export::write_reports;
 
 use args::{parse_args, parse_command, ParsedArgs};
 use help::print_help;
 use logging::init_tracing;
-use signals::shutdown_signal;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -95,13 +93,13 @@ async fn run_command_line(
     };
     match outcome {
         Ok(out) => {
-            if command == Command::Plan && json {
-                if let Some(plan) = &out.plan {
-                    write_plan_stdout(plan, None)?;
+            if json {
+                if command == Command::Plan {
+                    if let Some(plan) = &out.plan {
+                        write_plan_stdout(plan, None)?;
+                    }
                 }
-                eprint_timings_json(&out.timings)?;
-            } else if json {
-                print_timings_json(&out.timings)?;
+                write_timings_json(&out.timings, command == Command::Plan)?;
             }
             if out.exit_code == migrator_core::error::EXIT_PLAN_BLOCKED && !json {
                 // Blocked plans exit 10 through the Ok path; without this the

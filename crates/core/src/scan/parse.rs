@@ -41,10 +41,6 @@ pub fn insert_parsed_object(
     Ok(())
 }
 
-pub fn push_transition(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
-    super::transition::ingest(ws, rel, abs)
-}
-
 pub fn push_check(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
     let sk = crate::domain::ScriptKey::from_path(rel);
     ws.insert_script(crate::domain::Script {

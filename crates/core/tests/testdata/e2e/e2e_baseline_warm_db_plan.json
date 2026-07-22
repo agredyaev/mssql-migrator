@@ -17,9 +17,7 @@
     "query_ms": 22,
     "query_calls": 3,
     "exec_ms": 0,
-    "exec_calls": 0,
-    "extra_connects": 0,
-    "extra_connect_ms": 0
+    "exec_calls": 0
   },
   "snapshot": {
     "objects": {

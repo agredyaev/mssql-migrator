@@ -32,3 +32,15 @@ fn timing_env() -> (f64, i64) {
         .unwrap_or(100);
     (factor, slack_ms)
 }
+
+/// Appends a message when `actual_ms` exceeds the tolerance ceiling derived
+/// from `baseline_ms` and [`timing_env`].
+fn push_ceiling(msgs: &mut Vec<String>, name: &str, baseline_ms: i64, actual_ms: i64) {
+    let (factor, slack_ms) = timing_env();
+    let ceiling = ((baseline_ms as f64) * factor).ceil() as i64 + slack_ms;
+    if actual_ms > ceiling {
+        msgs.push(format!(
+            "{name}: actual={actual_ms}ms > baseline={baseline_ms}ms ceiling={ceiling}ms (factor={factor}, slack={slack_ms}ms)"
+        ));
+    }
+}

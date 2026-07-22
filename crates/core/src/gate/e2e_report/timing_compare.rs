@@ -52,12 +52,7 @@ pub(super) fn compare_workflow_timings(
             ));
             continue;
         }
-        let ceiling = ((*baseline_ms as f64) * factor).ceil() as i64 + slack_ms;
-        if *actual_ms > ceiling {
-            msgs.push(format!(
-                "{name}: actual={actual_ms}ms > baseline={baseline_ms}ms ceiling={ceiling}ms (factor={factor}, slack={slack_ms}ms)"
-            ));
-        }
+        super::push_ceiling(&mut msgs, name, *baseline_ms, *actual_ms);
     }
     if !baseline.plan_db_path.is_empty() && baseline.plan_db_path != actual.plan_db_path {
         msgs.push(format!(

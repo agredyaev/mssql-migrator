@@ -1,8 +1,6 @@
 use crate::timings::PhaseTimings;
 
 pub(super) fn compare_timings(baseline: &PhaseTimings, actual: &PhaseTimings) -> Vec<String> {
-    let (factor, slack_ms) = super::timing_env();
-
     let phases: &[(&str, i64, i64)] = &[
         (
             "parallel_wall_ms",
@@ -18,12 +16,7 @@ pub(super) fn compare_timings(baseline: &PhaseTimings, actual: &PhaseTimings) ->
         if *baseline_ms == 0 && *actual_ms == 0 {
             continue;
         }
-        let ceiling = ((*baseline_ms as f64) * factor).ceil() as i64 + slack_ms;
-        if *actual_ms > ceiling {
-            msgs.push(format!(
-                "{name}: actual={actual_ms}ms > baseline={baseline_ms}ms ceiling={ceiling}ms (factor={factor}, slack={slack_ms}ms)"
-            ));
-        }
+        super::push_ceiling(&mut msgs, name, *baseline_ms, *actual_ms);
     }
     msgs
 }

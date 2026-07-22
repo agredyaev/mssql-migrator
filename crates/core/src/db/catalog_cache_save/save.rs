@@ -34,10 +34,7 @@ pub async fn save_batched(
     if filtered.objects.len() != object_count {
         return Ok(());
     }
-    let payload = match marshal_rows(&filtered, object_count)? {
-        Some(p) => p,
-        None => return Ok(()),
-    };
+    let payload = marshal_rows(&filtered)?;
     let digest_hex = hex::encode(layout_digest);
     let count = object_count.to_string();
     if let Err(e) = conn
