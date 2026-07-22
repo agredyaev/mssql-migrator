@@ -1442,7 +1442,6 @@ name = "rmig"
 version = "1.0.10"
 dependencies = [
  "migrator-core",
- "serde_json",
  "tokio",
  "tracing-subscriber",
 ]

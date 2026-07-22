@@ -11,6 +11,14 @@ pub fn print_timings_json(timings: &PhaseTimings) -> Result<()> {
     Ok(())
 }
 
+/// Prints `timings` as pretty-printed JSON to stderr.
+pub fn eprint_timings_json(timings: &PhaseTimings) -> Result<()> {
+    let v =
+        serde_json::to_string_pretty(timings).map_err(|e| crate::error::Error::Other(e.into()))?;
+    eprintln!("{v}");
+    Ok(())
+}
+
 /// Prints build version information to stdout.
 pub fn print_version(json: bool) -> Result<()> {
     if json {

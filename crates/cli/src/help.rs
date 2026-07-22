@@ -4,8 +4,6 @@
 //! Provides the `--help` text and short error hint used when an unknown flag
 //! or command is encountered.
 
-use std::io::Write;
-
 /// Short hint printed when the user passes an unknown flag or command.
 pub const HELP_HINT: &str = "Run 'rmig' or 'rmig --help' for usage.";
 
@@ -51,8 +49,7 @@ Examples:
   rmig version
 ";
 
-/// Print full help text and usage examples to the given writer.
-pub fn print_help(mut w: impl Write) -> migrator_core::Result<()> {
-    write!(w, "{HELP}")?;
-    Ok(())
+/// Print full help text and usage examples to stdout.
+pub fn print_help() {
+    print!("{HELP}");
 }

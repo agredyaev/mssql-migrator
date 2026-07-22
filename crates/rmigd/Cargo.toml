@@ -4,10 +4,6 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[[bin]]
-name = "rmigd"
-path = "src/main.rs"
-
 [dependencies]
 migrator-core = { path = "../core", features = ["session-daemon"] }
 tokio = { workspace = true }
