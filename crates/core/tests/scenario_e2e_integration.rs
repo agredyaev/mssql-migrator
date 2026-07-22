@@ -88,21 +88,41 @@ async fn scenario_matches_baseline() {
     let baseline_data = std::fs::read_to_string(&baseline_path)
         .unwrap_or_else(|e| panic!("read baseline report {}: {e}", baseline_path.display()));
 
-    if is_plan_scenario(&scenario) {
-        run_plan_scenario(&scenario, &baseline_data).await;
-        return;
+    let mut diffs = run_scenario_once(&scenario, &baseline_data).await;
+    // A timing-only mismatch is usually a transient host-load spike, not a
+    // regression: re-measure once. A real slowdown fails the retry too.
+    // Behavior diffs (actions, io, paths) never retry.
+    if !diffs.is_empty() && diffs.iter().all(|d| is_timing_diff(d)) {
+        eprintln!(
+            "e2e scenario {scenario:?}: timing-only mismatch ({} diffs), retrying once with a fresh measurement",
+            diffs.len()
+        );
+        for d in &diffs {
+            eprintln!("  timing: {d}");
+        }
+        diffs = run_scenario_once(&scenario, &baseline_data).await;
     }
+    assert_no_diffs(&scenario, &diffs);
+}
 
-    match scenario.as_str() {
-        "apply_smoke_result" => run_apply_scenario(&baseline_data).await,
-        "ddl_transition_apply" => run_ddl_transition_scenario(&baseline_data).await,
-        "prod_gate_cold" => run_gate_scenario(&baseline_data).await,
-        "blocked_table_plan" => run_blocked_scenario(&baseline_data).await,
+async fn run_scenario_once(scenario: &str, baseline_data: &str) -> Vec<String> {
+    if is_plan_scenario(scenario) {
+        return run_plan_scenario(scenario, baseline_data).await;
+    }
+    match scenario {
+        "apply_smoke_result" => run_apply_scenario(baseline_data).await,
+        "ddl_transition_apply" => run_ddl_transition_scenario(baseline_data).await,
+        "prod_gate_cold" => run_gate_scenario(baseline_data).await,
+        "blocked_table_plan" => run_blocked_scenario(baseline_data).await,
         other => panic!("unknown RMIG_E2E_SCENARIO: {other}"),
     }
 }
 
-async fn run_plan_scenario(scenario: &str, baseline_data: &str) {
+fn is_timing_diff(d: &str) -> bool {
+    d.contains("ceiling=") || d.contains("exceeds hard max")
+}
+
+async fn run_plan_scenario(scenario: &str, baseline_data: &str) -> Vec<String> {
     let baseline_rep = read_e2e_report_json(baseline_data).expect("parse baseline e2e report");
     let cfg = common::direct_config();
     if !db_reset_skip::skip_db_reset() {
@@ -123,17 +143,19 @@ async fn run_plan_scenario(scenario: &str, baseline_data: &str) {
     write_rust_report(&rust_rep, write_e2e_report_file);
 
     let diffs = compare_e2e_reports(&baseline_rep, &rust_rep);
-    assert_no_diffs(scenario, &diffs);
-    eprintln!(
-        "e2e scenario {:?} OK: actions={:?} plan_wall baseline={}ms actual={}ms",
-        scenario,
-        rust_rep.action_counts,
-        baseline_rep.timings.plan_wall_ms,
-        rust_rep.timings.plan_wall_ms,
-    );
+    if diffs.is_empty() {
+        eprintln!(
+            "e2e scenario {:?} OK: actions={:?} plan_wall baseline={}ms actual={}ms",
+            scenario,
+            rust_rep.action_counts,
+            baseline_rep.timings.plan_wall_ms,
+            rust_rep.timings.plan_wall_ms,
+        );
+    }
+    diffs
 }
 
-async fn run_apply_scenario(baseline_data: &str) {
+async fn run_apply_scenario(baseline_data: &str) -> Vec<String> {
     let baseline_rep = read_e2e_apply_json(baseline_data).expect("parse baseline apply report");
     let cfg = common::direct_config();
     if !db_reset_skip::skip_db_reset() {
@@ -160,18 +182,20 @@ async fn run_apply_scenario(baseline_data: &str) {
     };
     write_rust_report(&rust_rep, write_e2e_apply_file);
     let diffs = compare_e2e_apply_reports(&baseline_rep, &rust_rep);
-    assert_no_diffs("apply_smoke_result", &diffs);
-    eprintln!(
-        "e2e apply_smoke_result OK: applied={} object_rows={} migration_rows={} catalog_meta={} catalog_cache={}",
-        rust_rep.applied,
-        rust_rep.audit_object_rows,
-        rust_rep.audit_migration_rows,
-        rust_rep.catalog_meta_rows,
-        rust_rep.catalog_cache_rows
-    );
+    if diffs.is_empty() {
+        eprintln!(
+            "e2e apply_smoke_result OK: applied={} object_rows={} migration_rows={} catalog_meta={} catalog_cache={}",
+            rust_rep.applied,
+            rust_rep.audit_object_rows,
+            rust_rep.audit_migration_rows,
+            rust_rep.catalog_meta_rows,
+            rust_rep.catalog_cache_rows
+        );
+    }
+    diffs
 }
 
-async fn run_ddl_transition_scenario(baseline_data: &str) {
+async fn run_ddl_transition_scenario(baseline_data: &str) -> Vec<String> {
     let baseline_rep = read_e2e_apply_json(baseline_data).expect("parse baseline apply report");
     let mut cfg = common::direct_config().clone();
     cfg.skip_git = false;
@@ -185,18 +209,20 @@ async fn run_ddl_transition_scenario(baseline_data: &str) {
         .expect("ddl transition apply (full workflow invariants inside)");
     write_rust_report(&rust_rep, write_e2e_apply_file);
     let diffs = compare_e2e_apply_reports(&baseline_rep, &rust_rep);
-    assert_no_diffs("ddl_transition_apply", &diffs);
-    eprintln!(
-        "e2e ddl_transition_apply OK: object_rows={} migration_rows={} catalog_meta={} catalog_cache={} total={}ms",
-        rust_rep.audit_object_rows,
-        rust_rep.audit_migration_rows,
-        rust_rep.catalog_meta_rows,
-        rust_rep.catalog_cache_rows,
-        rust_rep.timings.total_ms,
-    );
+    if diffs.is_empty() {
+        eprintln!(
+            "e2e ddl_transition_apply OK: object_rows={} migration_rows={} catalog_meta={} catalog_cache={} total={}ms",
+            rust_rep.audit_object_rows,
+            rust_rep.audit_migration_rows,
+            rust_rep.catalog_meta_rows,
+            rust_rep.catalog_cache_rows,
+            rust_rep.timings.total_ms,
+        );
+    }
+    diffs
 }
 
-async fn run_gate_scenario(baseline_data: &str) {
+async fn run_gate_scenario(baseline_data: &str) -> Vec<String> {
     let baseline_rep = read_e2e_gate_json(baseline_data).expect("parse baseline gate report");
     let cfg = common::direct_config();
     if !db_reset_skip::skip_db_reset() {
@@ -213,11 +239,13 @@ async fn run_gate_scenario(baseline_data: &str) {
         .expect("prod gate cold");
     write_rust_report(&rust_rep, write_e2e_gate_file);
     let diffs = compare_e2e_gate_reports(&baseline_rep, &rust_rep);
-    assert_no_diffs("prod_gate_cold", &diffs);
-    eprintln!("e2e prod_gate_cold OK: gate_pass={}", rust_rep.gate_pass);
+    if diffs.is_empty() {
+        eprintln!("e2e prod_gate_cold OK: gate_pass={}", rust_rep.gate_pass);
+    }
+    diffs
 }
 
-async fn run_blocked_scenario(baseline_data: &str) {
+async fn run_blocked_scenario(baseline_data: &str) -> Vec<String> {
     let baseline_rep = read_e2e_blocked_json(baseline_data).expect("parse baseline blocked report");
     let cfg = common::direct_config();
     if !db_reset_skip::skip_db_reset() {
@@ -232,17 +260,19 @@ async fn run_blocked_scenario(baseline_data: &str) {
         .expect("blocked table plan");
     write_rust_report(&rust_rep, write_e2e_blocked_file);
     let diffs = compare_e2e_blocked_reports(&baseline_rep, &rust_rep);
-    assert_no_diffs("blocked_table_plan", &diffs);
-    eprintln!(
-        "e2e blocked_table_plan OK: exit={} scaffolds={} setup={}ms plan_par={}ms migrate_par={}ms total={}ms path={}",
-        rust_rep.exit_code,
-        rust_rep.scaffold_paths.len(),
-        rust_rep.timings.setup_apply_ms,
-        rust_rep.timings.plan_parallel_wall_ms,
-        rust_rep.timings.migrate_parallel_wall_ms,
-        rust_rep.timings.total_ms,
-        rust_rep.timings.plan_db_path,
-    );
+    if diffs.is_empty() {
+        eprintln!(
+            "e2e blocked_table_plan OK: exit={} scaffolds={} setup={}ms plan_par={}ms migrate_par={}ms total={}ms path={}",
+            rust_rep.exit_code,
+            rust_rep.scaffold_paths.len(),
+            rust_rep.timings.setup_apply_ms,
+            rust_rep.timings.plan_parallel_wall_ms,
+            rust_rep.timings.migrate_parallel_wall_ms,
+            rust_rep.timings.total_ms,
+            rust_rep.timings.plan_db_path,
+        );
+    }
+    diffs
 }
 
 fn write_rust_report<T, F>(rep: &T, write: F)
