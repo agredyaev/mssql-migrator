@@ -4,7 +4,7 @@ members = ["crates/cli", "crates/core", "crates/core-dev", "crates/rmigd"]
 default-members = ["crates/cli", "crates/rmigd"]
 
 [workspace.package]
-version = "1.0.13"
+version = "1.0.14"
 edition = "2021"
 # MSRV == the pinned CI toolchain: these are binaries with no downstream library
 # consumers, so "supported Rust" is simply what we build and test on.
