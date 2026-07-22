@@ -7,7 +7,7 @@
     {
       "package": "domain",
       "type": "WorkspaceCold",
-      "bytes": 880
+      "bytes": 864
     },
     {
       "package": "export",
@@ -22,7 +22,7 @@
     {
       "package": "timings",
       "type": "PhaseTimings",
-      "bytes": 192
+      "bytes": 184
     },
     {
       "package": "config",
