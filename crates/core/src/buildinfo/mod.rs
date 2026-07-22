@@ -28,7 +28,7 @@ pub fn version() -> &'static str {
 /// Sourced git commit short hash from compile-time `RMIG_COMMIT` or returns `unknown`.
 pub fn commit() -> &'static str {
     match option_env!("RMIG_COMMIT") {
-        Some(c) if !c.trim().is_empty() && c.trim() != "unknown" => short_rev(c.trim()),
+        Some(c) if !c.trim().is_empty() && c.trim() != "unknown" => c.trim(),
         _ => "unknown",
     }
 }
@@ -54,13 +54,6 @@ pub fn write_json(mut w: impl Write) -> Result<()> {
     w.write_all(b"\n")
         .map_err(|e| Error::InvalidInput(e.to_string()))?;
     Ok(())
-}
-
-fn short_rev(s: &str) -> &str {
-    // `git rev-parse --short` already chose a collision-free abbreviation
-    // (which can exceed 7 in large repos); truncating further would alias
-    // distinct commits in version output.
-    s.trim()
 }
 
 #[cfg(test)]
@@ -100,13 +93,5 @@ mod tests {
             v.get("author").and_then(|x| x.as_str()),
             Some("Aleksey Gredyaev")
         );
-    }
-
-    /// Git's own `--short` abbreviation is collision-free at whatever length
-    /// Git chose; further truncation would alias distinct commits.
-    #[test]
-    fn short_rev_preserves_git_abbreviation_regression() {
-        assert_eq!(short_rev("abcdef1"), "abcdef1");
-        assert_eq!(short_rev("abcdef123456"), "abcdef123456");
     }
 }

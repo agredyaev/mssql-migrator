@@ -32,14 +32,14 @@ impl Drop for EnvGuard {
 fn process_environment_token_is_loaded_happy_path() {
     let _guard = EnvGuard::new();
     std::env::set_var("RMIG_SESSION_TOKEN", "shell-token");
-    let cfg = build_config(&TomlConfig::default(), false);
+    let cfg = build_config(&TomlConfig::default());
     assert_eq!(resolve_session_token(Some(&cfg)), "shell-token");
 }
 
 #[test]
 fn missing_process_environment_token_stays_empty_negative_path() {
     let _guard = EnvGuard::new();
-    let cfg = build_config(&TomlConfig::default(), false);
+    let cfg = build_config(&TomlConfig::default());
     assert!(resolve_session_token(Some(&cfg)).is_empty());
 }
 

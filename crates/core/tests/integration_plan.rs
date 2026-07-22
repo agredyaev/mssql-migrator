@@ -49,7 +49,7 @@ async fn ensure_catalog_databases_ready() {
         .get_or_init(|| async {
             let file =
                 load_toml_config(&common::repo_root().join("config.toml")).expect("load config");
-            let mut cfg = build_config(&file, true);
+            let mut cfg = build_config(&file);
             validate_config(&mut cfg).expect("valid slo config");
             let dbs = discover_catalog_databases(&cfg.sql_root).expect("discover catalog dbs");
             ensure_catalog_databases_exist(&cfg, &dbs)

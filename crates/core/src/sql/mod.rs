@@ -59,8 +59,6 @@ pub mod catalog {
         include_str!("../../../../sql/catalog/catalog_cache_load_relaxed.sql");
     pub const CACHE_INVALIDATE: &str =
         include_str!("../../../../sql/catalog/catalog_cache_invalidate.sql");
-    pub const CACHE_INSERT: &str =
-        include_str!("../../../../sql/catalog/catalog_cache_insert_openjson.sql");
     pub const ROWS_PROJECTION: &str = include_str!("../../../../sql/catalog/rows_projection.sql");
 }
 

@@ -80,7 +80,7 @@ async fn run_command_line(
         Some(path) => load_toml_config_required(std::path::Path::new(path))?,
         None => load_toml_config(std::path::Path::new("config.toml"))?,
     };
-    let mut cfg = build_config(&file, json);
+    let mut cfg = build_config(&file);
     init_tracing(&cfg.log_level);
     validate_config(&mut cfg)?;
     let outcome = tokio::select! {

@@ -26,7 +26,8 @@ fn audit_identity_columns_are_nvarchar_regression() {
         "OPENJSON projection must not narrow the key"
     );
     assert!(
-        catalog::CACHE_INSERT.contains("normalized_key NVARCHAR(512)"),
+        include_str!("../../../../sql/catalog/catalog_cache_insert_openjson.sql")
+            .contains("normalized_key NVARCHAR(512)"),
         "cache OPENJSON projection must not narrow the key"
     );
 }

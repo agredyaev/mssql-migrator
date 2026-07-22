@@ -39,7 +39,7 @@ fn repo_root() -> std::path::PathBuf {
 
 fn test_cfg(sql_root: &Path) -> Config {
     let file = load_toml_config(&repo_root().join("config.toml")).expect("load config");
-    let mut cfg = build_config(&file, true);
+    let mut cfg = build_config(&file);
     if cfg.server.is_empty() {
         cfg.server = "127.0.0.1".into();
     }
