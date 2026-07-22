@@ -32,7 +32,6 @@ pub fn compute_diff_into(
     plan: &mut MigrationPlan,
 ) -> Result<i64> {
     let t0 = Instant::now();
-    ws.set_blocked(false);
     if !ws.object_entries.is_empty()
         && (ws.object_rows.is_empty() || ws.object_rows.len() != ws.object_entries.len())
     {

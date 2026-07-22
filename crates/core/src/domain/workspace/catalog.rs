@@ -1,4 +1,4 @@
-use super::{Workspace, CATALOG_APPLIED, CHECKSUMS_APPLIED, WORKSPACE_FLAG_BLOCKED};
+use super::{Workspace, CATALOG_APPLIED, CHECKSUMS_APPLIED};
 
 impl Workspace {
     /// Clears cached transition-path data, forcing a reload on next access.
@@ -17,12 +17,6 @@ impl Workspace {
         for obj in &mut self.object_entries {
             obj.set_db_exists(false);
         }
-    }
-
-    #[inline]
-    /// Returns the recorded prior digest for the row at index `i`, if any.
-    pub fn prior_digest(&self, i: usize) -> Option<[u8; 32]> {
-        self.prior_by_row.get(i).and_then(|o| *o)
     }
 
     #[inline]
@@ -59,21 +53,5 @@ impl Workspace {
     /// Marks object checksums as applied.
     pub fn mark_checksums_applied(&mut self) {
         self.catalog_flags |= CHECKSUMS_APPLIED;
-    }
-
-    #[inline]
-    /// Returns `true` when the workspace is in a blocked state.
-    pub fn blocked(&self) -> bool {
-        self.catalog_flags & WORKSPACE_FLAG_BLOCKED != 0
-    }
-
-    #[inline]
-    /// Sets or clears the blocked flag on the workspace.
-    pub fn set_blocked(&mut self, on: bool) {
-        if on {
-            self.catalog_flags |= WORKSPACE_FLAG_BLOCKED;
-        } else {
-            self.catalog_flags &= !WORKSPACE_FLAG_BLOCKED;
-        }
     }
 }

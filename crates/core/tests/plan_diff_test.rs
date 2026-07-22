@@ -77,5 +77,5 @@ fn transition_filename_parsed() {
     std::fs::write(&path, b"ALTER TABLE t ADD x int").unwrap();
     let mut ws = Workspace::default();
     transition::ingest(&mut ws, rel, &path).unwrap();
-    assert_eq!(ws.script_count(), 1);
+    assert_eq!(ws.script_rows.len(), 1);
 }

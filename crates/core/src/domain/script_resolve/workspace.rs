@@ -1,4 +1,4 @@
-use crate::domain::script::{Script, ScriptGit, ScriptGitStaging};
+use crate::domain::script::{Script, ScriptGitStaging};
 use crate::domain::Workspace;
 
 use super::ScriptRef;
@@ -27,11 +27,6 @@ impl Workspace {
     /// Returns an iterator over all scripts in the workspace as `ScriptRef` views.
     pub fn scripts_iter(&self) -> impl Iterator<Item = ScriptRef<'_>> + '_ {
         (1..=self.script_rows.len() as u32).map(move |id| self.script(id))
-    }
-
-    /// Returns or inserts a `ScriptGit` entry for `script_id`.
-    pub fn ensure_script_git(&mut self, script_id: u32) -> &mut ScriptGit {
-        self.script_git.entry(script_id).or_default()
     }
 
     /// Returns or inserts a `ScriptGitStaging` entry for `script_id`.

@@ -28,7 +28,7 @@ fn sample_ws() -> Workspace {
         ObjectEntry::with_staging_key(parent.clone(), parent_sid, [1; 32], false, db_id),
         ObjectEntry::with_staging_key(trig.clone(), trig_sid, [2; 32], false, db_id),
     ]);
-    ws.insert_parent_row(2, ParentRef { parent_row_id: 1 });
+    ws.parent_by_row.insert(2, ParentRef { parent_row_id: 1 });
     ws
 }
 

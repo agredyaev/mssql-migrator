@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
@@ -34,12 +33,6 @@ impl fmt::Display for SharedStr {
 
 impl AsRef<str> for SharedStr {
     fn as_ref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl Borrow<str> for SharedStr {
-    fn borrow(&self) -> &str {
         self.as_str()
     }
 }

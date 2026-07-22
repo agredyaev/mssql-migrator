@@ -90,7 +90,7 @@ fn scan_skips_symlinked_sql_files() {
     scan_root(&mut ws, root.to_str().expect("utf8 path")).expect("scan");
 
     assert_eq!(ws.object_count(), 1);
-    assert_eq!(ws.script_count(), 1);
+    assert_eq!(ws.script_rows.len(), 1);
     let paths: Vec<_> = ws
         .scripts_iter()
         .map(|s| s.path_str().to_string())

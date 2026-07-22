@@ -19,9 +19,3 @@ impl From<String> for ObjectKey {
         Self(share(s))
     }
 }
-
-impl From<String> for ScriptKey {
-    fn from(s: String) -> Self {
-        Self(share(s))
-    }
-}
