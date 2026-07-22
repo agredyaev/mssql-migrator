@@ -18,11 +18,14 @@ pub async fn handle(client: &mut RawClient, req: Request) -> Response {
         Request::Query { sql, params } => match query(client, &sql, &params).await {
             Ok(rows) => Response {
                 ok: true,
-                error: String::new(),
                 rows,
+                ..Default::default()
             },
             Err(e) => Response::err(e.to_string()),
         },
+        // Stats is answered at the daemon level (no SQL Server round-trip);
+        // it never reaches this handler.
+        Request::Stats {} => Response::err("stats handled at daemon level"),
     }
 }
 

@@ -70,6 +70,7 @@ Product SLO (`cli_wall_ms` < 150 ms) uses `RMIG_SESSION` plus warm SQL Server qu
 ## Operations and recovery
 
 - Start `rmigd` before CLI when using `RMIG_SESSION` for the warm path; a missing daemon socket falls back to direct connect automatically.
+- Health/metrics: send `{"op":"stats"}` (after `auth`) to the socket. The daemon replies with `Response.stats`, a JSON blob `{uptime_s, requests, reconnects, queue_waits, warm_connection}` from `session/daemon/metrics.rs`. It touches no SQL Server, so it doubles as a liveness/readiness probe (`warm_connection` reports whether the shared TDS session is connected). Reconnects and >100 ms warm-session queue waits are also logged via `tracing` on the daemon's stderr.
 
 ## Open issues and non-goals
 

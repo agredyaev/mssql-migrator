@@ -10,11 +10,51 @@ use crate::error::{Error, Result};
 use super::super::daemon_rpc;
 use super::super::protocol::{Request, Response};
 
+/// Warn/count when acquiring the single warm session took longer than this (ms):
+/// evidence of head-of-line queueing (the documented risk that would justify a
+/// session pool).
+const WARM_SESSION_WAIT_WARN_MS: u64 = 100;
+
 pub(super) async fn reconnect(client: &mut Option<RawClient>, cfg: &Config) -> Result<()> {
     if client.is_none() {
         *client = Some(crate::driver::connect(cfg).await?.client);
+        super::metrics::record_reconnect();
+        let (uptime, requests, reconnects, _) = super::metrics::snapshot();
+        tracing::info!(
+            reconnects,
+            requests,
+            uptime_s = uptime,
+            "rmigd: reconnected warm session"
+        );
     }
     Ok(())
+}
+
+/// Acquire (and lazily reconnect) the shared warm session into `session`.
+/// Returns `Ok(false)` when the caller should stop after an error was written.
+pub(super) async fn acquire_session(
+    session: &mut Option<tokio::sync::OwnedMutexGuard<Option<RawClient>>>,
+    client: &Arc<tokio::sync::Mutex<Option<RawClient>>>,
+    cfg: &Config,
+    write_half: &mut tokio::net::unix::OwnedWriteHalf,
+) -> Result<bool> {
+    if session.is_some() {
+        return Ok(true);
+    }
+    let t_wait = std::time::Instant::now();
+    let mut guard = client.clone().lock_owned().await;
+    let waited_ms = t_wait.elapsed().as_millis() as u64;
+    if waited_ms > WARM_SESSION_WAIT_WARN_MS {
+        super::metrics::record_queue_wait();
+        tracing::warn!(waited_ms, "rmigd: queued for warm session");
+    }
+    if let Err(e) = reconnect(&mut guard, cfg).await {
+        let msg = format!("rmigd: database reconnect failed: {e}");
+        super::reply::write_response(write_half, Response::err(msg)).await?;
+        return Ok(false);
+    }
+    *session = Some(guard);
+    Ok(true)
 }
 
 pub(super) async fn dispatch(
