@@ -3,15 +3,6 @@
 use crate::db::catalog;
 use crate::sql;
 
-/// Plan-path bootstrap: tables + drift trigger (index deferred to apply).
-pub fn plan_bootstrap_tables_sql() -> String {
-    format!(
-        "{}\n{}\n",
-        sql::audit::BOOTSTRAP_TABLES,
-        sql::audit::BOOTSTRAP_DRIFT
-    )
-}
-
 struct PlanDbBatchSqlOpts<'a> {
     kinds: &'a [&'a str],
     bootstrap: bool,

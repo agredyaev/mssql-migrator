@@ -33,7 +33,7 @@ mod endpoint;
 mod reply;
 mod serve;
 mod serve_loop;
-use super::socket::{resolve_socket_path, restrict_socket_mode};
+use super::socket::restrict_socket_mode;
 use serve::serve;
 
 /// Starts the rmigd Unix-socket daemon, accepting connections until the process exits.
@@ -44,8 +44,6 @@ pub async fn run_daemon(socket: &Path, cfg: Config) -> anyhow::Result<()> {
     let reconnect_cfg = Arc::new(cfg.clone());
     let socket = if !cfg.session_socket.is_empty() {
         std::path::PathBuf::from(&cfg.session_socket)
-    } else if socket.as_os_str().is_empty() {
-        resolve_socket_path()?
     } else {
         socket.to_path_buf()
     };

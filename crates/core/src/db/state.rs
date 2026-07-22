@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 use crate::domain::{share, ObjectKey, SharedStr};
 
 pub use super::ChecksumMap;
-pub use crate::domain::key_fingerprint;
 
 /// Full catalog snapshot: known schemas and objects keyed by [`ObjectKey`].
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
