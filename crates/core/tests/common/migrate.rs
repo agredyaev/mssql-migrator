@@ -56,9 +56,9 @@ pub async fn smoke_baseline_ready(cfg: &Config, conn: &mut TimingConn) -> Result
             &[],
         )
         .await?;
-    let row = rows
-        .first()
-        .ok_or_else(|| Error::Other(anyhow::anyhow!("smoke baseline probe returned no rows")))?;
+    let row = rows.first().ok_or_else(|| {
+        Error::Other(anyhow::anyhow!("smoke baseline probe returned no rows").into())
+    })?;
     if row.get_i32(0).unwrap_or(0) == 0 {
         return Ok(false);
     }
@@ -79,14 +79,14 @@ pub async fn smoke_baseline_ready(cfg: &Config, conn: &mut TimingConn) -> Result
     }
     if cfg.catalog_cache {
         if row.get_i32(6).unwrap_or(0) < 1 {
-            return Err(Error::Other(anyhow::anyhow!(
-                "catalog_meta empty with RMIG_CATALOG_CACHE enabled"
-            )));
+            return Err(Error::Other(
+                anyhow::anyhow!("catalog_meta empty with RMIG_CATALOG_CACHE enabled").into(),
+            ));
         }
         if row.get_i32(7).unwrap_or(0) < 1 {
-            return Err(Error::Other(anyhow::anyhow!(
-                "catalog_cache empty with RMIG_CATALOG_CACHE enabled"
-            )));
+            return Err(Error::Other(
+                anyhow::anyhow!("catalog_cache empty with RMIG_CATALOG_CACHE enabled").into(),
+            ));
         }
     }
     Ok(true)
@@ -175,34 +175,43 @@ pub fn assert_catalog_cache_when_enabled(cfg: &Config, snap: &AuditDbSnapshot) -
         return Ok(());
     }
     if snap.catalog_meta_rows < 1 {
-        return Err(Error::Other(anyhow::anyhow!(
-            "catalog_meta empty with RMIG_CATALOG_CACHE enabled (rows={})",
-            snap.catalog_meta_rows
-        )));
+        return Err(Error::Other(
+            anyhow::anyhow!(
+                "catalog_meta empty with RMIG_CATALOG_CACHE enabled (rows={})",
+                snap.catalog_meta_rows
+            )
+            .into(),
+        ));
     }
     if snap.catalog_cache_rows < 1 {
-        return Err(Error::Other(anyhow::anyhow!(
-            "catalog_cache empty with RMIG_CATALOG_CACHE enabled (rows={})",
-            snap.catalog_cache_rows
-        )));
+        return Err(Error::Other(
+            anyhow::anyhow!(
+                "catalog_cache empty with RMIG_CATALOG_CACHE enabled (rows={})",
+                snap.catalog_cache_rows
+            )
+            .into(),
+        ));
     }
     Ok(())
 }
 
 pub fn assert_migration_history(snap: &AuditDbSnapshot, keys: &[String]) -> Result<()> {
     if snap.audit_migration_rows < 1 {
-        return Err(Error::Other(anyhow::anyhow!(
-            "expected migration history rows, got {}",
-            snap.audit_migration_rows
-        )));
+        return Err(Error::Other(
+            anyhow::anyhow!(
+                "expected migration history rows, got {}",
+                snap.audit_migration_rows
+            )
+            .into(),
+        ));
     }
     let ok = keys
         .iter()
         .any(|k| k.contains("_migrations/") && k.ends_with(".sql"));
     if !ok {
-        return Err(Error::Other(anyhow::anyhow!(
-            "migration history keys missing _migrations/*.sql: {keys:?}"
-        )));
+        return Err(Error::Other(
+            anyhow::anyhow!("migration history keys missing _migrations/*.sql: {keys:?}").into(),
+        ));
     }
     Ok(())
 }
@@ -215,10 +224,13 @@ pub async fn verify_cold_apply_report(cfg: &Config, out: &ApplySmokeOut) -> Resu
     );
     let snap = snapshot_audit_db(&mut conn).await?;
     if snap != out.audit {
-        return Err(Error::Other(anyhow::anyhow!(
-            "audit snapshot mismatch: db={snap:?} report={:?}",
-            out.audit
-        )));
+        return Err(Error::Other(
+            anyhow::anyhow!(
+                "audit snapshot mismatch: db={snap:?} report={:?}",
+                out.audit
+            )
+            .into(),
+        ));
     }
     super::e2e_verify::verify_cold_apply(cfg, &mut conn, &snap).await
 }

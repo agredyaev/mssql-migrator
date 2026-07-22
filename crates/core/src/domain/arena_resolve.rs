@@ -1,6 +1,5 @@
 use super::arena::LayoutArena;
-use super::key::{ObjectKey, ScriptKey};
-use super::key_fingerprint;
+use super::key::ObjectKey;
 use super::shared::SharedStr;
 use super::str_off::StrOff;
 use super::Workspace;
@@ -29,17 +28,6 @@ impl Workspace {
     /// Resolves an `ObjectKey` from a layout `StrOff`.
     pub fn object_key(&self, key_off: StrOff) -> ObjectKey {
         ObjectKey::from(self.shared_at(key_off))
-    }
-
-    /// Resolves a `ScriptKey` from a layout `StrOff`.
-    pub fn script_key(&self, path_off: StrOff) -> ScriptKey {
-        ScriptKey::from(self.shared_at(path_off))
-    }
-
-    /// `ChecksumMap` lookup key from layout `key_off` (no `ObjectKey` alloc; fingerprint via [`super::key_fingerprint`]).
-    pub fn key_off_fingerprint(&self, off: StrOff) -> u64 {
-        let (o, len) = (off.0, off.1);
-        key_fingerprint(self.layout_arena().slice_bytes(o, len))
     }
 }
 

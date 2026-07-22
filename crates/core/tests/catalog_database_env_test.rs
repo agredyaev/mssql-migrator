@@ -93,7 +93,7 @@ fn config_for(root: &Path) -> migrator_core::Config {
     )
     .expect("write config");
     let file = load_toml_config_required(&config_path).expect("load config");
-    build_config(&file, false)
+    build_config(&file)
 }
 
 #[test]

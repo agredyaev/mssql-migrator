@@ -4,12 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[[bin]]
-name = "rmig"
-path = "src/main.rs"
-
 [dependencies]
 migrator-core = { path = "../core" }
-serde_json = "1"
 tokio = { workspace = true }
 tracing-subscriber = { workspace = true }

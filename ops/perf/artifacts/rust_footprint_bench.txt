@@ -1,16 +1,15 @@
-# rmig-profile revision=77dfe72948456688a99903f8a86fef9255bacfdf version=1.0.10 target=aarch64-apple-darwin dirty=true
-   Compiling migrator-core-dev v1.0.10 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core-dev)
-    Finished `bench` profile [optimized + debuginfo] target(s) in 4.91s
-     Running benches/plan_diff.rs (target/release/deps/plan_diff-b44e4e0d05ee17a0)
+# rmig-profile revision=79855cabc797dc4c6b9eb672856fa02af3c75e63 version=1.0.10 target=aarch64-apple-darwin dirty=false
+    Finished `bench` profile [optimized + debuginfo] target(s) in 0.21s
+     Running benches/plan_diff.rs (target/release/deps/plan_diff-9bd9dbf13f1d9136)
 Gnuplot not found, using plotters backend
 Benchmarking plan_diff_skip_heavy_5000
 Benchmarking plan_diff_skip_heavy_5000: Warming up for 3.0000 s
-Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.6956 s (30k iterations)
+Benchmarking plan_diff_skip_heavy_5000: Collecting 100 samples in estimated 5.6747 s (30k iterations)
 Benchmarking plan_diff_skip_heavy_5000: Analyzing
 plan_diff_skip_heavy_5000
-                        time:   [189.80 µs 190.30 µs 190.96 µs]
-Found 14 outliers among 100 measurements (14.00%)
-  12 (12.00%) low mild
-  1 (1.00%) high mild
-  1 (1.00%) high severe
+                        time:   [188.93 µs 197.88 µs 210.04 µs]
+Found 17 outliers among 100 measurements (17.00%)
+  11 (11.00%) low mild
+  3 (3.00%) high mild
+  3 (3.00%) high severe
 

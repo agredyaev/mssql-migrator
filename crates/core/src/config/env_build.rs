@@ -4,7 +4,7 @@ use super::env_parse::{apply_tls, parse_bool, set_timeout};
 use super::TomlConfig;
 
 /// Builds a config with process environment taking precedence over typed TOML.
-pub fn build_config(file: &TomlConfig, json_logs: bool) -> Config {
+pub fn build_config(file: &TomlConfig) -> Config {
     let mut cfg = Config::default();
     let get = |name: &str, value: Option<String>| std::env::var(name).ok().or(value);
     cfg.sql_root = get("RM_SQL_ROOT", file.paths.sql_root.clone()).unwrap_or_default();
@@ -64,7 +64,6 @@ pub fn build_config(file: &TomlConfig, json_logs: bool) -> Config {
         &mut cfg.command_timeout,
     );
     apply_tls(&mut cfg, file);
-    cfg.json_logs = json_logs;
     if let Ok(n) = get(
         "RMIG_SLO_MAX_CLI_WALL_MS",
         file.execution.slo_max_cli_wall_ms.map(|v| v.to_string()),

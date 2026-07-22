@@ -1,5 +1,6 @@
 use super::super::timing_compare::compare_workflow_timings;
 use super::super::types::E2EApplyReport;
+use super::diff_field;
 
 /// Compares two `E2EApplyReport` values and returns a list of mismatch descriptions.
 pub fn compare_e2e_apply_reports(
@@ -7,54 +8,34 @@ pub fn compare_e2e_apply_reports(
     actual: &E2EApplyReport,
 ) -> Vec<String> {
     let mut msgs = Vec::new();
-    if baseline.scenario != actual.scenario {
-        msgs.push(format!(
-            "scenario: baseline={} actual={}",
-            baseline.scenario, actual.scenario
-        ));
-    }
-    if baseline.applied != actual.applied {
-        msgs.push(format!(
-            "applied: baseline={} actual={}",
-            baseline.applied, actual.applied
-        ));
-    }
-    if baseline.failed != actual.failed {
-        msgs.push(format!(
-            "failed: baseline={} actual={}",
-            baseline.failed, actual.failed
-        ));
-    }
-    if baseline.skipped != actual.skipped {
-        msgs.push(format!(
-            "skipped: baseline={} actual={}",
-            baseline.skipped, actual.skipped
-        ));
-    }
-    if baseline.audit_object_rows != actual.audit_object_rows {
-        msgs.push(format!(
-            "audit_object_rows: baseline={} actual={}",
-            baseline.audit_object_rows, actual.audit_object_rows
-        ));
-    }
-    if baseline.audit_migration_rows != actual.audit_migration_rows {
-        msgs.push(format!(
-            "audit_migration_rows: baseline={} actual={}",
-            baseline.audit_migration_rows, actual.audit_migration_rows
-        ));
-    }
-    if baseline.catalog_meta_rows != actual.catalog_meta_rows {
-        msgs.push(format!(
-            "catalog_meta_rows: baseline={} actual={}",
-            baseline.catalog_meta_rows, actual.catalog_meta_rows
-        ));
-    }
-    if baseline.catalog_cache_rows != actual.catalog_cache_rows {
-        msgs.push(format!(
-            "catalog_cache_rows: baseline={} actual={}",
-            baseline.catalog_cache_rows, actual.catalog_cache_rows
-        ));
-    }
+    diff_field(&mut msgs, "scenario", &baseline.scenario, &actual.scenario);
+    diff_field(&mut msgs, "applied", &baseline.applied, &actual.applied);
+    diff_field(&mut msgs, "failed", &baseline.failed, &actual.failed);
+    diff_field(&mut msgs, "skipped", &baseline.skipped, &actual.skipped);
+    diff_field(
+        &mut msgs,
+        "audit_object_rows",
+        &baseline.audit_object_rows,
+        &actual.audit_object_rows,
+    );
+    diff_field(
+        &mut msgs,
+        "audit_migration_rows",
+        &baseline.audit_migration_rows,
+        &actual.audit_migration_rows,
+    );
+    diff_field(
+        &mut msgs,
+        "catalog_meta_rows",
+        &baseline.catalog_meta_rows,
+        &actual.catalog_meta_rows,
+    );
+    diff_field(
+        &mut msgs,
+        "catalog_cache_rows",
+        &baseline.catalog_cache_rows,
+        &actual.catalog_cache_rows,
+    );
     if baseline.errors != actual.errors {
         msgs.push(format!(
             "errors: baseline={:?} actual={:?}",

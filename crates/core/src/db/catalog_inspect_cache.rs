@@ -8,37 +8,28 @@
 //! - `try_get_unless_bypassed` returns `None` when the cached state is empty
 //!   (both objects and schemas empty) to force a re-inspect rather than
 //!   treating an empty catalog as a cache hit.
-//! - Uses a process-global `OnceLock<Mutex<HashMap<...>>>`. Accessors recover
-//!   poisoned mutexes and log the event so one panicked worker does not crash
+//! - Uses a process-global `LazyLock<Mutex<HashMap<...>>>`. The accessor recovers
+//!   poisoned mutexes and logs the event so one panicked worker does not crash
 //!   all later commands in the same process.
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{LazyLock, Mutex, MutexGuard};
 
 use crate::db::state::CatalogState;
 use crate::driver::io_profile::lock_unpoisoned;
 
-static INSPECT_CACHE: OnceLock<Mutex<HashMap<String, CatalogState>>> = OnceLock::new();
+static INSPECT_CACHE: LazyLock<Mutex<HashMap<String, CatalogState>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
-fn inspect_cache() -> &'static Mutex<HashMap<String, CatalogState>> {
-    INSPECT_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn lock_cache<'a>(
-    cache: &'a Mutex<HashMap<String, CatalogState>>,
-) -> MutexGuard<'a, HashMap<String, CatalogState>> {
-    if cache.is_poisoned() {
+fn lock_inspect_cache() -> MutexGuard<'static, HashMap<String, CatalogState>> {
+    if INSPECT_CACHE.is_poisoned() {
         tracing::warn!(
             cache = "catalog_inspect",
             "process-local catalog inspect cache mutex was poisoned; recovering cached state"
         );
     }
-    lock_unpoisoned(cache)
-}
-
-fn lock_inspect_cache() -> MutexGuard<'static, HashMap<String, CatalogState>> {
-    lock_cache(inspect_cache())
+    lock_unpoisoned(&INSPECT_CACHE)
 }
 
 fn cache_key(db_fp: &str, layout_digest: &[u8; 32], scope_json: &str) -> String {

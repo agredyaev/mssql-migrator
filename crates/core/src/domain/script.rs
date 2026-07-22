@@ -8,11 +8,6 @@ use super::key::ScriptKey;
 use super::shared::SharedStr;
 use super::str_off::StrOff;
 
-/// Bit flag: script is a generated scaffold file.
-pub const SCRIPT_FLAG_SCAFFOLD: u8 = 1 << 0;
-/// Bit flag: script has an associated checksum.
-pub const SCRIPT_FLAG_HAS_CHECKSUM: u8 = 1 << 1;
-
 /// Classification of a script file in the SQL tree.
 ///
 /// `#[repr(u8)]` keeps the enum a single byte so [`ScriptRow`] stays dense.
@@ -36,8 +31,6 @@ pub struct ScriptRow {
     pub abs_path_off: StrOff,
     /// Script classification.
     pub kind: ScriptKind,
-    /// Bit-field: SCRIPT_FLAG_SCAFFOLD | SCRIPT_FLAG_HAS_CHECKSUM.
-    pub flags: u8,
 }
 
 /// Git preload side table entry (cleared after arena intern).
@@ -73,39 +66,16 @@ pub struct Script {
     pub abs_path: SharedStr,
     /// Optional SHA-256 checksum.
     pub checksum: Option<[u8; 32]>,
-    /// True when this is a generated scaffold file.
-    pub scaffold: bool,
 }
 
 impl Script {
     /// Consume `Script` into a dense `(ScriptRow, Option<checksum>)` pair.
     pub fn into_parts(self) -> (ScriptRow, Option<[u8; 32]>) {
-        let mut flags = 0u8;
-        if self.scaffold {
-            flags |= SCRIPT_FLAG_SCAFFOLD;
-        }
-        let checksum = self.checksum;
-        if checksum.is_some() {
-            flags |= SCRIPT_FLAG_HAS_CHECKSUM;
-        }
         let row = ScriptRow {
             path_off: StrOff::EMPTY,
             abs_path_off: StrOff::EMPTY,
             kind: self.kind,
-            flags,
         };
-        (row, checksum)
-    }
-}
-
-impl ScriptRow {
-    /// True when the script is a generated scaffold.
-    pub fn scaffold(&self) -> bool {
-        self.flags & SCRIPT_FLAG_SCAFFOLD != 0
-    }
-
-    /// True when the script has an associated checksum.
-    pub fn has_checksum(&self) -> bool {
-        self.flags & SCRIPT_FLAG_HAS_CHECKSUM != 0
+        (row, self.checksum)
     }
 }

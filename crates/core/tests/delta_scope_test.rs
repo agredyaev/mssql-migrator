@@ -14,21 +14,19 @@ fn sample_ws() -> Workspace {
         kind: ScriptKind::Object,
         abs_path: share("db/smoke/tables/t1.sql"),
         checksum: Some([1; 32]),
-        scaffold: false,
     });
     let trig_sid = ws.insert_script(Script {
         key: ScriptKey::from_path("db/smoke/triggers/tr.sql"),
         kind: ScriptKind::Object,
         abs_path: share("db/smoke/triggers/tr.sql"),
         checksum: Some([2; 32]),
-        scaffold: false,
     });
     let db_id = ws.intern_database(share("db"));
     ws.adopt_dense_entries(vec![
         ObjectEntry::with_staging_key(parent.clone(), parent_sid, [1; 32], false, db_id),
         ObjectEntry::with_staging_key(trig.clone(), trig_sid, [2; 32], false, db_id),
     ]);
-    ws.insert_parent_row(2, ParentRef { parent_row_id: 1 });
+    ws.parent_by_row.insert(2, ParentRef { parent_row_id: 1 });
     ws
 }
 
@@ -46,7 +44,6 @@ fn wide_ws() -> Workspace {
             kind: ScriptKind::Object,
             abs_path: share(path),
             checksum: Some(checksum),
-            scaffold: false,
         });
         entries.push(ObjectEntry::with_staging_key(
             key, sid, checksum, false, db_id,

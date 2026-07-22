@@ -1,4 +1,4 @@
-use super::super::key::{ObjectKey, ScriptKey};
+use super::super::key::ObjectKey;
 use super::super::shared::SharedStr;
 use super::ObjectEntry;
 
@@ -51,11 +51,6 @@ impl ObjectEntry {
     /// Returns the filesystem path of the script backing this entry.
     pub fn script_path<'a>(&self, ws: &'a super::super::Workspace) -> &'a str {
         ws.script(self.script_id).path_str()
-    }
-
-    /// Returns the `ScriptKey` for the script backing this entry.
-    pub fn script_key(&self, ws: &super::super::Workspace) -> ScriptKey {
-        ws.script(self.script_id).key()
     }
 }
 

@@ -43,7 +43,7 @@ pub enum Error {
     /// Advisory lock could not be acquired within the timeout.
     LockTimeout,
     /// Uncategorized error from a dependency.
-    Other(anyhow::Error),
+    Other(Box<dyn std::error::Error + Send + Sync>),
 }
 
 /// Convenience alias for `std::result::Result<T, Error>`.
@@ -109,8 +109,8 @@ impl From<std::io::Error> for Error {
     }
 }
 
-impl From<anyhow::Error> for Error {
-    fn from(e: anyhow::Error) -> Self {
+impl From<Box<dyn std::error::Error + Send + Sync>> for Error {
+    fn from(e: Box<dyn std::error::Error + Send + Sync>) -> Self {
         Self::Other(e)
     }
 }

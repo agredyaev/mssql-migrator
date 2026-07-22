@@ -18,7 +18,7 @@ fn repo_root() -> std::path::PathBuf {
 pub fn workflow_config() -> &'static Config {
     WORKFLOW_CFG.get_or_init(|| {
         let file = load_toml_config(&repo_root().join("config.toml")).expect("load config");
-        let mut cfg = build_config(&file, true);
+        let mut cfg = build_config(&file);
         if cfg.server.is_empty() {
             cfg.server = "127.0.0.1".into();
         }

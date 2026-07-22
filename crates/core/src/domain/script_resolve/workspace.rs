@@ -1,4 +1,4 @@
-use crate::domain::script::{Script, ScriptGit, ScriptGitStaging};
+use crate::domain::script::{Script, ScriptGitStaging};
 use crate::domain::Workspace;
 
 use super::ScriptRef;
@@ -29,11 +29,6 @@ impl Workspace {
         (1..=self.script_rows.len() as u32).map(move |id| self.script(id))
     }
 
-    /// Returns or inserts a `ScriptGit` entry for `script_id`.
-    pub fn ensure_script_git(&mut self, script_id: u32) -> &mut ScriptGit {
-        self.script_git.entry(script_id).or_default()
-    }
-
     /// Returns or inserts a `ScriptGitStaging` entry for `script_id`.
     pub fn ensure_script_git_staging(&mut self, script_id: u32) -> &mut ScriptGitStaging {
         self.cold.script_git_staging.entry(script_id).or_default()
@@ -47,7 +42,6 @@ impl Workspace {
             kind: s.kind(),
             abs_path: s.abs_path(),
             checksum: s.checksum().copied(),
-            scaffold: s.scaffold(),
         }
     }
 }

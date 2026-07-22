@@ -90,7 +90,7 @@ fn scan_skips_symlinked_sql_files() {
     scan_root(&mut ws, root.to_str().expect("utf8 path")).expect("scan");
 
     assert_eq!(ws.object_count(), 1);
-    assert_eq!(ws.script_count(), 1);
+    assert_eq!(ws.script_rows.len(), 1);
     let paths: Vec<_> = ws
         .scripts_iter()
         .map(|s| s.path_str().to_string())
@@ -271,7 +271,6 @@ fn layout_digest_length_prefix_prevents_concat_collision_regression() {
             kind: ScriptKind::Object,
             abs_path: share(p),
             checksum: Some([0; 32]),
-            scaffold: false,
         });
     }
 
@@ -282,7 +281,6 @@ fn layout_digest_length_prefix_prevents_concat_collision_regression() {
         kind: ScriptKind::Object,
         abs_path: share(joined),
         checksum: Some([0; 32]),
-        scaffold: false,
     });
 
     assert_ne!(layout_digest(&two), layout_digest(&one));

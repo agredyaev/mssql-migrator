@@ -1,20 +1,16 @@
-use crate::driver::{DbClient, TimingConn};
+use crate::driver::TimingConn;
 use crate::error::Result;
 use crate::sql;
 
 use super::cache::{invalidate_audit_cache_all, mark_tables_ensured, tables_ensured};
 
-/// Creates or upgrades audit schema tables on `client`.
-pub async fn ensure_tables_on(client: &mut DbClient, db_fp: &str) -> Result<()> {
+/// Creates or upgrades audit schema tables via `conn`.
+pub async fn ensure_tables(conn: &mut TimingConn, db_fp: &str) -> Result<()> {
+    let client = conn.client_mut()?;
     client.exec(sql::audit::BOOTSTRAP_TABLES).await?;
     client.exec(sql::audit::BOOTSTRAP_DRIFT).await?;
     mark_tables_ensured(db_fp);
     Ok(())
-}
-
-/// Creates or upgrades audit schema tables via `conn`.
-pub async fn ensure_tables(conn: &mut TimingConn, db_fp: &str) -> Result<()> {
-    ensure_tables_on(conn.client_mut()?, db_fp).await
 }
 
 /// Detect audit meta tables already present in DB (process cache may be cold after e2e reset).

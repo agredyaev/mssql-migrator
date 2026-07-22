@@ -32,7 +32,7 @@ use migrator_core::config::{
     build_config, load_toml_config, load_toml_config_required, validate_config,
 };
 use migrator_core::engine::{
-    print_timings_json, print_version, run_command, write_plan_stdout, Command,
+    eprint_timings_json, print_timings_json, print_version, run_command, write_plan_stdout, Command,
 };
 use migrator_core::export::write_reports;
 
@@ -55,7 +55,7 @@ async fn main() -> ExitCode {
 async fn run(args: Vec<String>) -> migrator_core::Result<i32> {
     match parse_args(&args)? {
         ParsedArgs::Help => {
-            print_help(std::io::stdout())?;
+            print_help();
             Ok(0)
         }
         ParsedArgs::Run {
@@ -80,7 +80,7 @@ async fn run_command_line(
         Some(path) => load_toml_config_required(std::path::Path::new(path))?,
         None => load_toml_config(std::path::Path::new("config.toml"))?,
     };
-    let mut cfg = build_config(&file, json);
+    let mut cfg = build_config(&file);
     init_tracing(&cfg.log_level);
     validate_config(&mut cfg)?;
     let outcome = tokio::select! {
@@ -99,11 +99,7 @@ async fn run_command_line(
                 if let Some(plan) = &out.plan {
                     write_plan_stdout(plan, None)?;
                 }
-                eprintln!(
-                    "{}",
-                    serde_json::to_string_pretty(&out.timings)
-                        .map_err(|e| migrator_core::Error::Other(e.into()))?
-                );
+                eprint_timings_json(&out.timings)?;
             } else if json {
                 print_timings_json(&out.timings)?;
             }

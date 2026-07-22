@@ -37,7 +37,6 @@ mod plan_snapshot;
 mod checksum_map;
 pub mod state;
 
-pub use crate::domain::key_fingerprint;
 pub use checksum_map::ChecksumMap;
 pub use plan_db_trace::{
     max_parallel_wall_ms, maybe_append_trace, plan_db_path_from_label, plan_db_slo_exempt,

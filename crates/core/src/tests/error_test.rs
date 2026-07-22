@@ -34,5 +34,5 @@ fn conn_and_sql_errors_map_to_distinct_codes() {
 fn io_and_other_are_general() {
     let io = Error::Io(std::io::Error::other("boom"));
     assert_eq!(io.exit_code(), EXIT_GENERAL);
-    assert_eq!(Error::Other(anyhow::anyhow!("x")).exit_code(), EXIT_GENERAL);
+    assert_eq!(Error::Other("x".into()).exit_code(), EXIT_GENERAL);
 }

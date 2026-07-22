@@ -34,11 +34,11 @@ pub(super) mod metrics;
 mod reply;
 mod serve;
 mod serve_loop;
-use super::socket::{resolve_socket_path, restrict_socket_mode};
+use super::socket::restrict_socket_mode;
 use serve::serve;
 
 /// Starts the rmigd Unix-socket daemon, accepting connections until the process exits.
-pub async fn run_daemon(socket: &Path, cfg: Config) -> anyhow::Result<()> {
+pub async fn run_daemon(socket: &Path, cfg: Config) -> crate::error::Result<()> {
     metrics::mark_started();
     super::auth::apply_session_token_from_config(&cfg);
     let conn = connect(&cfg).await?;
@@ -46,8 +46,6 @@ pub async fn run_daemon(socket: &Path, cfg: Config) -> anyhow::Result<()> {
     let reconnect_cfg = Arc::new(cfg.clone());
     let socket = if !cfg.session_socket.is_empty() {
         std::path::PathBuf::from(&cfg.session_socket)
-    } else if socket.as_os_str().is_empty() {
-        resolve_socket_path()?
     } else {
         socket.to_path_buf()
     };
@@ -56,10 +54,13 @@ pub async fn run_daemon(socket: &Path, cfg: Config) -> anyhow::Result<()> {
         // silently removing its socket and orphaning it (with its warm TDS
         // session and any held advisory lock). Only a stale socket is removed.
         if tokio::net::UnixStream::connect(&socket).await.is_ok() {
-            anyhow::bail!(
-                "rmigd: a daemon is already listening on {}",
-                socket.display()
-            );
+            return Err(crate::error::Error::Other(
+                format!(
+                    "rmigd: a daemon is already listening on {}",
+                    socket.display()
+                )
+                .into(),
+            ));
         }
         std::fs::remove_file(&socket)?;
     }
@@ -94,7 +95,11 @@ pub async fn run_daemon(socket: &Path, cfg: Config) -> anyhow::Result<()> {
                 continue;
             }
         };
-        let permit = client_slots.clone().acquire_owned().await?;
+        let permit = client_slots
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|e| crate::error::Error::Other(e.into()))?;
         let client = shared.clone();
         let cfg = reconnect_cfg.clone();
         let ep = daemon_endpoint.clone();

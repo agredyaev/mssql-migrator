@@ -100,7 +100,7 @@ fn migrate_cmd(bin: &Path, root: &Path) -> Command {
 }
 
 fn chaos_cfg() -> Config {
-    let mut cfg = build_config(&TomlConfig::default(), true);
+    let mut cfg = build_config(&TomlConfig::default());
     cfg.server = std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into());
     cfg.port = std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into());
     cfg.user = std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into());

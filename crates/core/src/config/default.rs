@@ -14,7 +14,6 @@ impl Default for Config {
             slo_max_cli_wall_ms: 150,
             report_sync: false,
             skip_git: false,
-            json_logs: false,
             inspect_full: false,
             catalog_cache: true,
             allow_adopt: false,

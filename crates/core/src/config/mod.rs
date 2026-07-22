@@ -32,7 +32,6 @@ use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 pub use catalog::discover_catalog_databases;
-pub use catalog_paths::normalize_catalog_paths;
 pub use cold::ConfigCold;
 pub use ensure_db::{ensure_catalog_databases_exist, target_database_exists};
 pub use env_build::build_config;
@@ -59,8 +58,6 @@ pub struct Config {
     pub report_sync: bool,
     /// Whether git operations should be skipped.
     pub skip_git: bool,
-    /// Whether JSON-format logging is enabled.
-    pub json_logs: bool,
     /// Whether full-inspect mode is enabled.
     pub inspect_full: bool,
     /// Whether the catalog cache is enabled.

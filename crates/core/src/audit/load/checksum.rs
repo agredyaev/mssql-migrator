@@ -36,11 +36,6 @@ fn corrupt_checksum(key: &str) -> Error {
     ))
 }
 
-/// Returns true when `rows` have the checksum-query key and digest columns.
-pub fn looks_like_checksum_rows(rows: &[RowData]) -> bool {
-    rows.first().is_some_and(|r| r.cells.len() >= 2)
-}
-
 /// One zero digest per key when audit history is empty.
 pub fn empty_checksums_from_keys_json(keys_json: &str) -> ChecksumMap {
     use crate::domain::ObjectKey;

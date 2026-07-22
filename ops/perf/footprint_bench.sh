@@ -16,11 +16,7 @@ shift || true
 
 feat_for_alloc() {
   case "${1:-skip_heavy}" in
-    skip_heavy|"") echo "bench-skip" ;;
-    transitions)   echo "bench-transitions" ;;
-    scan)          echo "bench-scan" ;;
-    scan_root)     echo "bench-scan" ;;
-    cache)         echo "bench-skip" ;;
+    skip_heavy|""|transitions|scan|scan_root|cache) echo "bench" ;;
     *) echo "unknown alloc bench: $1 (skip_heavy|transitions|scan|scan_root|cache)" >&2; exit 2 ;;
   esac
 }
@@ -29,7 +25,7 @@ case "$MODE" in
   bench)
     RMIG_FOOTPRINT_REPORT=1 \
       cargo test -p "$PKG" --test footprint_baseline -- --nocapture
-    { echo "# $PROFILE_ID"; cargo bench -p "$PKG" --bench plan_diff --features bench-skip -- --noplot; } \
+    { echo "# $PROFILE_ID"; cargo bench -p "$PKG" --bench plan_diff --features bench -- --noplot; } \
       2>&1 | tee "$ARTIFACTS/rust_footprint_bench.txt"
     cargo test -p "$PKG" --test footprint_baseline footprint_baseline_match -q
     ;;
@@ -37,7 +33,7 @@ case "$MODE" in
     # Clear previous Criterion output first: a stale flamegraph from another
     # benchmark or binary must never be republished as this run's evidence.
     rm -rf target/criterion
-    cargo bench -p "$PKG" --bench plan_diff --features bench-skip -- --profile-time=5 "$@"
+    cargo bench -p "$PKG" --bench plan_diff --features bench -- --profile-time=5 "$@"
     FG="$(find target/criterion/plan_diff* -name 'flamegraph.svg' 2>/dev/null | head -1 || true)"
     if [ -z "$FG" ]; then
       echo "ERROR: no flamegraph produced under target/criterion/plan_diff* — profiling evidence missing" >&2
@@ -53,7 +49,7 @@ case "$MODE" in
     RMIG_REPO_ROOT="$ROOT" \
     RMIG_PROFILE_SECS="${RMIG_PROFILE_SECS:-30}" \
     RMIG_PPROF_FREQ="${RMIG_PPROF_FREQ:-1000}" \
-      cargo bench -p "$PKG" --bench scan_load --features bench-scan --profile profiling 2>&1 \
+      cargo bench -p "$PKG" --bench scan_load --features bench --profile profiling 2>&1 \
       | tee "$ARTIFACTS/scan_load_run.txt"
     echo "CPU flamegraph: $ARTIFACTS/scan_5k_load_flamegraph.svg"
     echo "text summary:  $ARTIFACTS/scan_load_profile.txt"
@@ -62,7 +58,7 @@ case "$MODE" in
     RMIG_REPO_ROOT="$ROOT" \
     RMIG_PROFILE_SECS="${RMIG_PROFILE_SECS:-30}" \
     RMIG_PPROF_FREQ="${RMIG_PPROF_FREQ:-1000}" \
-      cargo bench -p "$PKG" --bench cache_serde_load --features bench-skip --profile profiling 2>&1 \
+      cargo bench -p "$PKG" --bench cache_serde_load --features bench --profile profiling 2>&1 \
       | tee "$ARTIFACTS/cache_serde_load_run.txt"
     echo "CPU flamegraph: $ARTIFACTS/cache_serde_load_flamegraph.svg"
     echo "text summary:  $ARTIFACTS/cache_serde_load_profile.txt"

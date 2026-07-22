@@ -28,7 +28,6 @@ fn ws_object(
         kind: ScriptKind::Object,
         abs_path: share(&rel),
         checksum: Some(checksum),
-        scaffold: false,
     });
     let db_id = ws.intern_database(share("db"));
     ObjectEntry::with_staging_key(

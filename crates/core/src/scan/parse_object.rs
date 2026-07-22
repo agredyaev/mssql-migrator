@@ -64,7 +64,6 @@ pub fn parse_object(rel: &str, abs: &Path) -> Result<Option<ParsedObject>> {
         kind: ScriptKind::Object,
         abs_path: share(abs.to_string_lossy().as_ref()),
         checksum: Some(cs),
-        scaffold: false,
     };
     let obj = ObjectEntry {
         key_off: StrOff::EMPTY,

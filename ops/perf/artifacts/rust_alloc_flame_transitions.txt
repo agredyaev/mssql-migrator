@@ -1,6 +1,6 @@
-# rmig-profile revision=d6902d1e6057318f16b0ee8aca1461665e6af320 version=1.0.7 target=aarch64-apple-darwin dirty=false
+# rmig-profile revision=79855cabc797dc4c6b9eb672856fa02af3c75e63 version=1.0.10 target=aarch64-apple-darwin dirty=false
 # Rust dhat allocation summary
-# total allocated (tb sum): 2.51 MB (2507770 B)
+# total allocated (tb sum): 2.51 MB (2507706 B)
 # loop iterations: 20
 # setup (one-time): 2.39 MB
 # warm (first compute_diff / plan resize): 118.9 KB
@@ -23,12 +23,12 @@ Frame                                                                           
 Frame                                                                           Bytes   Share
 plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi      2.38 MB   94.9%
 plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi     118.9 KB    4.7%
-migrator_core::domain::path_cache::paths_by_row (src/domain/path_cache.r       8.0 KB    0.3%
+migrator_core::domain::path_cache::rebuild_transition_path_cache (???:0:       8.0 KB    0.3%
 plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi         64 B    0.0%
 
 ## Top leaf alloc frames (flat)
 Frame                                                                           Bytes
 plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi      2.38 MB
 plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi     118.9 KB
-migrator_core::domain::path_cache::paths_by_row (src/domain/path_cache.r       8.0 KB
+migrator_core::domain::path_cache::rebuild_transition_path_cache (???:0:       8.0 KB
 plan_diff_dhat_transitions::main (core-dev/benches/plan_diff_dhat_transi         64 B

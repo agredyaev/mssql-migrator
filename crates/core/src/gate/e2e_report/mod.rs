@@ -10,10 +10,25 @@ pub use compare::{
     compare_e2e_reports,
 };
 pub use io::{
-    action_counts_from_plan, build_e2e_report, read_e2e_apply_json, read_e2e_blocked_json,
-    read_e2e_gate_json, read_e2e_report_json, write_e2e_apply_file, write_e2e_blocked_file,
-    write_e2e_gate_file, write_e2e_report_file,
+    build_e2e_report, read_e2e_apply_json, read_e2e_blocked_json, read_e2e_gate_json,
+    read_e2e_report_json, write_e2e_apply_file, write_e2e_blocked_file, write_e2e_gate_file,
+    write_e2e_report_file,
 };
 pub use types::{
     E2EApplyReport, E2EBlockedReport, E2EGateReport, E2EScenarioReport, E2EWorkflowTimings,
 };
+
+/// Shared e2e timing tolerance knobs: multiplicative `factor`
+/// (`RMIG_E2E_TIMING_FACTOR`, default 3.0) and additive `slack_ms`
+/// (`RMIG_E2E_TIMING_SLACK_MS`, default 100).
+fn timing_env() -> (f64, i64) {
+    let factor = std::env::var("RMIG_E2E_TIMING_FACTOR")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(3.0);
+    let slack_ms: i64 = std::env::var("RMIG_E2E_TIMING_SLACK_MS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(100);
+    (factor, slack_ms)
+}

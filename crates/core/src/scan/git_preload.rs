@@ -88,7 +88,6 @@ fn apply_meta(ws: &mut Workspace, script_id: u32, meta: &GitMeta) {
     st.hash = Some(share(&meta.hash));
     st.author = Some(share(&meta.author));
     st.date = Some(share(&meta.date));
-    let _ = ws.ensure_script_git(script_id);
 }
 
 fn git_work_tree(sql_root: &str) -> Option<String> {

@@ -48,7 +48,7 @@ pub fn parse_objects(items: &[(String, PathBuf)]) -> Result<Vec<Option<ParsedObj
         for handle in handles {
             let part = handle
                 .join()
-                .map_err(|_| Error::Other(anyhow::anyhow!("scan parse worker panicked")))?;
+                .map_err(|_| Error::Other("scan parse worker panicked".into()))?;
             out.extend(part);
         }
         out.into_iter().collect()

@@ -62,10 +62,6 @@ pub struct WorkspaceCold {
     pub has_transition_paths_row: Vec<u8>,
     /// SHA-256 digest of the finalized layout, used for cache invalidation.
     pub layout_digest: [u8; 32],
-    /// Total bytes stored in the shared string arena.
-    pub string_arena_bytes: usize,
-    /// Number of unique strings stored in the shared string arena.
-    pub string_arena_unique: usize,
 }
 
 impl WorkspaceCold {

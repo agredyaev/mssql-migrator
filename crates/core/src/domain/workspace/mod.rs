@@ -17,7 +17,6 @@ use super::store::ObjectRow;
 
 pub(crate) const CATALOG_APPLIED: u8 = 1 << 0;
 pub(crate) const CHECKSUMS_APPLIED: u8 = 1 << 1;
-pub(crate) const WORKSPACE_FLAG_BLOCKED: u8 = 1 << 2;
 
 /// Hot workspace shell: dense object columns + [`WorkspaceCold`] side store.
 #[derive(Clone, Debug)]
@@ -60,16 +59,6 @@ impl Workspace {
     /// Returns the 1-based row id for the object at dense index `i`.
     pub fn row_id_at(&self, i: usize) -> u32 {
         (i + 1) as u32
-    }
-
-    /// Inserts a `ParentRef` for `row_id` into the parent map.
-    pub fn insert_parent_row(&mut self, row_id: u32, parent: super::object::ParentRef) {
-        self.parent_by_row.insert(row_id, parent);
-    }
-
-    /// Returns the number of scripts in the workspace.
-    pub fn script_count(&self) -> usize {
-        self.script_rows.len()
     }
 
     /// Returns the `ObjectRow` at dense index `i`.

@@ -36,11 +36,6 @@ pub fn validate_path_component(name: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_bracket_name(name: &str) -> Result<()> {
-    validate_path_component(name)?;
-    Ok(())
-}
-
 /// Asserts that a token contains only safe alphanumeric, underscore, or dash characters.
 ///
 /// Commonly used to validate dynamic git SHAs embedded inside migration SQL filenames.
@@ -64,7 +59,7 @@ pub fn validate_filename_token(token: &str) -> Result<()> {
 /// Any embedded closing brackets `]` are escaped by doubling them (`]]`) to prevent
 /// SQL injection through malicious table or schema names.
 pub fn bracket_ident(name: &str) -> Result<String> {
-    validate_bracket_name(name)?;
+    validate_path_component(name)?;
     // MSSQL regular and quoted identifiers are limited to 128 characters.
     let len = name.chars().count();
     if len > 128 {

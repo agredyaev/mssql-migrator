@@ -30,7 +30,7 @@ fn process_environment_overrides_toml_regression() {
     let file: TomlConfig =
         toml::from_str("[database]\nserver = 'file.example'\n[paths]\nsql_root = 'sql'\n")
             .expect("parse config");
-    let cfg = build_config(&file, false);
+    let cfg = build_config(&file);
     match saved {
         Some(value) => std::env::set_var("RM_DB_SERVER", value),
         None => std::env::remove_var("RM_DB_SERVER"),

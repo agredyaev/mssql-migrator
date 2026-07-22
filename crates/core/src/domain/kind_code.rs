@@ -45,11 +45,3 @@ pub fn is_module_kind_code(code: u8) -> bool {
         KIND_VIEWS | KIND_FUNCTIONS | KIND_PROCEDURES | KIND_TRIGGERS
     )
 }
-
-/// Returns `true` if `code` represents a transactional kind (tables, indexes, types, sequences, synonyms).
-pub fn is_transactional_kind_code(code: u8) -> bool {
-    matches!(
-        code,
-        KIND_TABLES | KIND_INDEXES | KIND_TYPES | KIND_SEQUENCES | KIND_SYNONYMS
-    )
-}

@@ -29,7 +29,6 @@ pub fn ingest(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
         kind: ScriptKind::Transition,
         abs_path: share(abs.to_string_lossy().as_ref()),
         checksum: Some(cs),
-        scaffold,
     });
     if !scaffold {
         let database = share(rel.split('/').next().unwrap_or(""));

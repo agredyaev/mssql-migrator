@@ -10,7 +10,7 @@ publish = false
 migrator-core = { path = "../core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-criterion = { version = "0.8", features = ["html_reports"] }
+criterion = "0.8"
 pprof = { version = "0.15", features = ["flamegraph"] }
 
 [dev-dependencies]
@@ -18,46 +18,44 @@ dhat = "0.3.3"
 
 [features]
 default = []
-bench-skip = []
-bench-transitions = []
-bench-scan = []
+bench = []
 
 [[bench]]
 name = "plan_diff"
 harness = false
-required-features = ["bench-skip"]
+required-features = ["bench"]
 
 [[bench]]
 name = "plan_diff_dhat"
 harness = false
-required-features = ["bench-skip"]
+required-features = ["bench"]
 
 [[bench]]
 name = "plan_diff_dhat_transitions"
 harness = false
-required-features = ["bench-transitions"]
+required-features = ["bench"]
 
 [[bench]]
 name = "plan_diff_dhat_scan"
 harness = false
-required-features = ["bench-scan"]
+required-features = ["bench"]
 
 [[bench]]
 name = "scan_load"
 harness = false
-required-features = ["bench-scan"]
+required-features = ["bench"]
 
 [[bench]]
 name = "scan_dhat"
 harness = false
-required-features = ["bench-scan"]
+required-features = ["bench"]
 
 [[bench]]
 name = "cache_serde_load"
 harness = false
-required-features = ["bench-skip"]
+required-features = ["bench"]
 
 [[bench]]
 name = "cache_serde_dhat"
 harness = false
-required-features = ["bench-skip"]
+required-features = ["bench"]

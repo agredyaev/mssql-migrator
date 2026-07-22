@@ -44,7 +44,7 @@ fn catalog_subset_materialization_happy_path() {
         let (mut plan, _) =
             compute_diff(&mut sub, &CatalogState::default(), &ChecksumMap::new()).unwrap();
         plan.ensure_objects_materialized(&sub);
-        assert_eq!(plan.row_count(), sub.object_count());
+        assert_eq!(plan.rows.len(), sub.object_count());
         assert_eq!(plan.objects.len(), sub.object_count());
         assert!(plan.objects.iter().all(|o| o.database_name.as_ref() == db));
     }

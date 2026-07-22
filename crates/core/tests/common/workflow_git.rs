@@ -87,9 +87,9 @@ fn git_rev_parse(repo: &Path) -> Result<String> {
         .output()
         .map_err(migrator_core::error::Error::Io)?;
     if !out.status.success() {
-        return Err(migrator_core::error::Error::Other(anyhow::anyhow!(
-            "git rev-parse failed"
-        )));
+        return Err(migrator_core::error::Error::Other(
+            anyhow::anyhow!("git rev-parse failed").into(),
+        ));
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
@@ -102,11 +102,9 @@ fn git_cmd(repo: &Path, args: &[&str]) -> Result<()> {
     }
     let out = cmd.output().map_err(migrator_core::error::Error::Io)?;
     if !out.status.success() {
-        return Err(migrator_core::error::Error::Other(anyhow::anyhow!(
-            "git {:?}: {}",
-            args,
-            String::from_utf8_lossy(&out.stderr)
-        )));
+        return Err(migrator_core::error::Error::Other(
+            anyhow::anyhow!("git {:?}: {}", args, String::from_utf8_lossy(&out.stderr)).into(),
+        ));
     }
     Ok(())
 }

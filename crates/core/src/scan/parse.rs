@@ -52,7 +52,6 @@ pub fn push_check(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
         kind: crate::domain::ScriptKind::Check,
         abs_path: share(abs.to_string_lossy().as_ref()),
         checksum: None,
-        scaffold: false,
     });
     Ok(())
 }

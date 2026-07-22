@@ -1,5 +1,6 @@
 use super::super::timing_compare::compare_workflow_timings;
 use super::super::types::E2EBlockedReport;
+use super::diff_field;
 
 /// Compares two `E2EBlockedReport` values and returns a list of mismatch descriptions.
 pub fn compare_e2e_blocked_reports(
@@ -7,24 +8,14 @@ pub fn compare_e2e_blocked_reports(
     actual: &E2EBlockedReport,
 ) -> Vec<String> {
     let mut msgs = Vec::new();
-    if baseline.scenario != actual.scenario {
-        msgs.push(format!(
-            "scenario: baseline={} actual={}",
-            baseline.scenario, actual.scenario
-        ));
-    }
-    if baseline.exit_code != actual.exit_code {
-        msgs.push(format!(
-            "exit_code: baseline={} actual={}",
-            baseline.exit_code, actual.exit_code
-        ));
-    }
-    if baseline.blocked != actual.blocked {
-        msgs.push(format!(
-            "blocked: baseline={} actual={}",
-            baseline.blocked, actual.blocked
-        ));
-    }
+    diff_field(&mut msgs, "scenario", &baseline.scenario, &actual.scenario);
+    diff_field(
+        &mut msgs,
+        "exit_code",
+        &baseline.exit_code,
+        &actual.exit_code,
+    );
+    diff_field(&mut msgs, "blocked", &baseline.blocked, &actual.blocked);
     if baseline.blockers != actual.blockers {
         msgs.push(format!(
             "blockers: baseline={:?} actual={:?}",

@@ -63,10 +63,7 @@ fn snapshot_key(obj: &PlannedObject) -> String {
 fn snapshot_object(obj: &PlannedObject) -> SnapshotObject {
     SnapshotObject {
         object_path: obj.object_path.as_ref().to_string(),
-        planned_action: serde_json::to_string(&obj.planned_action)
-            .unwrap_or_default()
-            .trim_matches('"')
-            .to_string(),
+        planned_action: crate::gate::action_str(&obj.planned_action),
         checksum_hex: hex::encode(obj.checksum),
         exists: obj.exists,
     }

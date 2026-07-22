@@ -50,7 +50,7 @@ async fn run() -> Result<(), i32> {
         Err(_) => migrator_core::config::load_toml_config(std::path::Path::new("config.toml")),
     }
     .map_err(report)?;
-    let mut cfg = migrator_core::config::build_config(&file, false);
+    let mut cfg = migrator_core::config::build_config(&file);
     migrator_core::config::validate_daemon_config(&mut cfg).map_err(report)?;
     init_tracing(&cfg.log_level);
     let socket = migrator_core::session::resolve_socket_path().map_err(|e| {
