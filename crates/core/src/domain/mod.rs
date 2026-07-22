@@ -51,9 +51,7 @@ pub use layout_path::{object_path_for_entry, path_lookup_candidates, with_databa
 pub use object::{ObjectEntry, ParentRef};
 pub use path_cache::{ensure_path_caches, rebuild_path_caches};
 pub use schema::SchemaEntry;
-pub use script::{
-    Script, ScriptGit, ScriptKind, ScriptRow, SCRIPT_FLAG_HAS_CHECKSUM, SCRIPT_FLAG_SCAFFOLD,
-};
+pub use script::{Script, ScriptGit, ScriptKind, ScriptRow};
 pub use script_resolve::ScriptRef;
 pub use shared::{empty_str, share, SharedStr};
 pub use store::ObjectRow;

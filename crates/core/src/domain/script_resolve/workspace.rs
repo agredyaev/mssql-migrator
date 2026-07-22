@@ -42,7 +42,6 @@ impl Workspace {
             kind: s.kind(),
             abs_path: s.abs_path(),
             checksum: s.checksum().copied(),
-            scaffold: s.scaffold(),
         }
     }
 }

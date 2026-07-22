@@ -14,7 +14,6 @@ fn table_changed_without_transitions_is_blocked() {
         kind: ScriptKind::Object,
         abs_path: share("r/tables/t1.sql"),
         checksum: Some([1; 32]),
-        scaffold: false,
     });
     let db_id = ws.intern_database(share("db"));
     ws.adopt_dense_entries(vec![ObjectEntry::with_staging_key(
@@ -44,7 +43,6 @@ fn changed_index_without_safe_update_path_is_blocked_before_apply() {
         kind: ScriptKind::Object,
         abs_path: share("r/indexes/ix_t1.sql"),
         checksum: Some([1; 32]),
-        scaffold: false,
     });
     let db_id = ws.intern_database(share("db"));
     ws.adopt_dense_entries(vec![ObjectEntry::with_staging_key(

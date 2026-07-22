@@ -85,7 +85,6 @@ fn slim_row_plan_with_workspace_writes_plan_json() {
         kind: ScriptKind::Object,
         abs_path: share("dactests/r/tables/t1.sql"),
         checksum: None,
-        scaffold: false,
     });
     let db_id = ws.intern_database(share("dactests"));
     ws.adopt_dense_entries(vec![ObjectEntry::with_staging_key(

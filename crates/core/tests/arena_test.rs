@@ -37,7 +37,6 @@ fn for_catalog_database_remaps_db_id() {
         kind: ScriptKind::Object,
         abs_path: share("dactests/smoke/tables/t1.sql"),
         checksum: None,
-        scaffold: false,
     });
     ws.adopt_dense_entries(vec![ObjectEntry::with_staging_key(
         ObjectKey::new("smoke", "tables", "t1"),

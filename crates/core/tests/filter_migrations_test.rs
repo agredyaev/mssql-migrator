@@ -34,7 +34,6 @@ fn ws_with_transition(path: &str, checksum: [u8; 32]) -> Workspace {
         kind: ScriptKind::Transition,
         abs_path: share(path),
         checksum: Some(checksum),
-        scaffold: false,
     });
     ws
 }

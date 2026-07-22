@@ -34,16 +34,8 @@ impl<'a> ScriptRef<'a> {
         self.row().kind
     }
 
-    /// Returns `true` if this script is a scaffold script.
-    pub fn scaffold(&self) -> bool {
-        self.row().scaffold()
-    }
-
     /// Returns the SHA-256 checksum of the script content, if recorded.
     pub fn checksum(&self) -> Option<&'a [u8; 32]> {
-        if !self.row().has_checksum() {
-            return None;
-        }
         self.ws.script_checksum(self.id)
     }
 

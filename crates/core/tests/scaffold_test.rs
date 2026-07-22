@@ -81,7 +81,6 @@ fn auto_add_column_when_file_has_new_col() {
         kind: ScriptKind::Object,
         abs_path: migrator_core::domain::share(sql_path.to_string_lossy().as_ref()),
         checksum: None,
-        scaffold: false,
     });
     let db_id = ws.intern_database(share("dactests"));
     ws.adopt_dense_entries(vec![ObjectEntry::with_staging_key(
@@ -191,7 +190,6 @@ fn scaffold_for_table(table_sql: &str, db_columns: Vec<TableColumn>) -> String {
         kind: ScriptKind::Object,
         abs_path: migrator_core::domain::share(sql_path.to_string_lossy().as_ref()),
         checksum: None,
-        scaffold: false,
     });
     let db_id = ws.intern_database(share("dactests"));
     ws.adopt_dense_entries(vec![ObjectEntry::with_staging_key(

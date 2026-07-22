@@ -31,7 +31,6 @@ pub fn insert_object_script(ws: &mut Workspace, path: SharedStr, cs: [u8; 32]) -
         kind: ScriptKind::Object,
         abs_path: path,
         checksum: Some(cs),
-        scaffold: false,
     })
 }
 
