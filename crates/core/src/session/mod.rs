@@ -31,6 +31,9 @@ mod daemon;
 mod daemon_rpc;
 
 pub use auth::{apply_session_token_from_config, resolve_session_token};
+// Re-exported for rmigd: the arch gate limits the daemon binary to
+// migrator_core::{session,config,error} imports.
+pub use crate::engine::{default_log_filter, shutdown_signal};
 pub use client::{connect_daemon, connect_session_or_direct};
 pub use proxy::ProxyClient;
 pub use socket::{default_socket_path, resolve_socket_path};

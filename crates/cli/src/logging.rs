@@ -1,5 +1,6 @@
 //! CLI tracing setup.
 
+use migrator_core::engine::default_log_filter;
 use tracing_subscriber::EnvFilter;
 
 pub(crate) fn init_tracing(log_level: &str) {
@@ -12,20 +13,3 @@ pub(crate) fn init_tracing(log_level: &str) {
         .with_writer(std::io::stderr)
         .try_init();
 }
-
-fn default_log_filter(log_level: &str) -> String {
-    let level = if log_level.trim().is_empty() {
-        "info"
-    } else {
-        log_level.trim()
-    };
-    if level.contains('=') || level.contains(',') {
-        level.to_string()
-    } else {
-        format!("warn,migrator_core={level},rmig={level},rmigd={level}")
-    }
-}
-
-#[cfg(test)]
-#[path = "tests/logging_test.rs"]
-mod logging_tests;

@@ -24,7 +24,6 @@
 mod args;
 mod help;
 mod logging;
-mod signals;
 
 use std::process::ExitCode;
 
@@ -32,14 +31,14 @@ use migrator_core::config::{
     build_config, load_toml_config, load_toml_config_required, validate_config,
 };
 use migrator_core::engine::{
-    eprint_timings_json, print_timings_json, print_version, run_command, write_plan_stdout, Command,
+    eprint_timings_json, print_timings_json, print_version, run_command, shutdown_signal,
+    write_plan_stdout, Command,
 };
 use migrator_core::export::write_reports;
 
 use args::{parse_args, parse_command, ParsedArgs};
 use help::print_help;
 use logging::init_tracing;
-use signals::shutdown_signal;
 
 #[tokio::main]
 async fn main() -> ExitCode {
