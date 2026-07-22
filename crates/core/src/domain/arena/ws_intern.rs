@@ -19,8 +19,6 @@ pub fn intern_workspace_strings(ws: &mut Workspace) {
 /// Attach a pre-built layout arena (scan finalize or bench); skips register/build pass.
 pub fn install_layout_arena(ws: &mut Workspace, arena: super::StringArena) {
     apply_workspace_strings(ws, &arena);
-    ws.string_arena_bytes = arena.byte_len();
-    ws.string_arena_unique = arena.unique_count();
     ws.layout_arena = Some(arena);
     ws.rebuild_script_key_index();
     ws.object_keys = ws

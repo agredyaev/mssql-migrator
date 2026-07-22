@@ -28,5 +28,4 @@ pub(crate) struct BodyOutput {
     pub inspect_ms: i64,
     pub ensure_ms: i64,
     pub trace: PlanDbTrace,
-    pub _round_trips: i64,
 }

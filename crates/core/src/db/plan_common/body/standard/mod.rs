@@ -107,6 +107,5 @@ pub(super) async fn run_standard_body(
         inspect_ms,
         ensure_ms,
         trace: local_trace,
-        _round_trips: round_trips,
     })
 }

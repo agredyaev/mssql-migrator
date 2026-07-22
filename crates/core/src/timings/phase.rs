@@ -47,9 +47,6 @@ pub struct PhaseTimings {
     /// Time to apply changes to the database.
     #[serde(skip_serializing_if = "is_zero")]
     pub apply_ms: i64,
-    /// Time to flush audit history after apply.
-    #[serde(skip_serializing_if = "is_zero")]
-    pub audit_flush_ms: i64,
     /// Number of plan-DB query calls made.
     #[serde(skip_serializing_if = "is_zero")]
     pub plan_db_query_calls: i64,

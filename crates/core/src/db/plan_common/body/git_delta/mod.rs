@@ -24,6 +24,5 @@ pub(super) async fn run_git_delta_body(
         inspect_ms,
         ensure_ms: 0,
         trace: warm.local_trace,
-        _round_trips: warm.round_trips,
     })
 }

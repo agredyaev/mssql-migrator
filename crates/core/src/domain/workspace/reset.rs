@@ -22,8 +22,6 @@ impl Workspace {
         self.parent_by_row.clear();
         self.invalidate_transition_paths();
         self.schemas.clear();
-        self.string_arena_bytes = 0;
-        self.string_arena_unique = 0;
         self.database_names.truncate(1);
         self.layout_arena = None;
         self.invalidate_catalog_facts();
