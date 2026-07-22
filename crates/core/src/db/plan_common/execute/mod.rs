@@ -53,7 +53,13 @@ pub async fn execute(
         }
     }
 
-    l1.save(fp, &ws.layout_digest, &body.checksums, &catalog)?;
+    // L1 short-circuit only serves empty workspaces: run_plan_db_phase gates
+    // try_load on object_count()==0, and a non-empty workspace's layout_digest can
+    // never be reproduced by an empty one. Saving a non-empty payload writes up to
+    // multiple megabytes that no load path can ever key back to — skip the dead write.
+    if ws.object_count() == 0 {
+        l1.save(fp, &ws.layout_digest, &body.checksums, &catalog)?;
+    }
 
     Ok(PlanDbResult {
         checksums: body.checksums,
