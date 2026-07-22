@@ -15,10 +15,6 @@ pub struct IoProfile {
     pub exec_ms: i64,
     /// Number of SQL exec calls made.
     pub exec_calls: i64,
-    /// Number of extra connection attempts beyond the primary connection.
-    pub extra_connects: i64,
-    /// Cumulative time spent establishing extra connections, in milliseconds.
-    pub extra_connect_ms: i64,
 }
 
 /// Locks `m`, recovering the guard if a prior panic poisoned the mutex.

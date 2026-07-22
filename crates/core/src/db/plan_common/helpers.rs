@@ -64,32 +64,8 @@ pub(crate) fn kinds_for_scope<'a>(ws: &'a Workspace, scope: &InspectScope) -> Ve
     kinds
 }
 
-fn hot_keys_have_history(scope: &InspectScope, checksums: &crate::db::ChecksumMap) -> bool {
-    scope.hot_keys.iter().any(|k| {
-        let key = ObjectKey::from_normalized(k);
-        checksums.get_key(&key).is_some_and(|cs| cs != &[0; 32])
-    })
-}
-
-pub(crate) async fn should_query_catalog(
-    full: bool,
-    scope: &InspectScope,
-    scope_json: &str,
-    checksums: &crate::db::ChecksumMap,
-) -> Result<bool> {
-    if scope_json == "[]" {
-        return Ok(false);
-    }
-    if full {
-        return Ok(true);
-    }
-    if hot_keys_have_history(scope, checksums) {
-        return Ok(true);
-    }
-    if !full && !scope.hot_keys.is_empty() {
-        return Ok(true);
-    }
-    Ok(false)
+pub(crate) fn should_query_catalog(full: bool, scope: &InspectScope, scope_json: &str) -> bool {
+    scope_json != "[]" && (full || !scope.hot_keys.is_empty())
 }
 
 pub(crate) fn store_inspect_cache(
