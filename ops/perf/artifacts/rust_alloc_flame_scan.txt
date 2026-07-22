@@ -1,4 +1,4 @@
-# rmig-profile revision=79855cabc797dc4c6b9eb672856fa02af3c75e63 version=1.0.10 target=aarch64-apple-darwin dirty=false
+# rmig-profile revision=88f5197aa533b8e248cb6c37afa3eed635c922cf version=1.0.11 target=aarch64-apple-darwin dirty=false
 # Rust dhat allocation summary
 # total allocated (tb sum): 17.89 MB (17887584 B)
 # loop iterations: 20

@@ -1,12 +1,8 @@
-# rmig-profile revision=79855cabc797dc4c6b9eb672856fa02af3c75e63 version=1.0.10 target=aarch64-apple-darwin dirty=false
-   Compiling tokio v1.52.3
-   Compiling tiberius v0.12.3
-   Compiling migrator-core-dev v1.0.10 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core-dev)
-   Compiling criterion v0.8.2
-   Compiling tokio-util v0.7.18
-   Compiling migrator-core v1.0.10 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core)
-    Finished `profiling` profile [optimized + debuginfo] target(s) in 35.66s
-     Running benches/plan_diff_dhat.rs (target/profiling/deps/plan_diff_dhat-060340012b02f8b1)
+# rmig-profile revision=88f5197aa533b8e248cb6c37afa3eed635c922cf version=1.0.11 target=aarch64-apple-darwin dirty=false
+   Compiling migrator-core v1.0.11 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core)
+   Compiling migrator-core-dev v1.0.11 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core-dev)
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 8.11s
+     Running benches/plan_diff_dhat.rs (target/profiling/deps/plan_diff_dhat-e0a0e966f7e1a0db)
 dhat: plan_diff_skip_heavy_5000 x20 complete
 dhat: Total:     11,145,524 bytes in 90,141 blocks
 dhat: At t-gmax: 6,336,096 bytes in 65,041 blocks
