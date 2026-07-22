@@ -37,7 +37,7 @@ use super::socket::restrict_socket_mode;
 use serve::serve;
 
 /// Starts the rmigd Unix-socket daemon, accepting connections until the process exits.
-pub async fn run_daemon(socket: &Path, cfg: Config) -> anyhow::Result<()> {
+pub async fn run_daemon(socket: &Path, cfg: Config) -> crate::error::Result<()> {
     super::auth::apply_session_token_from_config(&cfg);
     let conn = connect(&cfg).await?;
     let shared = Arc::new(Mutex::new(Some(conn.client)));
@@ -52,10 +52,13 @@ pub async fn run_daemon(socket: &Path, cfg: Config) -> anyhow::Result<()> {
         // silently removing its socket and orphaning it (with its warm TDS
         // session and any held advisory lock). Only a stale socket is removed.
         if tokio::net::UnixStream::connect(&socket).await.is_ok() {
-            anyhow::bail!(
-                "rmigd: a daemon is already listening on {}",
-                socket.display()
-            );
+            return Err(crate::error::Error::Other(
+                format!(
+                    "rmigd: a daemon is already listening on {}",
+                    socket.display()
+                )
+                .into(),
+            ));
         }
         std::fs::remove_file(&socket)?;
     }
@@ -90,7 +93,11 @@ pub async fn run_daemon(socket: &Path, cfg: Config) -> anyhow::Result<()> {
                 continue;
             }
         };
-        let permit = client_slots.clone().acquire_owned().await?;
+        let permit = client_slots
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|e| crate::error::Error::Other(e.into()))?;
         let client = shared.clone();
         let cfg = reconnect_cfg.clone();
         let ep = daemon_endpoint.clone();

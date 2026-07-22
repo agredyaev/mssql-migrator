@@ -43,9 +43,9 @@ pub async fn prepare_blocked_table_change(cfg: &Config) -> Result<(BlockedSetup,
 
     let original = std::fs::read_to_string(&table_sql).map_err(Error::Io)?;
     if original.contains("added_at") {
-        return Err(Error::Other(anyhow::anyhow!(
-            "smoke_table.sql already contains added_at after git restore"
-        )));
+        return Err(Error::Other(
+            anyhow::anyhow!("smoke_table.sql already contains added_at after git restore").into(),
+        ));
     }
     let modified = original.replacen(
         "created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()",
@@ -117,21 +117,25 @@ pub async fn run_blocked_table_plan(cfg: &Config) -> Result<E2EBlockedReport> {
     let migrate_out = run_command(Command::Migrate, &blocked_cfg).await?;
     let plan = migrate_out
         .plan
-        .ok_or_else(|| Error::Other(anyhow::anyhow!("missing plan after column change")))?;
+        .ok_or_else(|| Error::Other(anyhow::anyhow!("missing plan after column change").into()))?;
     if !plan.blocked {
-        return Err(Error::Other(anyhow::anyhow!(
-            "expected blocked plan after column change (actions={:?})",
-            plan.objects
-                .iter()
-                .map(|o| (o.normalized_key.as_ref(), o.planned_action))
-                .collect::<Vec<_>>()
-        )));
+        return Err(Error::Other(
+            anyhow::anyhow!(
+                "expected blocked plan after column change (actions={:?})",
+                plan.objects
+                    .iter()
+                    .map(|o| (o.normalized_key.as_ref(), o.planned_action))
+                    .collect::<Vec<_>>()
+            )
+            .into(),
+        ));
     }
     let exit_code = migrate_out.exit_code;
     if exit_code != EXIT_PLAN_BLOCKED {
-        return Err(Error::Other(anyhow::anyhow!(
-            "expected blocked migrate exit {EXIT_PLAN_BLOCKED}, got {exit_code}"
-        )));
+        return Err(Error::Other(
+            anyhow::anyhow!("expected blocked migrate exit {EXIT_PLAN_BLOCKED}, got {exit_code}")
+                .into(),
+        ));
     }
     let blocked = true;
 
@@ -147,9 +151,9 @@ pub async fn run_blocked_table_plan(cfg: &Config) -> Result<E2EBlockedReport> {
     let scaffold_paths =
         list_scaffold_paths(&sql_root, &catalog::sole_catalog_database(&cfg.sql_root)?);
     if blocked && scaffold_paths.is_empty() {
-        return Err(Error::Other(anyhow::anyhow!(
-            "expected scaffold files after blocked migrate"
-        )));
+        return Err(Error::Other(
+            anyhow::anyhow!("expected scaffold files after blocked migrate").into(),
+        ));
     }
 
     Ok(E2EBlockedReport {
@@ -185,10 +189,13 @@ pub async fn run_ddl_transition_apply(cfg: &Config) -> Result<migrator_core::gat
 
     let blocked = run_command(Command::Migrate, &blocked_cfg).await?;
     if blocked.exit_code != EXIT_PLAN_BLOCKED {
-        return Err(Error::Other(anyhow::anyhow!(
-            "expected blocked migrate exit {EXIT_PLAN_BLOCKED}, got {}",
-            blocked.exit_code
-        )));
+        return Err(Error::Other(
+            anyhow::anyhow!(
+                "expected blocked migrate exit {EXIT_PLAN_BLOCKED}, got {}",
+                blocked.exit_code
+            )
+            .into(),
+        ));
     }
 
     let sql_root = PathBuf::from(&cfg.sql_root);
@@ -211,10 +218,9 @@ pub async fn run_ddl_transition_apply(cfg: &Config) -> Result<migrator_core::gat
     let mig_before = super::migrate::count_audit_rows(&mut conn, "migration").await?;
     let apply = run_command(Command::Migrate, &blocked_cfg).await?;
     if apply.exit_code != 0 {
-        return Err(Error::Other(anyhow::anyhow!(
-            "transition migrate failed: exit {}",
-            apply.exit_code
-        )));
+        return Err(Error::Other(
+            anyhow::anyhow!("transition migrate failed: exit {}", apply.exit_code).into(),
+        ));
     }
 
     let snap =
@@ -280,10 +286,13 @@ fn restore_table_sql_from_git(temp_repo: &Path, table_rel: &str, dest: &Path) ->
         .output()
         .map_err(Error::Io)?;
     if !out.status.success() {
-        return Err(Error::Other(anyhow::anyhow!(
-            "git show smoke_table.sql: {}",
-            String::from_utf8_lossy(&out.stderr)
-        )));
+        return Err(Error::Other(
+            anyhow::anyhow!(
+                "git show smoke_table.sql: {}",
+                String::from_utf8_lossy(&out.stderr)
+            )
+            .into(),
+        ));
     }
     std::fs::write(dest, &out.stdout).map_err(Error::Io)
 }
@@ -307,7 +316,7 @@ fn git_rev_parse(repo: &Path) -> Result<String> {
         .output()
         .map_err(Error::Io)?;
     if !out.status.success() {
-        return Err(Error::Other(anyhow::anyhow!("git rev-parse failed")));
+        return Err(Error::Other(anyhow::anyhow!("git rev-parse failed").into()));
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
@@ -320,11 +329,9 @@ fn git_cmd(repo: &Path, args: &[&str]) -> Result<()> {
     }
     let out = cmd.output().map_err(Error::Io)?;
     if !out.status.success() {
-        return Err(Error::Other(anyhow::anyhow!(
-            "git {:?}: {}",
-            args,
-            String::from_utf8_lossy(&out.stderr)
-        )));
+        return Err(Error::Other(
+            anyhow::anyhow!("git {:?}: {}", args, String::from_utf8_lossy(&out.stderr)).into(),
+        ));
     }
     Ok(())
 }

@@ -22,8 +22,8 @@ pub async fn plan(cfg: &Config) -> Result<(MigrationPlan, PhaseTimings)> {
     c.skip_git = true;
     c.session_socket.clear();
     let out = run_command(Command::Plan, &c).await?;
-    let plan = out
-        .plan
-        .ok_or_else(|| migrator_core::error::Error::Other(anyhow::anyhow!("missing plan")))?;
+    let plan = out.plan.ok_or_else(|| {
+        migrator_core::error::Error::Other(anyhow::anyhow!("missing plan").into())
+    })?;
     Ok((plan, out.timings))
 }
