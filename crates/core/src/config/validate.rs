@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 
-use super::catalog_paths::normalize_catalog_paths;
+use super::catalog::discover_catalog_databases;
 use super::env_parse::validate_boolean_envs;
 use super::Config;
 
@@ -63,6 +63,18 @@ pub fn validate_daemon_config(cfg: &mut Config) -> Result<()> {
         return Err(Error::Config(
             "RMIG_SESSION_TOKEN is required in the process environment for rmigd; the token is not read from config.toml".into(),
         ));
+    }
+    Ok(())
+}
+
+/// Fills `cfg.sql_base` from `sql_root` if empty, and sets `cfg.database` when the catalog has exactly one database.
+fn normalize_catalog_paths(cfg: &mut Config) -> Result<()> {
+    if cfg.sql_base.is_empty() {
+        cfg.sql_base = cfg.sql_root.clone();
+    }
+    let dbs = discover_catalog_databases(&cfg.sql_root)?;
+    if cfg.database.is_empty() && dbs.len() == 1 {
+        cfg.database = dbs[0].clone();
     }
     Ok(())
 }

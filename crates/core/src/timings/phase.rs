@@ -72,28 +72,24 @@ pub struct PhaseTimings {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub plan_db_path: String,
     /// True when the L1 filesystem cache was used for plan data.
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub l1_cache_hit: bool,
     /// True when the plan-DB was bootstrapped (tables created) in this run.
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub plan_db_bootstrap: bool,
     /// True when the plan-DB catalog was queried (not fully cached).
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub plan_db_catalog_queried: bool,
     /// True when the audit-history table was empty at plan time.
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub plan_db_history_empty: bool,
     /// True when checksum loading was skipped (no audit tables).
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub plan_db_checksums_skipped: bool,
 }
 
 fn is_zero(v: &i64) -> bool {
     *v == 0
-}
-
-fn is_false(v: &bool) -> bool {
-    !*v
 }
 
 impl PhaseTimings {

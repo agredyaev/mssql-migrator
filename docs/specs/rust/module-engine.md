@@ -20,7 +20,7 @@ Describe the **Rust orchestration engine**: connect (or session proxy), scan SQL
 
 ## Interfaces and boundaries
 
-- Public API: `run_command`, `Command`, `RunOutput`, `print_timings_json`, `write_plan_stdout`
+- Public API: `run_command`, `Command`, `RunOutput`, `write_timings_json`, `write_plan_stdout`
 - Inputs: `Config`, command enum
 - Outputs: exit code, `PhaseTimings`, optional `MigrationPlan`
 - Downstream: `scan`, `db`, `plan`, `apply`, `lock`, `scaffold`, `cache`

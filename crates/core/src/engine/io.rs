@@ -3,19 +3,16 @@ use crate::error::Result;
 use crate::export::{write_plan_json, MigrationPlan};
 use crate::timings::PhaseTimings;
 
-/// Prints `timings` as pretty-printed JSON to stdout.
-pub fn print_timings_json(timings: &PhaseTimings) -> Result<()> {
+/// Prints `timings` as pretty-printed JSON to stdout, or to stderr when
+/// `to_stderr` (used when stdout already carries the plan JSON).
+pub fn write_timings_json(timings: &PhaseTimings, to_stderr: bool) -> Result<()> {
     let v =
         serde_json::to_string_pretty(timings).map_err(|e| crate::error::Error::Other(e.into()))?;
-    println!("{v}");
-    Ok(())
-}
-
-/// Prints `timings` as pretty-printed JSON to stderr.
-pub fn eprint_timings_json(timings: &PhaseTimings) -> Result<()> {
-    let v =
-        serde_json::to_string_pretty(timings).map_err(|e| crate::error::Error::Other(e.into()))?;
-    eprintln!("{v}");
+    if to_stderr {
+        eprintln!("{v}");
+    } else {
+        println!("{v}");
+    }
     Ok(())
 }
 

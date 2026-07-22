@@ -5,7 +5,7 @@ use std::path::{Component, Path, PathBuf};
 use crate::domain::Workspace;
 use crate::error::Result;
 
-use super::{parse, parse_parallel};
+use super::{parse, parse_parallel, transition};
 
 /// Walks `root`, parses all SQL schema files, and populates `ws`.
 pub fn scan_root(ws: &mut Workspace, root: &str) -> Result<()> {
@@ -23,7 +23,7 @@ pub fn scan_root(ws: &mut Workspace, root: &str) -> Result<()> {
         // `<schema>/tables/_migrations/`); a schema legitimately named
         // `checks` or `_migrations` must still produce deployable objects.
         if rel.contains("/tables/_migrations/") {
-            parse::push_transition(ws, &rel, &entry)?;
+            transition::ingest(ws, &rel, &entry)?;
         } else if parse::is_check_path(&rel) {
             parse::push_check(ws, &rel, &entry)?;
         } else {
