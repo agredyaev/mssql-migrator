@@ -5,14 +5,7 @@ pub(super) fn compare_workflow_timings(
     actual: &E2EWorkflowTimings,
 ) -> Vec<String> {
     const SETUP_APPLY_MAX_MS: i64 = 500;
-    let factor = std::env::var("RMIG_E2E_TIMING_FACTOR")
-        .ok()
-        .and_then(|s| s.parse::<f64>().ok())
-        .unwrap_or(3.0);
-    let slack_ms: i64 = std::env::var("RMIG_E2E_TIMING_SLACK_MS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(100);
+    let (factor, slack_ms) = super::timing_env();
     // Scale the hard cap by the same factor/slack as relative ceilings, so a
     // loaded shared runner does not fail on an absolute-time blip.
     let setup_apply_max = (SETUP_APPLY_MAX_MS as f64 * factor).ceil() as i64 + slack_ms;

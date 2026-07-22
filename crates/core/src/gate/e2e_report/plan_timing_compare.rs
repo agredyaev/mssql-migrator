@@ -1,14 +1,7 @@
 use crate::timings::PhaseTimings;
 
 pub(super) fn compare_timings(baseline: &PhaseTimings, actual: &PhaseTimings) -> Vec<String> {
-    let factor = std::env::var("RMIG_E2E_TIMING_FACTOR")
-        .ok()
-        .and_then(|s| s.parse::<f64>().ok())
-        .unwrap_or(3.0);
-    let slack_ms: i64 = std::env::var("RMIG_E2E_TIMING_SLACK_MS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(100);
+    let (factor, slack_ms) = super::timing_env();
 
     let phases: &[(&str, i64, i64)] = &[
         (

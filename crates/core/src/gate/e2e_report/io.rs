@@ -15,19 +15,13 @@ pub fn action_counts_from_plan(plan: &MigrationPlan) -> HashMap<String, i32> {
     let mut out = HashMap::new();
     if !plan.rows.is_empty() {
         for row in &plan.rows {
-            let action = serde_json::to_string(&row.planned_action())
-                .unwrap_or_default()
-                .trim_matches('"')
-                .to_string();
+            let action = crate::gate::action_str(&row.planned_action());
             *out.entry(action).or_insert(0) += 1;
         }
         return out;
     }
     for obj in &plan.objects {
-        let action = serde_json::to_string(&obj.planned_action)
-            .unwrap_or_default()
-            .trim_matches('"')
-            .to_string();
+        let action = crate::gate::action_str(&obj.planned_action);
         *out.entry(action).or_insert(0) += 1;
     }
     out

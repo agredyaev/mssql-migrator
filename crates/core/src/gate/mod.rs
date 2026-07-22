@@ -43,3 +43,13 @@ pub use e2e_report::{
 };
 pub use evaluate::{evaluate_gate, max_plan_wall_ms_from_env, GateInput, GateResult};
 pub use snapshot::{PlanSnapshot, SnapshotObject, SNAPSHOT_VERSION};
+
+/// Serializes an action enum to its bare string form (serde JSON with the
+/// surrounding quotes trimmed), matching how planned actions are emitted in
+/// snapshot and e2e-report JSON.
+pub(crate) fn action_str<T: serde::Serialize>(action: &T) -> String {
+    serde_json::to_string(action)
+        .unwrap_or_default()
+        .trim_matches('"')
+        .to_string()
+}
