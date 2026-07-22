@@ -1,10 +1,14 @@
-# rmig-profile revision=77dfe72948456688a99903f8a86fef9255bacfdf version=1.0.10 target=aarch64-apple-darwin dirty=false
-   Compiling migrator-core v1.0.10 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core)
+# rmig-profile revision=79855cabc797dc4c6b9eb672856fa02af3c75e63 version=1.0.10 target=aarch64-apple-darwin dirty=false
+   Compiling tokio v1.52.3
+   Compiling tiberius v0.12.3
    Compiling migrator-core-dev v1.0.10 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core-dev)
-    Finished `profiling` profile [optimized + debuginfo] target(s) in 13.31s
-     Running benches/plan_diff_dhat.rs (target/profiling/deps/plan_diff_dhat-fbaad83d66092e88)
+   Compiling criterion v0.8.2
+   Compiling tokio-util v0.7.18
+   Compiling migrator-core v1.0.10 (/Users/fingerbib/project/mssql-reporting-migrator/crates/core)
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 35.66s
+     Running benches/plan_diff_dhat.rs (target/profiling/deps/plan_diff_dhat-060340012b02f8b1)
 dhat: plan_diff_skip_heavy_5000 x20 complete
-dhat: Total:     11,145,540 bytes in 90,141 blocks
-dhat: At t-gmax: 6,336,112 bytes in 65,041 blocks
+dhat: Total:     11,145,524 bytes in 90,141 blocks
+dhat: At t-gmax: 6,336,096 bytes in 65,041 blocks
 dhat: At t-end:  112 bytes in 2 blocks
 dhat: The data has been saved to dhat-heap.json, and is viewable with dhat/dh_view.html
