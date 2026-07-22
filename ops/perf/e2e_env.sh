@@ -10,6 +10,10 @@
 : "${ROOT:?set ROOT to repo root before sourcing e2e_env.sh}"
 
 export RMIG_RUN_SQLSERVER_INTEGRATION="${RMIG_RUN_SQLSERVER_INTEGRATION:-1}"
+# Runner-invoked suites must fail loud instead of silently skipping if the
+# integration toggle above is lost somewhere in the plumbing.
+export RMIG_REQUIRE_INTEGRATION="${RMIG_REQUIRE_INTEGRATION:-1}"
+echo "e2e env: loadavg $(sysctl -n vm.loadavg 2>/dev/null || cat /proc/loadavg 2>/dev/null || echo unknown)" >&2
 export RM_DB_SERVER="${RM_DB_SERVER:-localhost}"
 export RM_DB_PORT="${RM_DB_PORT:-1433}"
 export RM_DB_USER="${RM_DB_USER:-sa}"
