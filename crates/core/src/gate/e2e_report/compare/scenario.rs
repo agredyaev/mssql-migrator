@@ -1,5 +1,6 @@
 use super::super::plan_timing_compare::compare_timings;
 use super::super::types::E2EScenarioReport;
+use super::diff_field;
 
 /// Compare committed baseline report vs current run: behavior (actions + snapshot) + phase timings.
 pub fn compare_e2e_reports(
@@ -7,12 +8,12 @@ pub fn compare_e2e_reports(
     actual: &E2EScenarioReport,
 ) -> Vec<String> {
     let mut msgs = Vec::new();
-    if baseline.scenario != actual.scenario {
-        msgs.push(format!(
-            "scenario name: baseline={} actual={}",
-            baseline.scenario, actual.scenario
-        ));
-    }
+    diff_field(
+        &mut msgs,
+        "scenario name",
+        &baseline.scenario,
+        &actual.scenario,
+    );
     if baseline.action_counts != actual.action_counts {
         msgs.push(format!(
             "action_counts: baseline={:?} actual={:?}",
@@ -25,18 +26,18 @@ pub fn compare_e2e_reports(
             baseline.setup_steps, actual.setup_steps
         ));
     }
-    if baseline.io.query_calls != actual.io.query_calls {
-        msgs.push(format!(
-            "io.query_calls: baseline={} actual={}",
-            baseline.io.query_calls, actual.io.query_calls
-        ));
-    }
-    if baseline.timings.l1_cache_hit != actual.timings.l1_cache_hit {
-        msgs.push(format!(
-            "timings.l1_cache_hit: baseline={} actual={}",
-            baseline.timings.l1_cache_hit, actual.timings.l1_cache_hit
-        ));
-    }
+    diff_field(
+        &mut msgs,
+        "io.query_calls",
+        &baseline.io.query_calls,
+        &actual.io.query_calls,
+    );
+    diff_field(
+        &mut msgs,
+        "timings.l1_cache_hit",
+        &baseline.timings.l1_cache_hit,
+        &actual.timings.l1_cache_hit,
+    );
     if !baseline.timings.plan_db_path.is_empty()
         && baseline.timings.plan_db_path != actual.timings.plan_db_path
     {
