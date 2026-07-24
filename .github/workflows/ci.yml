@@ -9,9 +9,9 @@ name: CI
 # reachable through this workflow, so docs-only changes must trigger CI too.
 on:
   push:
-    branches: [main, master]
+    branches: [dev, main, master]
   pull_request:
-    branches: [main, master]
+    branches: [dev, main, master]
 
 # Least privilege: CI only reads the repository.
 permissions:
