@@ -12,12 +12,28 @@ export RM_DB_SERVER="${RM_DB_SERVER:-localhost}"
 export RM_DB_PORT="${RM_DB_PORT:-1433}"
 export RM_DB_USER="${RM_DB_USER:-sa}"
 export RM_DB_PASSWORD="${RM_DB_PASSWORD:-yourStrong(!)Password}"
-export RM_DB_ENCRYPT="${RM_DB_ENCRYPT:-false}"
-export RM_DB_TRUST_SERVER_CERTIFICATE="${RM_DB_TRUST_SERVER_CERTIFICATE:-true}"
+case "$RM_DB_SERVER" in
+  localhost|127.0.0.1|::1)
+    export RM_DB_ENCRYPT="${RM_DB_ENCRYPT:-false}"
+    export RM_DB_TRUST_SERVER_CERTIFICATE="${RM_DB_TRUST_SERVER_CERTIFICATE:-true}"
+    ;;
+  *)
+    export RM_DB_ENCRYPT="${RM_DB_ENCRYPT:-true}"
+    export RM_DB_TRUST_SERVER_CERTIFICATE="${RM_DB_TRUST_SERVER_CERTIFICATE:-false}"
+    ;;
+esac
 export RM_SQL_ROOT="${RM_SQL_ROOT:-$ROOT/.temp/sql}"
 export RMIG_GATE_REPORT="$ARTIFACTS/prod_gate_report.json"
 
 if [ "${RMIG_GATE_SKIP_DB_RESET:-}" != "1" ]; then
+  case "$RM_DB_SERVER" in
+    localhost|127.0.0.1|::1) ;;
+    *)
+      printf 'prod-gate: refusing database reset for non-loopback RM_DB_SERVER=%q\n' \
+        "$RM_DB_SERVER" >&2
+      exit 1
+      ;;
+  esac
   echo "reset catalog databases under ${RM_SQL_ROOT}..."
   for db in "$RM_SQL_ROOT"/*/; do
     [ -d "$db" ] || continue
@@ -29,8 +45,9 @@ if [ "${RMIG_GATE_SKIP_DB_RESET:-}" != "1" ]; then
       echo "ERROR: unsafe catalog directory name (allowed: [A-Za-z0-9_]+): $name" >&2
       exit 1
     fi
-    docker compose -f "$ROOT/docker-compose.yml" exec -T mssql /opt/mssql-tools18/bin/sqlcmd \
-      -S "$RM_DB_SERVER" -U "$RM_DB_USER" -P "$RM_DB_PASSWORD" -C \
+    SQLCMDPASSWORD="$RM_DB_PASSWORD" docker compose -f "$ROOT/docker-compose.yml" \
+      exec -T -e SQLCMDPASSWORD mssql /opt/mssql-tools18/bin/sqlcmd \
+      -S "$RM_DB_SERVER" -U "$RM_DB_USER" -C \
       -Q "IF DB_ID('${name}') IS NOT NULL BEGIN ALTER DATABASE [${name}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${name}]; END; CREATE DATABASE [${name}];"
   done
 fi

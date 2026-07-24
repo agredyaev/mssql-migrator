@@ -15,6 +15,13 @@ export RMIG_RUN_SQLSERVER_INTEGRATION="${RMIG_RUN_SQLSERVER_INTEGRATION:-1}"
 export RMIG_REQUIRE_INTEGRATION="${RMIG_REQUIRE_INTEGRATION:-1}"
 echo "e2e env: loadavg $(sysctl -n vm.loadavg 2>/dev/null || cat /proc/loadavg 2>/dev/null || echo unknown)" >&2
 export RM_DB_SERVER="${RM_DB_SERVER:-localhost}"
+case "$RM_DB_SERVER" in
+  localhost|127.0.0.1|::1) ;;
+  *)
+    printf 'e2e env: refusing non-loopback RM_DB_SERVER=%q\n' "$RM_DB_SERVER" >&2
+    exit 1
+    ;;
+esac
 export RM_DB_PORT="${RM_DB_PORT:-1433}"
 export RM_DB_USER="${RM_DB_USER:-sa}"
 export RM_DB_PASSWORD="${RM_DB_PASSWORD:-yourStrong(!)Password}"

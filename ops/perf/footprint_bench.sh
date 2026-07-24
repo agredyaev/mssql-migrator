@@ -16,8 +16,8 @@ shift || true
 
 feat_for_alloc() {
   case "${1:-skip_heavy}" in
-    skip_heavy|""|transitions|scan|scan_root|cache) echo "bench" ;;
-    *) echo "unknown alloc bench: $1 (skip_heavy|transitions|scan|scan_root|cache)" >&2; exit 2 ;;
+    skip_heavy|""|transitions|scan|scan_root) echo "bench" ;;
+    *) echo "unknown alloc bench: $1 (skip_heavy|transitions|scan|scan_root)" >&2; exit 2 ;;
   esac
 }
 
@@ -54,15 +54,6 @@ case "$MODE" in
     echo "CPU flamegraph: $ARTIFACTS/scan_5k_load_flamegraph.svg"
     echo "text summary:  $ARTIFACTS/scan_load_profile.txt"
     ;;
-  profile-load-cache)
-    RMIG_REPO_ROOT="$ROOT" \
-    RMIG_PROFILE_SECS="${RMIG_PROFILE_SECS:-30}" \
-    RMIG_PPROF_FREQ="${RMIG_PPROF_FREQ:-1000}" \
-      cargo bench -p "$PKG" --bench cache_serde_load --features bench --profile profiling 2>&1 \
-      | tee "$ARTIFACTS/cache_serde_load_run.txt"
-    echo "CPU flamegraph: $ARTIFACTS/cache_serde_load_flamegraph.svg"
-    echo "text summary:  $ARTIFACTS/cache_serde_load_profile.txt"
-    ;;
   alloc)
     BENCH="${1:-skip_heavy}"
     shift || true
@@ -72,7 +63,6 @@ case "$MODE" in
       transitions)   DHAT_BENCH=plan_diff_dhat_transitions; DHAT_OUT=rust_plan_diff_dhat_transitions.txt ;;
       scan)          DHAT_BENCH=plan_diff_dhat_scan; DHAT_OUT=rust_plan_diff_dhat_scan.txt ;;
       scan_root)     DHAT_BENCH=scan_dhat; DHAT_OUT=scan_dhat.txt ;;
-      cache)         DHAT_BENCH=cache_serde_dhat; DHAT_OUT=cache_serde_dhat.txt ;;
     esac
     # Remove every stale heap first: succeeding without a NEW heap must fail,
     # not silently republish an old binary's allocation evidence.
@@ -93,7 +83,6 @@ case "$MODE" in
         transitions) FLAME="$ARTIFACTS/rust_alloc_flame_transitions.txt" ;;
         scan)        FLAME="$ARTIFACTS/rust_alloc_flame_scan.txt" ;;
         scan_root)   FLAME="$ARTIFACTS/alloc_flame_scan_root.txt" ;;
-        cache)       FLAME="$ARTIFACTS/alloc_flame_cache.txt" ;;
       esac
       {
         echo "# $PROFILE_ID"
@@ -110,9 +99,9 @@ case "$MODE" in
     echo "Baseline: crates/core/tests/testdata/perf/footprint_baseline.json"
     ;;
   *)
-    echo "usage: $0 {bench|profile|profile-load-scan|profile-load-cache|alloc|update-baseline} [args...]" >&2
-    echo "  profile-load-scan / profile-load-cache  (sustained scan_root / L1 serde loop)" >&2
-    echo "  alloc [skip_heavy|transitions|scan|scan_root|cache]" >&2
+    echo "usage: $0 {bench|profile|profile-load-scan|alloc|update-baseline} [args...]" >&2
+    echo "  profile-load-scan  (sustained scan_root)" >&2
+    echo "  alloc [skip_heavy|transitions|scan|scan_root]" >&2
     exit 2
     ;;
 esac

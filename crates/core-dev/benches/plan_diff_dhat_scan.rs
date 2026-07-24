@@ -15,8 +15,8 @@ fn main() {
     let mut catalog = CatalogState::default();
     catalog.schemas.insert("schema".into());
     let mut checksums = ChecksumMap::new();
-    for (i, obj) in ws.object_entries.iter().enumerate() {
-        let key = obj.key(&ws, i);
+    for obj in &ws.object_entries {
+        let key = obj.key.clone();
         catalog
             .objects
             .insert(key.clone(), catalog_object_from_key(&key));

@@ -9,7 +9,6 @@ Lifecycle: `Current`.
 | `make e2e` | [`e2e.sh`](e2e.sh) | Plan subset: `empty_db_plan` + `warm_db_plan` |
 | `make e2e-all` | [`e2e_all.sh`](e2e_all.sh) | Full scenario matrix vs baselines |
 | `make e2e-timings` | [`e2e_timings.py`](e2e_timings.py) | Baseline vs run phase report |
-| `make integration` | [`integration.sh`](integration.sh) | Apply + git workflow integration |
 | `make slo` | [`cli_phase.sh`](cli_phase.sh) | Warm `cli_wall_ms` SLO |
 | `make prod-gate` | [`prod_gate.sh`](prod_gate.sh) | Incremental plan go/no-go |
 | `make plan-db-perf` | [`plan_db_perf.sh`](plan_db_perf.sh) | Plan DB trace + `parallel_wall_ms` |
@@ -30,8 +29,8 @@ Baselines: [`crates/core/tests/testdata/e2e/`](../../crates/core/tests/testdata/
 | `empty_db_plan` | 6x `create_object`; DB reset |
 | `prod_gate_cold` | Gate GO vs [`plan_baseline_empty_db.json`](../../crates/core/tests/testdata/prod_gate/plan_baseline_empty_db.json) |
 | `warm_db_plan` | 6x `skip_unchanged` after apply setup and one unmeasured SQL-plan warm-up |
-| `skip_unchanged_plan` | unchanged plan with fresh live-state fingerprints; committed baseline pins `l1_cache_hit=false` |
-| `catalog_cache_plan` | `RMIG_CATALOG_CACHE=1`; catalog persistence is enabled, while top-level L1 remains bypassed for live-state integrity |
+| `skip_unchanged_plan` | unchanged plan with fresh live-state fingerprints |
+| `catalog_cache_plan` | `RMIG_CATALOG_CACHE=1`; SQL catalog persistence is enabled |
 | `blocked_table_plan` | exit **10**, scaffold file |
 | `apply_smoke_result` | cold apply; DB reset; `audit_migration_rows=0` |
 | `ddl_transition_apply` | blocked DDL → transition migrate; `audit_migration_rows=1`, catalog meta/cache filled; **last step** — leaves migration row in `history` |
@@ -40,7 +39,9 @@ Run artifacts: `artifacts/e2e_<scenario>.json`. Report: `artifacts/e2e_all_repor
 
 After `make e2e-all`, inspect `azdo_deploy_meta.history`: expect `kind=migration`, `event=applied`, key under `*/_migrations/*.sql`.
 
-## Integration (`make integration`)
+## SQL regression integration
+
+Run these suites through `make sql-regression`.
 
 | Step | Test | Verifies |
 |------|------|----------|
@@ -58,11 +59,9 @@ make bench-footprint
 make bench-footprint-alloc
 make bench-footprint-update-baseline   # after intentional layout change
 make profile-summary
-# phase profilers (scan_root, L1 serde) — CPU flamegraph + dhat:
+# phase profiler (scan_root) — CPU flamegraph + dhat:
 ops/perf/footprint_bench.sh profile-load-scan
-ops/perf/footprint_bench.sh profile-load-cache
 ops/perf/footprint_bench.sh alloc scan_root
-ops/perf/footprint_bench.sh alloc cache
 ```
 
 Runbook: [`docs/perf-footprint-audit.md`](../../docs/perf-footprint-audit.md).
@@ -93,7 +92,6 @@ Runbook: [`docs/perf-footprint-audit.md`](../../docs/perf-footprint-audit.md).
 | `rust_plan_diff_dhat.txt` | `make bench-footprint-alloc` |
 | `rust_alloc_flame.txt` | `dhat_alloc_tree.py` (called from alloc bench) |
 | `scan_5k_load_flamegraph.svg`, `scan_dhat.txt` | `footprint_bench.sh profile-load-scan` / `alloc scan_root` |
-| `cache_serde_load_flamegraph.svg`, `cache_serde_dhat.txt` | `footprint_bench.sh profile-load-cache` / `alloc cache` |
 | `plan_db_trace.json` | `make plan-db-perf` |
 | `prod_gate_report.json` | `make prod-gate` |
 | `cli_phase_slo.json` | `make slo` |
