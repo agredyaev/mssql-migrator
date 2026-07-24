@@ -499,8 +499,9 @@ Passed:
 - `make sql-regression`: `ALL PASS` against the loopback Docker SQL Server
 - `make check-e2e`: `ALL PASS`, including the full E2E matrix, workflow, rmigd
   CLI phase, and production gate
-- E2E artifacts: `ops/perf/artifacts/e2e_all_report.txt` and
-  `ops/perf/artifacts/prod_gate_report.json`
+- Generated E2E reports (`e2e_all_report.txt` and `prod_gate_report.json`) are
+  written under `ops/perf/artifacts/` and intentionally remain gitignored;
+  their contract is documented in `docs/prod-gate.md`.
 
 Expected non-zero result:
 
