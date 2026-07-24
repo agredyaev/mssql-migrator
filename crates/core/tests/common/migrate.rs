@@ -99,17 +99,12 @@ pub async fn run_apply_smoke(cfg: &Config) -> Result<ApplySmokeOut> {
     let db_fp = db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     invalidate_audit_cache(&db_fp);
 
-    let l1 = migrator_core::cache::l1::L1Cache::new(&cfg.l1_cache_dir);
-    let _ = l1.invalidate_all(&db_fp);
-
     let io_arc = Arc::new(Mutex::new(IoProfile::default()));
     let mut conn = TimingConn::new(DbClient::Direct(connect(cfg).await?.client), io_arc);
     ensure_tables(&mut conn, &db_fp).await?;
 
     let db = migrator_core::db::run_plan_db_phase(cfg, &mut conn, &ws, false, false).await?;
     let (mut plan, _) = migrator_core::plan::compute_diff(&mut ws, &db.catalog, &db.checksums)?;
-    plan.ensure_objects_materialized(&ws);
-
     let apply = execute_plan(cfg, &mut conn, &ws, &mut plan).await?;
     if apply.failed == 0 && apply.applied > 0 {
         migrator_core::db::save_workspace_snapshot(

@@ -32,9 +32,11 @@ async fn use_statement_times_out_against_wedged_daemon_regression() {
         tokio::time::sleep(Duration::from_secs(30)).await;
     });
 
-    let mut cfg = Config::default();
-    cfg.database = "somedb".into();
-    cfg.command_timeout = Duration::from_millis(100);
+    let cfg = Config {
+        database: "somedb".into(),
+        command_timeout: Duration::from_millis(100),
+        ..Default::default()
+    };
     let started = std::time::Instant::now();
     let err = match connect_daemon(&sock.to_string_lossy(), &cfg).await {
         Err(e) => e,

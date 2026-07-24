@@ -68,7 +68,10 @@ fn write_atomic(path: &Path, write: impl FnOnce(&mut File) -> Result<()>) -> Res
         SEQ.fetch_add(1, Ordering::Relaxed)
     ));
     {
-        let mut f = File::create(&tmp)?;
+        let mut f = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)?;
         write(&mut f)?;
         f.sync_all().map_err(Error::Io)?;
     }

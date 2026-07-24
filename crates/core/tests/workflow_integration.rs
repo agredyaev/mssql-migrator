@@ -156,7 +156,7 @@ async fn workflow_git_scenarios_single_session() {
     let view_obj = plan
         .objects
         .iter()
-        .find(|o| o.normalized_key.as_ref() == "smoke/views/smoke_view")
+        .find(|o| o.normalized_key == "smoke/views/smoke_view")
         .expect("view in plan");
     assert_eq!(view_obj.planned_action, Action::UpdateExistingModule);
     assert!(view_obj.exists);

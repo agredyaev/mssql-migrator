@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PlanDbPath {
-    CacheHit,
-    WarmSnapshot,
     GitDelta,
     ColdFull,
     Incremental,
@@ -18,8 +16,6 @@ pub enum PlanDbPath {
 impl PlanDbPath {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::CacheHit => "cache_hit",
-            Self::WarmSnapshot => "warm_snapshot",
             Self::GitDelta => "git_delta",
             Self::ColdFull => "cold_full",
             Self::Incremental => "incremental",
@@ -34,7 +30,6 @@ pub struct PlanDbTimings {
     pub checksums_batch_ms: i64,
     pub catalog_ms: i64,
     pub catalog_sql_ms: i64,
-    pub intern_catalog_ms: i64,
     pub query_calls: i64,
     pub query_ms: i64,
     pub round_trips: i64,
@@ -82,8 +77,6 @@ pub fn max_parallel_wall_ms() -> i64 {
 
 pub fn plan_db_path_from_label(label: &str) -> Option<PlanDbPath> {
     match label {
-        "cache_hit" => Some(PlanDbPath::CacheHit),
-        "warm_snapshot" => Some(PlanDbPath::WarmSnapshot),
         "git_delta" => Some(PlanDbPath::GitDelta),
         "cold_full" => Some(PlanDbPath::ColdFull),
         "incremental" => Some(PlanDbPath::Incremental),
@@ -91,9 +84,9 @@ pub fn plan_db_path_from_label(label: &str) -> Option<PlanDbPath> {
     }
 }
 
-/// Warm-path SLO applies to incremental, git_delta, and cache hits — not cold full inspect.
-pub fn plan_db_slo_exempt(path_label: &str, l1_cache_hit: bool) -> bool {
-    l1_cache_hit || path_label == "cold_full"
+/// Warm-path SLO does not apply to a cold full inspect.
+pub fn plan_db_slo_exempt(path_label: &str) -> bool {
+    path_label == "cold_full"
 }
 
 pub use append::maybe_append_trace;

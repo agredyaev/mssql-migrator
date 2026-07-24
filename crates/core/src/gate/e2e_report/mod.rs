@@ -1,7 +1,6 @@
 mod compare;
 mod io;
 mod plan_timing_compare;
-mod read;
 mod timing_compare;
 mod types;
 

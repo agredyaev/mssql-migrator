@@ -1,39 +1,6 @@
 use serde::Serialize;
 
-use crate::domain::Workspace;
-
-use super::object::materialize_planned_object;
 use crate::export::plan_json::{MigrationPlan, PlanSummary, PlannedObject, PlannedSchema};
-
-/// Wire plan for JSON serialization.
-pub struct WireMigrationPlan<'a> {
-    pub inner: &'a MigrationPlan,
-    pub objects: Vec<PlannedObject>,
-}
-
-impl<'a> WireMigrationPlan<'a> {
-    pub fn new(plan: &'a MigrationPlan, ws: &Workspace) -> Self {
-        let objects = if plan.rows.is_empty() {
-            plan.objects.clone()
-        } else {
-            (0..plan.rows.len())
-                .map(|i| {
-                    materialize_planned_object(
-                        ws,
-                        i,
-                        &plan.rows[i],
-                        &plan.plan_git,
-                        &plan.plan_transitions,
-                    )
-                })
-                .collect()
-        };
-        Self {
-            inner: plan,
-            objects,
-        }
-    }
-}
 
 /// Serialize plan that already has materialized `objects` (no workspace).
 pub struct PlanJsonFromObjects<'a>(pub &'a MigrationPlan);
@@ -65,12 +32,6 @@ impl<'a> PlanWire<'a> {
             objects,
             summary: &inner.summary,
         }
-    }
-}
-
-impl Serialize for WireMigrationPlan<'_> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        PlanWire::new(self.inner, &self.objects).serialize(serializer)
     }
 }
 

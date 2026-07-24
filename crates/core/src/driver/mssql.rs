@@ -7,8 +7,6 @@ use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 use crate::config::Config;
 use crate::error::{Error, Result};
 
-use super::mssql_auth::select_auth_method;
-
 /// Tiberius client over a Tokio-compatible TCP stream.
 pub type RawClient = Client<Compat<TcpStream>>;
 
@@ -47,7 +45,7 @@ async fn connect_once(cfg: &Config) -> Result<MssqlConn> {
         tds.port(port);
     }
     tds.database(&cfg.database);
-    tds.authentication(select_auth_method(cfg)?);
+    tds.authentication(tiberius::AuthMethod::sql_server(&cfg.user, &cfg.password));
     if cfg.trust_server_certificate {
         tds.trust_cert();
     }
@@ -63,7 +61,7 @@ async fn connect_once(cfg: &Config) -> Result<MssqlConn> {
     {
         Ok(tcp) => tcp,
         Err(e) => {
-            tracing::debug!(operation = "tcp_connect", server = %cfg.server, port = %cfg.port, database = %cfg.database, db_auth = %cfg.db_auth, error = %e, "sql server tcp connect failed");
+            tracing::debug!(operation = "tcp_connect", server = %cfg.server, port = %cfg.port, database = %cfg.database, error = %e, "sql server tcp connect failed");
             return Err(Error::Conn(format!("connect {addr}: {e}")));
         }
     };
@@ -72,7 +70,7 @@ async fn connect_once(cfg: &Config) -> Result<MssqlConn> {
     let mut client = match with_connect_timeout(timeout, &addr, "tds handshake", handshake).await? {
         Ok(client) => client,
         Err(e) => {
-            tracing::debug!(operation = "tds_handshake", server = %cfg.server, port = %cfg.port, database = %cfg.database, db_auth = %cfg.db_auth, error = %e, "sql server tds handshake failed");
+            tracing::debug!(operation = "tds_handshake", server = %cfg.server, port = %cfg.port, database = %cfg.database, error = %e, "sql server tds handshake failed");
             return Err(Error::Conn(format!("connect {addr}: tds handshake: {e}")));
         }
     };

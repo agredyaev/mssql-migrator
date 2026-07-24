@@ -5,7 +5,7 @@
 //! current database state, mapping it to structural catalog representations for diff planning.
 //!
 //! ### Architectural Context
-//! - **Inputs**: SQL database connections, L1 filesystem cache.
+//! - **Inputs**: SQL database connections.
 //! - **Outputs**: `CatalogState` structs containing columns, schemas, and object definitions.
 //! - **Boundaries**: Uses thread-safe memory snapshots to speed up structural audits during heavy runs.
 //!
@@ -13,7 +13,7 @@
 //! 1. Open SQL Server connection.
 //! 2. Retrieve catalog schemas, tables, and views (`run_plan_db_phase`).
 //! 3. Extract detailed column structures for active tables (`load_table_columns`).
-//! 4. Save metadata snapshots on disk to avoid future inspect round-trips (`save`).
+//! 4. Save catalog metadata in SQL Server for incremental plans.
 //!
 //! ### Off-Nominal & Failure Containment
 //! - **Inspect exceptions**: If catalog loading fails (e.g., lack of metadata permissions), falls back safely, logs exceptions, and returns `Error::Sql`.
@@ -25,7 +25,6 @@ mod catalog_cache_save;
 mod catalog_guard;
 mod catalog_inspect_cache;
 mod columns;
-pub mod warm_snapshot;
 
 pub use catalog_cache::invalidate;
 pub use catalog_cache_save::{save_batched, save_workspace_snapshot};
@@ -43,9 +42,7 @@ pub use plan_db_trace::{
     trace_enabled, PlanDbFlags, PlanDbPath, PlanDbTimings, PlanDbTrace,
 };
 pub use plan_snapshot::run_plan_db_phase;
-pub use state::{
-    catalog_object, catalog_object_parts, intern_catalog_state, CatalogState, TableColumn,
-};
+pub use state::{catalog_object, catalog_object_parts, CatalogState, TableColumn};
 
 /// Drops the in-process inspect cache for the given database fingerprint.
 pub fn invalidate_inspect_cache(db_fp: &str) {

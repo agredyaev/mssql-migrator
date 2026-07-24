@@ -19,8 +19,6 @@ pub struct InspectScope {
     pub hot_keys: HashSet<String>,
     /// Objects with file digest == audit history; merged into catalog without SQL lookup.
     pub stable_objects: HashMap<crate::domain::ObjectKey, CatalogObject>,
-    /// Permits skipping the L1 cache lookup when all objects are stable.
-    pub allow_l1_skip: bool,
 }
 
 /// Applies catalog state to the workspace if it has not been applied yet.
@@ -37,12 +35,8 @@ pub fn apply_checksums_if_needed(ws: &mut Workspace, checksums: &ChecksumMap) {
     if ws.checksums_applied() {
         return;
     }
-    let n = ws.object_count();
-    ws.prior_by_row.resize(n, None);
-    for i in 0..n {
-        if let Some(cs) = checksums.get_key(ws.entry_key(i)) {
-            ws.prior_by_row[i] = Some(*cs);
-        }
+    for object in &mut ws.object_entries {
+        object.prior_checksum = checksums.get_key(&object.key).copied();
     }
     ws.mark_checksums_applied();
 }
@@ -76,26 +70,16 @@ fn scope_key_parts(key: &str) -> Option<(String, String, String)> {
 
 /// Stamps DB-existence flags and parent references onto workspace entries from `catalog`.
 pub fn apply_catalog(ws: &mut Workspace, catalog: &crate::db::CatalogState) {
-    let n = ws.object_count();
-    ws.catalog_row.resize(n, 0);
-    let mut catalog_fp: HashSet<u64> = HashSet::with_capacity(catalog.objects.len());
-    for key in catalog.objects.keys() {
-        catalog_fp.insert(key.fingerprint());
-    }
-    for i in 0..n {
+    for i in 0..ws.object_count() {
         let key = ws.entry_key(i).clone();
-        let row_id = ws.row_id_at(i);
         let schema = key.schema_part();
-        let in_catalog = catalog_fp.contains(&key.fingerprint());
-        ws.entry_mut(i).set_db_exists(in_catalog);
-        if in_catalog {
-            ws.catalog_row[i] = 1;
-        }
+        let in_catalog = catalog.objects.contains_key(&key);
+        ws.entry_mut(i).db_exists = in_catalog;
         if let Some(cat) = catalog.objects.get(&key) {
             if let Some(parent) = &cat.parent {
                 let parent_key = ObjectKey::new(schema, "tables", parent.as_ref());
                 let parent_row_id = ws.key_index(&parent_key);
-                ws.parent_by_row.insert(row_id, ParentRef { parent_row_id });
+                ws.entry_mut(i).parent = Some(ParentRef { parent_row_id });
             }
         }
     }

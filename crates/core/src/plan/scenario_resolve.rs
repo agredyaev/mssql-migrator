@@ -1,6 +1,5 @@
 use crate::domain::{is_module_kind_code, ObjectEntry, KIND_TABLES, KIND_TRIGGERS};
 
-use super::diff_prepare::prior_digest_present;
 use super::scenario::PlanScenario;
 
 /// Input bundle passed to `resolve_plan_scenario`.
@@ -17,10 +16,6 @@ pub struct ScenarioInput<'a> {
     pub obj: &'a ObjectEntry,
     /// Workspace containing the full object registry.
     pub ws: &'a crate::domain::Workspace,
-    /// Slice of prior digests indexed by catalog row.
-    pub prior_digests: &'a [Option<[u8; 32]>],
-    /// Catalog row identifier for the child object.
-    pub child_row_id: u32,
     /// Whether the object has at least one transition-path row.
     pub has_transition_paths: bool,
     /// The audited live-state fingerprint differs from SQL Server's current state.
@@ -36,8 +31,6 @@ pub fn resolve_plan_scenario(input: ScenarioInput<'_>) -> PlanScenario {
         kind_code,
         obj,
         ws,
-        prior_digests,
-        child_row_id,
         has_transition_paths,
         live_definition_drift,
     } = input;
@@ -57,22 +50,13 @@ pub fn resolve_plan_scenario(input: ScenarioInput<'_>) -> PlanScenario {
     if prior == Some(checksum) {
         return PlanScenario::SkipUnchanged;
     }
-    resolve_changed_scenario(
-        kind_code,
-        obj,
-        ws,
-        prior_digests,
-        child_row_id,
-        has_transition_paths,
-    )
+    resolve_changed_scenario(kind_code, obj, ws, has_transition_paths)
 }
 
 fn resolve_changed_scenario(
     kind_code: u8,
     obj: &ObjectEntry,
     ws: &crate::domain::Workspace,
-    prior_digests: &[Option<[u8; 32]>],
-    child_row_id: u32,
     has_transition_paths: bool,
 ) -> PlanScenario {
     match kind_code {
@@ -84,7 +68,7 @@ fn resolve_changed_scenario(
             }
         }
         KIND_TRIGGERS => {
-            let Some(pref) = obj.parent_ref_for_row(ws, child_row_id) else {
+            let Some(pref) = obj.parent else {
                 return changed_default_scenario(kind_code);
             };
             let parent_row_id = pref.parent_row_id;
@@ -95,7 +79,11 @@ fn resolve_changed_scenario(
             if !ws.catalog_has_row(parent_i) {
                 return PlanScenario::TriggerBlockedParentMissing;
             }
-            if !prior_digest_present(prior_digests, parent_i) {
+            if ws
+                .entry(parent_i)
+                .prior_checksum
+                .is_none_or(|checksum| checksum == [0; 32])
+            {
                 return PlanScenario::TriggerBlockedParentChanging;
             }
             PlanScenario::TriggerUpdateModule

@@ -1,13 +1,12 @@
-use super::shared::{empty_str, SharedStr};
 use super::Workspace;
 
 impl Workspace {
     /// Resolve catalog database segment by intern id. `0` = empty.
-    pub fn database_name(&self, db_id: u16) -> SharedStr {
+    pub fn database_name(&self, db_id: u16) -> &str {
         self.database_names
             .get(db_id as usize)
-            .cloned()
-            .unwrap_or_else(empty_str)
+            .map(String::as_str)
+            .unwrap_or("")
     }
 
     /// Number of interned database names (callers gate on this before interning
@@ -17,7 +16,7 @@ impl Workspace {
     }
 
     /// Registers `name` in the database name list and returns its position; returns `0` for an empty name.
-    pub fn intern_database(&mut self, name: SharedStr) -> u16 {
+    pub fn intern_database(&mut self, name: String) -> u16 {
         if name.is_empty() {
             return 0;
         }
@@ -28,7 +27,7 @@ impl Workspace {
         if let Some(i) = self
             .database_names
             .iter()
-            .position(|d| d.as_str().eq_ignore_ascii_case(name.as_str()))
+            .position(|database| database.eq_ignore_ascii_case(&name))
         {
             return i as u16;
         }
@@ -42,14 +41,13 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::Workspace;
-    use crate::domain::share;
 
     #[test]
     fn intern_database_folds_case_variants_to_one_id() {
         let mut ws = Workspace::default();
-        let a = ws.intern_database(share("Sales"));
-        let b = ws.intern_database(share("sales"));
+        let a = ws.intern_database("Sales".into());
+        let b = ws.intern_database("sales".into());
         assert_eq!(a, b, "case-variant db directories must share one id");
-        assert_ne!(a, ws.intern_database(share("Other")));
+        assert_ne!(a, ws.intern_database("Other".into()));
     }
 }

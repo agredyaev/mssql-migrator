@@ -5,7 +5,6 @@ mod incremental;
 use std::time::Instant;
 
 use crate::db::catalog_inspect_cache;
-use crate::db::intern_catalog_state;
 use crate::db::plan_db_trace::PlanDbTrace;
 use crate::db::state::{CatalogState, ChecksumMap};
 use crate::error::Result;
@@ -90,12 +89,8 @@ pub(super) async fn run_standard_body(
         }
         local_trace.timings.catalog_sql_ms = catalog_sql_ms;
         merge_stable_catalog(&mut loaded, &scope.stable_objects);
-        let t_intern = Instant::now();
-        intern_catalog_state(&mut loaded);
-        local_trace.timings.intern_catalog_ms += timings::dur_ms(t_intern.elapsed());
         inspect_ms = timings::dur_ms(t_insp.elapsed());
-        local_trace.timings.catalog_ms =
-            local_trace.timings.catalog_sql_ms + local_trace.timings.intern_catalog_ms;
+        local_trace.timings.catalog_ms = local_trace.timings.catalog_sql_ms;
         catalog_base = Some(loaded);
     }
 

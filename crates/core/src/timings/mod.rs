@@ -1,7 +1,7 @@
 //! Run-time execution metrics compilation and phase-timing recorders.
 //!
 //! ### Purpose
-//! Accurately records individual timing durations and metadata flags (like L1 cache hits, plan DB bootstraps)
+//! Accurately records individual timing durations and plan DB metadata flags
 //! for every major execution phase of `rmig` to support wall time SLO audits.
 //!
 //! ### Architectural Context

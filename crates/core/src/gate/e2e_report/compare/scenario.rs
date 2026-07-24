@@ -32,12 +32,6 @@ pub fn compare_e2e_reports(
         &baseline.io.query_calls,
         &actual.io.query_calls,
     );
-    diff_field(
-        &mut msgs,
-        "timings.l1_cache_hit",
-        &baseline.timings.l1_cache_hit,
-        &actual.timings.l1_cache_hit,
-    );
     if !baseline.timings.plan_db_path.is_empty()
         && baseline.timings.plan_db_path != actual.timings.plan_db_path
     {

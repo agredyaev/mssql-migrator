@@ -1,22 +1,15 @@
-use super::str_off::StrOff;
-
-/// One transition script row for a table (sparse by object row id).
+/// One ordered transition script for a table.
 #[derive(Clone, Debug)]
 pub struct TransitionEntry {
-    /// Arena offset of the ordinal string (e.g. `"001"`).
-    pub ord_off: StrOff,
-    /// 1-based identifier of the associated script row.
+    /// Ordinal string, for example `"001"`.
+    pub ordinal: String,
+    /// 1-based identifier of the associated script.
     pub script_id: u32,
-    pub(crate) staging_ord: Option<super::SharedStr>,
 }
 
 impl TransitionEntry {
-    /// Creates a staging entry with an in-memory ordinal, before arena interning.
-    pub fn new_staging(ordinal: super::SharedStr, script_id: u32) -> Self {
-        Self {
-            ord_off: StrOff::EMPTY,
-            script_id,
-            staging_ord: Some(ordinal),
-        }
+    /// Creates a transition entry.
+    pub fn new(ordinal: String, script_id: u32) -> Self {
+        Self { ordinal, script_id }
     }
 }

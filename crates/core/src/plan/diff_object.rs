@@ -1,54 +1,75 @@
-use std::collections::HashMap;
+use crate::domain::{with_database_prefix, Action, Workspace};
+use crate::export::{PlannedGit, PlannedObject};
 
-use crate::domain::{Action, Workspace};
-use crate::export::{plan_git_off_from_script, PlanGitOff, PlanRow};
-
-use super::diff_fill_skip::skip_fill_unchanged;
-
+#[derive(Clone, Copy)]
 pub(crate) struct ObjectDecision {
     pub action: Action,
     pub with_git: bool,
     pub exists: bool,
 }
 
-pub(crate) fn fill_plan_row(
+pub(crate) fn reuse_unchanged_object(
     ws: &Workspace,
-    i: usize,
-    row: &mut PlanRow,
-    plan_git: &mut HashMap<u32, PlanGitOff>,
-    plan_transitions: &mut HashMap<u32, Vec<crate::domain::StrOff>>,
+    index: usize,
     decision: ObjectDecision,
-) {
-    if skip_fill_unchanged(ws, i, row, &decision) {
-        return;
+    planned: &PlannedObject,
+) -> bool {
+    if decision.action != Action::SkipUnchanged
+        || decision.with_git
+        || planned.planned_action != decision.action
+        || planned.exists != decision.exists
+        || planned.git.is_some()
+        || !planned.transition_paths.is_empty()
+    {
+        return false;
     }
-    let obj = ws.entry(i);
-    let idx = i as u32;
-    row.set_planned_action(decision.action);
-    row.set_exists(decision.exists);
-    row.checksum = obj.checksum;
+    let object = ws.entry(index);
+    planned.checksum == object.checksum && planned.normalized_key == object.key.as_str()
+}
 
-    if decision.with_git {
-        if let Some(git) = plan_git_off_from_script(ws, obj.script_id) {
-            plan_git.insert(idx, git);
-        } else {
-            plan_git.remove(&idx);
-        }
+pub(crate) fn planned_object(
+    ws: &Workspace,
+    index: usize,
+    decision: ObjectDecision,
+) -> PlannedObject {
+    let object = ws.entry(index);
+    let database = ws.database_name(object.db_id);
+    let git = decision
+        .with_git
+        .then(|| {
+            let script = ws.script(object.script_id);
+            PlannedGit {
+                hash: script.git_hash().to_owned(),
+                author: script.git_author().to_owned(),
+                date: script.git_date().to_owned(),
+            }
+        })
+        .filter(|value| {
+            !value.hash.is_empty() || !value.author.is_empty() || !value.date.is_empty()
+        });
+    let transition_paths = if decision.action == Action::ReprocessChanged {
+        object
+            .transitions
+            .iter()
+            .map(|transition| {
+                with_database_prefix(database, ws.script(transition.script_id).path_str())
+            })
+            .collect()
     } else {
-        plan_git.remove(&idx);
-    }
-
-    if decision.action == Action::ReprocessChanged {
-        if let Some(p) = ws
-            .transition_path_cache
-            .as_ref()
-            .and_then(|m| m.get(&ws.row_id_at(i)))
-        {
-            plan_transitions.insert(idx, p.clone());
-        } else {
-            plan_transitions.remove(&idx);
-        }
-    } else {
-        plan_transitions.remove(&idx);
+        Vec::new()
+    };
+    PlannedObject {
+        normalized_key: object.key.shared(),
+        object_path: ws.object_path_at(index),
+        schema_name: object.key.schema_shared(),
+        kind: object.key.kind_shared(),
+        object_name: object.key.name_shared(),
+        database_name: database.to_owned(),
+        parent_name: object.parent_name(ws),
+        transition_paths,
+        git,
+        checksum: object.checksum,
+        planned_action: decision.action,
+        exists: decision.exists,
     }
 }

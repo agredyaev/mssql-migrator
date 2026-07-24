@@ -1,11 +1,7 @@
 //! Parallel object parse (file read + sha256) with an order-preserving merge.
 //!
-//! [`super::parse_object::parse_object`] is pure per file — it builds only
-//! process-local `SharedStr` (arena dedup happens later in
-//! `Workspace::finalize_object_layout`), so the file reads run across worker
-//! threads and the results are merged into the `Workspace` sequentially by the
-//! caller, in the original (sorted) order. The reads are syscall-bound, so this
-//! mainly recovers wall time on large trees / cold or networked filesystems.
+//! [`super::parse_object::parse_object`] is pure per file, so reads run across
+//! worker threads and merge into `Workspace` in the original sorted order.
 
 use std::path::PathBuf;
 use std::thread;

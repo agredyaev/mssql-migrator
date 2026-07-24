@@ -7,9 +7,6 @@ pub(crate) fn merge_trace(dst: &mut PlanDbTrace, src: &PlanDbTrace) {
     if src.timings.catalog_sql_ms > 0 {
         dst.timings.catalog_sql_ms = src.timings.catalog_sql_ms;
     }
-    if src.timings.intern_catalog_ms > 0 {
-        dst.timings.intern_catalog_ms = src.timings.intern_catalog_ms;
-    }
     if src.timings.catalog_ms > 0 {
         dst.timings.catalog_ms = src.timings.catalog_ms;
     }

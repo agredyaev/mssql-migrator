@@ -3,7 +3,6 @@ use std::time::Instant;
 use crate::audit;
 use crate::db::batch;
 use crate::db::catalog;
-use crate::db::intern_catalog_state;
 use crate::db::plan_db_trace::PlanDbTrace;
 use crate::db::state::{CatalogState, ChecksumMap};
 use crate::error::Result;
@@ -74,9 +73,6 @@ pub(super) async fn warmup_git_delta(
 
     if loaded.objects.len() == ctx.ws.object_count() {
         partial_cache = true;
-        let t_intern = Instant::now();
-        intern_catalog_state(&mut loaded);
-        local_trace.timings.intern_catalog_ms += timings::dur_ms(t_intern.elapsed());
     } else {
         loaded = CatalogState::default();
         partial_cache = false;

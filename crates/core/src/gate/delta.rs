@@ -59,14 +59,13 @@ pub fn expand_delta_closure(ws: &Workspace, mut delta: HashSet<String>) -> HashS
         for i in 0..n {
             let obj = ws.entry(i);
             let db = ws.database_name(obj.db_id);
-            if !delta.contains(&format!("{db}/{}", obj.key_str(ws, i))) {
+            if !delta.contains(&format!("{db}/{}", obj.key.as_str())) {
                 continue;
             }
-            if obj.kind_part(ws, i) != "triggers" {
+            if obj.key.kind_part() != "triggers" {
                 continue;
             }
-            let row_id = ws.row_id_at(i);
-            if let Some(pref) = obj.parent_ref_for_row(ws, row_id) {
+            if let Some(pref) = obj.parent {
                 if pref.parent_row_id > 0 {
                     let pi = (pref.parent_row_id as usize) - 1;
                     let pk = ws.entry_key(pi).as_str();

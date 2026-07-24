@@ -18,14 +18,13 @@ pub async fn migrate(cfg: &Config) -> Result<RunOutput> {
 
 pub fn log_timings(label: &str, t: &PhaseTimings) {
     eprintln!(
-        "{label}: wall={}ms conn={} scan={} insp={} par={} apply={} l1={} path={} q={} query_ms={}",
+        "{label}: wall={}ms conn={} scan={} insp={} par={} apply={} path={} q={} query_ms={}",
         t.plan_wall_ms,
         t.connect_ms,
         t.scan_ms,
         t.inspect_ms,
         t.parallel_wall_ms,
         t.apply_ms,
-        t.l1_cache_hit,
         t.plan_db_path,
         t.plan_db_query_calls,
         t.plan_db_query_ms
@@ -36,7 +35,6 @@ pub fn log_timings(label: &str, t: &PhaseTimings) {
             checksums_batch_ms: t.plan_db_checksums_batch_ms,
             catalog_ms: t.plan_db_catalog_ms,
             catalog_sql_ms: t.plan_db_catalog_sql_ms,
-            intern_catalog_ms: t.plan_db_intern_catalog_ms,
             query_calls: t.plan_db_query_calls,
             query_ms: t.plan_db_query_ms,
             round_trips: t.plan_db_round_trips,
@@ -54,7 +52,7 @@ pub fn log_timings(label: &str, t: &PhaseTimings) {
 }
 
 pub fn assert_plan_db_par_slo(label: &str, t: &PhaseTimings) {
-    if plan_db_slo_exempt(&t.plan_db_path, t.l1_cache_hit) {
+    if plan_db_slo_exempt(&t.plan_db_path) {
         return;
     }
     let max = max_parallel_wall_ms();

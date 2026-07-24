@@ -3,8 +3,6 @@ use std::time::Duration;
 use crate::error::{Error, Result};
 use crate::Config;
 
-use super::TomlConfig;
-
 pub(super) fn parse_bool(s: &str) -> bool {
     let value = s.trim();
     value == "1"
@@ -78,22 +76,15 @@ pub(super) fn set_timeout(raw: &str, name: &str, slot: &mut Duration) {
     }
 }
 
-pub(super) fn apply_tls(cfg: &mut Config, file: &TomlConfig) {
-    let get = |name: &str, value: Option<String>| std::env::var(name).ok().or(value);
+pub(super) fn apply_tls(cfg: &mut Config) {
     let encrypt_default = cfg.encrypt;
-    cfg.encrypt = get(
-        "RM_DB_ENCRYPT",
-        file.database.encrypt.map(|v| v.to_string()),
-    )
-    .map_or(encrypt_default, |v| parse_bool(&v));
+    cfg.encrypt = std::env::var("RM_DB_ENCRYPT")
+        .ok()
+        .map_or(encrypt_default, |v| parse_bool(&v));
     let trust_default = cfg.trust_server_certificate;
-    cfg.trust_server_certificate = get(
-        "RM_DB_TRUST_SERVER_CERTIFICATE",
-        file.database
-            .trust_server_certificate
-            .map(|v| v.to_string()),
-    )
-    .map_or(trust_default, |v| parse_bool(&v));
+    cfg.trust_server_certificate = std::env::var("RM_DB_TRUST_SERVER_CERTIFICATE")
+        .ok()
+        .map_or(trust_default, |v| parse_bool(&v));
 }
 
 #[cfg(test)]

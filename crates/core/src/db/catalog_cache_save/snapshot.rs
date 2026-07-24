@@ -1,6 +1,6 @@
 use super::save::save_batched;
 use crate::db::state::{catalog_object_parts, CatalogState};
-use crate::domain::{share, ObjectEntry, Workspace};
+use crate::domain::Workspace;
 use crate::driver::TimingConn;
 use crate::error::Result;
 use crate::sql;
@@ -18,17 +18,16 @@ pub async fn save_workspace_snapshot(
     let mut state = CatalogState::default();
     for i in 0..ws.object_count() {
         let obj = ws.entry(i);
-        let row_id = ws.row_id_at(i);
-        state.schemas.insert(obj.schema_part(ws, i).to_lowercase());
+        state.schemas.insert(obj.key.schema_part().to_lowercase());
         state.objects.insert(
             ws.entry_key(i).clone(),
             catalog_object_parts(
-                obj.schema_shared(ws, i),
-                obj.kind_shared(ws, i),
-                obj.name_shared(ws, i),
-                obj.parent_ref_for_row(ws, row_id)
+                obj.key.schema_shared(),
+                obj.key.kind_shared(),
+                obj.key.name_shared(),
+                obj.parent
                     .filter(|p| p.parent_row_id > 0)
-                    .map(|_| ObjectEntry::parent_name(ws, row_id)),
+                    .map(|_| obj.parent_name(ws)),
             ),
         );
     }
@@ -41,9 +40,10 @@ async fn hydrate_index_parents_from_db(
     conn: &mut TimingConn,
     state: &mut CatalogState,
 ) -> Result<()> {
-    let needs = state.objects.values().any(|o| {
-        o.kind.as_ref() == "indexes" && o.parent.as_ref().is_none_or(|p| p.as_ref().is_empty())
-    });
+    let needs = state
+        .objects
+        .values()
+        .any(|o| o.kind == "indexes" && o.parent.as_ref().is_none_or(String::is_empty));
     if !needs {
         return Ok(());
     }
@@ -56,14 +56,14 @@ async fn hydrate_index_parents_from_db(
             continue;
         }
         for obj in state.objects.values_mut() {
-            if obj.kind.as_ref() != "indexes" {
+            if obj.kind != "indexes" {
                 continue;
             }
-            if obj.schema.as_ref().eq_ignore_ascii_case(&schema)
-                && obj.name.as_ref().eq_ignore_ascii_case(&index)
-                && obj.parent.as_ref().is_none_or(|p| p.as_ref().is_empty())
+            if obj.schema.eq_ignore_ascii_case(&schema)
+                && obj.name.eq_ignore_ascii_case(&index)
+                && obj.parent.as_ref().is_none_or(String::is_empty)
             {
-                obj.parent = Some(share(parent));
+                obj.parent = Some(parent.to_owned());
             }
         }
     }

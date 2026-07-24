@@ -87,7 +87,7 @@ fn snapshot_keys_are_database_qualified_regression() {
     ] {
         plan.objects.push(PlannedObject {
             normalized_key: "s/views/v".into(),
-            object_path: format!("{db}/s/views/v.sql").into(),
+            object_path: format!("{db}/s/views/v.sql"),
             schema_name: "s".into(),
             kind: "views".into(),
             object_name: "v".into(),

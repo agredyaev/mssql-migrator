@@ -30,3 +30,13 @@ fn verified_body_reports_missing_file_edge_case() {
         .expect_err("missing file must error");
     assert!(err.contains("read failed"), "message: {err}");
 }
+
+#[test]
+fn verified_body_rejects_oversized_script_before_hashing() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("huge.sql");
+    std::fs::write(&path, vec![b'x'; crate::file_io::MAX_SQL_SCRIPT_BYTES + 1]).expect("write");
+    let err = verified_body(path.to_str().unwrap(), &[0u8; 32], "dbo/views/huge")
+        .expect_err("oversized script must fail");
+    assert!(err.contains("byte limit"), "message: {err}");
+}

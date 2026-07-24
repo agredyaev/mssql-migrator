@@ -1,76 +1,106 @@
-use crate::domain::script::{ScriptGit, ScriptGitStaging, ScriptKind, ScriptRow};
-use crate::domain::str_off::StrOff;
-use crate::domain::{empty_str, SharedStr, Workspace};
+use crate::domain::{Script, ScriptGit, ScriptKind, ScriptRow, Workspace};
 
-/// Borrowed script view with derived field accessors.
+/// Borrowed script view.
 pub struct ScriptRef<'a> {
     pub(super) ws: &'a Workspace,
     pub(super) id: u32,
 }
 
 impl<'a> ScriptRef<'a> {
-    /// Returns the underlying script metadata row.
+    /// Returns the stored script row.
     pub fn row(&self) -> &'a ScriptRow {
         self.ws.script_row(self.id)
     }
 
-    /// Returns the script's composite key.
+    /// Clones the script key.
     pub fn key(&self) -> crate::domain::ScriptKey {
-        self.row().key(self.ws, self.id)
+        self.row().key.clone()
     }
 
-    /// Returns the repository-relative path string.
+    /// Returns the repository-relative path.
     pub fn path_str(&self) -> &'a str {
-        self.row().path_str(self.ws, self.id)
+        self.row().key.as_str()
     }
 
-    /// Returns the absolute filesystem path.
-    pub fn abs_path(&self) -> SharedStr {
-        self.row().abs_path(self.ws, self.id)
+    /// Returns the absolute path.
+    pub fn abs_path(&self) -> &'a str {
+        &self.row().abs_path
     }
 
-    /// Returns the script kind (SQL, scaffold, etc.).
+    /// Returns the script kind.
     pub fn kind(&self) -> ScriptKind {
         self.row().kind
     }
 
-    /// Returns the SHA-256 checksum of the script content, if recorded.
+    /// Returns the script checksum.
     pub fn checksum(&self) -> Option<&'a [u8; 32]> {
         self.ws.script_checksum(self.id)
     }
 
-    /// Returns the Git commit hash associated with this script.
-    pub fn git_hash(&self) -> SharedStr {
-        self.git_field(|g| g.hash_off, |st| st.hash.as_ref())
+    /// Returns the Git commit hash.
+    pub fn git_hash(&self) -> &'a str {
+        self.git_field(|git| git.hash.as_ref())
     }
 
-    /// Returns the Git author for the most recent commit to this script.
-    pub fn git_author(&self) -> SharedStr {
-        self.git_field(|g| g.author_off, |st| st.author.as_ref())
+    /// Returns the Git author.
+    pub fn git_author(&self) -> &'a str {
+        self.git_field(|git| git.author.as_ref())
     }
 
-    /// Returns the Git commit date for the most recent commit to this script.
-    pub fn git_date(&self) -> SharedStr {
-        self.git_field(|g| g.date_off, |st| st.date.as_ref())
+    /// Returns the Git commit date.
+    pub fn git_date(&self) -> &'a str {
+        self.git_field(|git| git.date.as_ref())
     }
 
-    fn git_field(
-        &self,
-        off: impl Fn(&ScriptGit) -> StrOff,
-        staging: impl Fn(&ScriptGitStaging) -> Option<&SharedStr>,
-    ) -> SharedStr {
-        if let Some(st) = self.ws.cold.script_git_staging.get(&self.id) {
-            if let Some(s) = staging(st) {
-                return s.clone();
-            }
+    fn git_field(&self, field: impl Fn(&ScriptGit) -> Option<&String>) -> &'a str {
+        self.ws
+            .script_git
+            .get(&self.id)
+            .and_then(field)
+            .map(String::as_str)
+            .unwrap_or("")
+    }
+}
+
+impl Workspace {
+    /// Returns the stored script row for a 1-based id.
+    pub fn script_row(&self, script_id: u32) -> &ScriptRow {
+        &self.script_rows[script_id as usize - 1]
+    }
+
+    /// Returns a borrowed script view.
+    pub fn script(&self, script_id: u32) -> ScriptRef<'_> {
+        ScriptRef {
+            ws: self,
+            id: script_id,
         }
-        let Some(git) = self.ws.script_git.get(&self.id) else {
-            return empty_str();
-        };
-        let o = off(git);
-        if o.1 == 0 {
-            return empty_str();
+    }
+
+    /// Returns the stored checksum.
+    pub fn script_checksum(&self, script_id: u32) -> Option<&[u8; 32]> {
+        self.script_checksums
+            .get(script_id as usize - 1)
+            .and_then(Option::as_ref)
+    }
+
+    /// Iterates over all scripts.
+    pub fn scripts_iter(&self) -> impl Iterator<Item = ScriptRef<'_>> + '_ {
+        (1..=self.script_rows.len() as u32).map(|id| self.script(id))
+    }
+
+    /// Returns or inserts Git metadata for a script.
+    pub fn ensure_script_git(&mut self, script_id: u32) -> &mut ScriptGit {
+        self.script_git.entry(script_id).or_default()
+    }
+
+    /// Copies a stored script into the scan-ingest shape.
+    pub fn script_to_ingest(&self, script_id: u32) -> Script {
+        let script = self.script(script_id);
+        Script {
+            key: script.key(),
+            kind: script.kind(),
+            abs_path: script.abs_path().to_owned(),
+            checksum: script.checksum().copied(),
         }
-        self.ws.shared_at(o)
     }
 }

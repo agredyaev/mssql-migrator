@@ -32,14 +32,6 @@ pub(crate) async fn plan_phase(
         cmd == Command::RepairChecksum,
     )
     .await?;
-    let server_database =
-        crate::audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
-    crate::db::warm_snapshot::store(
-        &server_database,
-        ws.layout_digest,
-        db.checksums.clone(),
-        db.catalog.clone(),
-    );
     timings.ensure_ms = db.ensure_ms;
     timings.checksums_ms = db.checksums_ms;
     timings.inspect_ms = db.inspect_ms;
@@ -48,7 +40,6 @@ pub(crate) async fn plan_phase(
     } else {
         db.ensure_ms.max(db.checksums_ms + db.inspect_ms)
     };
-    timings.l1_cache_hit = db.l1_hit;
     timings.plan_db_path = db.trace.path_label().to_string();
     timings.plan_db_query_calls = db.trace.timings.query_calls;
     timings.plan_db_query_ms = db.trace.timings.query_ms;
@@ -57,7 +48,6 @@ pub(crate) async fn plan_phase(
     timings.plan_db_checksums_batch_ms = db.trace.timings.checksums_batch_ms;
     timings.plan_db_catalog_ms = db.trace.timings.catalog_ms;
     timings.plan_db_catalog_sql_ms = db.trace.timings.catalog_sql_ms;
-    timings.plan_db_intern_catalog_ms = db.trace.timings.intern_catalog_ms;
     timings.plan_db_history_empty = db.trace.flags.history_empty;
     timings.plan_db_checksums_skipped = db.trace.flags.checksums_skipped;
     timings.plan_db_round_trips = db.trace.timings.round_trips;
@@ -67,8 +57,5 @@ pub(crate) async fn plan_phase(
     plan.command = command_label(cmd).into();
     plan.planned_at = resolved_planned_at();
     timings.diff_ms = diff_ms;
-    if plan.uses_slim_rows() {
-        plan.ensure_objects_materialized(ws);
-    }
     Ok(plan)
 }

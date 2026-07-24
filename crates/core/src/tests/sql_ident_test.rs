@@ -39,8 +39,8 @@ fn rejects_dotdot() {
 }
 
 #[test]
-fn rejects_path_separators_and_nul_edge_cases() {
-    for name in ["a/b", "a\\b", "a\0b", ""] {
+fn rejects_path_separators_and_control_characters_edge_cases() {
+    for name in ["a/b", "a\\b", "a\0b", "a\nb", "a\u{1b}b", ""] {
         assert!(
             validate_path_component(name).is_err(),
             "expected invalid path component for {name:?}"

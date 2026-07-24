@@ -13,9 +13,6 @@ pub(super) fn merge_timings(dst: &mut PhaseTimings, src: &PhaseTimings) {
     dst.plan_db_query_calls = dst
         .plan_db_query_calls
         .saturating_add(src.plan_db_query_calls);
-    if !src.l1_cache_hit {
-        dst.l1_cache_hit = false;
-    }
     if !src.plan_db_path.is_empty() {
         dst.plan_db_path.clone_from(&src.plan_db_path);
     }
@@ -29,8 +26,6 @@ pub(super) fn merge_plan(dst: &mut Option<MigrationPlan>, src: MigrationPlan) {
 }
 
 fn merge_plan_into(dst: &mut MigrationPlan, mut src: MigrationPlan) {
-    let row_offset = dst.rows.len() as u32;
-
     if dst.command.is_empty() {
         dst.command = src.command.clone();
     }
@@ -41,15 +36,7 @@ fn merge_plan_into(dst: &mut MigrationPlan, mut src: MigrationPlan) {
     dst.blocked |= src.blocked;
     dst.blockers.append(&mut src.blockers);
     dst.schemas.append(&mut src.schemas);
-    dst.rows.append(&mut src.rows);
     dst.objects.append(&mut src.objects);
-
-    for (idx, git) in src.plan_git.drain() {
-        dst.plan_git.insert(row_offset + idx, git);
-    }
-    for (idx, transitions) in src.plan_transitions.drain() {
-        dst.plan_transitions.insert(row_offset + idx, transitions);
-    }
 
     let sum = &mut dst.summary;
     sum.schema_count = sum.schema_count.saturating_add(src.summary.schema_count);

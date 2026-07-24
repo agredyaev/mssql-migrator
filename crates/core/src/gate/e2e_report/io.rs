@@ -2,24 +2,16 @@
 
 use std::collections::HashMap;
 
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 
 use crate::export::MigrationPlan;
 use crate::timings::PhaseTimings;
 
-use super::read::read_report_object;
 use super::types::{E2EApplyReport, E2EBlockedReport, E2EGateReport, E2EScenarioReport};
 use crate::gate::snapshot::PlanSnapshot;
 
 pub fn action_counts_from_plan(plan: &MigrationPlan) -> HashMap<String, i32> {
     let mut out = HashMap::new();
-    if !plan.rows.is_empty() {
-        for row in &plan.rows {
-            let action = crate::gate::action_str(&row.planned_action());
-            *out.entry(action).or_insert(0) += 1;
-        }
-        return out;
-    }
     for obj in &plan.objects {
         let action = crate::gate::action_str(&obj.planned_action);
         *out.entry(action).or_insert(0) += 1;
@@ -44,19 +36,36 @@ pub fn build_e2e_report(
 }
 
 pub fn read_e2e_report_json(data: &str) -> Result<E2EScenarioReport, serde_json::Error> {
-    read_report_object(data, &["timings", "io", "snapshot", "action_counts"])
+    read_json_object(data, &["timings", "io", "snapshot", "action_counts"])
 }
 
 pub fn read_e2e_apply_json(data: &str) -> Result<E2EApplyReport, serde_json::Error> {
-    read_report_object(data, &["timings"])
+    read_json_object(data, &["timings"])
 }
 
 pub fn read_e2e_gate_json(data: &str) -> Result<E2EGateReport, serde_json::Error> {
-    read_report_object(data, &["snapshot"])
+    read_json_object(data, &["snapshot"])
 }
 
 pub fn read_e2e_blocked_json(data: &str) -> Result<E2EBlockedReport, serde_json::Error> {
-    read_report_object(data, &["timings"])
+    read_json_object(data, &["timings"])
+}
+
+fn read_json_object<T: DeserializeOwned>(
+    data: &str,
+    object_fields: &[&str],
+) -> Result<T, serde_json::Error> {
+    let value: serde_json::Value = serde_json::from_str(data)?;
+    if !value.is_object()
+        || object_fields
+            .iter()
+            .any(|field| value.get(field).is_some_and(|nested| !nested.is_object()))
+    {
+        return Err(<serde_json::Error as serde::de::Error>::custom(
+            "expected JSON object fields",
+        ));
+    }
+    serde_json::from_value(value)
 }
 
 pub fn write_e2e_report_file(

@@ -34,7 +34,6 @@ pub async fn try_load(
         return Ok(None);
     }
     hydrate_schemas_from_objects(&mut state);
-    crate::db::intern_catalog_state(&mut state);
     Ok(Some(state))
 }
 
@@ -49,7 +48,7 @@ pub fn merge_load_rows(state: &mut CatalogState, rows: &[crate::driver::RowData]
 
 fn hydrate_schemas_from_objects(state: &mut CatalogState) {
     for o in state.objects.values() {
-        state.schemas.insert(o.schema.as_ref().to_lowercase());
+        state.schemas.insert(o.schema.to_lowercase());
     }
 }
 

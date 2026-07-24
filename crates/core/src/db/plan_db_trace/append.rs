@@ -30,7 +30,6 @@ pub fn maybe_append_trace(label: &str, trace: &PlanDbTrace, parallel_wall_ms: i6
         "checksums_batch_ms": trace.timings.checksums_batch_ms,
         "catalog_ms": trace.timings.catalog_ms,
         "catalog_sql_ms": trace.timings.catalog_sql_ms,
-        "intern_catalog_ms": trace.timings.intern_catalog_ms,
         "query_calls": trace.timings.query_calls,
         "query_ms": trace.timings.query_ms,
         "round_trips": trace.timings.round_trips,

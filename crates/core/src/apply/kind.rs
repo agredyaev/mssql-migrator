@@ -27,5 +27,5 @@ fn kind_rank(kind: &str) -> i32 {
 
 /// Sort a batch of planned objects by kind rank then normalized key.
 pub fn sort_tx_batch(batch: &mut [&crate::export::PlannedObject]) {
-    batch.sort_by_key(|o| (kind_rank(o.kind.as_ref()), o.normalized_key.as_ref()));
+    batch.sort_by_key(|o| (kind_rank(o.kind.as_str()), o.normalized_key.as_str()));
 }

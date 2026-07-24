@@ -11,7 +11,6 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "RM_LOG_LEVEL",
     "RM_DB_SERVER",
     "RM_DB_PORT",
-    "RM_DB_AUTH",
     "RM_DB_DATABASE",
     "RM_DB_USER",
     "RM_DB_PASSWORD",
@@ -25,7 +24,6 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "RM_COMMAND_TIMEOUT",
     "RM_DB_ENCRYPT",
     "RM_DB_TRUST_SERVER_CERTIFICATE",
-    "RMIG_SLO_MAX_CLI_WALL_MS",
 ];
 static CONFIG_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -87,11 +85,9 @@ fn write_multi_db_layout(root: &Path) {
 fn config_for(root: &Path) -> migrator_core::Config {
     let config_path = root.join("test-config.toml");
     let sql_root = root.to_string_lossy();
-    std::fs::write(
-        &config_path,
-        format!("[database]\nserver = 'localhost'\n[paths]\nsql_root = {sql_root:?}\n"),
-    )
-    .expect("write config");
+    std::env::set_var("RM_DB_SERVER", "localhost");
+    std::fs::write(&config_path, format!("[paths]\nsql_root = {sql_root:?}\n"))
+        .expect("write config");
     let file = load_toml_config_required(&config_path).expect("load config");
     build_config(&file)
 }
@@ -166,4 +162,18 @@ fn discover_errors_on_unreadable_candidate_dir_negative_path() {
         err.to_string().contains("cannot read catalog candidate"),
         "got: {err}"
     );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn discover_rejects_non_utf8_catalog_name_regression() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let name = std::ffi::OsString::from_vec(b"bad\xff".to_vec());
+    std::fs::create_dir_all(dir.path().join(name).join("smoke")).expect("mkdir");
+    let err =
+        migrator_core::config::discover_catalog_databases(dir.path().to_str().expect("utf8 root"))
+            .expect_err("non-UTF-8 catalog name must fail");
+    assert!(err.to_string().contains("not valid UTF-8"), "{err}");
 }

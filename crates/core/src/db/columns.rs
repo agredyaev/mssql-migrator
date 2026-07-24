@@ -16,13 +16,12 @@ pub async fn load_table_columns(
     let refs: Vec<_> = ws
         .object_entries
         .iter()
-        .enumerate()
-        .filter(|(i, o)| o.kind_part(ws, *i) == "tables")
-        .map(|(i, o)| {
+        .filter(|object| object.key.kind_part() == "tables")
+        .map(|object| {
             json!({
-                "schema": o.schema_part(ws, i).to_lowercase(),
+                "schema": object.key.schema_part().to_lowercase(),
                 "kind": "tables",
-                "object": o.name_part(ws, i).to_lowercase(),
+                "object": object.key.name_part().to_lowercase(),
             })
         })
         .collect();

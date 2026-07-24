@@ -62,18 +62,12 @@ pub struct PhaseTimings {
     /// Time for plan-DB catalog SQL execution.
     #[serde(skip_serializing_if = "is_zero")]
     pub plan_db_catalog_sql_ms: i64,
-    /// Time to intern catalog strings into the domain arena.
-    #[serde(skip_serializing_if = "is_zero")]
-    pub plan_db_intern_catalog_ms: i64,
     /// Number of TDS round-trips made during plan-DB.
     #[serde(skip_serializing_if = "is_zero")]
     pub plan_db_round_trips: i64,
     /// Path to the plan-DB trace file.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub plan_db_path: String,
-    /// True when the L1 filesystem cache was used for plan data.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub l1_cache_hit: bool,
     /// True when the plan-DB was bootstrapped (tables created) in this run.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub plan_db_bootstrap: bool,

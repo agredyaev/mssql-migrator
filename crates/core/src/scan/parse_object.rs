@@ -2,12 +2,12 @@ use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
-use crate::domain::{share, ObjectEntry, ObjectKey, Script, ScriptKey, ScriptKind, StrOff};
+use crate::domain::{ObjectEntry, ObjectKey, Script, ScriptKey, ScriptKind};
 use crate::error::Result;
+use crate::file_io::MAX_SQL_SCRIPT_BYTES;
 
-/// A parsed object script: key, dense entry, and script record. Built from
-/// process-local `SharedStr`, so it can cross worker threads during parallel scan.
-pub type ParsedObject = (ObjectKey, ObjectEntry, Script);
+/// An object entry and script record produced by a scan worker.
+pub type ParsedObject = (ObjectEntry, Script);
 
 const KINDS: &[&str] = &[
     "tables",
@@ -52,8 +52,8 @@ pub fn parse_object(rel: &str, abs: &Path) -> Result<Option<ParsedObject>> {
         return Ok(None);
     }
     let schema = parts[parts.len() - 3];
-    let database = share(parts[0]);
-    crate::sql_ident::validate_path_component(database.as_ref())?;
+    let database = parts[0];
+    crate::sql_ident::validate_path_component(database)?;
     crate::sql_ident::validate_path_component(schema)?;
     crate::sql_ident::validate_path_component(name)?;
     let key = ObjectKey::new(schema, kind, name);
@@ -62,17 +62,20 @@ pub fn parse_object(rel: &str, abs: &Path) -> Result<Option<ParsedObject>> {
     let script = Script {
         key: script_key,
         kind: ScriptKind::Object,
-        abs_path: share(abs.to_string_lossy().as_ref()),
+        abs_path: abs.to_string_lossy().into_owned(),
         checksum: Some(cs),
     };
     let obj = ObjectEntry {
-        key_off: StrOff::EMPTY,
+        key: key.clone(),
         script_id: 0,
         checksum: cs,
-        flags: 0,
         db_id: 0,
+        db_exists: false,
+        prior_checksum: None,
+        parent: None,
+        transitions: Vec::new(),
     };
-    Ok(Some((key, obj, script)))
+    Ok(Some((obj, script)))
 }
 
 /// Strips the `.sql` extension case-insensitively — the walker admits `.SQL`
@@ -87,7 +90,8 @@ pub(crate) fn strip_sql_ext(file: &str) -> &str {
 }
 
 fn file_checksum(path: &Path) -> Result<[u8; 32]> {
-    let data = std::fs::read(path).map_err(crate::error::Error::Io)?;
+    let data = crate::file_io::read_bounded(path, MAX_SQL_SCRIPT_BYTES)
+        .map_err(crate::error::Error::Io)?;
     Ok(content_checksum(&data))
 }
 

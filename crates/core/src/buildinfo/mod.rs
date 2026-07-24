@@ -6,23 +6,19 @@
 //! exact, traceable software identity.
 //!
 //! ### Implementation
-//! The `build.rs` script runs at compile-time to resolve:
-//! 1. The software version from the root `VERSION` file, exporting it as `RMIG_VERSION`.
-//! 2. The current git commit hash via `git rev-parse --short HEAD`, exporting it as `RMIG_COMMIT`.
+//! Cargo exposes the package version as `CARGO_PKG_VERSION`. The `build.rs`
+//! script resolves the current git commit with `git rev-parse --short HEAD`
+//! and exports it as `RMIG_COMMIT`.
 //!
-//! If these variables are not set (e.g., during off-line non-git builds), they fallback to
-//! `0.0.0-dev` and `unknown` respectively.
+//! A non-git source tree uses `unknown` for the commit.
 
 use std::io::Write;
 
 use crate::error::{Error, Result};
 
-/// Sourced version from compile-time `RMIG_VERSION` or returns default `0.0.0-dev`.
+/// Package version from `[workspace.package]` in the root `Cargo.toml`.
 pub fn version() -> &'static str {
-    match option_env!("RMIG_VERSION") {
-        Some(v) if !v.trim().is_empty() => v.trim(),
-        _ => "0.0.0-dev",
-    }
+    env!("CARGO_PKG_VERSION")
 }
 
 /// Sourced git commit short hash from compile-time `RMIG_COMMIT` or returns `unknown`.

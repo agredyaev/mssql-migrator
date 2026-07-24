@@ -88,7 +88,7 @@ async fn adopt_e2e_preexisting_identical_object_is_adopted_without_ddl() {
 fn smoke_table_action(plan: &MigrationPlan) -> Action {
     plan.objects
         .iter()
-        .find(|o| o.kind.as_ref() == "tables" && o.normalized_key.ends_with("smoke_table"))
+        .find(|o| o.kind == "tables" && o.normalized_key.ends_with("smoke_table"))
         .map(|o| o.planned_action)
         .expect("smoke_table in plan")
 }

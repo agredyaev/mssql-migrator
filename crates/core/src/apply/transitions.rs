@@ -40,7 +40,7 @@ async fn apply_one_transition(
         return Ok(());
     };
     let cs = script.checksum().copied().unwrap_or(obj.checksum);
-    let body = match super::script_read::verified_body(script.abs_path().as_ref(), &cs, path) {
+    let body = match super::script_read::verified_body(script.abs_path(), &cs, path) {
         Ok(body) => body,
         Err(msg) => {
             result.push_error(msg);
@@ -52,9 +52,9 @@ async fn apply_one_transition(
     let mut recs = vec![audit::record_event(
         path,
         cs,
-        script.git_hash().as_ref(),
-        script.git_author().as_ref(),
-        script.git_date().as_ref(),
+        script.git_hash(),
+        script.git_author(),
+        script.git_date(),
         "migration",
         "applied",
     )];

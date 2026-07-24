@@ -7,7 +7,6 @@ fn scope_with(keys: &[&str]) -> InspectScope {
         full_inspect: false,
         hot_keys: keys.iter().map(|s| s.to_string()).collect::<HashSet<_>>(),
         stable_objects: Default::default(),
-        allow_l1_skip: false,
     }
 }
 

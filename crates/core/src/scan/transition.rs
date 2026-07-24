@@ -2,8 +2,9 @@
 
 use std::path::Path;
 
-use crate::domain::{share, ObjectKey, Script, ScriptKey, ScriptKind, Workspace};
+use crate::domain::{ObjectKey, Script, ScriptKey, ScriptKind, Workspace};
 use crate::error::Result;
+use crate::file_io::MAX_SQL_SCRIPT_BYTES;
 
 const SCAFFOLD: &str = "-- rmig: transition-scaffold";
 
@@ -20,20 +21,20 @@ pub fn ingest(ws: &mut Workspace, rel: &str, abs: &Path) -> Result<()> {
         );
         return Ok(());
     };
-    let data = std::fs::read(abs).map_err(crate::error::Error::Io)?;
+    let data =
+        crate::file_io::read_bounded(abs, MAX_SQL_SCRIPT_BYTES).map_err(crate::error::Error::Io)?;
     let cs: [u8; 32] = super::content_checksum(&data);
     let scaffold = is_scaffold(&data);
     let sk = ScriptKey::from_path(&meta.path);
     ws.insert_script(Script {
         key: sk.clone(),
         kind: ScriptKind::Transition,
-        abs_path: share(abs.to_string_lossy().as_ref()),
+        abs_path: abs.to_string_lossy().into_owned(),
         checksum: Some(cs),
     });
     if !scaffold {
-        let database = share(rel.split('/').next().unwrap_or(""));
-        ws.push_transition_staging(database, meta.table_key.clone(), share(&meta.ordinal), sk)?;
-        ws.invalidate_transition_paths();
+        let database = rel.split('/').next().unwrap_or("").to_owned();
+        ws.push_transition_staging(database, meta.table_key.clone(), meta.ordinal.clone(), sk)?;
     }
     Ok(())
 }

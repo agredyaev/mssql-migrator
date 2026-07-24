@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
@@ -63,7 +64,8 @@ pub fn has_non_scaffold_sql(dir: &Path) -> bool {
         if path.extension().and_then(|e| e.to_str()) != Some("sql") {
             continue;
         }
-        let Ok(data) = fs::read(&path) else {
+        let Ok(data) = crate::file_io::read_bounded(&path, crate::file_io::MAX_SQL_SCRIPT_BYTES)
+        else {
             continue;
         };
         let line = data.split(|&b| b == b'\n').next().unwrap_or(&[]);
@@ -81,5 +83,9 @@ pub fn write_file(path: &Path, content: &str) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(path, content)
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    file.write_all(content.as_bytes())
 }

@@ -1,6 +1,6 @@
 use super::*;
-use crate::config::{Config, ConfigCold};
-use std::sync::{Arc, Mutex};
+use crate::config::Config;
+use std::sync::Mutex;
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -26,10 +26,7 @@ impl Drop for EnvGuard {
 
 fn cfg_with_token(token: &str) -> Config {
     Config {
-        cold: Arc::new(ConfigCold {
-            session_token: token.into(),
-            ..ConfigCold::default()
-        }),
+        session_token: token.into(),
         ..Config::default()
     }
 }

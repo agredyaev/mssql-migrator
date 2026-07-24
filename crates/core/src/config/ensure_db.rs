@@ -70,7 +70,6 @@ async fn connect_master(cfg: &Config, db: &str) -> Result<MssqlConn> {
     connect(&master).await.map_err(|err| {
         tracing::warn!(
             database = %db,
-            db_auth = %cfg.db_auth,
             error = %err,
             "master fallback connect failed while ensuring catalog database"
         );

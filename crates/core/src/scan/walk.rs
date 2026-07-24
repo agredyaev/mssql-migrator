@@ -54,11 +54,14 @@ fn relative_sql_path(root: &Path, entry: &Path) -> Result<String> {
     let mut out = Vec::new();
     for component in rel.components() {
         match component {
-            Component::Normal(part) => out.push(os_str_to_utf8(part)?.to_string()),
+            Component::Normal(part) => {
+                let part = os_str_to_utf8(part)?;
+                crate::sql_ident::validate_path_component(part)?;
+                out.push(part.to_string());
+            }
             _ => {
                 return Err(crate::error::Error::InvalidInput(format!(
-                    "invalid scan path component: {}",
-                    rel.display()
+                    "invalid scan path component: {rel:?}"
                 )));
             }
         }
@@ -68,16 +71,13 @@ fn relative_sql_path(root: &Path, entry: &Path) -> Result<String> {
 
 fn path_to_utf8(path: &Path) -> Result<&str> {
     path.to_str().ok_or_else(|| {
-        crate::error::Error::InvalidInput(format!("path is not valid UTF-8: {}", path.display()))
+        crate::error::Error::InvalidInput(format!("path is not valid UTF-8: {path:?}"))
     })
 }
 
 fn os_str_to_utf8(part: &OsStr) -> Result<&str> {
     part.to_str().ok_or_else(|| {
-        crate::error::Error::InvalidInput(format!(
-            "path component is not valid UTF-8: {}",
-            part.to_string_lossy()
-        ))
+        crate::error::Error::InvalidInput(format!("path component is not valid UTF-8: {part:?}"))
     })
 }
 
@@ -94,7 +94,7 @@ fn walk_dir(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
         let ft = entry.file_type().map_err(crate::error::Error::Io)?;
         let path = entry.path();
         if ft.is_symlink() {
-            tracing::warn!(path = %path.display(), "skipping symlink (symlinks are not followed)");
+            tracing::warn!(path = ?path, "skipping symlink (symlinks are not followed)");
             continue;
         }
         if path.is_dir() {

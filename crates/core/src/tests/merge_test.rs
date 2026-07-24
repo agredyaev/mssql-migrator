@@ -1,11 +1,10 @@
 use crate::domain::Action;
 use crate::engine::run::merge::merge_plan;
-use crate::export::{MigrationPlan, PlanRow, PlannedObject};
+use crate::export::{MigrationPlan, PlannedObject};
 
 fn plan_with_db(db: &str, key: &str) -> MigrationPlan {
     let mut plan = MigrationPlan::default();
     plan.summary.object_count = 1;
-    plan.rows.push(PlanRow::default());
     plan.objects.push(PlannedObject {
         normalized_key: key.into(),
         object_path: key.into(),
@@ -64,7 +63,7 @@ fn merge_plan_preserves_first_database_objects_regression() {
     let dbs: Vec<_> = plan
         .objects
         .iter()
-        .map(|o| o.database_name.as_ref())
+        .map(|o| o.database_name.as_str())
         .collect();
     assert!(
         dbs.contains(&"dactests"),

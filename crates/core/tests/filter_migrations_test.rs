@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use migrator_core::domain::{share, Action, Script, ScriptKey, ScriptKind, Workspace};
+use migrator_core::domain::{Action, Script, ScriptKey, ScriptKind, Workspace};
 use migrator_core::export::filter_applied_migrations_on_plan;
 use migrator_core::export::{MigrationPlan, PlannedObject};
 
@@ -32,7 +32,7 @@ fn ws_with_transition(path: &str, checksum: [u8; 32]) -> Workspace {
     ws.insert_script(Script {
         key: ScriptKey::from_path(path),
         kind: ScriptKind::Transition,
-        abs_path: share(path),
+        abs_path: path.to_owned(),
         checksum: Some(checksum),
     });
     ws

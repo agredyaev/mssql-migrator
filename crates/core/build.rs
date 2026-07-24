@@ -6,20 +6,6 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("."));
     let repo_root = manifest_dir.join("../..");
-    let version_path = repo_root.join("VERSION");
-
-    println!("cargo:rerun-if-changed={}", version_path.display());
-
-    let version = std::fs::read_to_string(&version_path)
-        .unwrap_or_else(|_| "0.0.0-dev".into())
-        .trim()
-        .to_string();
-    let version = if version.is_empty() {
-        "0.0.0-dev".into()
-    } else {
-        version
-    };
-    println!("cargo:rustc-env=RMIG_VERSION={version}");
 
     let commit = git_short_head(&repo_root).unwrap_or_else(|| "unknown".into());
     println!("cargo:rustc-env=RMIG_COMMIT={commit}");

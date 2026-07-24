@@ -32,7 +32,7 @@ pub async fn apply_objects(
             // time, and a table whose transitions are all applied reaches here
             // empty as a legitimate no-op skip.
             Action::ReprocessChanged
-                if obj.transition_paths.is_empty() && obj.kind.as_ref() != "tables" =>
+                if obj.transition_paths.is_empty() && obj.kind.as_str() != "tables" =>
             {
                 result.push_error(format!(
                     "{}: changed object cannot be auto-applied (no transition script)",

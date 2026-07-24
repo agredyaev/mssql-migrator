@@ -42,7 +42,6 @@ pub async fn connect_session_or_direct(cfg: &Config) -> Result<DbClient> {
 async fn connect_direct_without_session(cfg: &Config) -> Result<DbClient> {
     tracing::debug!(
         database = %cfg.database,
-        db_auth = %cfg.db_auth,
         "session socket empty; using direct sql connection"
     );
     Ok(DbClient::Direct(connect(cfg).await?.client))
@@ -55,7 +54,6 @@ async fn connect_direct_after_daemon_error(
     tracing::warn!(
         session_socket = %cfg.session_socket,
         database = %cfg.database,
-        db_auth = %cfg.db_auth,
         error = %daemon_err,
         "rmigd unavailable; falling back to direct sql connection"
     );
@@ -66,7 +64,6 @@ async fn connect_direct_after_daemon_error(
             tracing::warn!(
                 session_socket = %cfg.session_socket,
                 database = %cfg.database,
-                db_auth = %cfg.db_auth,
                 error = %err,
                 "direct sql fallback failed after rmigd error"
             );

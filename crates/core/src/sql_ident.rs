@@ -16,7 +16,7 @@ use crate::error::{Error, Result};
 /// Asserts that a string is a safe single-level directory or filename component.
 ///
 /// Returns `Error::InvalidInput` if the component is empty, contains directory traversal
-/// sequences (`.`, `..`), or includes path separators (`/`, `\`, `\0`).
+/// sequences (`.`, `..`), path separators (`/`, `\`), or control characters.
 pub fn validate_path_component(name: &str) -> Result<()> {
     if name.is_empty() {
         return Err(Error::InvalidInput("empty path component".into()));
@@ -27,7 +27,7 @@ pub fn validate_path_component(name: &str) -> Result<()> {
         )));
     }
     for c in name.chars() {
-        if matches!(c, '/' | '\\' | '\0') {
+        if matches!(c, '/' | '\\') || c.is_control() {
             return Err(Error::InvalidInput(format!(
                 "invalid character {c:?} in path component: {name:?}"
             )));

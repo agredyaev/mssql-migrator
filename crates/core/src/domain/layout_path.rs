@@ -1,12 +1,10 @@
-use super::shared::{share, SharedStr};
-
 /// Catalog-relative SQL path: `{database}/{schema}/...`.
-pub fn with_database_prefix(database: &str, path: &str) -> SharedStr {
-    object_path_for_entry(database, share(path.replace('\\', "/")))
+pub fn with_database_prefix(database: &str, path: &str) -> String {
+    object_path_for_entry(database, path.replace('\\', "/"))
 }
 
-/// Build once at scan finalize; hot fill clones the handle only.
-pub fn object_path_for_entry(database: &str, script_path: SharedStr) -> SharedStr {
+/// Build the catalog-relative path for an object entry.
+pub fn object_path_for_entry(database: &str, script_path: String) -> String {
     let path = script_path.as_str();
     if database.is_empty() {
         return script_path;
@@ -15,7 +13,7 @@ pub fn object_path_for_entry(database: &str, script_path: SharedStr) -> SharedSt
     if path.starts_with(prefix.as_str()) {
         script_path
     } else {
-        share(format!("{database}/{}", path.trim_start_matches('/')))
+        format!("{database}/{}", path.trim_start_matches('/'))
     }
 }
 
@@ -26,8 +24,8 @@ pub fn path_lookup_candidates(database: &str, path: &str) -> Vec<String> {
         return out;
     }
     let prefixed = with_database_prefix(database, path);
-    if prefixed.as_ref() != path {
-        out.push(prefixed.as_ref().to_string());
+    if prefixed != path {
+        out.push(prefixed);
     }
     let prefix = format!("{database}/");
     if path.starts_with(prefix.as_str()) {
@@ -43,7 +41,7 @@ mod tests {
     #[test]
     fn leaves_prefixed_path_unchanged() {
         assert_eq!(
-            with_database_prefix("dactests", "dactests/smoke/tables/t1.sql").as_ref(),
+            with_database_prefix("dactests", "dactests/smoke/tables/t1.sql"),
             "dactests/smoke/tables/t1.sql"
         );
     }
@@ -51,7 +49,7 @@ mod tests {
     #[test]
     fn prepends_database_when_missing() {
         assert_eq!(
-            with_database_prefix("dactests", "smoke/tables/t1.sql").as_ref(),
+            with_database_prefix("dactests", "smoke/tables/t1.sql"),
             "dactests/smoke/tables/t1.sql"
         );
     }

@@ -12,7 +12,7 @@ pub(super) fn read_script(
         return Err(format!("{}: script not found", obj.normalized_key));
     };
     let expected = script.checksum().copied().unwrap_or(obj.checksum);
-    verified_body(script.abs_path().as_ref(), &expected, &obj.normalized_key)
+    verified_body(script.abs_path(), &expected, &obj.normalized_key)
 }
 
 /// Re-read and re-hash the script at apply time: the plan (and the history row
@@ -23,7 +23,11 @@ pub(super) fn verified_body(
     expected: &[u8; 32],
     label: &str,
 ) -> std::result::Result<String, String> {
-    let data = std::fs::read(path).map_err(|e| format!("{label}: read failed: {e}"))?;
+    let data = crate::file_io::read_bounded(
+        std::path::Path::new(path),
+        crate::file_io::MAX_SQL_SCRIPT_BYTES,
+    )
+    .map_err(|e| format!("{label}: read failed: {e}"))?;
     if crate::scan::content_checksum(&data) != *expected {
         return Err(format!(
             "{label}: file changed after scan; aborting before execution"
@@ -40,7 +44,7 @@ fn find_script<'a>(ws: &'a Workspace, obj: &PlannedObject) -> Option<crate::doma
     }
     ws.scripts_iter().find(|s| {
         ObjectKey::parse(s.path_str())
-            .map(|k| k.as_str() == obj.normalized_key.as_ref())
+            .map(|k| k.as_str() == obj.normalized_key.as_str())
             .unwrap_or(false)
     })
 }

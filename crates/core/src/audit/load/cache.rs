@@ -69,8 +69,7 @@ pub fn cache_history_empty(db_fp: &str, empty: bool) {
 
 pub fn db_fingerprint(server: &str, port: &str, user: &str, database: &str) -> String {
     // Length-prefix the server so `server="s1"/db="a_b"` cannot collide with
-    // `server="s1_a"/db="b"` (both were previously `s1_a_b`). Safe as a cache
-    // key and as an L1 directory name.
+    // `server="s1_a"/db="b"` (both were previously `s1_a_b`).
     //
     // Port and user are part of the identity: two instances on one host that
     // differ only by port serve different catalogs, and SQL Server metadata

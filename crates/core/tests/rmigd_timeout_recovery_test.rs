@@ -27,22 +27,24 @@ fn enabled() -> bool {
 }
 
 fn config(socket: String) -> Config {
-    let mut cfg = Config::default();
-    cfg.server = std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into());
-    cfg.port = std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into());
-    cfg.user = std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into());
-    cfg.password =
-        std::env::var("RM_DB_PASSWORD").unwrap_or_else(|_| "yourStrong(!)Password".into());
-    cfg.database = std::env::var("RM_DB_DATABASE").unwrap_or_else(|_| "master".into());
-    cfg.sql_root = ".".into();
-    cfg.sql_base = ".".into();
-    cfg.session_socket = socket;
-    cfg.session_token = std::env::var("RMIG_SESSION_TOKEN").expect("rmigd test token");
-    cfg.command_timeout = Duration::from_secs(8);
-    cfg.skip_git = true;
-    // The checked-in Docker SQL Server fixture has no TLS endpoint.
-    cfg.encrypt = false;
-    cfg.trust_server_certificate = true;
+    let mut cfg = Config {
+        server: std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into()),
+        port: std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into()),
+        user: std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into()),
+        password: std::env::var("RM_DB_PASSWORD")
+            .unwrap_or_else(|_| "yourStrong(!)Password".into()),
+        database: std::env::var("RM_DB_DATABASE").unwrap_or_else(|_| "master".into()),
+        sql_root: ".".into(),
+        sql_base: ".".into(),
+        session_socket: socket,
+        session_token: std::env::var("RMIG_SESSION_TOKEN").expect("rmigd test token"),
+        command_timeout: Duration::from_secs(8),
+        skip_git: true,
+        // The checked-in Docker SQL Server fixture has no TLS endpoint.
+        encrypt: false,
+        trust_server_certificate: true,
+        ..Default::default()
+    };
     validate_config(&mut cfg).expect("valid rmigd test config");
     cfg
 }

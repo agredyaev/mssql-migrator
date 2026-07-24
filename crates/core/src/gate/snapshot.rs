@@ -52,17 +52,17 @@ impl PlanSnapshot {
 /// Database-qualified identity: two catalog databases can hold the same
 /// normalized key with different planned actions.
 fn snapshot_key(obj: &PlannedObject) -> String {
-    let db = obj.database_name.as_ref();
+    let db = obj.database_name.as_str();
     if db.is_empty() {
-        obj.normalized_key.as_ref().to_string()
+        obj.normalized_key.clone()
     } else {
-        format!("{db}/{}", obj.normalized_key.as_ref())
+        format!("{db}/{}", obj.normalized_key)
     }
 }
 
 fn snapshot_object(obj: &PlannedObject) -> SnapshotObject {
     SnapshotObject {
-        object_path: obj.object_path.as_ref().to_string(),
+        object_path: obj.object_path.clone(),
         planned_action: crate::gate::action_str(&obj.planned_action),
         checksum_hex: hex::encode(obj.checksum),
         exists: obj.exists,

@@ -5,8 +5,7 @@ impl Workspace {
     pub fn normalized_keys(&self) -> Vec<String> {
         self.object_entries
             .iter()
-            .enumerate()
-            .map(|(i, o)| o.key_str(self, i).to_string())
+            .map(|object| object.key.shared())
             .collect()
     }
 
@@ -23,7 +22,7 @@ impl Workspace {
                 buf.push(',');
             }
             buf.push('"');
-            push_json_str(&mut buf, entry.key_str(self, i));
+            push_json_str(&mut buf, entry.key.as_str());
             buf.push('"');
         }
         buf.push(']');
@@ -43,11 +42,11 @@ impl Workspace {
                 buf.push(',');
             }
             buf.push_str("{\"schema\":\"");
-            push_json_str(&mut buf, entry.schema_part(self, i));
+            push_json_str(&mut buf, entry.key.schema_part());
             buf.push_str("\",\"kind\":\"");
-            push_json_str(&mut buf, entry.kind_part(self, i));
+            push_json_str(&mut buf, entry.key.kind_part());
             buf.push_str("\",\"object\":\"");
-            push_json_str(&mut buf, entry.name_part(self, i));
+            push_json_str(&mut buf, entry.key.name_part());
             buf.push_str("\"}");
         }
         buf.push(']');

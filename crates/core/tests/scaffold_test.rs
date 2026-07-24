@@ -3,17 +3,23 @@ use std::collections::HashMap;
 use migrator_core::config::Config;
 use migrator_core::db::TableColumn;
 use migrator_core::domain::{
-    share, Action, ObjectEntry, ObjectKey, Script, ScriptKey, ScriptKind, Workspace,
+    Action, ObjectEntry, ObjectKey, Script, ScriptKey, ScriptKind, Workspace,
 };
 use migrator_core::export::{MigrationPlan, PlannedObject};
 use migrator_core::scaffold;
 
+fn scaffold_config(base: &std::path::Path) -> Config {
+    Config {
+        sql_base: base.to_string_lossy().into_owned(),
+        database: "dactests".into(),
+        ..Default::default()
+    }
+}
+
 #[test]
 fn blocked_table_creates_scaffold_file() {
     let base = tempfile::tempdir().unwrap();
-    let mut cfg = Config::default();
-    cfg.sql_base = base.path().to_string_lossy().into();
-    cfg.database = "dactests".into();
+    let cfg = scaffold_config(base.path());
     let plan = MigrationPlan {
         blocked: true,
         objects: vec![PlannedObject {
@@ -25,7 +31,7 @@ fn blocked_table_creates_scaffold_file() {
             planned_action: Action::ReprocessChangedBlocked,
             exists: true,
             checksum: [0; 32],
-            database_name: share("dactests"),
+            database_name: "dactests".into(),
             parent_name: Default::default(),
             git: None,
             transition_paths: Vec::new(),
@@ -51,22 +57,35 @@ fn blocked_table_creates_scaffold_file() {
     let created = scaffold::ensure(&cfg, &Workspace::default(), &plan, &cols).unwrap();
     assert!(created);
     let dir = base.path().join("dactests/r/tables/_migrations/t1");
-    let content = std::fs::read_dir(&dir)
+    let scaffold_path = std::fs::read_dir(&dir)
         .unwrap()
         .flatten()
         .find(|e| e.path().extension().map(|x| x == "sql").unwrap_or(false))
-        .map(|e| std::fs::read_to_string(e.path()).unwrap())
+        .map(|e| e.path())
         .unwrap();
+    let content = std::fs::read_to_string(&scaffold_path).unwrap();
     assert!(content.contains("-- rmig: transition-scaffold"));
     assert!(content.contains("[r].[t1]"));
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+
+        std::fs::remove_file(&scaffold_path).expect("remove scaffold");
+        let outside = base.path().join("outside.sql");
+        symlink(&outside, &scaffold_path).expect("dangling symlink");
+        assert!(!scaffold::ensure(&cfg, &Workspace::default(), &plan, &cols).unwrap());
+        assert!(
+            !outside.exists(),
+            "scaffold creation must not follow a dangling symlink"
+        );
+    }
 }
 
 #[test]
 fn auto_add_column_when_file_has_new_col() {
     let base = tempfile::tempdir().unwrap();
-    let mut cfg = Config::default();
-    cfg.sql_base = base.path().to_string_lossy().into();
-    cfg.database = "dactests".into();
+    let cfg = scaffold_config(base.path());
     let sql_path = base.path().join("r/tables/t1.sql");
     std::fs::create_dir_all(sql_path.parent().unwrap()).unwrap();
     std::fs::write(
@@ -79,11 +98,11 @@ fn auto_add_column_when_file_has_new_col() {
     let script_id = ws.insert_script(Script {
         key: sk.clone(),
         kind: ScriptKind::Object,
-        abs_path: migrator_core::domain::share(sql_path.to_string_lossy().as_ref()),
+        abs_path: sql_path.to_string_lossy().into_owned(),
         checksum: None,
     });
-    let db_id = ws.intern_database(share("dactests"));
-    ws.adopt_dense_entries(vec![ObjectEntry::with_staging_key(
+    let db_id = ws.intern_database("dactests".into());
+    ws.adopt_dense_entries(vec![ObjectEntry::new(
         ObjectKey::new("r", "tables", "t1"),
         script_id,
         [0; 32],
@@ -101,7 +120,7 @@ fn auto_add_column_when_file_has_new_col() {
             planned_action: Action::ReprocessChangedBlocked,
             exists: true,
             checksum: [0; 32],
-            database_name: share("dactests"),
+            database_name: "dactests".into(),
             parent_name: Default::default(),
             git: None,
             transition_paths: Vec::new(),
@@ -177,9 +196,7 @@ fn auto_add_column_declines_unbracketed_computed_column_regression() {
 
 fn scaffold_for_table(table_sql: &str, db_columns: Vec<TableColumn>) -> String {
     let base = tempfile::tempdir().unwrap();
-    let mut cfg = Config::default();
-    cfg.sql_base = base.path().to_string_lossy().into();
-    cfg.database = "dactests".into();
+    let cfg = scaffold_config(base.path());
     let sql_path = base.path().join("r/tables/t1.sql");
     std::fs::create_dir_all(sql_path.parent().unwrap()).unwrap();
     std::fs::write(&sql_path, table_sql).unwrap();
@@ -188,11 +205,11 @@ fn scaffold_for_table(table_sql: &str, db_columns: Vec<TableColumn>) -> String {
     let script_id = ws.insert_script(Script {
         key: sk,
         kind: ScriptKind::Object,
-        abs_path: migrator_core::domain::share(sql_path.to_string_lossy().as_ref()),
+        abs_path: sql_path.to_string_lossy().into_owned(),
         checksum: None,
     });
-    let db_id = ws.intern_database(share("dactests"));
-    ws.adopt_dense_entries(vec![ObjectEntry::with_staging_key(
+    let db_id = ws.intern_database("dactests".into());
+    ws.adopt_dense_entries(vec![ObjectEntry::new(
         ObjectKey::new("r", "tables", "t1"),
         script_id,
         [0; 32],
@@ -210,7 +227,7 @@ fn scaffold_for_table(table_sql: &str, db_columns: Vec<TableColumn>) -> String {
             planned_action: Action::ReprocessChangedBlocked,
             exists: true,
             checksum: [0; 32],
-            database_name: share("dactests"),
+            database_name: "dactests".into(),
             parent_name: Default::default(),
             git: None,
             transition_paths: Vec::new(),
