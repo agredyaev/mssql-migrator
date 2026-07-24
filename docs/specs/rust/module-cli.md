@@ -14,7 +14,7 @@ Describe the **production operator entry points** for the Rust migrator: the `rm
 
 ## System context
 
-Operators invoke `rmig` with commands: `plan`, `migrate`, `validate`, `baseline`, `repair-checksum`, `version`. Non-secret configuration comes from optional default `config.toml` or explicit required `--config <path>`, with process environment overrides. SQL credentials and the daemon token are accepted only from process env. When `RMIG_SESSION` points at a `rmigd` Unix socket, `engine::run_command` connects through `session::connect_daemon` instead of opening a new TDS connection per invocation.
+Operators invoke `rmig` with commands: `plan`, `migrate`, `validate`, `baseline`, `repair-checksum`, `version`. Paths and execution settings come from optional default `config.toml`, explicit required `--config <path>`, or process overrides. SQL endpoint/TLS settings, SQL credentials, and the daemon socket/token are accepted only from process environment. When `RMIG_SESSION` points at a `rmigd` Unix socket, `engine::run_command` connects through `session::connect_daemon` instead of opening a new TDS connection per invocation.
 
 ## Interfaces and boundaries
 
@@ -37,6 +37,7 @@ Operators invoke `rmig` with commands: `plan`, `migrate`, `validate`, `baseline`
 ## Off-nominal behavior and failure containment
 
 - Invalid command or config: exit before connect.
+- Environment-only peer setting found in TOML: exit 2 and name the replacement variable.
 - Engine errors: non-zero exit; `Error::PlanBlocked` maps to exit code 10 on migrate.
 
 ## Verification and validation

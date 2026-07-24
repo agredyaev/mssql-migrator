@@ -1,35 +1,44 @@
-# ADR-0018: L1 filesystem cache for plan acceleration, invalidated on apply
+# ADR-0018: Remove the L1 filesystem plan cache
 
 Status: Accepted
 Date: 2026-07-21
+Updated: 2026-07-24
 
 ## Context
 
-Repeated plans against an unchanged repo re-fetch the same checksums and catalog
-state. A cache could skip that. But a cache that outlives an apply, or that is
-trusted while the live DB could have drifted, would produce a wrong plan.
+The L1 cache and in-process warm snapshot could only serve a workspace with no
+managed objects. Production and E2E layouts contain managed objects and must
+refresh live SQL Server state.
+
+Compatibility shims kept dead cache configuration, timing fields, tests, and
+profilers after the cache stopped affecting runtime behavior.
 
 ## Decision
 
-An on-disk L1 cache stores `{layout_digest → (checksums, catalog_state)}` under
-`.rmig/cache` (`crates/core/src/cache/l1.rs`). Keyed by the repo layout digest.
-It stores checksums + catalog state, never bodies.
+Remove the L1 cache, warm snapshot, compatibility symbols, configuration,
+timing fields, fixtures, and profilers. `run_plan_db_phase` always obtains
+catalog and audit state from SQL Server.
 
-Trust is gated hard: the L1 short-circuit that returns a cached plan without
-touching the DB fires ONLY for an empty workspace
-(`plan_snapshot.rs`, `requires_live_state = object_count != 0`). Any non-empty
-catalog re-queries live, because a top-level snapshot cannot prove SQL Server was
-not changed out of band (ADR-0004). The cache otherwise serves as a within-run
-acceleration for catalog structure, not a drift oracle.
+## Assumptions and constraints
 
-Invalidated after every apply (`apply/mod.rs`: `invalidate_audit_cache`,
-`db::invalidate`, `l1.invalidate_all`). Not git-tracked.
+- SQL Server is the authority for live catalog state.
+- `rmigd` may keep a TDS connection warm; it does not cache plan state.
 
 ## Consequences
 
-- Cache never masks out-of-band drift: unchanged-catalog trust is the exact case
-  ADR-0004 forbids, so it is disabled for non-empty catalogs. ADR-0005 makes
-  drift cheap so the full re-query stays fast, rather than trusting a stale cache.
-- Apply always invalidates → a plan after an apply is never served stale.
-- The cache is regenerable (digest-keyed); no atomic-fsync durability needed (per
-  -pid temp + rename).
+- Managed-workspace behavior is unchanged.
+- Empty workspaces perform SQL work instead of returning a local cache hit.
+- `RMIG_L1_CACHE_DIR`, `RMIG_INTEGRATION_WARM_SNAPSHOT`, and
+  `l1_cache_hit` are no longer accepted or emitted.
+- Existing `.rmig/cache` directories are unused and may be deleted.
+
+## Verification
+
+- `cargo test --workspace --all-targets --all-features`
+- `make plan-db-perf`
+- `make e2e-all`
+
+## Non-goals
+
+- Filesystem plan caching
+- Process-global plan snapshots

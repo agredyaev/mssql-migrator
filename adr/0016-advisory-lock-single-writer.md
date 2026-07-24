@@ -18,8 +18,8 @@ Serialize per database with a SQL Server application lock. `sql/lock/acquire.sql
 
 Both plan AND apply run inside the lock (`crates/core/src/engine/apply_run.rs`,
 `run_locked`): acquire → `locked_body` (plan_phase + apply_plan) → always
-`release_after_body` (released even on body failure — regression BG-001, gate
-`scripts/check-advisory-lock-release.sh`). Lock timeout →
+`release_after_body` (released even on body failure — regression BG-001 in
+`crates/core/tests/advisory_lock_guard_test.rs`). Lock timeout →
 `Error::LockTimeout` → exit `7` (`EXIT_LOCK_TIMEOUT`).
 
 `Session` owner (not transaction) so the lock spans the multi-statement

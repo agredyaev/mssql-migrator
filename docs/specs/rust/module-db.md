@@ -8,7 +8,7 @@ Describe **SQL Server catalog and audit I/O for the plan phase**: batched TDS ro
 
 ## Scope
 
-- `crates/core/src/db/plan_snapshot.rs` - L1 + warm snapshot + `run_plan_db_phase` entry
+- `crates/core/src/db/plan_snapshot.rs` - live `run_plan_db_phase` entry
 - `crates/core/src/db/plan_common/execute/mod.rs` - plan-body runner (`execute`): sequential ensure-then-body, direct or via rmigd
 - `crates/core/src/db/plan_common/mod.rs` - shared cold / incremental / git-delta logic
 - `crates/core/src/db/plan_db_trace.rs` - `PlanDbTrace` (`PlanDbTimings`, `PlanDbFlags`), SLO env, trace JSON
@@ -23,9 +23,16 @@ Describe **SQL Server catalog and audit I/O for the plan phase**: batched TDS ro
 
 ## System context
 
-`engine::run_command` calls `run_plan_db_phase`. Managed workspaces always perform plan DB I/O because every object needs a fresh live-state fingerprint; an L1 or warm snapshot cannot prove that SQL Server was not changed out of band. Empty workspaces may still use those snapshots. `plan_common::execute` runs a single sequential ensure-then-body path on the primary TDS session, whether **direct connect** (`session_socket` empty) or through `rmigd` (`RMIG_SESSION`).
+`engine::run_command` calls `run_plan_db_phase`. Every workspace performs plan
+DB I/O because catalog state must come from SQL Server. `plan_common::execute`
+runs a single sequential ensure-then-body path on the primary TDS session,
+whether **direct connect** (`session_socket` empty) or through `rmigd`
+(`RMIG_SESSION`).
 
-Paths: `cold_full`, `git_delta`, `incremental`, `cache_hit`, `warm_snapshot`. Empty audit history skips OPENJSON checksum load (plan-side `load_checksums_plan` zero-digest map). Plan-path bootstrap omits `BOOTSTRAP_INDEX` (deferred to apply). Catalog save runs **outside** `parallel_wall_ms`.
+Paths: `cold_full`, `git_delta`, `incremental`. Empty audit history skips
+OPENJSON checksum load (plan-side `load_checksums_plan` zero-digest map).
+Plan-path bootstrap omits `BOOTSTRAP_INDEX` (deferred to apply). Catalog save
+runs **outside** `parallel_wall_ms`.
 
 ## Interfaces and boundaries
 
@@ -44,7 +51,7 @@ Paths: `cold_full`, `git_delta`, `incremental`, `cache_hit`, `warm_snapshot`. Em
 ## Nominal flow
 
 1. Resolve git delta (`gate::resolve_changed_paths`).
-2. For an empty workspace only, an optional L1/warm-snapshot hit may return immediately.
+2. Load required audit and catalog state from SQL Server.
 3. For a managed workspace, load fresh audit/live-state checksums; local snapshots are bypassed.
 4. **Bootstrap ensure:** when bootstrap is needed it runs before the plan body — eager under the command timeout on direct connect, or deferred into the body SQL batch under `rmigd`; `parallel_wall_ms` records the ensure-through-body wall time.
 5. **Git delta:** plan-side `load_checksums_plan` fast path; optional relaxed cache load; hot catalog SQL or inspector cache hit.
@@ -56,7 +63,7 @@ Paths: `cold_full`, `git_delta`, `incremental`, `cache_hit`, `warm_snapshot`. Em
 - Missing catalog tables: graceful cache miss (`missing_catalog_table`).
 - Empty history on cold DB: checksum probe only; catalog full inspect when configured.
 - Inspector scope cache invalidated on full audit cache drop (`invalidate_inspect_cache`).
-- A stale local snapshot cannot hide managed-object drift because managed workspaces never return from the top-level L1/warm snapshot.
+- No local plan snapshot exists; SQL Server remains the catalog authority.
 
 ## Verification and validation
 
@@ -68,7 +75,8 @@ Paths: `cold_full`, `git_delta`, `incremental`, `cache_hit`, `warm_snapshot`. Em
 ## Operations and recovery
 
 - SQL template changes: update `sql/` and matching tests.
-- Perf regression: compare `plan_db_trace.json` between runs (`history_empty`, `checksums_skipped`, `round_trips`, `catalog_sql_ms`, `intern_catalog_ms`).
+- Perf regression: compare `plan_db_trace.json` between runs
+  (`history_empty`, `checksums_skipped`, `round_trips`, `catalog_sql_ms`).
 
 ## Open issues and non-goals
 

@@ -26,8 +26,8 @@ ran leaves a half-published tag.
   (skip if the tag already points at HEAD and a GH Release exists); atomic
   branch+tag push so a loser of a race fails non-ff instead of dropping a release;
   docs-only diffs skip the release.
-- Version source of truth: `VERSION`, mirrored into `Cargo.toml`, stamped into the
-  binary by `build.rs` (`RMIG_VERSION`/`RMIG_COMMIT`).
+- Version source of truth: `[workspace.package].version` in `Cargo.toml`.
+  Cargo exposes it as `CARGO_PKG_VERSION`; `build.rs` stamps only `RMIG_COMMIT`.
 
 ## Consequences
 
@@ -37,5 +37,5 @@ ran leaves a half-published tag.
 - Single-platform CI (ubuntu/amd64), amd64-only DB fixture — recorded limitation
   (`PRODUCTION-READINESS-AUDIT.md` §13). `cargo deny` runs in CI (lint stage) +
   local `make deny`.
-- Local incremental builds can carry a stale `RMIG_COMMIT` (build.rs reruns on
-  `VERSION` change only); CI cold builds stamp correctly.
+- Local incremental builds can carry a stale `RMIG_COMMIT` until
+  `migrator-core` rebuilds; CI release builds compile the validated checkout.

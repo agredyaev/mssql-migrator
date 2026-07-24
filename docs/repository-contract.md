@@ -56,7 +56,10 @@ produce a destructive operation.
   - Symbolic links are skipped during the walk.
   - Safe default: only objects explicitly represented in the repository are managed. Existing database objects not represented in the repository are treated as unmanaged and preserved.
   - Deletion is not supported: removing a file from the tree never drops its database object, and the tool never infers a drop from absence. An intentional drop must be authored explicitly as a table transition script under `_migrations/`.
-  - First adoption: `baseline` (and the first `migrate`) record a checksum only for repository objects that already exist in the database; database-only objects are left unmanaged, not adopted.
+  - First adoption: `baseline` records repository objects that already exist in
+    the database. `migrate` may do so only with process-level
+    `RMIG_ALLOW_ADOPT=1`; otherwise it exits `10`. Database-only objects remain
+    unmanaged.
 
 ## Nominal Flow
 
@@ -81,7 +84,12 @@ produce a destructive operation.
 ## Verification And Validation
 
 - Contracts and checks: `crates/core/tests/scan_walk_test.rs` (duplicate ordinal, backslash, symlink), `crates/core/src/tests/sql_ident_test.rs` (path/identifier rules, 128-char limit), `crates/core/src/domain/workspace/objects/ingest.rs` tests (duplicate key).
-- Safety guards: `crates/core/tests/unmanaged_objects_test.rs` (unmanaged objects are never planned, partial repositories leave others untouched, removal does not drop) and `crates/core/tests/existing_db_adoption_integration.rs` (real-database preservation across `migrate`).
+- Safety guards: `crates/core/tests/unmanaged_objects_test.rs` (unmanaged objects
+  are never planned, partial repositories leave others untouched, removal does
+  not drop), `crates/core/tests/apply_integrity_integration.rs` (implicit
+  adoption fails closed), and
+  `crates/core/tests/existing_db_adoption_integration.rs` (real-database
+  preservation across `migrate`).
 - Evidence artifacts: test output from `cargo test -p migrator-core --all-features --lib --tests`.
 - Exit criteria: every invalid layout above produces a clear error; every valid layout produces an identical plan across runs.
 

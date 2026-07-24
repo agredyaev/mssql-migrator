@@ -14,7 +14,10 @@ Describe **DDL/DML apply execution**: schemas, table transitions, dependent obje
 
 ## System context
 
-Called from `engine::apply_run` after `lock::acquire`; `lock::release_after_body` runs even when apply fails. On success with applied objects, invalidates catalog cache and L1; engine may call `save_workspace_snapshot` separately.
+Called from `engine::apply_run` after `lock::acquire`;
+`lock::release_after_body` runs even when apply fails. On success with applied
+objects, invalidates the SQL catalog cache; engine may call
+`save_workspace_snapshot` separately.
 
 ## Interfaces and boundaries
 

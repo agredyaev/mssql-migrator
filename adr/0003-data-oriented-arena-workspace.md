@@ -1,41 +1,66 @@
-# ADR-0003: Data-oriented arena workspace, lazy script bodies
+# ADR-0003: Owned workspace metadata and lazy script bodies
 
 Status: Accepted
 Date: 2026-07-21
+Updated: 2026-07-24
 
 ## Context
 
-Plan phase holds every managed object of the catalog to diff repo vs live. Naive
-object-graph (per-object `String` keys/paths, retained bodies) = many small heap
-allocations + large resident set. Scan hot path (walk → parse → diff) is the
-CLI-wall SLO target (< 150 ms). See also `docs/data-oriented-layout-policy.md`.
+The plan phase holds every managed object while it compares repository state
+with SQL Server. The previous design used a string arena, offsets, dense rows,
+sparse side tables, and a boxed `WorkspaceCold`. That representation reduced
+some struct sizes but spread one object across many stores and required custom
+resolution code.
+
+SQL script bodies are much larger than their metadata. They must not remain in
+memory after scan.
 
 ## Decision
 
-Workspace is column-oriented (SoA) over a single interned string arena, not an
-object graph.
-- `StringArena` (`crates/core/src/domain/arena/`): one append-only `Arc<[u8]>`
-  buffer + dedup map. Interns object keys, paths, git strings. `StrOff(off,len)`
-  locates a slice.
-- `ObjectEntry` (`crates/core/src/domain/object/mod.rs`): `checksum:[u8;32]`,
-  `key_off:StrOff`, `script_id:u32`, ids/flags. ~48 bytes. No body field.
-- Side columns in `WorkspaceCold`: script path offsets, checksums, prior
-  checksums.
+- `Workspace` owns ordinary vectors and standard-library maps.
+- `ObjectEntry` owns its `ObjectKey`, prior checksum, parent, and transitions.
+- `ScriptRow`, `SchemaEntry`, `CatalogObject`, and plan JSON objects use owned
+  `String` values.
+- `ChecksumMap` and workspace indexes use exact `ObjectKey` values. They do not
+  use lossy fingerprints.
+- `MigrationPlan` owns one `Vec<PlannedObject>`. It has no parallel plan rows or
+  materialization phase.
+- Scan reads each SQL file, computes SHA-256, and drops the bytes.
+- Apply re-reads only selected files and verifies each body against the
+  scan-time checksum in `crates/core/src/apply/script_read.rs`.
 
-Script bodies are NOT retained. Scan reads each file, computes the SHA-256, and
-drops the bytes immediately (`crates/core/src/scan/parse_object.rs:file_checksum`).
-Apply re-reads the body from disk on demand, only for the apply set, and
-re-verifies it against the scan-time checksum (`apply/script_read.rs::verified_body`,
-`apply/transitions.rs`). Skip-unchanged objects never read their body after scan.
+## Assumptions and constraints
+
+- The plan output lists every managed object, so plan memory remains
+  O(catalog size).
+- Normalized keys remain `{schema}/{kind}/{object}`.
+- SQL bodies remain bounded by `crates/core/src/file_io.rs`.
 
 ## Consequences
 
-- Per-object retained memory = hundreds of bytes (entry + interned key/path +
-  two checksums), independent of SQL body size (which may be KB–MB).
-- Two-pass (checksum-all at scan, re-read bodies for the apply set at apply) is
-  the architecture; no separate change needed to achieve lazy bodies.
-- `compute_diff` for 100k objects = 56 ms in-memory (`crates/core-dev/tests/scale_footprint.rs`).
-  Diff is never the bottleneck; DB round-trips are (see ADR-0011).
-- Cost: arena is append-only/contiguous → selective omission of interned strings
-  is impractical; irrelevant, since bodies are not interned. Arena caps at 4 GiB
-  (u32 offsets), far above any real repository.
+- Object metadata is larger, but ownership and lookup are explicit.
+- Arena lifetime, offset, fingerprint-collision, cache-rebuild, and side-table
+  synchronization failure modes are removed.
+- Skip-unchanged objects do not read SQL bodies after scan.
+- The committed arm64 baseline records `Workspace = 424` bytes and
+  `ObjectEntry = 128` bytes. Runtime allocation and wall-time evidence remains
+  the release criterion, not struct size alone.
+
+## Verification
+
+- `cargo test --workspace --all-targets --all-features`
+- `make bench-footprint`
+- `crates/core/tests/workspace_test.rs`
+- `crates/core/tests/plan_json_roundtrip_test.rs`
+- `crates/core/src/tests/apply_script_read_test.rs`
+
+## Non-goals
+
+- This decision does not make plan cost independent of catalog size.
+- This decision does not cache SQL bodies.
+
+## References
+
+- `docs/data-oriented-layout-policy.md`
+- `docs/perf-footprint-audit.md`
+- ADR-0011

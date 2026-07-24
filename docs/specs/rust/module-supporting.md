@@ -26,7 +26,8 @@ The supporting modules act as a foundation for the primary plan-and-apply pipeli
 
 ```mermaid
 graph TD
-    Build[build.rs / VERSION] -->|populates env| BuildInfo[buildinfo]
+    Cargo[Cargo.toml package version] --> BuildInfo[buildinfo]
+    Build[build.rs] -->|RMIG_COMMIT| BuildInfo
     SQL[sql/*.sql] -->|include_str!| SqlMod[sql]
     Engine[engine::run_command] -->|reads metadata| BuildInfo
     Engine -->|preloads delta| Git[git]
@@ -35,7 +36,8 @@ graph TD
     Engine -->|acquires deploy lock| Lock[lock]
 ```
 
-- **`buildinfo`** consumes compile-time environment variables (`RMIG_VERSION` and `RMIG_COMMIT`) injected by the Cargo build environment via `build.rs` to expose binary metadata.
+- **`buildinfo`** reads Cargo's `CARGO_PKG_VERSION` and the `RMIG_COMMIT`
+  value injected by `build.rs`.
 - **`sql_ident`** is invoked dynamically in the scan and scaffold phases to scrub path inputs and securely format SQL object names prior to execution.
 - **`sql`** provides the exact T-SQL queries executed during the plan database audit phase (bootstrapping metadata and reading catalog caches).
 
@@ -44,7 +46,8 @@ graph TD
 ## Interfaces and Boundaries
 
 ### 1. `buildinfo` Interface
-- **Inputs**: Read-only environment strings `RMIG_VERSION` and `RMIG_COMMIT` loaded during cargo compilation.
+- **Inputs**: `CARGO_PKG_VERSION` from `Cargo.toml` and `RMIG_COMMIT` from
+  `build.rs`.
 - **Outputs**:
   - `version() -> &'static str`: Returns the semver version string.
   - `commit() -> &'static str`: Returns the 7-character truncated git commit hash.
@@ -69,9 +72,11 @@ graph TD
 
 ### 1. Compile-Time Build Metadata Resolution
 1. The compilation phase triggers `crates/core/build.rs`.
-2. `build.rs` reads the root `VERSION` file and executes `git rev-parse --short HEAD`.
-3. Variables are exposed as `RMIG_VERSION` and `RMIG_COMMIT`.
-4. `buildinfo` binds these strings permanently using `option_env!`.
+2. Cargo exposes `[workspace.package].version` as `CARGO_PKG_VERSION`.
+3. `build.rs` executes `git rev-parse --short HEAD` and exposes
+   `RMIG_COMMIT`.
+4. `buildinfo` binds the package version with `env!` and the commit with
+   `option_env!`.
 
 ### 2. Identifier Sanitization & Execution
 1. The CLI engine discovers a dynamic schema name from the local layout.
@@ -87,8 +92,9 @@ graph TD
 - **Containment**: `validate_path_component` and `bracket_ident` capture the invalid segments instantly, aborting execution and returning `Error::InvalidInput`. The query is never executed against the TDS driver.
 
 ### 2. Offline / Gitless Build Environments
-- **Condition**: Compilation occurs outside a git repository or without active environment variables.
-- **Containment**: `buildinfo` captures the `None` compile state and falls back safely to version `0.0.0-dev` and commit hash `unknown`.
+- **Condition**: Compilation occurs outside a git repository.
+- **Containment**: Cargo still supplies the package version; `buildinfo`
+  reports commit hash `unknown`.
 
 ---
 

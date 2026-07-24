@@ -58,7 +58,10 @@ Database **drop/create** is optional and **excluded** from plan wall SLO when `R
 
 ### Rust plan DB SLO (`parallel_wall_ms`)
 
-Integration gate: [`crates/core/tests/workflow_integration.rs`](../crates/core/tests/workflow_integration.rs) asserts `parallel_wall_ms ≤ RMIG_PLAN_DB_MAX_PAR_MS` (default **500**) after each workflow phase. The generic empty-workspace L1 path is exempt; managed fixtures refresh live fingerprints.
+Integration gate:
+[`crates/core/tests/workflow_integration.rs`](../crates/core/tests/workflow_integration.rs)
+asserts `parallel_wall_ms ≤ RMIG_PLAN_DB_MAX_PAR_MS` (default **500**) after
+each workflow phase.
 
 | Variable | Default | Role |
 |----------|---------|------|

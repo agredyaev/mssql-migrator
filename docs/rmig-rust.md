@@ -8,10 +8,10 @@ Provide an operator and maintainer reference for the Rust workspace at the repos
 
 ## Scope
 
-This specification governs the Rust workspace compilation structures, profiling suites, session daemons, and L1 cache behaviors:
+This specification governs the Rust workspace compilation structures,
+profiling suites, and session daemon:
 
 - **Workspace Crates**: `crates/core`, `crates/cli`, `crates/rmigd`
-- **Embedded Cache**: `.rmig/cache/` located in the working directory (gitignored)
 
 ---
 
@@ -40,7 +40,6 @@ This specification governs the Rust workspace compilation structures, profiling 
 | `RMIG_SLO_MAX_CLI_WALL_MS` | `150` | Wall time threshold for the plan SLO gate (in milliseconds). |
 | `RMIG_SESSION` | - | Unix domain socket path connecting the CLI client to the active `rmigd` daemon. |
 | `RMIG_USE_RMIGD` | `0` | Test harness override: automatically spawns `rmigd` and configures `RMIG_SESSION`. |
-| `RMIG_INTEGRATION_WARM_SNAPSHOT` | `0` | Directs the engine to reuse warm metadata catalog snapshots after L1 invalidation. |
 | `RMIG_CATALOG_CACHE` | `on` | Toggle for the local DB catalog memory cache (set `0` to count raw SQL RTs). |
 
 ---
@@ -68,7 +67,6 @@ make build
 ## Off-Nominal Behavior and Failure Containment
 
 - **Daemon Socket Disruption**: If `rmigd` crashes or the socket under `RMIG_SESSION` becomes inaccessible, the CLI client automatically fails safe by falling back to standard direct database TDS connections, logging the connection event to stderr.
-- **Cache Corruption**: If the local L1 cache under `.rmig/cache/` becomes corrupted or stale, execution can be recovered by purging the cache folder (`rm -rf .rmig/cache`).
 
 ---
 
@@ -80,7 +78,6 @@ make build
 make check           # Run rustfmt, clippy (with -D warnings), and library unit tests
 make test-int        # Run SQL Server integration_plan tests against Docker MSSQL
 make e2e-all         # Execute full E2E scenario matrices vs committed baselines
-make integration     # Run apply and git workflow integration suites
 make prod-gate       # Execute incremental plans and go/no-go checks
 ```
 

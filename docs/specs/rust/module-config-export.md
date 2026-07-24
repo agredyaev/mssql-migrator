@@ -34,19 +34,24 @@ The first path segment under `RM_SQL_ROOT` is the **SQL Server database name** (
 
 ### TOML and process environment
 
-`config.toml` accepts `[database]` (`server`, `port`, `auth`, `encrypt`, `trust_server_certificate`), `[paths]` (`sql_root`, `sql_base`, `report_dir`, `l1_cache_dir`), `[execution]` flags/timeouts/SLO, and optional `[session].socket`. Process variables override TOML.
+`config.toml` accepts `[paths]` (`sql_root`, `sql_base`, `report_dir`) and
+non-privileged `[execution]` flags and timeouts. The adoption opt-in is
+excluded.
 
-`database.user`, `database.password`, and `session.token` are rejected. Set the corresponding process variables below.
-
-The checked-in `config.toml` keeps the secure transport defaults. Local Docker runners source `ops/perf/e2e_env.sh` and explicitly set the test-only non-TLS exception.
+Database peer settings, TLS policy, SQL credentials, and the daemon socket/token
+are process-environment only. TOML occurrences fail with `Error::Config` naming
+the required variable. This binds credentials and tokens to a peer selected
+outside the repository.
 
 | Variable | Required | Notes |
 |----------|----------|-------|
-| `RM_DB_SERVER` | no | Override for `database.server` |
+| `RM_DB_SERVER` | yes | SQL Server host; process environment only |
+| `RM_DB_PORT` | no | SQL Server port; process environment only; default `1433` |
 | `RM_SQL_ROOT` | no | Override for `paths.sql_root` |
-| `RM_DB_AUTH` | no | Only `sql` (the default) is accepted. `integrated` / `windows` are rejected with `Error::Config` at `driver/mssql_auth.rs`; target SQL Server 2019 has no workload/managed-identity support, so token auth is out of scope. |
 | `RM_DB_USER` / `RM_DB_PASSWORD` | yes | Process environment only; required by SQL authentication. |
 | `RMIG_SESSION_TOKEN` | for `rmigd` | Process environment only; required for daemon transport. |
+| `RMIG_SESSION` | no | Daemon Unix socket; process environment only. |
+| `RMIG_ALLOW_ADOPT` | no | Process-only operator opt-in for name-only adoption during `migrate`; default `false`. |
 | `RM_DB_ENCRYPT` | no | Defaults to `true`. Set `false` only for an explicitly accepted local/test transport. |
 | `RM_DB_TRUST_SERVER_CERTIFICATE` | no | Defaults to `false`; normal certificate validation remains enabled. |
 | `RM_DB_DATABASE` | **no** | Derived from catalog; field on `Config` is runtime-only |
@@ -63,11 +68,15 @@ If `RM_SQL_ROOT` contains multiple child directories with schema subfolders (e.g
 - SQL Server 2016+ with OPENJSON.
 - Catalog directory must contain at least one `<database>/<schema>/` subtree.
 - Present boolean environment variables must use a recognized value (`true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`, `y`/`n`, or `enabled`/`disabled`). Typos fail with `Error::Config`; they never disable TLS implicitly.
+- Implicit adoption is disabled unless the process operator sets
+  `RMIG_ALLOW_ADOPT`; repository TOML cannot opt in.
 
 ## Nominal flow
 
-1. Load typed TOML → `build_config` with process-env overrides (does not read `RM_DB_DATABASE`).
-2. `validate_config` → require `RM_DB_SERVER`, `RM_SQL_ROOT`, and non-empty `RM_DB_USER` / `RM_DB_PASSWORD` (always, since only SQL auth is supported); then set `sql_base` and discover DB name when exactly one catalog DB.
+1. Load typed TOML paths/execution settings → `build_config` reads peer settings and secrets from the process environment (does not read `RM_DB_DATABASE`).
+2. `validate_config` → require `RM_DB_SERVER`, `RM_SQL_ROOT`, and non-empty
+   `RM_DB_USER` / `RM_DB_PASSWORD`; then set `sql_base` and discover the
+   database name when exactly one catalog database exists.
 3. Engine: for each catalog DB, first probe direct connectivity to that target database; only fall back to `master` create-db preflight when the target connection fails. Then scan → per-DB plan/migrate.
 
 ## Off-nominal behavior
@@ -78,12 +87,21 @@ If `RM_SQL_ROOT` contains multiple child directories with schema subfolders (e.g
   Containment: engine processes each DB sequentially and merges the per-DB plans.
 - Failure mode: `RM_DB_ENCRYPT=ture` or another invalid boolean.
   Containment: `validate_config` returns exit `2` before any network connection.
+- Failure mode: TOML contains `[database]` or `[session]` peer settings.
+  Containment: loading fails before config construction and names the required process variable.
+- Failure mode: TOML contains `[execution].allow_adopt`.
+  Containment: loading fails and names `RMIG_ALLOW_ADOPT`; the repository cannot
+  bypass the migration adoption gate.
+- Failure mode: TOML exceeds 1 MiB or is malformed.
+  Containment: loading stops at `MAX_CONFIG_BYTES`; parse errors omit source lines and values.
 
 ## Verification and validation
 
 - `crates/core/src/config/catalog.rs` unit test `discover_databases_from_layout`
 - `crates/core/src/config/validate.rs` unit tests for SQL credential preflight; `config::env_parse::tests::invalid_boolean_is_rejected_regression`
-- `make check`, `make integration`
+- `crates/core/src/tests/toml_config_test.rs`,
+  `crates/core/src/tests/env_build_test.rs`
+- `make check`, `make check-e2e`
 - `crates/core/tests/plan_json_roundtrip_test.rs`, `exit_code_test.rs`, `db_auth_test.rs`
 
 ## Operations and recovery
@@ -94,7 +112,9 @@ If `RM_SQL_ROOT` contains multiple child directories with schema subfolders (e.g
 ## Open issues and non-goals
 
 - Non-goals: `RM_PLAN_FILE` / `RM_REPAIR_SCRIPT` are not engine-enforced.
-- Open issues: none for `version`; release metadata is wired via `crates/core/build.rs` (`VERSION` + `git rev-parse --short HEAD`).
+- Open issues: none for `version`; Cargo reads
+  `[workspace.package].version` from `Cargo.toml`, and
+  `crates/core/build.rs` stamps `git rev-parse --short HEAD`.
 
 ## References
 

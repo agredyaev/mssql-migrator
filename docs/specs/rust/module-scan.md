@@ -17,7 +17,9 @@ Describe **filesystem layout scan**: walk SQL tree, parse object scripts, comput
 
 ## System context
 
-First phase of `engine::run_command`. Populates `domain::Workspace` (`object_entries`, schemas, checksums from file content). Sets `ws.layout_digest` used by L1 and catalog cache.
+First phase of `engine::run_command`. Populates `domain::Workspace`
+(`object_entries`, schemas, checksums from file content). Sets
+`ws.layout_digest` used by the SQL catalog cache.
 
 ## Interfaces and boundaries
 
@@ -32,6 +34,8 @@ First phase of `engine::run_command`. Populates `domain::Workspace` (`object_ent
 - Catalog wire paths (`objectPath`, `transitionPaths` in plan JSON) are **`{database}/{schema}/...`** relative to `RM_SQL_ROOT`. `plan::diff_object` and `plan::transitions` normalize via `domain::with_database_prefix`.
 - Git preload is best-effort when `.git` exists at repo root.
 - Symlinked files and directories are skipped during directory walk.
+- Every path component must be UTF-8 and contain no separators or control characters.
+- Each SQL script is limited to `MAX_SQL_SCRIPT_BYTES` (4 MiB).
 
 ## Nominal flow
 
@@ -43,12 +47,12 @@ First phase of `engine::run_command`. Populates `domain::Workspace` (`object_ent
 ## Off-nominal behavior and failure containment
 
 - Parse errors fail scan before any SQL I/O.
-- Invalid path components such as names containing `\` fail scan before any SQL I/O.
+- Invalid, non-UTF-8, control-character, or oversized inputs fail scan before any SQL I/O.
 
 ## Verification and validation
 
 - `crates/core/tests/workflow_integration.rs` (implicit scan on each command)
-- `crates/core/tests/scan_walk_test.rs` covers symlink skipping and backslash-component rejection.
+- `crates/core/tests/scan_walk_test.rs` covers symlink skipping, path validation, valid Unicode, and the SQL size limit.
 - `make check`
 
 ## Operations and recovery
@@ -61,5 +65,4 @@ First phase of `engine::run_command`. Populates `domain::Workspace` (`object_ent
 
 ## References
 
-- `docs/specs/rust/module-domain.md`
 - `docs/specs/rust/module-domain.md`
