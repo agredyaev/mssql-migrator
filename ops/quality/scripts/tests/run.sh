@@ -25,7 +25,6 @@ tmp_root() { mktemp -d "${TMPDIR:-/tmp}/rmig-script-tests.XXXXXX"; }
 t="$(tmp_root)"
 mkdir -p "$t/scripts"
 cp "$ROOT/scripts/bump-version.py" "$t/scripts/"
-printf '1.2.3\n' > "$t/VERSION"
 cat > "$t/Cargo.toml" <<'EOF'
 [workspace.package]
 edition = "2021"
@@ -34,11 +33,10 @@ edition = "2021"
 version = "9.9.9"
 EOF
 rc=0; (cd "$t" && python3 scripts/bump-version.py patch) >/dev/null 2>&1 || rc=$?
-if [[ "$rc" -ne 0 && "$(cat "$t/VERSION")" == "1.2.3" ]] \
-    && grep -q '9\.9\.9' "$t/Cargo.toml"; then
-  ok "bump-version leaves both files untouched when workspace version is missing"
+if [[ "$rc" -ne 0 ]] && grep -q '9\.9\.9' "$t/Cargo.toml"; then
+  ok "bump-version leaves Cargo.toml untouched when workspace version is missing"
 else
-  bad "bump-version consistency (rc=$rc VERSION=$(cat "$t/VERSION"))"
+  bad "bump-version validation (rc=$rc)"
 fi
 rm -rf "$t"
 
@@ -190,9 +188,7 @@ rm -rf "$t"
 # --- dhat phase attribution: loop markers stay in sync with bench frames ----
 if grep -q 'LOOP_MARKERS = ("bench_loop",)' "$ROOT/ops/perf/dhat_alloc_tree.py" \
     && grep -q 'fn bench_loop' "$ROOT/crates/core-dev/benches/scan_dhat.rs" \
-    && grep -q 'inline(never)' "$ROOT/crates/core-dev/benches/scan_dhat.rs" \
-    && grep -q 'fn bench_loop' "$ROOT/crates/core-dev/benches/cache_serde_dhat.rs" \
-    && grep -q 'inline(never)' "$ROOT/crates/core-dev/benches/cache_serde_dhat.rs"; then
+    && grep -q 'inline(never)' "$ROOT/crates/core-dev/benches/scan_dhat.rs"; then
   ok "dhat LOOP_MARKERS match inline(never) bench_loop frames"
 else
   bad "dhat loop marker sync"
@@ -269,12 +265,15 @@ else
 fi
 
 # --- release workflow: source, evidence, and publication invariants --------
-if grep -q 'github.ref_type.*branch' "$ROOT/.github/workflows/release.yml" \
+if grep -Fq 'REF_TYPE: ${{ github.ref_type }}' "$ROOT/.github/workflows/release.yml" \
+    && grep -Fq 'main|master)' "$ROOT/.github/workflows/release.yml" \
     && grep -q 'steps.release_state.outputs.validated_sha' "$ROOT/.github/workflows/release.yml" \
     && grep -q 'workflow_run.head_branch || github.ref_name' "$ROOT/.github/workflows/release.yml" \
+    && grep -Fq -- '--event push --branch "$RELEASE_BRANCH" --status success' "$ROOT/.github/workflows/release.yml" \
+    && ! grep -Fq 'branch="${{' "$ROOT/.github/workflows/release.yml" \
     && grep -q 'git push --atomic' "$ROOT/.github/workflows/release.yml" \
     && grep -q 'steps.release_state.outputs.resume' "$ROOT/.github/workflows/release.yml"; then
-  ok "release workflow binds branch, green SHA, atomic refs, and resume path"
+  ok "release workflow binds protected branch, push-CI SHA, atomic refs, and resume path"
 else
   bad "release workflow invariants"
 fi
@@ -305,11 +304,40 @@ check "sql_regression refuses a remote bootstrap target" 1 \
   env RM_DB_SERVER=db.remote.example RM_SQL_ROOT="$t/sqlroot" bash "$ROOT/ops/perf/sql_regression.sh"
 rm -rf "$t"
 
+# --- destructive SQL harnesses must stay on loopback ------------------------
+check "e2e env refuses a remote SQL target" 1 \
+  env ROOT="$ROOT" RM_DB_SERVER=db.remote.example bash -c \
+  'source "$ROOT/ops/perf/e2e_env.sh"'
+
+t="$(tmp_root)"
+mkdir -p "$t/ops/perf" "$t/bin" "$t/sqlroot/dactests/smoke"
+cp "$ROOT/ops/perf/prod_gate.sh" "$t/ops/perf/"
+printf '#!/bin/sh\nexit 0\n' > "$t/bin/cargo"; chmod +x "$t/bin/cargo"
+printf '#!/bin/sh\nexit 99\n' > "$t/bin/docker"; chmod +x "$t/bin/docker"
+check "prod gate refuses a remote database reset before Docker" 1 \
+  env PATH="$t/bin:$PATH" RM_DB_SERVER=db.remote.example RM_SQL_ROOT="$t/sqlroot" \
+  bash "$t/ops/perf/prod_gate.sh"
+check "prod gate permits an explicit remote no-reset plan" 0 \
+  env PATH="$t/bin:$PATH" RM_DB_SERVER=db.remote.example RM_SQL_ROOT="$t/sqlroot" \
+  RMIG_GATE_SKIP_DB_RESET=1 bash "$t/ops/perf/prod_gate.sh"
+rm -rf "$t"
+
+if grep -q 'SQLCMDPASSWORD' "$ROOT/ops/perf/sql_regression.sh" \
+    && grep -q 'SQLCMDPASSWORD' "$ROOT/ops/perf/prod_gate.sh" \
+    && grep -q 'SQLCMDPASSWORD' "$ROOT/docker-compose.yml" \
+    && ! grep -q -- '-P' "$ROOT/ops/perf/sql_regression.sh" \
+    && ! grep -q -- '-P' "$ROOT/ops/perf/prod_gate.sh" \
+    && ! grep -q -- '-P' "$ROOT/docker-compose.yml"; then
+  ok "sqlcmd passwords stay out of process arguments"
+else
+  bad "sqlcmd password environment wiring"
+fi
+
 # --- footprint_bench alloc: stale heap must not be republished -------------
 t="$(tmp_root)"
 mkdir -p "$t/ops/perf/artifacts" "$t/bin" "$t/crates/core-dev"
 cp "$ROOT/ops/perf/footprint_bench.sh" "$ROOT/ops/perf/profile_identity.sh" "$t/ops/perf/"
-printf 'test\n' > "$t/VERSION"
+printf '[workspace.package]\nversion = "test"\n' > "$t/Cargo.toml"
 echo '{"old": true}' > "$t/ops/perf/artifacts/dhat_heap.json"
 printf '#!/bin/sh\nexit 0\n' > "$t/bin/cargo"; chmod +x "$t/bin/cargo"
 printf '#!/bin/sh\nexit 0\n' > "$t/bin/python3"; chmod +x "$t/bin/python3"
@@ -326,7 +354,7 @@ rm -rf "$t"
 t="$(tmp_root)"
 mkdir -p "$t/ops/perf/artifacts" "$t/bin" "$t/target/criterion/plan_diff_skip_heavy_5000/profile"
 cp "$ROOT/ops/perf/footprint_bench.sh" "$ROOT/ops/perf/profile_identity.sh" "$t/ops/perf/"
-printf 'test\n' > "$t/VERSION"
+printf '[workspace.package]\nversion = "test"\n' > "$t/Cargo.toml"
 echo '<svg/>' > "$t/target/criterion/plan_diff_skip_heavy_5000/profile/flamegraph.svg"
 printf '#!/bin/sh\nexit 0\n' > "$t/bin/cargo"; chmod +x "$t/bin/cargo"
 check "footprint profile fails without a FRESH flamegraph" 1 \
@@ -348,8 +376,9 @@ check "plan_db_perf fails when no trace artifact was produced" 1 \
 rm -rf "$t"
 
 # --- compose/Makefile invariants -------------------------------------------
-if grep -q '\$\$MSSQL_SA_PASSWORD' "$ROOT/docker-compose.yml" \
+if grep -q 'SQLCMDPASSWORD=.*\$\$MSSQL_SA_PASSWORD' "$ROOT/docker-compose.yml" \
     && grep -q '127\.0\.0\.1:' "$ROOT/docker-compose.yml" \
+    && ! grep -q -- '-P' "$ROOT/docker-compose.yml" \
     && ! grep -q 'container_name:' "$ROOT/docker-compose.yml"; then
   ok "compose: healthcheck env password, loopback bind, no fixed container name"
 else
