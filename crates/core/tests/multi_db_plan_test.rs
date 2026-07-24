@@ -1,5 +1,4 @@
 use migrator_core::audit::{self, invalidate_audit_cache_all};
-use migrator_core::cache::l1::L1Cache;
 use migrator_core::config::validate_config;
 use migrator_core::db::invalidate_inspect_cache;
 use migrator_core::driver::{connect, mssql};
@@ -16,16 +15,17 @@ fn integration_enabled() -> bool {
 }
 
 fn connect_cfg(database: &str) -> Config {
-    let mut cfg = Config::default();
-    cfg.server = std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into());
-    cfg.port = std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into());
-    cfg.user = std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into());
-    cfg.password =
-        std::env::var("RM_DB_PASSWORD").unwrap_or_else(|_| "yourStrong(!)Password".into());
-    cfg.database = database.into();
-    cfg.encrypt = false;
-    cfg.trust_server_certificate = true;
-    cfg
+    Config {
+        server: std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into()),
+        port: std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into()),
+        user: std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into()),
+        password: std::env::var("RM_DB_PASSWORD")
+            .unwrap_or_else(|_| "yourStrong(!)Password".into()),
+        database: database.into(),
+        encrypt: false,
+        trust_server_certificate: true,
+        ..Default::default()
+    }
 }
 
 fn parity_cfg(root: &Path) -> Config {
@@ -57,9 +57,6 @@ async fn recreate_empty_database(database: &str) {
     );
     invalidate_audit_cache_all(&db_fp);
     invalidate_inspect_cache(&db_fp);
-    migrator_core::db::warm_snapshot::clear();
-    let l1 = L1Cache::new(".rmig/cache");
-    let _ = l1.invalidate_all(&db_fp);
 }
 
 async fn prepare_catalog_databases(databases: &[&str]) {
@@ -95,7 +92,7 @@ fn write_single_db_layout(root: &Path, db: &str) {
 fn database_names(plan: &MigrationPlan) -> BTreeSet<String> {
     plan.objects
         .iter()
-        .map(|o| o.database_name.as_ref().to_string())
+        .map(|o| o.database_name.clone())
         .collect()
 }
 
@@ -162,7 +159,6 @@ async fn multi_db_plan_summary_matches_merged_objects_edge_case() {
         plan.objects.len(),
         "summary must reflect merged objects"
     );
-    assert_eq!(plan.rows.len(), plan.objects.len());
 }
 
 #[tokio::test]
@@ -182,7 +178,7 @@ async fn multi_db_plan_preserves_first_database_objects_regression() {
     let keys: BTreeSet<String> = plan
         .objects
         .iter()
-        .map(|o| o.normalized_key.as_ref().to_string())
+        .map(|o| o.normalized_key.clone())
         .collect();
     assert!(
         keys.iter().any(|k| k.contains("smoke_table")),

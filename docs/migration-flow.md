@@ -44,7 +44,10 @@ from the repository tree are therefore never created, altered, or dropped — se
   - Mutating commands acquire the `sp_getapplock` advisory lock before inspecting the catalog, so planning and apply observe one consistent, locked database state; read-only commands do not lock.
   - `CREATE SCHEMA` is idempotent and batch-safe: it is guarded by `IF SCHEMA_ID(N'...') IS NULL EXEC('CREATE SCHEMA [...]')`.
   - The diff iterates only workspace objects (`crates/core/src/plan/diff.rs`), never the full catalog, so an object's absence from the tree cannot generate a `DROP` or `ALTER`. There is no drop action in the plan model.
-  - `baseline` (first adoption) records a checksum only for repository objects already present in the database; database-only objects are not recorded or managed.
+  - `baseline` records repository objects already present in the database.
+    `migrate` may adopt them by name only with process-level
+    `RMIG_ALLOW_ADOPT=1`; otherwise it exits `10`. Database-only objects are not
+    recorded or managed.
 
 ## Nominal Flow
 
@@ -65,6 +68,10 @@ from the repository tree are therefore never created, altered, or dropped — se
   Containment: connect and per-command timeouts return a clear error (exit 3 for connect, exit 5 for query timeout) rather than hanging.
 - Failure mode: the plan is blocked (structural gate).
   Containment: `migrate` returns exit 10 (`EXIT_PLAN_BLOCKED`) before touching data.
+- Failure mode: `migrate` would implicitly adopt an existing repository object
+  without `RMIG_ALLOW_ADOPT=1`.
+  Containment: the adoption gate returns exit 10 before apply; run
+  `rmig baseline` for explicit adoption.
 - Failure mode: a second migrator runs concurrently against the same database.
   Containment: the advisory lock serializes them; the second blocks until the first releases, then plans against the now-current catalog (the plan is computed under the lock), so it cannot apply a stale plan. A lock-acquisition timeout returns exit 7 (`EXIT_LOCK_TIMEOUT`).
 - Failure mode: a schema in the plan already exists (cache drift).
@@ -75,7 +82,11 @@ from the repository tree are therefore never created, altered, or dropped — se
 ## Verification And Validation
 
 - Contracts and checks: `crates/core/src/apply/history_write.rs` test (XACT_ABORT wrapping), `crates/core/src/tests/proxy_test.rs` (command timeout), `crates/core/src/tests/schema_sql_test.rs` (idempotent, injection-safe `CREATE SCHEMA`), `crates/core/src/tests/command_mutates_test.rs` (only mutating commands lock), and the SQL integration suite under `ops/perf/sql_regression.sh`.
-- Existing-database safety: `crates/core/tests/unmanaged_objects_test.rs` (offline diff guards — absence never drops; the production gate is fail-closed on blocked plans) and `crates/core/tests/existing_db_adoption_integration.rs` (real-database preservation across `migrate` and read-only `plan`).
+- Existing-database safety: `crates/core/tests/unmanaged_objects_test.rs`
+  (absence never drops), `crates/core/tests/apply_integrity_integration.rs`
+  (implicit adoption fails closed), and
+  `crates/core/tests/existing_db_adoption_integration.rs` (real-database
+  preservation across `migrate` and read-only `plan`).
 - Evidence artifacts: plan JSON, audit history rows, and `make check-e2e` output.
 - Exit criteria: a clean apply succeeds; a failing apply stops at the first error, reports it, and leaves a clear (non-hanging) state.
 

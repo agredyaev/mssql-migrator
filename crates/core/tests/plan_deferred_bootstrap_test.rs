@@ -1,5 +1,4 @@
 use migrator_core::audit::{self, invalidate_audit_cache_all};
-use migrator_core::cache::l1::L1Cache;
 use migrator_core::config::validate_config;
 use migrator_core::db::invalidate_inspect_cache;
 use migrator_core::driver::{connect, mssql};
@@ -14,16 +13,17 @@ fn integration_enabled() -> bool {
 }
 
 fn connect_cfg(database: &str) -> Config {
-    let mut cfg = Config::default();
-    cfg.server = std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into());
-    cfg.port = std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into());
-    cfg.user = std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into());
-    cfg.password =
-        std::env::var("RM_DB_PASSWORD").unwrap_or_else(|_| "yourStrong(!)Password".into());
-    cfg.database = database.into();
-    cfg.encrypt = false;
-    cfg.trust_server_certificate = true;
-    cfg
+    Config {
+        server: std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into()),
+        port: std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into()),
+        user: std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into()),
+        password: std::env::var("RM_DB_PASSWORD")
+            .unwrap_or_else(|_| "yourStrong(!)Password".into()),
+        database: database.into(),
+        encrypt: false,
+        trust_server_certificate: true,
+        ..Default::default()
+    }
 }
 
 fn plan_cfg(database: &str, sql_root: &str) -> Config {
@@ -31,13 +31,6 @@ fn plan_cfg(database: &str, sql_root: &str) -> Config {
     cfg.sql_root = sql_root.into();
     cfg.sql_base = sql_root.into();
     cfg.skip_git = true;
-    // The SAME per-database directory recreate_empty_database clears: with the
-    // default .rmig/cache a prior run's L1 entry could satisfy the plan and
-    // skip the bootstrap path this suite exists to exercise.
-    cfg.l1_cache_dir = std::env::temp_dir()
-        .join(format!("rmig-deferred-bootstrap-{database}"))
-        .to_string_lossy()
-        .into_owned();
     validate_config(&mut cfg).expect("valid cfg");
     cfg
 }
@@ -70,11 +63,6 @@ async fn recreate_empty_database(database: &str) {
     );
     invalidate_audit_cache_all(&db_fp);
     invalidate_inspect_cache(&db_fp);
-    migrator_core::db::warm_snapshot::clear();
-    let l1_dir = std::env::temp_dir().join(format!("rmig-deferred-bootstrap-{database}"));
-    let _ = std::fs::remove_dir_all(&l1_dir);
-    let l1 = L1Cache::new(&l1_dir.to_string_lossy());
-    let _ = l1.invalidate_all(&db_fp);
 }
 
 #[tokio::test]

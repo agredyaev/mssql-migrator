@@ -25,30 +25,33 @@ pub fn ensure(
         if obj.planned_action != Action::ReprocessChangedBlocked {
             continue;
         }
-        let db = obj.database_name.as_ref();
+        let db = obj.database_name.as_str();
         if db.is_empty() {
             continue;
         }
         let mig_dir = dir::migration_dir_checked(
             base,
             db,
-            obj.schema_name.as_ref(),
-            obj.object_name.as_ref(),
+            obj.schema_name.as_str(),
+            obj.object_name.as_str(),
         )?;
         if dir::has_non_scaffold_sql(&mig_dir) {
             continue;
         }
         let cols = columns
-            .get(obj.normalized_key.as_ref())
+            .get(obj.normalized_key.as_str())
             .map(|v| v.as_slice())
             .unwrap_or(&[]);
-        let (file_name, content) = pick_content(ws, obj, cols, &commit, &mig_dir);
+        let (file_name, content) = pick_content(ws, obj, cols, &commit, &mig_dir)?;
         let path = mig_dir.join(&file_name);
         if path.exists() {
             continue;
         }
-        dir::write_file(&path, &content).map_err(Error::Io)?;
-        created = true;
+        match dir::write_file(&path, &content) {
+            Ok(()) => created = true,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(Error::Io(e)),
+        }
     }
     Ok(created)
 }
@@ -59,17 +62,27 @@ fn pick_content(
     cols: &[TableColumn],
     commit: &str,
     mig_dir: &Path,
-) -> (String, String) {
-    let lookup_key = ObjectKey::from_normalized(obj.normalized_key.as_ref());
+) -> Result<(String, String)> {
+    let lookup_key = ObjectKey::from_normalized(obj.normalized_key.as_str());
     if let Some(entry) = ws.object_by_key(&lookup_key) {
         let script = ws.script(entry.script_id);
-        if let Ok(data) = std::fs::read_to_string(script.abs_path().as_ref()) {
-            if let Some((content, name)) =
-                auto::try_auto_migration(obj, &data, cols, commit, mig_dir)
-            {
-                return (name, content);
+        match crate::file_io::read_bounded(
+            Path::new(script.abs_path()),
+            crate::file_io::MAX_SQL_SCRIPT_BYTES,
+        ) {
+            Ok(data) => {
+                let Ok(data) = String::from_utf8(data) else {
+                    return Ok(auto::fallback_scaffold(obj, cols, commit));
+                };
+                if let Some((content, name)) =
+                    auto::try_auto_migration(obj, &data, cols, commit, mig_dir)
+                {
+                    return Ok((name, content));
+                }
             }
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => return Err(Error::Io(e)),
+            Err(_) => {}
         }
     }
-    auto::fallback_scaffold(obj, cols, commit)
+    Ok(auto::fallback_scaffold(obj, cols, commit))
 }

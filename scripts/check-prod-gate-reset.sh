@@ -25,8 +25,11 @@ echo "$RESET_BLOCK" | grep -q '\$RM_DB_USER' \
 echo "$RESET_BLOCK" | grep -q '\$RM_DB_PASSWORD' \
   || fail "happy path: reset sqlcmd must use \$RM_DB_PASSWORD"
 
-if echo "$RESET_BLOCK" | grep -qE "\-U sa -P 'yourStrong"; then
-  fail "negative path: reset block must not hardcode sqlcmd -U/-P"
+echo "$RESET_BLOCK" | grep -q 'SQLCMDPASSWORD' \
+  || fail "happy path: reset sqlcmd must use SQLCMDPASSWORD"
+
+if echo "$RESET_BLOCK" | grep -q -- '-P'; then
+  fail "negative path: reset block must not expose the password via sqlcmd -P"
 fi
 
 echo "$RESET_BLOCK" | grep -q '\$RM_DB_SERVER' \

@@ -7,45 +7,43 @@ pub fn apply_scenario(
     scenario: PlanScenario,
     obj: &ObjectEntry,
     ws: &crate::domain::Workspace,
-    child_row_id: u32,
     blockers: &mut Vec<String>,
 ) -> Action {
-    let i = (child_row_id as usize).saturating_sub(1);
     match scenario {
         PlanScenario::TableBlockedNoTransitions => {
             blockers.push(format!(
                 "table {} changed but has no non-scaffold transition scripts",
-                obj.key_str(ws, i)
+                obj.key
             ));
             scenario.action()
         }
         PlanScenario::StructuralChangeBlocked => {
             blockers.push(format!(
                 "{} changed but this object kind has no safe in-place update path",
-                obj.key_str(ws, i)
+                obj.key
             ));
             scenario.action()
         }
         PlanScenario::LiveStructuralDriftBlocked => {
             blockers.push(format!(
                 "live {} differs from its last audited structural state",
-                obj.key_str(ws, i)
+                obj.key
             ));
             scenario.action()
         }
         PlanScenario::TriggerBlockedParentMissing => {
             blockers.push(format!(
                 "trigger {} parent table {} not found",
-                obj.key_str(ws, i),
-                parent_table_label(obj, ws, child_row_id)
+                obj.key,
+                parent_table_label(obj, ws)
             ));
             scenario.action()
         }
         PlanScenario::TriggerBlockedParentChanging => {
             blockers.push(format!(
                 "trigger {} parent table {} is changing",
-                obj.key_str(ws, i),
-                parent_table_label(obj, ws, child_row_id)
+                obj.key,
+                parent_table_label(obj, ws)
             ));
             scenario.action()
         }
@@ -53,16 +51,12 @@ pub fn apply_scenario(
     }
 }
 
-fn parent_table_label(
-    obj: &ObjectEntry,
-    ws: &crate::domain::Workspace,
-    child_row_id: u32,
-) -> String {
-    obj.parent_ref_for_row(ws, child_row_id)
+fn parent_table_label(obj: &ObjectEntry, ws: &crate::domain::Workspace) -> String {
+    obj.parent
         .filter(|p| p.parent_row_id > 0)
         .map(|p| {
             let pi = (p.parent_row_id as usize) - 1;
-            ws.entry(pi).name_part(ws, pi).to_string()
+            ws.entry(pi).key.name_shared()
         })
         .unwrap_or_else(|| "?".into())
 }

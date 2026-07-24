@@ -4,57 +4,79 @@ Lifecycle: `Current`.
 
 ## Purpose
 
-Describe the **in-memory layout model**: object keys, workspace entries, string interning, and catalog/checksum application helpers.
+Describe the in-memory repository model used by scan, plan, and apply.
 
 ## Scope
 
-- `crates/core/src/domain/workspace/mod.rs` - `Workspace`, object list, digest hooks
-- `crates/core/src/domain/object/mod.rs`, `key.rs`, `action.rs`, `kind_code.rs`
-- `crates/core/src/domain/schema.rs`, `script.rs`, `store.rs`
-- `crates/core/src/domain/arena/mod.rs`, `shared/mod.rs` - string dedup / `SharedStr`
-- `crates/core/src/domain/fingerprint.rs` - `key_fingerprint` for normalized path bytes
-- `crates/core/src/domain/path_cache.rs` - object/transition path caches on `Workspace`
-- `crates/core/src/domain/mod.rs` - `for_each_entry`, entry-iteration helpers (`intern_catalog_state` lives in `db`, see `db/state.rs`)
+- `crates/core/src/domain/workspace/` - `Workspace`, object and script indexes
+- `crates/core/src/domain/object/mod.rs` - `ObjectEntry`, parent, transitions
+- `crates/core/src/domain/key.rs` - `ObjectKey`, `ScriptKey`
+- `crates/core/src/domain/script.rs` - script path, checksum, Git metadata
+- `crates/core/src/domain/schema.rs`, `transition.rs`, `layout_path.rs`
 
-## System context
+## System Context
 
-`scan` fills `Workspace`; `plan` and `db` read object keys and checksums; `apply` executes per `ObjectEntry`.
+`scan` fills one `Workspace`. `db` adds live catalog facts and prior checksums.
+`plan` builds owned `PlannedObject` values. `apply` re-reads selected scripts
+from their stored absolute paths.
 
-## Interfaces and boundaries
+## Interfaces And Boundaries
 
-- Core type: `Workspace`, `ObjectKey`, `Action`, `key_fingerprint`
-- No SQL or filesystem I/O inside `domain`
-- Must not import `db`, `driver`, `apply`, `engine`, or other upper layers
+- Inputs: normalized repository paths and scan-time SHA-256 checksums.
+- Outputs: `Workspace`, `ObjectEntry`, `ObjectKey`, `ScriptRef`.
+- Ownership boundary: `domain` owns metadata only. It performs no SQL or
+  filesystem I/O and does not import `db`, `driver`, `apply`, or `engine`.
 
-## Assumptions and constraints
+`Workspace` uses `Vec`, `HashMap`, `String`, and exact `ObjectKey` values.
+Object state is stored on `ObjectEntry`; there are no arena offsets or parallel
+side tables.
 
-- Normalized keys: `{schema}/{kind}/{object}` lowercase segments.
-- Arena interning reduces allocations on hot plan paths.
+## Assumptions And Constraints
 
-## Nominal flow
+- Object keys are lowercase `{schema}/{kind}/{object}` strings.
+- Script and object IDs are 1-based inside a workspace.
+- SQL bodies are not retained in the domain model.
+- Plan memory is O(number of managed objects).
 
-1. `scan` inserts `ObjectEntry` values into `Workspace`.
-2. `plan` reads keys/checksums; `apply` mutates via planned actions only.
+## Nominal Flow
 
-## Off-nominal behavior and failure containment
+1. Scan inserts scripts and `ObjectEntry` values.
+2. `Workspace::finalize_object_layout` sorts objects, builds exact-key indexes,
+   and attaches staged transitions.
+3. Database inspection updates `db_exists`, `prior_checksum`, and `parent`.
+4. Plan and apply read that single object representation.
 
-- Failure mode: duplicate normalized keys in layout.
-  Containment: scan/plan surface error before apply.
+## Off-Nominal Behavior And Failure Containment
 
-## Operations and recovery
+- Failure mode: two files normalize to the same object key.
+  Containment: `Workspace::push_object` returns `Error::InvalidInput` before
+  planning.
+- Failure mode: a transition has no matching table or script.
+  Containment: finalization drops it with a warning; no invalid script ID enters
+  an apply plan.
 
-- No runtime operator action; pure in-memory structures.
+## Verification And Validation
 
-## Open issues and non-goals
+- `cargo test -p migrator-core --all-features --lib --tests`
+- `crates/core/tests/workspace_test.rs`
+- `crates/core/tests/delta_scope_test.rs`
+- `crates/core/tests/scan_walk_test.rs`
+- Exit criterion: exact-key lookup, transition relinking, and per-database
+  workspace tests pass.
 
-- Non-goals: domain module performs no I/O.
+## Operations And Recovery
 
-## Verification and validation
+- Runtime operators do not maintain this state; each command rebuilds it.
+- Recovery from invalid layout is to fix the named repository path and rerun.
 
-- `crates/core/src/domain/arena/` tests
-- `crates/core/src/domain/key.rs` tests
+## Open Issues And Non-Goals
+
+- Open issues: none.
+- Non-goals: caching SQL bodies or hiding SQL Server state behind a local
+  snapshot.
 
 ## References
 
 - `docs/data-oriented-layout-policy.md`
 - `docs/specs/rust/module-scan.md`
+- `adr/0003-data-oriented-arena-workspace.md`

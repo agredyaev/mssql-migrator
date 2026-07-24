@@ -6,7 +6,6 @@
 pub mod apply;
 pub mod audit;
 pub mod buildinfo;
-pub mod cache;
 pub mod config;
 pub mod db;
 pub mod domain;
@@ -14,6 +13,7 @@ pub mod driver;
 pub mod engine;
 pub mod error;
 pub mod export;
+mod file_io;
 pub mod gate;
 pub mod git;
 pub mod lock;
@@ -25,6 +25,6 @@ pub mod sql;
 pub mod sql_ident;
 pub mod timings;
 
-pub use config::{Config, ConfigCold};
+pub use config::Config;
 pub use error::{Error, Result};
 pub use timings::PhaseTimings;

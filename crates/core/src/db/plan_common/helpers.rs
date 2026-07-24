@@ -33,22 +33,18 @@ pub(crate) fn merge_stable_catalog(
 }
 
 pub(crate) fn schemas_json(ws: &Workspace) -> String {
-    let schemas: Vec<String> = ws
-        .schemas
-        .iter()
-        .map(|s| s.normalized.as_ref().to_string())
-        .collect();
+    let schemas: Vec<String> = ws.schemas.iter().map(|s| s.normalized.clone()).collect();
     serde_json::to_string(&schemas).unwrap_or_else(|_| "[]".into())
 }
 
 pub(crate) fn kinds_for_git_delta<'a>(ws: &'a Workspace, changed_paths: &[String]) -> Vec<&'a str> {
     let delta = expand_delta_closure(ws, keys_for_changed_paths(ws, changed_paths));
     let mut kinds = Vec::new();
-    for (i, o) in ws.object_entries.iter().enumerate() {
+    for object in &ws.object_entries {
         // Delta keys are database-qualified; workspace keys are not.
-        let qualified = format!("{}/{}", ws.database_name(o.db_id), o.key_str(ws, i));
+        let qualified = format!("{}/{}", ws.database_name(object.db_id), object.key.as_str());
         if delta.contains(&qualified) {
-            kinds.push(o.kind_part(ws, i));
+            kinds.push(object.key.kind_part());
         }
     }
     kinds
@@ -56,9 +52,9 @@ pub(crate) fn kinds_for_git_delta<'a>(ws: &'a Workspace, changed_paths: &[String
 
 pub(crate) fn kinds_for_scope<'a>(ws: &'a Workspace, scope: &InspectScope) -> Vec<&'a str> {
     let mut kinds = Vec::new();
-    for (i, o) in ws.object_entries.iter().enumerate() {
-        if scope.full_inspect || scope.hot_keys.contains(o.key_str(ws, i)) {
-            kinds.push(o.kind_part(ws, i));
+    for object in &ws.object_entries {
+        if scope.full_inspect || scope.hot_keys.contains(object.key.as_str()) {
+            kinds.push(object.key.kind_part());
         }
     }
     kinds

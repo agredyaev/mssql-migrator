@@ -12,17 +12,15 @@ pub fn git_hot_scope_json(ws: &Workspace, changed_paths: &[String]) -> String {
     let hot_keys: HashSet<String> = ws
         .object_entries
         .iter()
-        .enumerate()
-        .filter(|(i, o)| {
-            let db = ws.database_name(o.db_id);
-            delta.contains(&format!("{db}/{}", o.key_str(ws, *i)))
+        .filter(|object| {
+            let db = ws.database_name(object.db_id);
+            delta.contains(&format!("{db}/{}", object.key.as_str()))
         })
-        .map(|(i, o)| o.key_str(ws, i).to_string())
+        .map(|object| object.key.shared())
         .collect();
     build_scope_json(&InspectScope {
         full_inspect: false,
         hot_keys,
         stable_objects: Default::default(),
-        allow_l1_skip: false,
     })
 }

@@ -16,7 +16,7 @@ Language: terse. Drop filler. Keep every technical fact and exact error string.
 |-----|-------|--------|
 | [0001](0001-comptime-sql-assets.md) | Comptime SQL assets, no inline SQL | Accepted |
 | [0002](0002-audit-history-state-store.md) | Audit history is the state store; body+history commit atomically | Accepted |
-| [0003](0003-data-oriented-arena-workspace.md) | Data-oriented arena workspace, lazy script bodies | Accepted |
+| [0003](0003-data-oriented-arena-workspace.md) | Owned workspace metadata and lazy script bodies | Accepted |
 | [0004](0004-structural-drift-fail-closed.md) | Structural live drift blocks the plan (fail-closed) | Accepted |
 | [0005](0005-incremental-drift-ddl-trigger.md) | Incremental drift detection via DDL-trigger versioning | Accepted |
 | [0006](0006-full-fingerprint-by-design.md) | Full live-definition fingerprint; modify_date shortcut rejected | Accepted |
@@ -31,7 +31,7 @@ Language: terse. Drop filler. Keep every technical fact and exact error string.
 | [0015](0015-authored-transition-scripts.md) | Table changes via authored transition scripts, not generated ALTERs | Accepted |
 | [0016](0016-advisory-lock-single-writer.md) | Advisory lock for single-writer mutual exclusion; plan under lock | Accepted |
 | [0017](0017-git-delta-scoping.md) | git-delta scoping of live-catalog inspection | Accepted |
-| [0018](0018-l1-plan-cache.md) | L1 filesystem cache for plan acceleration | Accepted |
+| [0018](0018-l1-plan-cache.md) | Remove the L1 filesystem plan cache | Accepted |
 | [0019](0019-typed-exit-codes.md) | Typed exit-code scheme for CI automation | Accepted |
 | [0020](0020-config-env-over-toml-secrets-env-only.md) | Config: env over TOML, secrets env-only, fail-fast | Accepted |
 | [0021](0021-crlf-folded-checksum.md) | CRLF-folded SHA-256 checksum | Accepted |

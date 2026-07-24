@@ -18,13 +18,15 @@ pub fn discover_catalog_databases(sql_root: &str) -> Result<Vec<String>> {
         if !ft.is_dir() {
             continue;
         }
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
+        let name = entry.file_name().into_string().map_err(|_| {
+            Error::InvalidInput("catalog database directory name is not valid UTF-8".into())
+        })?;
         if name.starts_with('.') {
             continue;
         }
+        crate::sql_ident::validate_path_component(&name)?;
         if catalog_database_dir_has_schema(entry.path().as_path())? {
-            names.push(name.into_owned());
+            names.push(name);
         }
     }
     names.sort();

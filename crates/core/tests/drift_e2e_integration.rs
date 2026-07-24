@@ -60,20 +60,14 @@ async fn oob_drop_recreated_and_oob_modify_is_restored_after_warm_cache() {
     assert_eq!(applied, 2, "one applied row per create");
     assert_eq!(view_action(&cfg).await, Action::SkipUnchanged, "healed");
 
-    // Populate L1/warm snapshots first. Module definitions must still be
-    // queried live on the next plan.
-    let (_, warm_timings) = engine_smoke::plan(&cfg).await.expect("warm plan");
-    assert!(
-        !warm_timings.l1_cache_hit,
-        "live-state checks bypass top-level L1"
-    );
+    // Warm process state first. Module definitions must still be queried live.
+    engine_smoke::plan(&cfg).await.expect("warm plan");
 
     // An out-of-band body edit must become an in-place module update.
     conn.exec("CREATE OR ALTER VIEW smoke.smoke_view AS SELECT CAST(99 AS INT) AS drifted")
         .await
         .expect("oob modify view");
-    let (plan, timings) = engine_smoke::plan(&cfg).await.expect("live drift plan");
-    assert!(!timings.l1_cache_hit, "warm cache cannot hide module drift");
+    let (plan, _) = engine_smoke::plan(&cfg).await.expect("live drift plan");
     assert_eq!(
         action_of(&plan),
         Action::UpdateExistingModule,
@@ -516,7 +510,7 @@ async fn view_action(cfg: &Config) -> Action {
 fn action_of(plan: &MigrationPlan) -> Action {
     plan.objects
         .iter()
-        .find(|o| o.normalized_key.as_ref() == VIEW_KEY)
+        .find(|o| o.normalized_key == VIEW_KEY)
         .map(|o| o.planned_action)
         .expect("smoke_view in plan")
 }
@@ -524,7 +518,7 @@ fn action_of(plan: &MigrationPlan) -> Action {
 fn action_for(plan: &MigrationPlan, key: &str) -> Action {
     plan.objects
         .iter()
-        .find(|o| o.normalized_key.as_ref() == key)
+        .find(|o| o.normalized_key == key)
         .map(|o| o.planned_action)
         .unwrap_or_else(|| panic!("{key} in plan"))
 }

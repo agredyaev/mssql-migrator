@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::domain::{share, ScriptKey, Workspace};
+use crate::domain::{ScriptKey, Workspace};
 
 use crate::git::{self as git_log, GitMeta};
 
@@ -26,7 +26,7 @@ pub fn preload(ws: &mut Workspace, sql_root: &str) {
             continue;
         };
         let script = ws.script(id);
-        if let Some(meta) = git_log::git_info_file(script.abs_path().as_ref()) {
+        if let Some(meta) = git_log::git_info_file(script.abs_path()) {
             apply_meta(ws, id, &meta);
         }
     }
@@ -84,10 +84,10 @@ fn layout_key_for_git_line(line: &str, prefix: Option<&str>) -> String {
 }
 
 fn apply_meta(ws: &mut Workspace, script_id: u32, meta: &GitMeta) {
-    let st = ws.ensure_script_git_staging(script_id);
-    st.hash = Some(share(&meta.hash));
-    st.author = Some(share(&meta.author));
-    st.date = Some(share(&meta.date));
+    let git = ws.ensure_script_git(script_id);
+    git.hash = Some(meta.hash.clone());
+    git.author = Some(meta.author.clone());
+    git.date = Some(meta.date.clone());
 }
 
 fn git_work_tree(sql_root: &str) -> Option<String> {

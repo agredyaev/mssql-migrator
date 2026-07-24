@@ -63,7 +63,7 @@ fn scale_footprint_scan_and_diff() {
     compute_diff_into(&mut ws, &catalog, &checksums, &mut plan).expect("diff");
     println!("SCALE compute_diff_ms = {}", t.elapsed().as_millis());
     mark("after_diff");
-    println!("SCALE plan_rows = {}", plan.rows.len());
+    println!("SCALE plan_objects = {}", plan.objects.len());
     drop((ws, catalog, checksums, plan));
     mark("after_drop");
 

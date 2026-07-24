@@ -47,5 +47,5 @@ async fn scan_preloads_git_with_nested_sql_root() {
         .expect("scan");
     let sk = migrator_core::domain::ScriptKey::from_path("db/sch/views/monthly.sql");
     let script = ws.script_by_key(&sk).expect("script");
-    assert_eq!(script.git_hash().as_ref().len(), 40);
+    assert_eq!(script.git_hash().len(), 40);
 }

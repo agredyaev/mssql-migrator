@@ -125,7 +125,7 @@ A run of `rmig --config config.toml migrate`, step by step:
    `apply_run::run_locked`, read-only commands do not.
 9. Inspect (`db/plan_snapshot.rs`): query `sys.objects` / `sys.schemas` (the
    `sql/catalog/*.sql` files) into a `CatalogState`; load prior checksums into a
-   `ChecksumMap`. Every managed workspace bypasses the local `.rmig/cache` L1 snapshot so it always diffs
+   `ChecksumMap`. Every workspace refreshes live SQL Server state so it always diffs
    live state.
 10. Diff (`plan/diff.rs`, `plan/diff_decide.rs`): per object, compare prior checksum vs
     current file checksum — exists+unchanged = Skip; exists+no-record = Adopt; missing =

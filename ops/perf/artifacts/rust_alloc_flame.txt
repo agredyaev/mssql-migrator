@@ -1,15 +1,15 @@
-# rmig-profile revision=88f5197aa533b8e248cb6c37afa3eed635c922cf version=1.0.11 target=aarch64-apple-darwin dirty=false
+# rmig-profile revision=cb4d0c9147b202cb76a8d3a0f017f457f02b3554 version=1.0.13 target=aarch64-apple-darwin dirty=true
 # Rust dhat allocation summary
-# total allocated (tb sum): 11.15 MB (11145524 B)
+# total allocated (tb sum): 9.02 MB (9019054 B)
 # loop iterations: 20
-# setup (one-time): 10.73 MB
-# warm (first compute_diff / plan resize): 413.9 KB
+# setup (one-time): 6.92 MB
+# warm (first compute_diff / plan resize): 2.10 MB
 # loop (warmed compute_diff x20): 0 B (0 B/iter)
 
 ## Phase totals
 Phase                 Bytes    Share
-setup              10.73 MB    96.3%
-warm               413.9 KB     3.7%
+setup               6.92 MB    76.7%
+warm                2.10 MB    23.3%
 loop                    0 B     0.0%
 
 ## Top categories (loop phase only)
@@ -21,12 +21,14 @@ Frame                                                                           
 
 ## Top rmig frames (deepest in stack, all phases)
 Frame                                                                           Bytes   Share
-plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)              10.73 MB   96.3%
-plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:14:5)               413.9 KB    3.7%
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)               6.92 MB   76.7%
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:14:5)                2.06 MB   22.8%
+migrator_core::plan::diff::compute_diff_into (src/plan/diff.rs:82:22)         40.0 KB    0.4%
 plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:18:5)                   64 B    0.0%
 
 ## Top leaf alloc frames (flat)
 Frame                                                                           Bytes
-plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)              10.73 MB
-plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:14:5)               413.9 KB
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:12:40)               6.92 MB
+plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:14:5)                2.06 MB
+migrator_core::plan::diff::compute_diff_into (src/plan/diff.rs:82:22)         40.0 KB
 plan_diff_dhat::main (core-dev/benches/plan_diff_dhat.rs:18:5)                   64 B

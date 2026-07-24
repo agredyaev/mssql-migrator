@@ -89,7 +89,7 @@ async fn plan_action(cfg: &Config, key: &str) -> Action {
         .expect("plan present")
         .objects
         .iter()
-        .find(|o| o.normalized_key.as_ref() == key)
+        .find(|o| o.normalized_key == key)
         .map(|o| o.planned_action)
         .expect("key in plan")
 }
@@ -279,7 +279,7 @@ async fn baseline_and_repair_never_execute_ddl_regression() {
     let action = plan
         .objects
         .iter()
-        .find(|o| o.normalized_key.as_ref() == "smoke/views/v_guard")
+        .find(|o| o.normalized_key == "smoke/views/v_guard")
         .map(|o| o.planned_action)
         .expect("view in plan");
     assert_eq!(

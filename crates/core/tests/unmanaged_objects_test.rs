@@ -8,29 +8,29 @@
 
 use migrator_core::db::state::{catalog_object, CatalogState, ChecksumMap};
 use migrator_core::domain::{
-    share, Action, ObjectEntry, ObjectKey, Script, ScriptKey, ScriptKind, Workspace,
+    Action, ObjectEntry, ObjectKey, Script, ScriptKey, ScriptKind, Workspace,
 };
 use migrator_core::gate::{evaluate_gate, GateInput, PlanSnapshot};
 use migrator_core::plan::compute_diff;
 use migrator_core::timings::PhaseTimings;
 
-/// Build one repository object `(key, entry)` pair (not yet adopted into `ws`).
+/// Build one repository object not yet adopted into `ws`.
 fn ws_object(
     ws: &mut Workspace,
     schema: &str,
     kind: &str,
     name: &str,
     checksum: [u8; 32],
-) -> (ObjectKey, ObjectEntry) {
+) -> ObjectEntry {
     let rel = format!("{schema}/{kind}/{name}.sql");
     let script_id = ws.insert_script(Script {
         key: ScriptKey::from_path(&rel),
         kind: ScriptKind::Object,
-        abs_path: share(&rel),
+        abs_path: rel,
         checksum: Some(checksum),
     });
-    let db_id = ws.intern_database(share("db"));
-    ObjectEntry::with_staging_key(
+    let db_id = ws.intern_database("db".into());
+    ObjectEntry::new(
         ObjectKey::new(schema, kind, name),
         script_id,
         checksum,
@@ -70,7 +70,7 @@ fn action_set_has_no_destructive_variant() {
 fn orphan_db_object_absent_from_repo_is_not_planned() {
     let mut ws = Workspace::default();
     let managed = ws_object(&mut ws, "r", "views", "managed", [1; 32]);
-    let managed_key = managed.0.clone();
+    let managed_key = managed.key.clone();
     ws.adopt_dense_entries(vec![managed]);
 
     // Catalog has the managed object AND an orphan that exists only in the DB.
@@ -86,8 +86,7 @@ fn orphan_db_object_absent_from_repo_is_not_planned() {
     );
 
     let checksums = ChecksumMap::new();
-    let (mut plan, _) = compute_diff(&mut ws, &catalog, &checksums).unwrap();
-    plan.ensure_objects_materialized(&ws);
+    let (plan, _) = compute_diff(&mut ws, &catalog, &checksums).unwrap();
 
     // The plan contains exactly the one repository object; the orphan is absent.
     assert_eq!(plan.summary.object_count, 1);
@@ -96,7 +95,7 @@ fn orphan_db_object_absent_from_repo_is_not_planned() {
     assert!(plan
         .objects
         .iter()
-        .all(|o| o.normalized_key.as_ref() != orphan_key.as_str()));
+        .all(|o| o.normalized_key != orphan_key.as_str()));
     assert!(plan
         .objects
         .iter()
@@ -108,8 +107,8 @@ fn partial_repository_adoption_leaves_unrelated_db_objects_untouched() {
     let mut ws = Workspace::default();
     let a = ws_object(&mut ws, "r", "tables", "a", [1; 32]);
     let c = ws_object(&mut ws, "r", "tables", "c", [1; 32]);
-    let key_a = a.0.clone();
-    let key_c = c.0.clone();
+    let key_a = a.key.clone();
+    let key_c = c.key.clone();
     ws.adopt_dense_entries(vec![a, c]);
 
     // Catalog is a superset: managed a, c plus unrelated orphans b, d.
@@ -126,8 +125,7 @@ fn partial_repository_adoption_leaves_unrelated_db_objects_untouched() {
     }
 
     let checksums = ChecksumMap::new();
-    let (mut plan, _) = compute_diff(&mut ws, &catalog, &checksums).unwrap();
-    plan.ensure_objects_materialized(&ws);
+    let (plan, _) = compute_diff(&mut ws, &catalog, &checksums).unwrap();
 
     // Only the two repository objects are planned; orphans b and d never appear.
     assert_eq!(plan.summary.object_count, 2);
@@ -192,8 +190,7 @@ fn repository_removal_does_not_drop_object() {
     let mut checksums = ChecksumMap::new();
     checksums.insert_key(&removed_key, [9; 32]);
 
-    let (mut plan, _) = compute_diff(&mut ws, &catalog, &checksums).unwrap();
-    plan.ensure_objects_materialized(&ws);
+    let (plan, _) = compute_diff(&mut ws, &catalog, &checksums).unwrap();
 
     // Absence from the repository produces no plan entry — and therefore no drop.
     assert_eq!(plan.summary.object_count, 0);

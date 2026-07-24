@@ -19,10 +19,10 @@ pub(super) fn marshal_rows(state: &CatalogState) -> Result<String> {
         .iter()
         .map(|(k, o)| CacheRow {
             k: k.as_str(),
-            s: o.schema.as_ref(),
-            g: o.kind.as_ref(),
-            o: o.name.as_ref(),
-            p: o.parent.as_ref().map(|s| s.as_ref()).unwrap_or(""),
+            s: o.schema.as_str(),
+            g: o.kind.as_str(),
+            o: o.name.as_str(),
+            p: o.parent.as_deref().unwrap_or(""),
         })
         .collect();
     serde_json::to_string(&rows).map_err(|e| crate::error::Error::Other(e.into()))

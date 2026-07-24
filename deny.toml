@@ -2,11 +2,11 @@
 # Run: cargo deny check
 
 [advisories]
-# quick-xml is reachable ONLY from dev/profiling tooling (inferno flamegraph
-# SVG generation), never the production binary (enforced separately by
-# scripts/check-rust-release-deps.sh), and inferno 0.11 pins quick-xml ^0.26 so
-# the >=0.41 fix is not reachable without a major inferno bump. The advisories
-# are DoS in XML parsing of locally-generated flamegraphs — no production risk.
+# quick-xml is reachable ONLY from dev/profiling tooling through inferno's SVG
+# writer, never the production binary (enforced by
+# scripts/check-rust-release-deps.sh). The vulnerable Reader/NsReader attribute
+# and namespace parsing paths are not used. inferno 0.11 pins quick-xml ^0.26,
+# so the >=0.41 fix is not reachable without an upstream dependency change.
 ignore = [
     "RUSTSEC-2026-0195", # quick-xml unbounded namespace alloc (via inferno)
     "RUSTSEC-2026-0194", # quick-xml quadratic attribute check (via inferno)

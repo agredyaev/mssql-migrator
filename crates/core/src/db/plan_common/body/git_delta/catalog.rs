@@ -1,7 +1,6 @@
 use std::mem;
 use std::time::Instant;
 
-use crate::db::intern_catalog_state;
 use crate::db::state::CatalogState;
 use crate::domain::ObjectKey;
 use crate::error::Result;
@@ -41,12 +40,8 @@ pub(super) async fn query_git_delta_catalog(
         .await?;
     }
     merge_stable_catalog(&mut loaded, &scope.stable_objects);
-    let t_intern = Instant::now();
-    intern_catalog_state(&mut loaded);
-    warm.local_trace.timings.intern_catalog_ms += timings::dur_ms(t_intern.elapsed());
     let inspect_ms = timings::dur_ms(t_cat.elapsed());
-    warm.local_trace.timings.catalog_ms =
-        warm.local_trace.timings.catalog_sql_ms + warm.local_trace.timings.intern_catalog_ms;
+    warm.local_trace.timings.catalog_ms = warm.local_trace.timings.catalog_sql_ms;
     warm.local_trace.timings.round_trips = warm.round_trips;
     Ok((loaded, inspect_ms, warm))
 }

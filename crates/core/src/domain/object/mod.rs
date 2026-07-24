@@ -1,70 +1,62 @@
-use super::key::ObjectKey;
-use super::str_off::StrOff;
+use super::{ObjectKey, TransitionEntry, Workspace};
 
-mod access;
-mod parent;
-
-/// Trigger → parent table row id. Strings resolved at export/blockers only.
+/// Trigger-to-parent table reference.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ParentRef {
-    /// 1-based dense row id of parent table object; `0` = unknown.
+    /// 1-based parent object row id; `0` means unknown.
     pub parent_row_id: u32,
 }
 
-/// Flag bit indicating the object exists in the target database (1).
-pub const OBJECT_FLAG_DB_EXISTS: u8 = 1 << 0;
-
-/// Dense object row: codes and indices; strings via key / side tables.
+/// One managed repository object and its planning metadata.
 #[derive(Clone, Debug)]
 pub struct ObjectEntry {
+    /// Normalized `schema/kind/name` key.
+    pub key: ObjectKey,
     /// File digest of the source script.
     pub checksum: [u8; 32],
-    /// Offset into the layout arena for the normalized object key string.
-    pub key_off: StrOff,
-    /// 1-based script row id; `0` = no associated script.
+    /// 1-based script id.
     pub script_id: u32,
     /// Database slot index.
     pub db_id: u16,
-    /// Bitfield of `OBJECT_FLAG_*` values.
-    pub flags: u8,
+    /// Whether the object exists in SQL Server.
+    pub db_exists: bool,
+    /// Previously audited source checksum.
+    pub prior_checksum: Option<[u8; 32]>,
+    /// Parent table for trigger/index relationships.
+    pub parent: Option<ParentRef>,
+    /// Ordered transition scripts owned by this object.
+    pub transitions: Vec<TransitionEntry>,
 }
 
 impl ObjectEntry {
-    /// Test / bench helper before [`super::arena::intern_workspace_strings`].
-    pub fn with_staging_key(
+    /// Creates an object entry.
+    pub fn new(
         key: ObjectKey,
         script_id: u32,
         checksum: [u8; 32],
         db_exists: bool,
         db_id: u16,
-    ) -> (ObjectKey, Self) {
-        let mut flags = 0u8;
-        if db_exists {
-            flags |= OBJECT_FLAG_DB_EXISTS;
-        }
-        (
+    ) -> Self {
+        Self {
             key,
-            Self {
-                key_off: StrOff::EMPTY,
-                script_id,
-                checksum,
-                flags,
-                db_id,
-            },
-        )
-    }
-
-    /// Returns `true` if the object exists in the target database.
-    pub fn db_exists(&self) -> bool {
-        self.flags & OBJECT_FLAG_DB_EXISTS != 0
-    }
-
-    /// Sets or clears the `OBJECT_FLAG_DB_EXISTS` flag.
-    pub fn set_db_exists(&mut self, exists: bool) {
-        if exists {
-            self.flags |= OBJECT_FLAG_DB_EXISTS;
-        } else {
-            self.flags &= !OBJECT_FLAG_DB_EXISTS;
+            checksum,
+            script_id,
+            db_id,
+            db_exists,
+            prior_checksum: None,
+            parent: None,
+            transitions: Vec::new(),
         }
+    }
+
+    /// Returns the parent table name.
+    pub fn parent_name(&self, ws: &Workspace) -> String {
+        let Some(parent) = self.parent.filter(|value| value.parent_row_id > 0) else {
+            return String::new();
+        };
+        ws.object_entries
+            .get(parent.parent_row_id as usize - 1)
+            .map(|entry| entry.key.name_shared())
+            .unwrap_or_default()
     }
 }

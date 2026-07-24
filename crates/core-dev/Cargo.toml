@@ -49,13 +49,3 @@ required-features = ["bench"]
 name = "scan_dhat"
 harness = false
 required-features = ["bench"]
-
-[[bench]]
-name = "cache_serde_load"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "cache_serde_dhat"
-harness = false
-required-features = ["bench"]

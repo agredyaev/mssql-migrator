@@ -28,8 +28,6 @@ fn write_multi_db_layout(root: &Path) {
 fn workspace_from_layout(root: &Path) -> Workspace {
     let mut ws = Workspace::default();
     scan_root(&mut ws, root.to_str().unwrap()).unwrap();
-    migrator_core::domain::intern_workspace_strings(&mut ws);
-    migrator_core::domain::rebuild_path_caches(&mut ws);
     ws
 }
 
@@ -41,12 +39,10 @@ fn catalog_subset_materialization_happy_path() {
 
     for db in ["dactests", "warehouse"] {
         let mut sub = ws.for_catalog_database(db);
-        let (mut plan, _) =
+        let (plan, _) =
             compute_diff(&mut sub, &CatalogState::default(), &ChecksumMap::new()).unwrap();
-        plan.ensure_objects_materialized(&sub);
-        assert_eq!(plan.rows.len(), sub.object_count());
         assert_eq!(plan.objects.len(), sub.object_count());
-        assert!(plan.objects.iter().all(|o| o.database_name.as_ref() == db));
+        assert!(plan.objects.iter().all(|o| o.database_name == db));
     }
 }
 
@@ -76,11 +72,9 @@ fn single_object_database_subset_edge_case() {
     .unwrap();
     let ws = workspace_from_layout(base.path());
     let mut sub = ws.for_catalog_database("warehouse");
-    let (mut plan, _) =
-        compute_diff(&mut sub, &CatalogState::default(), &ChecksumMap::new()).unwrap();
-    plan.ensure_objects_materialized(&sub);
+    let (plan, _) = compute_diff(&mut sub, &CatalogState::default(), &ChecksumMap::new()).unwrap();
     assert_eq!(plan.objects.len(), 1);
-    assert_eq!(plan.objects[0].database_name.as_ref(), "warehouse");
+    assert_eq!(plan.objects[0].database_name, "warehouse");
 }
 
 #[test]
@@ -89,13 +83,11 @@ fn first_database_objects_survive_subset_regression() {
     write_multi_db_layout(base.path());
     let ws = workspace_from_layout(base.path());
     let mut sub = ws.for_catalog_database("dactests");
-    let (mut plan, _) =
-        compute_diff(&mut sub, &CatalogState::default(), &ChecksumMap::new()).unwrap();
-    plan.ensure_objects_materialized(&sub);
+    let (plan, _) = compute_diff(&mut sub, &CatalogState::default(), &ChecksumMap::new()).unwrap();
     let keys: Vec<_> = plan
         .objects
         .iter()
-        .map(|o| o.normalized_key.as_ref().to_string())
+        .map(|o| o.normalized_key.clone())
         .collect();
     assert!(
         keys.iter().any(|k| k.contains("smoke_table")),

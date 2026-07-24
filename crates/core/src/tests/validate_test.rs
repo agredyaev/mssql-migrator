@@ -1,17 +1,11 @@
 use super::*;
-use crate::config::ConfigCold;
-use std::sync::Arc;
 
-fn make_cfg(server: &str, sql_root: &str, user: &str, password: &str, db_auth: &str) -> Config {
+fn make_cfg(server: &str, sql_root: &str, user: &str, password: &str) -> Config {
     Config {
         sql_root: sql_root.into(),
-        cold: Arc::new(ConfigCold {
-            server: server.into(),
-            user: user.into(),
-            password: password.into(),
-            db_auth: db_auth.into(),
-            ..Default::default()
-        }),
+        server: server.into(),
+        user: user.into(),
+        password: password.into(),
         ..Config::default()
     }
 }
@@ -25,13 +19,7 @@ fn validate_config_sql_auth_happy_path() {
         "CREATE TABLE smoke.t1 (id INT NOT NULL);\n",
     )
     .expect("write sql");
-    let mut cfg = make_cfg(
-        "localhost",
-        &dir.path().to_string_lossy(),
-        "svc",
-        "secret",
-        "",
-    );
+    let mut cfg = make_cfg("localhost", &dir.path().to_string_lossy(), "svc", "secret");
     validate_config(&mut cfg).expect("sql auth config should validate");
     assert_eq!(cfg.database, "db1");
 }
@@ -45,13 +33,7 @@ fn validate_config_rejects_non_numeric_port_negative_path() {
         "CREATE TABLE smoke.t1 (id INT NOT NULL);\n",
     )
     .expect("write sql");
-    let mut cfg = make_cfg(
-        "localhost",
-        &dir.path().to_string_lossy(),
-        "svc",
-        "secret",
-        "",
-    );
+    let mut cfg = make_cfg("localhost", &dir.path().to_string_lossy(), "svc", "secret");
     cfg.port = "70000".into();
     let err = validate_config(&mut cfg).expect_err("out-of-range port should fail");
     assert!(
@@ -62,7 +44,7 @@ fn validate_config_rejects_non_numeric_port_negative_path() {
 
 #[test]
 fn validate_config_missing_sql_user_negative_path() {
-    let mut cfg = make_cfg("localhost", "/tmp/sql", "", "secret", "");
+    let mut cfg = make_cfg("localhost", "/tmp/sql", "", "secret");
     let err = validate_config(&mut cfg).expect_err("empty user should fail");
     assert!(
         err.to_string().contains("RM_DB_USER"),
@@ -72,7 +54,7 @@ fn validate_config_missing_sql_user_negative_path() {
 
 #[test]
 fn validate_config_missing_sql_password_negative_path() {
-    let mut cfg = make_cfg("localhost", "/tmp/sql", "svc", "", "");
+    let mut cfg = make_cfg("localhost", "/tmp/sql", "svc", "");
     let err = validate_config(&mut cfg).expect_err("empty password should fail");
     assert!(
         err.to_string().contains("RM_DB_PASSWORD"),
@@ -82,7 +64,7 @@ fn validate_config_missing_sql_password_negative_path() {
 
 #[test]
 fn validate_config_missing_sql_user_regression() {
-    let mut cfg = make_cfg("localhost", "/tmp/sql", "", "", "");
+    let mut cfg = make_cfg("localhost", "/tmp/sql", "", "");
     let err = validate_config(&mut cfg).expect_err("missing sql creds should fail fast");
     let msg = err.to_string();
     assert!(msg.contains("RM_DB_USER"), "unexpected error: {msg}");
@@ -108,13 +90,7 @@ fn validate_config_rejects_port_zero_regression() {
         "CREATE TABLE smoke.t1 (id INT NOT NULL);\n",
     )
     .expect("write sql");
-    let mut cfg = make_cfg(
-        "localhost",
-        &dir.path().to_string_lossy(),
-        "svc",
-        "secret",
-        "",
-    );
+    let mut cfg = make_cfg("localhost", &dir.path().to_string_lossy(), "svc", "secret");
     cfg.port = "0".into();
     let err = validate_config(&mut cfg).expect_err("port zero should fail");
     assert!(
@@ -128,13 +104,7 @@ fn validate_daemon_requires_transport_token() {
     let dir = tempfile::tempdir().expect("tempdir");
     std::fs::create_dir_all(dir.path().join("db1/smoke/tables")).expect("mkdir");
     std::fs::write(dir.path().join("db1/smoke/tables/t1.sql"), "SELECT 1;\n").expect("write");
-    let mut cfg = make_cfg(
-        "localhost",
-        &dir.path().to_string_lossy(),
-        "svc",
-        "secret",
-        "sql",
-    );
+    let mut cfg = make_cfg("localhost", &dir.path().to_string_lossy(), "svc", "secret");
     let err = validate_daemon_config(&mut cfg).expect_err("daemon token is required");
     let message = err.to_string();
     assert!(message.contains("RMIG_SESSION_TOKEN"), "got: {message}");

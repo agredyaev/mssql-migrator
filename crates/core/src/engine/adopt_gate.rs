@@ -8,18 +8,17 @@ use crate::export::MigrationPlan;
 /// `RMIG_ALLOW_ADOPT`; `rmig baseline` remains the always-explicit path.
 pub(super) fn ensure_adopt_allowed(
     cfg: &Config,
-    ws: &Workspace,
+    _ws: &Workspace,
     plan: &mut MigrationPlan,
 ) -> Result<()> {
     if cfg.allow_adopt {
         return Ok(());
     }
-    plan.ensure_objects_materialized(ws);
     let adopts: Vec<&str> = plan
         .objects
         .iter()
         .filter(|o| o.planned_action == Action::AdoptExisting)
-        .map(|o| o.normalized_key.as_ref())
+        .map(|o| o.normalized_key.as_str())
         .collect();
     if adopts.is_empty() {
         return Ok(());

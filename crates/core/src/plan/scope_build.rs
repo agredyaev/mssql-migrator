@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::db::state::{catalog_object_parts, CatalogObject, ChecksumMap};
-use crate::domain::{is_module_kind_code, ObjectEntry, ObjectKey, Workspace};
+use crate::domain::{is_module_kind_code, kind_code, ObjectKey, Workspace};
 use crate::gate::{expand_delta_closure, keys_for_changed_paths};
 
 use super::scope::InspectScope;
@@ -19,7 +19,6 @@ pub fn build_inspect_scope(
             full_inspect: true,
             hot_keys: ws.normalized_keys().into_iter().collect(),
             stable_objects: HashMap::new(),
-            allow_l1_skip: false,
         };
     }
     let mut delta = keys_for_changed_paths(ws, changed_paths);
@@ -34,7 +33,7 @@ pub fn build_inspect_scope(
         // Delta keys are database-qualified (`db/schema/kind/name`) to match
         // snapshot identities; workspace keys carry the database separately.
         let qualified = format!("{}/{k}", ws.database_name(obj.db_id));
-        if is_module_kind_code(ws.row(i).kind_code) {
+        if is_module_kind_code(kind_code(key.kind_part())) {
             hot.insert(k.to_string());
             continue;
         }
@@ -51,12 +50,12 @@ pub fn build_inspect_scope(
         stable.insert(
             key.clone(),
             catalog_object_parts(
-                obj.schema_shared(ws, i),
-                obj.kind_shared(ws, i),
-                obj.name_shared(ws, i),
-                obj.parent_ref_for_row(ws, ws.row_id_at(i))
+                obj.key.schema_shared(),
+                obj.key.kind_shared(),
+                obj.key.name_shared(),
+                obj.parent
                     .filter(|p| p.parent_row_id > 0)
-                    .map(|_| ObjectEntry::parent_name(ws, ws.row_id_at(i))),
+                    .map(|_| obj.parent_name(ws)),
             ),
         );
     }
@@ -66,15 +65,12 @@ pub fn build_inspect_scope(
             full_inspect: true,
             hot_keys: hot,
             stable_objects: HashMap::new(),
-            allow_l1_skip: false,
         };
     }
-    let allow_l1_skip = hot.is_empty();
     InspectScope {
         full_inspect: false,
         hot_keys: hot,
         stable_objects: stable,
-        allow_l1_skip,
     }
 }
 

@@ -2,7 +2,6 @@ mod ctx;
 mod dispatch;
 mod setup;
 
-use crate::cache::l1::L1Cache;
 use crate::config::Config;
 use crate::db::plan_db_trace::PlanDbTrace;
 use crate::db::plan_snapshot::PlanDbResult;
@@ -24,8 +23,6 @@ pub async fn execute(
     conn: &mut TimingConn,
     ws: &Workspace,
     keys_json: &str,
-    fp: &str,
-    l1: &L1Cache,
     opts: ExecOpts,
 ) -> Result<PlanDbResult> {
     let mut trace = PlanDbTrace::default();
@@ -53,14 +50,6 @@ pub async fn execute(
         }
     }
 
-    // L1 short-circuit only serves empty workspaces: run_plan_db_phase gates
-    // try_load on object_count()==0, and a non-empty workspace's layout_digest can
-    // never be reproduced by an empty one. Saving a non-empty payload writes up to
-    // multiple megabytes that no load path can ever key back to — skip the dead write.
-    if ws.object_count() == 0 {
-        l1.save(fp, &ws.layout_digest, &body.checksums, &catalog)?;
-    }
-
     Ok(PlanDbResult {
         checksums: body.checksums,
         catalog,
@@ -68,7 +57,6 @@ pub async fn execute(
         checksums_ms: body.checksums_ms,
         inspect_ms: body.inspect_ms,
         parallel_wall_ms: parallel_wall,
-        l1_hit: false,
         trace,
     })
 }

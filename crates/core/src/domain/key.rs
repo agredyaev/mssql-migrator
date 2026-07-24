@@ -1,134 +1,88 @@
-//! [`ObjectKey`] and [`ScriptKey`] — dense primary key types for domain objects.
-//!
-//! ### Purpose
-//! `ObjectKey` is the canonical identifier for a database object
-//! (`schema/kind/name`, lowercased, arena-backed). `ScriptKey` identifies a
-//! script file by its relative path. Both wrap a single [`SharedStr`] for
-//! cache-friendly equality and hashing.
+//! Normalized object and script keys.
 
-use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::{borrow::Borrow, fmt};
 
 use serde::{Deserialize, Serialize};
 
-use super::shared::{share, SharedStr};
-
-#[path = "key_from.rs"]
-mod key_from;
-
-fn key_part(s: &str, index: usize) -> &str {
-    let mut parts = s.split('/');
-    parts.nth(index).unwrap_or("")
+fn key_part(value: &str, index: usize) -> &str {
+    value.split('/').nth(index).unwrap_or("")
 }
 
-/// Normalised database-object key: `schema/kind/name` (lowercased, arena-backed).
-///
-/// Used as the primary key in `CatalogState`, `ChecksumMap`, and diff logic.
-#[derive(Clone, Debug, Eq, Serialize, Deserialize)]
-pub struct ObjectKey(SharedStr);
+/// Normalized database-object key: `schema/kind/name`.
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct ObjectKey(String);
 
-/// Script-file identifier: relative path (arena-backed).
-#[derive(Clone, Debug, Eq, Serialize, Deserialize)]
-pub struct ScriptKey(SharedStr);
-
-impl PartialEq for ObjectKey {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-
-impl Hash for ObjectKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
-    }
-}
-
-impl PartialEq for ScriptKey {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-
-impl Hash for ScriptKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
-    }
-}
+/// Repository-relative script path.
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct ScriptKey(String);
 
 impl ObjectKey {
-    /// Build a key from raw parts (lowercased, concatenated with `/`).
+    /// Builds a lowercase key from raw parts.
     pub fn new(schema: &str, kind: &str, name: &str) -> Self {
-        Self(share(format!(
+        Self(format!(
             "{}/{}/{}",
             schema.to_lowercase(),
             kind.to_lowercase(),
             name.to_lowercase()
-        )))
+        ))
     }
 
-    /// Build a key from an already-normalised `schema/kind/name` string.
-    pub fn from_normalized(s: &str) -> Self {
-        Self(share(s))
+    /// Builds a key from an already normalized string.
+    pub fn from_normalized(value: &str) -> Self {
+        Self(value.to_owned())
     }
 
-    /// Parse a relative SQL file path (`<schema>/<kind>/<name>.sql`) into a key.
-    ///
-    /// Returns `None` when the path has fewer than 4 segments (database is
-    /// stripped, then schema/kind/name).
+    /// Parses `<database>/<schema>/<kind>/<name>.sql`.
     pub fn parse(path: &str) -> Option<Self> {
         let path = path.trim_end_matches(".sql");
         let parts: Vec<_> = path.split('/').collect();
         if parts.len() < 4 {
             return None;
         }
-        let name = parts.last()?;
-        let kind = parts[parts.len() - 2];
-        let schema = parts[parts.len() - 3];
-        Some(Self::new(schema, kind, name))
+        Some(Self::new(
+            parts[parts.len() - 3],
+            parts[parts.len() - 2],
+            parts.last()?,
+        ))
     }
 
-    /// Raw `schema/kind/name` string.
+    /// Returns `schema/kind/name`.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
-    /// `ChecksumMap` key (byte fingerprint via [`SharedStr::fingerprint`], no `as_str`).
-    pub fn fingerprint(&self) -> u64 {
-        self.0.fingerprint()
-    }
-
-    /// Schema segment of the key.
+    /// Returns the schema segment.
     pub fn schema_part(&self) -> &str {
         key_part(self.as_str(), 0)
     }
 
-    /// Kind segment of the key.
+    /// Returns the kind segment.
     pub fn kind_part(&self) -> &str {
         key_part(self.as_str(), 1)
     }
 
-    /// Object-name segment of the key.
+    /// Returns the object-name segment.
     pub fn name_part(&self) -> &str {
         key_part(self.as_str(), 2)
     }
 
-    /// Schema segment as a `SharedStr` subslice of the arena allocation.
-    pub fn schema_shared(&self) -> SharedStr {
-        SharedStr::subslice_of(&self.0, self.schema_part())
+    /// Returns an owned schema segment.
+    pub fn schema_shared(&self) -> String {
+        self.schema_part().to_owned()
     }
 
-    /// Kind segment as a `SharedStr` subslice.
-    pub fn kind_shared(&self) -> SharedStr {
-        SharedStr::subslice_of(&self.0, self.kind_part())
+    /// Returns an owned kind segment.
+    pub fn kind_shared(&self) -> String {
+        self.kind_part().to_owned()
     }
 
-    /// Name segment as a `SharedStr` subslice.
-    pub fn name_shared(&self) -> SharedStr {
-        SharedStr::subslice_of(&self.0, self.name_part())
+    /// Returns an owned object-name segment.
+    pub fn name_shared(&self) -> String {
+        self.name_part().to_owned()
     }
 
-    /// Clone the inner `SharedStr`.
-    pub fn shared(&self) -> SharedStr {
+    /// Clones the normalized key string.
+    pub fn shared(&self) -> String {
         self.0.clone()
     }
 }
@@ -139,19 +93,37 @@ impl fmt::Display for ObjectKey {
     }
 }
 
+impl Borrow<str> for ObjectKey {
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
+}
+
 impl ScriptKey {
-    /// Build a script key from a relative path (normalises backslashes).
+    /// Builds a script key and normalizes path separators.
     pub fn from_path(path: &str) -> Self {
-        Self(share(path.replace('\\', "/")))
+        Self(path.replace('\\', "/"))
     }
 
-    /// Raw relative path string.
+    /// Returns the repository-relative path.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
-    /// Clone the inner `SharedStr`.
-    pub fn shared(&self) -> SharedStr {
+    /// Clones the repository-relative path.
+    pub fn shared(&self) -> String {
         self.0.clone()
+    }
+}
+
+impl From<String> for ObjectKey {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<String> for ScriptKey {
+    fn from(value: String) -> Self {
+        Self(value)
     }
 }

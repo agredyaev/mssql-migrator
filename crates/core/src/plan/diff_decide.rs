@@ -11,9 +11,8 @@ pub(crate) fn decide_object_at(
     ctx: &mut DecideCtx<'_>,
     plan: &mut crate::export::MigrationPlan,
 ) -> ObjectDecision {
-    let row_id = ws.row_id_at(i);
-    let exists = ws.entry(i).db_exists();
-    let prior = ws.prior_by_row[i];
+    let exists = ws.entry(i).db_exists;
+    let prior = ws.entry(i).prior_checksum;
     let checksum = ws.entry(i).checksum;
 
     let has_transition_paths = kind_code == KIND_TABLES && ws.row_has_transition_paths(i);
@@ -25,8 +24,6 @@ pub(crate) fn decide_object_at(
         kind_code,
         obj,
         ws,
-        prior_digests: &ws.prior_by_row,
-        child_row_id: row_id,
         has_transition_paths,
         live_definition_drift: ctx.checksums.has_live_definition_drift(ws.entry_key(i)),
     });
@@ -42,7 +39,7 @@ pub(crate) fn decide_object_at(
     if blocked_inc > 0 {
         plan.blocked = true;
     }
-    let action = apply_scenario(scenario, obj, ws, row_id, &mut plan.blockers);
+    let action = apply_scenario(scenario, obj, ws, &mut plan.blockers);
     ObjectDecision {
         action,
         with_git: scenario.with_git(),

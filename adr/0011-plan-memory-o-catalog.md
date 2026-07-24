@@ -26,12 +26,11 @@ Why not reducible without changing behavior:
 - The plan output lists every managed object with its action; tests assert the
   full list. Emitting N actions requires N object identities → O(N) irreducible.
 - Bodies are already lazy (ADR-0003); there is no per-object body memory to
-  reclaim. The 136 MB in-memory arena is per-object metadata (keys/paths/
-  checksums), inherent to holding N objects.
+  reclaim. Owned keys, paths, checksums, and plan objects remain O(N).
 - To skip an unchanged object's checksum you must first know it is unchanged,
-  which needs its checksum — chicken/egg. The L1 cache short-circuit is gated to
-  empty workspaces only (`requires_live_state`), because a stale cache cannot be
-  trusted for drift (ADR-0004); ADR-0005 makes drift cheap, not the classification.
+  which needs its checksum — chicken/egg. The removed L1 cache could not be
+  trusted for managed-object drift (ADR-0004); ADR-0005 makes drift cheap, not
+  the classification.
 
 Removing `keys_json` (server already has the keys) saves 0.46% and risks the
 brittle `@pN` batch renumbering (ADR-0001) — not worth it.

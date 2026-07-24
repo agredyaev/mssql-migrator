@@ -1,6 +1,6 @@
 use migrator_core::db::state::ChecksumMap;
 use migrator_core::domain::{
-    share, ObjectEntry, ObjectKey, ParentRef, Script, ScriptKey, ScriptKind, Workspace,
+    ObjectEntry, ObjectKey, ParentRef, Script, ScriptKey, ScriptKind, Workspace,
 };
 use migrator_core::gate::{expand_delta_closure, keys_for_changed_paths};
 use migrator_core::plan::scope::build_inspect_scope;
@@ -12,27 +12,29 @@ fn sample_ws() -> Workspace {
     let parent_sid = ws.insert_script(Script {
         key: ScriptKey::from_path("db/smoke/tables/t1.sql"),
         kind: ScriptKind::Object,
-        abs_path: share("db/smoke/tables/t1.sql"),
+        abs_path: "db/smoke/tables/t1.sql".into(),
         checksum: Some([1; 32]),
     });
     let trig_sid = ws.insert_script(Script {
         key: ScriptKey::from_path("db/smoke/triggers/tr.sql"),
         kind: ScriptKind::Object,
-        abs_path: share("db/smoke/triggers/tr.sql"),
+        abs_path: "db/smoke/triggers/tr.sql".into(),
         checksum: Some([2; 32]),
     });
-    let db_id = ws.intern_database(share("db"));
+    let db_id = ws.intern_database("db".into());
     ws.adopt_dense_entries(vec![
-        ObjectEntry::with_staging_key(parent.clone(), parent_sid, [1; 32], false, db_id),
-        ObjectEntry::with_staging_key(trig.clone(), trig_sid, [2; 32], false, db_id),
+        ObjectEntry::new(parent.clone(), parent_sid, [1; 32], false, db_id),
+        ObjectEntry::new(trig.clone(), trig_sid, [2; 32], false, db_id),
     ]);
-    ws.parent_by_row.insert(2, ParentRef { parent_row_id: 1 });
+    let parent_row_id = ws.key_index(&parent);
+    let trigger_index = ws.key_index(&trig) as usize - 1;
+    ws.object_entries[trigger_index].parent = Some(ParentRef { parent_row_id });
     ws
 }
 
 fn wide_ws() -> Workspace {
     let mut ws = Workspace::default();
-    let db_id = ws.intern_database(share("db"));
+    let db_id = ws.intern_database("db".into());
     let mut entries = Vec::new();
     for i in 0..10u8 {
         let name = format!("t{i}");
@@ -42,12 +44,10 @@ fn wide_ws() -> Workspace {
         let sid = ws.insert_script(Script {
             key: ScriptKey::from_path(&path),
             kind: ScriptKind::Object,
-            abs_path: share(path),
+            abs_path: path,
             checksum: Some(checksum),
         });
-        entries.push(ObjectEntry::with_staging_key(
-            key, sid, checksum, false, db_id,
-        ));
+        entries.push(ObjectEntry::new(key, sid, checksum, false, db_id));
     }
     ws.adopt_dense_entries(entries);
     ws
@@ -102,5 +102,4 @@ fn mutating_full_scope_inspects_every_object_regression() {
         scope.stable_objects.is_empty(),
         "mutating plans must not synthesize stable catalog objects"
     );
-    assert!(!scope.allow_l1_skip);
 }

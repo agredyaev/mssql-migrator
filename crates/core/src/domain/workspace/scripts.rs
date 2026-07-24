@@ -3,42 +3,38 @@ use crate::domain::{Script, ScriptKey};
 use super::Workspace;
 
 impl Workspace {
-    /// Insert or replace a script; returns 1-based [`crate::domain::ObjectEntry::script_id`].
+    /// Inserts or replaces a script and returns its 1-based id.
     pub fn insert_script(&mut self, script: Script) -> u32 {
         let key = script.key.clone();
-        let abs = script.abs_path.clone();
         let (row, checksum) = script.into_parts();
         if let Some(&id) = self.script_key_index.get(&key) {
-            let idx = (id - 1) as usize;
-            self.script_rows[idx] = row;
-            self.script_checksums[idx] = checksum;
-            self.cold.ingest_script_keys[idx] = key;
-            self.cold.ingest_script_abs[idx] = abs;
+            let index = id as usize - 1;
+            self.script_rows[index] = row;
+            self.script_checksums[index] = checksum;
             return id;
         }
         let id = self.script_rows.len() as u32 + 1;
-        self.script_key_index.insert(key.clone(), id);
+        self.script_key_index.insert(key, id);
         self.script_rows.push(row);
         self.script_checksums.push(checksum);
-        self.cold.ingest_script_keys.push(key);
-        self.cold.ingest_script_abs.push(abs);
         id
     }
 
-    /// Returns the script reference for `key`, or `None` if not present.
+    /// Returns the script for `key`.
     pub fn script_by_key(&self, key: &ScriptKey) -> Option<crate::domain::ScriptRef<'_>> {
-        let id = self.script_key_index.get(key).copied()?;
-        Some(self.script(id))
+        self.script_key_index
+            .get(key)
+            .copied()
+            .map(|id| self.script(id))
     }
 
-    /// Rebuilds the script key index from the current script rows.
+    /// Rebuilds the path-to-script index.
     pub fn rebuild_script_key_index(&mut self) {
-        self.script_key_index.clear();
-        let n = self.script_rows.len();
-        for i in 0..n {
-            let id = (i + 1) as u32;
-            let key = self.script_rows[i].key(self, id);
-            self.script_key_index.insert(key, id);
-        }
+        self.script_key_index = self
+            .script_rows
+            .iter()
+            .enumerate()
+            .map(|(index, row)| (row.key.clone(), index as u32 + 1))
+            .collect();
     }
 }

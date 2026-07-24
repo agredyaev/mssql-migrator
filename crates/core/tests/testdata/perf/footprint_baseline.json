@@ -6,38 +6,33 @@
   "struct_sizes": [
     {
       "package": "domain",
-      "type": "WorkspaceCold",
-      "bytes": 864
-    },
-    {
-      "package": "export",
-      "type": "MigrationPlan",
-      "bytes": 304
-    },
-    {
-      "package": "config",
-      "type": "ConfigCold",
-      "bytes": 232
-    },
-    {
-      "package": "timings",
-      "type": "PhaseTimings",
-      "bytes": 184
+      "type": "Workspace",
+      "bytes": 424
     },
     {
       "package": "config",
       "type": "Config",
-      "bytes": 144
+      "bytes": 304
     },
     {
       "package": "export",
       "type": "PlannedObject",
-      "bytes": 144
+      "bytes": 304
+    },
+    {
+      "package": "export",
+      "type": "MigrationPlan",
+      "bytes": 184
+    },
+    {
+      "package": "timings",
+      "type": "PhaseTimings",
+      "bytes": 176
     },
     {
       "package": "domain",
-      "type": "Workspace",
-      "bytes": 88
+      "type": "ObjectEntry",
+      "bytes": 128
     },
     {
       "package": "gate",
@@ -50,14 +45,14 @@
       "bytes": 80
     },
     {
-      "package": "export",
-      "type": "PlanSummary",
+      "package": "domain",
+      "type": "ScriptRow",
       "bytes": 56
     },
     {
-      "package": "domain",
-      "type": "ObjectEntry",
-      "bytes": 48
+      "package": "export",
+      "type": "PlanSummary",
+      "bytes": 56
     }
   ]
 }

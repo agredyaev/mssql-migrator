@@ -37,17 +37,12 @@ use crate::domain::Workspace;
 use crate::error::Result;
 use crate::timings;
 
-/// Scans `root`, interns strings, rebuilds path caches, and returns elapsed milliseconds.
+/// Scans `root`, loads optional Git metadata, and returns elapsed milliseconds.
 pub async fn populate(ws: &mut Workspace, root: &str, skip_git: bool) -> Result<i64> {
     let t0 = Instant::now();
     walk::scan_root(ws, root)?;
     if !skip_git {
         git_preload::preload(ws, root);
-    }
-    crate::domain::intern_workspace_strings(ws);
-    crate::domain::rebuild_path_caches(ws);
-    if !skip_git {
-        crate::domain::intern_script_git_strings(ws);
     }
     ws.layout_digest = digest::layout_digest(ws);
     Ok(timings::dur_ms(t0.elapsed()))

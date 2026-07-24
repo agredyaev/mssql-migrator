@@ -143,7 +143,7 @@ async fn dry_run_plan_ignores_unmanaged_objects_and_reports_nothing_destructive(
     assert!(
         plan.objects
             .iter()
-            .all(|o| !o.normalized_key.as_ref().starts_with("unmanaged_ns/")),
+            .all(|o| !o.normalized_key.starts_with("unmanaged_ns/")),
         "dry-run plan must not reference unmanaged objects"
     );
     // Plan is read-only: the unmanaged object still exists afterwards.

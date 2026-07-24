@@ -32,7 +32,7 @@ services:
     healthcheck:
       # $$ escapes compose interpolation: the CONTAINER env var is expanded at
       # probe time, so an overridden MSSQL_SA_PASSWORD authenticates too.
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q \"SELECT 1\" || exit 1"]
+      test: ["CMD-SHELL", "SQLCMDPASSWORD=\"$$MSSQL_SA_PASSWORD\" /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -Q \"SELECT 1\" || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 20

@@ -11,19 +11,20 @@ fn integration_enabled() -> bool {
 }
 
 fn sa_cfg(database: &str, sql_root: &str) -> Config {
-    let mut cfg = Config::default();
-    cfg.server = std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into());
-    cfg.port = std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into());
-    cfg.user = std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into());
-    cfg.password =
-        std::env::var("RM_DB_PASSWORD").unwrap_or_else(|_| "yourStrong(!)Password".into());
-    cfg.database = database.into();
-    cfg.sql_root = sql_root.into();
-    cfg.sql_base = sql_root.into();
-    cfg.skip_git = true;
-    cfg.encrypt = false;
-    cfg.trust_server_certificate = true;
-    cfg
+    Config {
+        server: std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into()),
+        port: std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into()),
+        user: std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into()),
+        password: std::env::var("RM_DB_PASSWORD")
+            .unwrap_or_else(|_| "yourStrong(!)Password".into()),
+        database: database.into(),
+        sql_root: sql_root.into(),
+        sql_base: sql_root.into(),
+        skip_git: true,
+        encrypt: false,
+        trust_server_certificate: true,
+        ..Default::default()
+    }
 }
 
 fn write_sql_layout(root: &std::path::Path, db: &str) {

@@ -50,7 +50,7 @@ async fn scan_preloads_git_metadata() {
             "db/sch/views/monthly.sql",
         ))
         .expect("script");
-    assert_eq!(script.git_hash().as_ref().len(), 40);
+    assert_eq!(script.git_hash().len(), 40);
     assert!(!script.git_author().is_empty());
     assert!(!script.git_date().is_empty());
 }

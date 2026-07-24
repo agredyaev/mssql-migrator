@@ -7,11 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use std::collections::HashMap;
-
-use crate::domain::{Action, SchemaAction, SharedStr, StrOff};
-use crate::export::plan_row::PlanRow;
-use crate::export::plan_side::PlanGitOff;
+use crate::domain::{Action, SchemaAction};
 
 /// Top-level plan document: command metadata, schema/object lists, and summary counts.
 #[derive(Debug, Default)]
@@ -24,13 +20,7 @@ pub struct MigrationPlan {
     pub blockers: Vec<String>,
     /// Schemas detected or created during planning.
     pub schemas: Vec<PlannedSchema>,
-    /// Row-level entries per object (diff detai l).
-    pub rows: Vec<PlanRow>,
-    /// Git metadata keyed by 1-based script id.
-    pub plan_git: HashMap<u32, PlanGitOff>,
-    /// Transition path arena offsets keyed by 1-based script id.
-    pub plan_transitions: HashMap<u32, Vec<StrOff>>,
-    /// Enriched per-object plan entries.
+    /// Planned objects.
     pub objects: Vec<PlannedObject>,
     /// Aggregated counters (create, adopt, skip, …).
     pub summary: PlanSummary,
@@ -53,13 +43,13 @@ pub struct PlannedSchema {
 pub struct PlannedGit {
     /// Full commit SHA.
     #[serde(rename = "gitHash")]
-    pub hash: SharedStr,
+    pub hash: String,
     /// Author `<name> <<email>>` string.
     #[serde(rename = "gitAuthor")]
-    pub author: SharedStr,
+    pub author: String,
     /// ISO-8601 commit date.
     #[serde(rename = "gitDate")]
-    pub date: SharedStr,
+    pub date: String,
 }
 
 /// Single planned database object with its action, path, git metadata, and checksum.
@@ -67,39 +57,39 @@ pub struct PlannedGit {
 pub struct PlannedObject {
     /// Normalised key `schema/kind/name` (lowercased).
     #[serde(rename = "normalizedKey")]
-    pub normalized_key: SharedStr,
+    pub normalized_key: String,
     /// Relative SQL file path.
     #[serde(rename = "objectPath")]
-    pub object_path: SharedStr,
+    pub object_path: String,
     /// SQL schema name (lowercased).
     #[serde(rename = "schemaName")]
-    pub schema_name: SharedStr,
+    pub schema_name: String,
     /// Object kind (`tables`, `views`, `procedures`, …).
-    pub kind: SharedStr,
+    pub kind: String,
     /// SQL object name (lowercased).
     #[serde(rename = "objectName")]
-    pub object_name: SharedStr,
+    pub object_name: String,
     /// Database name (empty when single-database mode).
     #[serde(
         rename = "databaseName",
         default,
-        skip_serializing_if = "SharedStr::is_empty"
+        skip_serializing_if = "String::is_empty"
     )]
-    pub database_name: SharedStr,
+    pub database_name: String,
     /// Parent object name (e.g. table for an index), empty for top-level objects.
     #[serde(
         rename = "parentName",
         default,
-        skip_serializing_if = "SharedStr::is_empty"
+        skip_serializing_if = "String::is_empty"
     )]
-    pub parent_name: SharedStr,
+    pub parent_name: String,
     /// Relative paths to transition scripts (`_migrations/`).
     #[serde(
         rename = "transitionPaths",
         default,
         skip_serializing_if = "Vec::is_empty"
     )]
-    pub transition_paths: Vec<SharedStr>,
+    pub transition_paths: Vec<String>,
     /// Optional git provenance (hash, author, date).
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub git: Option<PlannedGit>,

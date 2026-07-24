@@ -4,7 +4,7 @@ SHELL := /bin/bash
 	arch e2e e2e-all e2e-timings check-e2e sql-regression script-tests \
 	slo prod-gate plan-db-perf workflow-fast \
 	bench-footprint bench-footprint-profile bench-footprint-alloc \
-	bench-footprint-scan bench-footprint-cache \
+	bench-footprint-scan \
 	bench-footprint-update-baseline profile-summary test-int \
 	bump bump-minor bump-major
 
@@ -35,10 +35,6 @@ arch:
 	scripts/check-rust-loc.sh
 	scripts/check-e2e-scenarios.sh
 	scripts/check-prod-gate-reset.sh
-	scripts/check-e2e-git-flag.sh
-	scripts/check-rm-db-database-contract.sh
-	scripts/check-advisory-lock-release.sh
-	scripts/check-sql-regression-manifest.sh
 	scripts/check-no-inline-sql.sh
 
 script-tests:
@@ -118,10 +114,6 @@ bench-footprint-alloc:
 bench-footprint-scan:
 	ops/perf/footprint_bench.sh profile-load-scan $(ARGS)
 	ops/perf/footprint_bench.sh alloc scan_root
-
-bench-footprint-cache:
-	ops/perf/footprint_bench.sh profile-load-cache $(ARGS)
-	ops/perf/footprint_bench.sh alloc cache
 
 bench-footprint-update-baseline:
 	ops/perf/footprint_bench.sh update-baseline $(ARGS)

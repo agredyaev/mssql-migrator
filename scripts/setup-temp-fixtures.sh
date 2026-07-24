@@ -9,15 +9,8 @@ echo "Setting up temporary git fixture repository at $TEMP_DIR..."
 rm -rf "$TEMP_DIR"
 mkdir -p "$TEMP_DIR/sql/dactests/smoke"/{checks,functions,indexes,procedures,tables,views}
 
-# Create non-secret config. SQL credentials stay in process environment.
+# Create path/execution config. SQL peer settings and credentials stay in process environment.
 cat << 'EOF' > "$TEMP_DIR/config.toml"
-[database]
-server = "localhost"
-port = 1433
-auth = "sql"
-encrypt = false
-trust_server_certificate = true
-
 [paths]
 sql_root = "sql"
 sql_base = "sql"

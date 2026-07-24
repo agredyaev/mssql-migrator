@@ -11,9 +11,8 @@
 //!
 //! ### Nominal Flow
 //! 1. Resolve active git changed scopes if running incremental queries (`resolve_plan_scenario`).
-//! 2. Construct the layout object path tree (`rebuild_path_caches`).
-//! 3. Perform a detailed structural diff of the workspace vs the live database (`compute_diff`).
-//! 4. Compile execution list, flagging DDL changes lacking valid migration files.
+//! 2. Perform a structural diff of the workspace vs the live database (`compute_diff`).
+//! 3. Compile the execution list and flag unsafe DDL changes.
 //!
 //! ### Off-Nominal & Failure Containment
 //! - **DDL Shifts Without Migration**: If a schema change is detected without a valid matching migration SQL script, marks the plan as blocked and halts migration execution (fails safe).
@@ -21,10 +20,8 @@
 mod diff;
 mod diff_ctx;
 mod diff_decide;
-mod diff_fill_skip;
 mod diff_object;
 mod diff_plan;
-mod diff_prepare;
 mod git_scope;
 mod scenario;
 mod scenario_apply;

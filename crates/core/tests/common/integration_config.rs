@@ -42,12 +42,6 @@ pub fn parity_config_base() -> Config {
         std::env::var("RMIG_CATALOG_CACHE").as_deref(),
         Ok("0") | Ok("false")
     );
-    if let Some(n) = std::env::var("RMIG_INTEGRATION_SLO_MS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-    {
-        cfg.slo_max_cli_wall_ms = n;
-    }
     validate_config(&mut cfg).expect("valid parity config");
     cfg
 }

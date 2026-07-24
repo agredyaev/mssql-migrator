@@ -33,7 +33,6 @@ TIMING_ROWS: list[tuple[str, str]] = [
     ("plan_db_path", "Plan DB path"),
     ("plan_db_query_ms", "Plan DB query ms"),
     ("plan_db_round_trips", "Plan DB round trips"),
-    ("l1_cache_hit", "L1 cache hit"),
 ]
 
 

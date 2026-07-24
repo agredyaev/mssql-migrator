@@ -12,7 +12,10 @@ Measure in-process memory and CPU of the Rust plan pipeline (scan, diff, plan ou
 - Scripts: [`ops/perf/footprint_bench.sh`](../ops/perf/footprint_bench.sh), [`ops/perf/dhat_alloc_tree.py`](../ops/perf/dhat_alloc_tree.py)
 - Baseline: [`crates/core/tests/testdata/perf/footprint_baseline.json`](../crates/core/tests/testdata/perf/footprint_baseline.json)
 - Bench: `plan_diff_skip_heavy_5000` in [`crates/core-dev/benches/plan_diff.rs`](../crates/core-dev/benches/plan_diff.rs)
-- Phase profilers: [`scan_load.rs`](../crates/core-dev/benches/scan_load.rs) / [`scan_dhat.rs`](../crates/core-dev/benches/scan_dhat.rs) (filesystem scan), [`cache_serde_load.rs`](../crates/core-dev/benches/cache_serde_load.rs) / [`cache_serde_dhat.rs`](../crates/core-dev/benches/cache_serde_dhat.rs) (L1 serde). These start the profiler after warmup, so dhat **Total** ÷ 20 is the per-iteration cost (the loop/setup phase split does not apply).
+- Phase profilers: [`scan_load.rs`](../crates/core-dev/benches/scan_load.rs) /
+  [`scan_dhat.rs`](../crates/core-dev/benches/scan_dhat.rs) (filesystem scan).
+  These start the profiler after warmup, so dhat **Total** ÷ 20 is the
+  per-iteration cost.
 
 **Out of scope:** SQL Server tuning, `cli_wall_ms` SLO (`make slo`), CI hard perf gates.
 
@@ -31,9 +34,12 @@ Footprint work validates layout policy under [`data-oriented-layout-policy.md`](
 ## Assumptions and constraints
 
 - Skip-heavy 5k workspace is the headline diff benchmark.
-- dhat **loop** phase B/iter is the allocation regression signal (target **0 B/iter** after warmup).
+- dhat **loop** phase B/iter is the allocation regression signal.
 - Struct sizes are platform-dependent; the committed baseline is validated by `make bench-footprint` (which runs `footprint_baseline_match` in `migrator-core-dev`); `make check` does not select that crate.
-- Plan cost and footprint are O(catalog size). The in-memory diff is negligible (measured 56 ms for 100k objects); a full plan's wall time is ~98% SQL Server round-trip, and the single dominant cost is the per-object live-definition drift fingerprint in `sql/audit/_object_canonical_state.sql`, computed for every workspace object every plan. This is intentional (structural-drift detection): `sys.objects.modify_date` is not trusted, so the fingerprint cannot be skipped without weakening the guarantee. Result sets are fully materialized, so peak resident memory is roughly linear at a few KB per object.
+- Plan cost and footprint are O(catalog size). The owned object layout
+  intentionally trades smaller structs for simpler exact-key state. Do not
+  infer runtime cost from `size_of`; use criterion, DHAT, and the live SLO
+  commands below.
 
 ## Nominal flow
 
@@ -55,9 +61,7 @@ make bench-footprint-alloc              # dhat + alloc call-tree (default: skip_
 make bench-footprint-alloc ARGS=transitions
 make bench-footprint-alloc ARGS=scan
 ops/perf/footprint_bench.sh profile-load-scan    # CPU flamegraph: scan_root (5k files)
-ops/perf/footprint_bench.sh profile-load-cache   # CPU flamegraph: L1 serde round-trip
 ops/perf/footprint_bench.sh alloc scan_root      # dhat: scan_root loop-only
-ops/perf/footprint_bench.sh alloc cache          # dhat: L1 serde loop-only
 make bench-footprint-update-baseline    # maintainer: refresh committed JSON
 make profile-summary                    # text rollup of artifacts/
 cargo test -p migrator-core-dev --test footprint_baseline footprint_baseline_match -q
@@ -74,7 +78,6 @@ cargo test -p migrator-core-dev --test footprint_baseline footprint_baseline_mat
 | `artifacts/dhat_heap.json` | raw dhat heap (input to Python tree) |
 | `artifacts/alloc_flame.txt` | human alloc tree from `dhat_alloc_tree.py` |
 | `artifacts/scan_5k_load_flamegraph.svg`, `artifacts/scan_dhat.txt` | scan_root CPU + heap |
-| `artifacts/cache_serde_load_flamegraph.svg`, `artifacts/cache_serde_dhat.txt` | L1 serde CPU + heap |
 
 dhat phases (`dhat_alloc_tree.py`):
 

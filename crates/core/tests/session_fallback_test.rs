@@ -12,29 +12,33 @@ fn integration_enabled() -> bool {
 }
 
 fn parity_cfg(sql_root: &str) -> Config {
-    let mut cfg = Config::default();
-    cfg.server = std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into());
-    cfg.port = std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into());
-    cfg.user = std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into());
-    cfg.password =
-        std::env::var("RM_DB_PASSWORD").unwrap_or_else(|_| "yourStrong(!)Password".into());
-    cfg.sql_root = sql_root.into();
-    cfg.sql_base = sql_root.into();
-    cfg.skip_git = true;
-    cfg.encrypt = false;
-    cfg.trust_server_certificate = true;
+    let mut cfg = Config {
+        server: std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into()),
+        port: std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into()),
+        user: std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into()),
+        password: std::env::var("RM_DB_PASSWORD")
+            .unwrap_or_else(|_| "yourStrong(!)Password".into()),
+        sql_root: sql_root.into(),
+        sql_base: sql_root.into(),
+        skip_git: true,
+        encrypt: false,
+        trust_server_certificate: true,
+        ..Default::default()
+    };
     validate_config(&mut cfg).expect("valid parity cfg");
     cfg
 }
 
 #[tokio::test]
 async fn empty_session_socket_uses_direct_connect_edge_case() {
-    let mut cfg = Config::default();
-    cfg.server = "127.0.0.1".into();
-    cfg.port = "1".into();
-    cfg.user = "sa".into();
-    cfg.password = "x".into();
-    cfg.session_socket.clear();
+    let cfg = Config {
+        server: "127.0.0.1".into(),
+        port: "1".into(),
+        user: "sa".into(),
+        password: "x".into(),
+        session_socket: String::new(),
+        ..Default::default()
+    };
     let err: Error = connect_session_or_direct(&cfg)
         .await
         .err()
@@ -48,12 +52,14 @@ async fn empty_session_socket_uses_direct_connect_edge_case() {
 
 #[tokio::test]
 async fn missing_daemon_socket_falls_back_to_direct_negative_path() {
-    let mut cfg = Config::default();
-    cfg.session_socket = format!("/tmp/rmig-missing-{}.sock", std::process::id());
-    cfg.server = "127.0.0.1".into();
-    cfg.port = "1".into();
-    cfg.user = "sa".into();
-    cfg.password = "x".into();
+    let cfg = Config {
+        session_socket: format!("/tmp/rmig-missing-{}.sock", std::process::id()),
+        server: "127.0.0.1".into(),
+        port: "1".into(),
+        user: "sa".into(),
+        password: "x".into(),
+        ..Default::default()
+    };
     let err: Error = connect_session_or_direct(&cfg)
         .await
         .err()
@@ -69,15 +75,17 @@ async fn missing_daemon_socket_falls_back_to_direct_negative_path() {
 }
 
 async fn recreate_database(database: &str) {
-    let mut cfg = Config::default();
-    cfg.server = std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into());
-    cfg.port = std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into());
-    cfg.user = std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into());
-    cfg.password =
-        std::env::var("RM_DB_PASSWORD").unwrap_or_else(|_| "yourStrong(!)Password".into());
-    cfg.database = "master".into();
-    cfg.encrypt = false;
-    cfg.trust_server_certificate = true;
+    let cfg = Config {
+        server: std::env::var("RM_DB_SERVER").unwrap_or_else(|_| "localhost".into()),
+        port: std::env::var("RM_DB_PORT").unwrap_or_else(|_| "1433".into()),
+        user: std::env::var("RM_DB_USER").unwrap_or_else(|_| "sa".into()),
+        password: std::env::var("RM_DB_PASSWORD")
+            .unwrap_or_else(|_| "yourStrong(!)Password".into()),
+        database: "master".into(),
+        encrypt: false,
+        trust_server_certificate: true,
+        ..Default::default()
+    };
     let mut master = connect(&cfg).await.expect("connect master");
     let escaped = database.replace('\'', "''");
     let sql = format!(

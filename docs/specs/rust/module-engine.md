@@ -35,7 +35,8 @@ Describe the **Rust orchestration engine**: connect (or session proxy), scan SQL
 
 1. Resolve catalog database names; call `ensure_catalog_databases_exist` only for `migrate`, `baseline`, and `repair-checksum`. `plan` and `validate` connect to existing databases and fail if a target database is missing.
 2. Scan workspace (`scan::populate`).
-3. Per database: connect (`driver::connect` or `session::connect_daemon`) and run `db::run_plan_db_phase`; managed workspaces refresh live-state fingerprints instead of accepting a zero-SQL L1 hit.
+3. Per database: connect (`driver::connect` or `session::connect_daemon`) and
+   run `db::run_plan_db_phase`; catalog state is refreshed from SQL Server.
 4. `plan::compute_diff`.
 5. Merge per-database plans when multiple catalog databases are present.
 6. **Migrate:** if `plan.blocked`, scaffold + exit 10; else lock → `apply::execute_plan` → unlock.

@@ -62,7 +62,8 @@ Tests point `RM_SQL_ROOT` at `$REPO/.temp/sql` (fixture in `.temp/`, not committ
 
 Critical bug regressions are mandatory:
 
-- `BUG-013`: `scripts/check-sql-regression-manifest.sh` rejects existence-only release-binary builds; `chaos_kill_mid_apply_test` runs the rebuilt `rmig`.
+- `BUG-013`: `chaos_kill_mid_apply_test` runs the rebuilt `rmig` and verifies
+  transaction recovery after process termination.
 - `BUG-023`: `apply_integrity_integration::transition_rollback_body_cannot_commit_history_regression` proves rollback cannot leave history.
 - `BUG-033`: `apply_integrity_integration::migrate_blocks_implicit_adoption_without_flag_regression` uses a structurally different live table and proves fail-closed adoption.
 - `BUG-073`: `daemon_endpoint_tests` checks server, port, login, and TLS-policy mismatches under `cargo test -p migrator-core --all-features --lib --tests`.
@@ -92,13 +93,13 @@ make db-up
 make check
 make sql-regression
 make check-e2e
-scripts/check-sql-regression-manifest.sh
 ```
 
 ## Operations and recovery
 
 - Routine: run `make check-e2e` before merging harness changes; use `GitRestore::drop` to reset `.temp/` git fixture.
-- CI: `.github/workflows/test.yml` integration job runs `make check-e2e` against Docker MSSQL with `RMIG_USE_RMIGD=1`.
+- CI: `.github/workflows/ci.yml` job `integration-e2e` runs `make check-e2e`
+  against Docker MSSQL with `RMIG_USE_RMIGD=1`.
 - Recovery: if Docker MSSQL fails immediately on Apple Silicon, confirm the active Colima profile still has Rosetta enabled before debugging `rmig` itself.
 - Recovery: stuck scaffold files under `{database}/smoke/tables/_migrations/` → `workflow_git` cleanup on test drop or manual delete.
 

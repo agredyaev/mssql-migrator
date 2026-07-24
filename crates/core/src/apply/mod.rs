@@ -55,7 +55,6 @@ pub async fn execute_plan(
     if plan.blocked {
         return Err(Error::PlanBlocked);
     }
-    plan.ensure_objects_materialized(ws);
     let mut result = ApplyResult::default();
     let db_fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     ensure_tables(conn, &db_fp).await?;
@@ -89,11 +88,6 @@ async fn finish(cfg: &Config, conn: &mut TimingConn, result: ApplyResult) -> Res
     if result.applied > 0 {
         if let Err(e) = db::invalidate(conn, cfg.catalog_cache).await {
             tracing::warn!(error = %e, "post-apply catalog cache invalidation failed");
-        }
-        let l1 = crate::cache::l1::L1Cache::new(&cfg.l1_cache_dir);
-        let fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
-        if let Err(e) = l1.invalidate_all(&fp) {
-            tracing::warn!(error = %e, "post-apply L1 cache invalidation failed");
         }
     }
     if result.failed > 0 {

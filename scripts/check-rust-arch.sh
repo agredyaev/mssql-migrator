@@ -75,7 +75,6 @@ ALLOWED_MEGA=(
   ObjectEntry
   Script
   Workspace
-  WorkspaceCold
   MigrationPlan
   PlanSnapshot
   GateInput

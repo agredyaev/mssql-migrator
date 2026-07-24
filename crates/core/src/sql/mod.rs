@@ -12,7 +12,7 @@
 //!
 //! ### Nominals & Submodules
 //! - **`audit`**: Bootstrapping metadata tables and reading/writing execution history records.
-//! - **`catalog`**: Inspecting SQL Server catalog tables and managing local L1 DB caches.
+//! - **`catalog`**: Inspecting SQL Server catalog tables and managing catalog state.
 //! - **`apply`**: Structural schema generation and explicit transactional controls.
 //! - **`lock`**: Distributed app advisory lock acquisition and releases.
 

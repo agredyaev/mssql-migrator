@@ -1,18 +1,7 @@
 # ---------------------------------------------------------------------------
-# ci.yml — Pipeline orchestrator.
+# ci.yml — Pull-request and branch validation.
 #
-# Responsibility: sequence and gate all quality checks before merge.
-# Calls lint, test, build as reusable workflows in dependency order.
-# This is the ONLY workflow that triggers on push/PR events for CI.
-#
-# Pipeline:
-#   ┌──────┐  ┌──────┐
-#   │ Lint │  │ Test │   ← parallel
-#   └──┬───┘  └──┬───┘
-#      └────┬────┘
-#       ┌───┴───┐
-#       │ Build │            ← after both pass
-#       └───────┘
+# Responsibility: run quality, test, SQL Server, and release-build gates.
 # ---------------------------------------------------------------------------
 name: CI
 
@@ -20,12 +9,11 @@ name: CI
 # reachable through this workflow, so docs-only changes must trigger CI too.
 on:
   push:
-    branches: [main, master]
+    branches: [dev, main, master]
   pull_request:
-    branches: [main, master]
+    branches: [dev, main, master]
 
-# Least privilege: the CI pipeline only reads the repo. Inherited by the
-# reusable lint/test/build workflows, which cannot exceed the caller's scope.
+# Least privilege: CI only reads the repository.
 permissions:
   contents: read
 
@@ -35,17 +23,138 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # --- Stage 1: Lint + Test (parallel) ---
-  lint:
-    name: Lint
-    uses: ./.github/workflows/lint.yml
+  fmt:
+    name: Formatting (rustfmt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dtolnay/rust-toolchain@c0e9df88980754dd93e5833b8dcb1b304c1fe173 # 1.96.0
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
 
-  test:
-    name: Test
-    uses: ./.github/workflows/test.yml
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ./.github/actions/setup
+        with:
+          components: clippy
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-clippy-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-clippy-
+      - run: RUSTFLAGS="-D warnings" cargo clippy -p migrator-core -p rmig -p rmigd --lib --bins --tests -- -D warnings
 
-  # --- Stage 2: Build (after both lint and test pass) ---
+  arch:
+    name: Architecture guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - run: make arch
+
+  docs:
+    name: Documentation quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - run: make doc-check
+
+  script-tests:
+    name: Gate and harness script tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - run: make script-tests
+
+  deny:
+    name: Supply chain (cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
+        with:
+          command: check advisories bans licenses sources
+
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ./.github/actions/setup
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-test-
+      - run: cargo test -p migrator-core --all-features --lib --tests
+      - run: cargo test -p rmigd
+
+  integration-e2e:
+    name: "Integration & E2E (MSSQL)"
+    runs-on: ubuntu-latest
+    needs: unit
+    env:
+      RMIGD_SOCKET: ${{ github.workspace }}/.rmig/rmigd-ci.sock
+      RMIG_E2E_TIMING_FACTOR: '5.0'
+      RMIG_E2E_TIMING_SLACK_MS: '300'
+      RMIG_SLO_MAX_CLI_WALL_MS: '150'
+      RMIG_PLAN_DB_MAX_PAR_MS: '2500'
+      RMIG_RUN_SQLSERVER_INTEGRATION: '1'
+      RMIG_USE_RMIGD: '1'
+      RMIG_SESSION_TOKEN: rmig-integration-test-token
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-test-int-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-test-int-
+      - name: Setup git fixture repository
+        run: ./scripts/setup-temp-fixtures.sh
+      - name: Start SQL Server
+        run: docker compose up -d --wait || { docker compose logs mssql; exit 1; }
+      - name: SQL regression, E2E, SLO, and production gate
+        run: make check-e2e
+      - name: Tear down SQL Server
+        if: always()
+        run: docker compose down -v
+
   build:
-    name: Build
-    needs: [lint, test]
-    uses: ./.github/workflows/build.yml
+    name: Release build
+    runs-on: ubuntu-latest
+    needs: [fmt, clippy, arch, docs, script-tests, deny, integration-e2e]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ./.github/actions/setup
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-build-
+      - run: make release-build

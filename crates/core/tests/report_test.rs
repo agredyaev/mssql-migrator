@@ -1,16 +1,20 @@
 use std::fs;
 
 use migrator_core::config::Config;
-use migrator_core::domain::{
-    share, Action, ObjectEntry, ObjectKey, Script, ScriptKey, ScriptKind, Workspace,
-};
-use migrator_core::export::{write_reports, MigrationPlan, PlanRow, PlannedObject};
+use migrator_core::domain::Action;
+use migrator_core::export::{write_reports, MigrationPlan, PlannedObject};
+
+fn report_config(report_dir: String) -> Config {
+    Config {
+        report_dir,
+        ..Default::default()
+    }
+}
 
 #[test]
 fn writes_plan_and_report_json() {
     let dir = tempfile::tempdir().unwrap();
-    let mut cfg = Config::default();
-    cfg.report_dir = dir.path().to_string_lossy().into();
+    let cfg = report_config(dir.path().to_string_lossy().into());
     let plan = MigrationPlan {
         command: "plan".into(),
         blocked: true,
@@ -43,8 +47,7 @@ fn writes_plan_and_report_json() {
 #[test]
 fn writes_failure_report_without_plan() {
     let dir = tempfile::tempdir().unwrap();
-    let mut cfg = Config::default();
-    cfg.report_dir = dir.path().to_string_lossy().into();
+    let cfg = report_config(dir.path().to_string_lossy().into());
     write_reports(&cfg, "migrate", None, None, 5).unwrap();
     assert!(fs::metadata(dir.path().join(".plan.json")).is_err());
     let report: serde_json::Value =
@@ -55,90 +58,12 @@ fn writes_failure_report_without_plan() {
 }
 
 #[test]
-fn slim_row_plan_without_workspace_fails_report_write() {
+fn materialized_plan_writes_report_without_workspace() {
     let dir = tempfile::tempdir().unwrap();
-    let mut cfg = Config::default();
-    cfg.report_dir = dir.path().to_string_lossy().into();
-    let plan = MigrationPlan {
-        command: "plan".into(),
-        rows: vec![PlanRow::default()],
-        summary: Default::default(),
-        ..Default::default()
-    };
-    let err = write_reports(&cfg, "plan", Some(&plan), None, 0).unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("workspace required for slim plan rows"),
-        "unexpected error: {err}"
-    );
-}
-
-#[test]
-fn slim_row_plan_with_workspace_writes_plan_json() {
-    let dir = tempfile::tempdir().unwrap();
-    let mut cfg = Config::default();
-    cfg.report_dir = dir.path().to_string_lossy().into();
-
-    let mut ws = Workspace::default();
-    let script_id = ws.insert_script(Script {
-        key: ScriptKey::from_path("dactests/r/tables/t1.sql"),
-        kind: ScriptKind::Object,
-        abs_path: share("dactests/r/tables/t1.sql"),
-        checksum: None,
-    });
-    let db_id = ws.intern_database(share("dactests"));
-    ws.adopt_dense_entries(vec![ObjectEntry::with_staging_key(
-        ObjectKey::new("r", "tables", "t1"),
-        script_id,
-        [0; 32],
-        false,
-        db_id,
-    )]);
-
-    let mut row = PlanRow::default();
-    row.set_planned_action(Action::CreateObject);
-    row.set_exists(false);
+    let cfg = report_config(dir.path().to_string_lossy().into());
 
     let plan = MigrationPlan {
         command: "plan".into(),
-        rows: vec![row],
-        summary: migrator_core::export::PlanSummary {
-            object_count: 1,
-            create_count: 1,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-
-    write_reports(&cfg, "plan", Some(&plan), Some(&ws), 0).unwrap();
-    let plan_data = fs::read_to_string(dir.path().join(".plan.json")).unwrap();
-    assert!(
-        plan_data.contains("\"databaseName\": \"dactests\""),
-        "{plan_data}"
-    );
-    assert!(
-        plan_data.contains("\"objectPath\": \"dactests/r/tables/t1.sql\""),
-        "{plan_data}"
-    );
-    assert!(
-        plan_data.contains("\"plannedAction\": \"create_object\""),
-        "{plan_data}"
-    );
-}
-
-#[test]
-fn slim_row_plan_with_materialized_objects_writes_report_without_workspace() {
-    let dir = tempfile::tempdir().unwrap();
-    let mut cfg = Config::default();
-    cfg.report_dir = dir.path().to_string_lossy().into();
-
-    let mut row = PlanRow::default();
-    row.set_planned_action(Action::CreateObject);
-    row.set_exists(false);
-
-    let plan = MigrationPlan {
-        command: "plan".into(),
-        rows: vec![row],
         objects: vec![PlannedObject {
             normalized_key: "dactests/r/tables/t1".into(),
             object_path: "dactests/r/tables/t1.sql".into(),
@@ -178,8 +103,7 @@ fn slim_row_plan_with_materialized_objects_writes_report_without_workspace() {
 #[test]
 fn failed_run_removes_stale_plan_regression() {
     let dir = tempfile::tempdir().unwrap();
-    let mut cfg = Config::default();
-    cfg.report_dir = dir.path().to_string_lossy().into();
+    let cfg = report_config(dir.path().to_string_lossy().into());
     let plan = MigrationPlan {
         command: "plan".into(),
         ..Default::default()
@@ -207,8 +131,7 @@ fn concurrent_report_writers_both_succeed_regression() {
             let barrier = barrier.clone();
             let report_dir = path.clone();
             std::thread::spawn(move || {
-                let mut cfg = Config::default();
-                cfg.report_dir = report_dir;
+                let cfg = report_config(report_dir);
                 let plan = MigrationPlan {
                     command: format!("plan{i}"),
                     ..Default::default()

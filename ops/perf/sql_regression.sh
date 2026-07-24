@@ -17,21 +17,9 @@ ensure_catalog_databases() {
   local root="$1"
   local user="$2"
   local password="$3"
-  local server="$4"
-  local port="$5"
+  local port="$4"
   local sub name
   if [[ ! -d "$root" ]]; then return; fi
-  # Bootstrap runs sqlcmd INSIDE the local compose container: it can only ever
-  # target the local stack, so refuse a remote RM_DB_SERVER instead of
-  # silently bootstrapping the wrong SQL Server while tests hit the remote.
-  case "$server" in
-    localhost|127.0.0.1|::1) ;;
-    *)
-      echo "sql-regression: RM_DB_SERVER=$server is not the local compose stack;" \
-           "create its catalog databases yourself or run against localhost" >&2
-      exit 1
-      ;;
-  esac
   for sub in "$root"/*; do
     [[ -d "$sub" ]] || continue
     name="$(basename "$sub")"
@@ -43,8 +31,9 @@ ensure_catalog_databases() {
     fi
     for _ in "$sub"/*; do
       if [[ -d "$_" ]]; then
-        docker compose exec -T mssql /opt/mssql-tools18/bin/sqlcmd \
-          -S "localhost,$port" -U "$user" -P "$password" -C \
+        SQLCMDPASSWORD="$password" docker compose exec -T -e SQLCMDPASSWORD \
+          mssql /opt/mssql-tools18/bin/sqlcmd \
+          -S "localhost,$port" -U "$user" -C \
           -Q "IF DB_ID(N'$name') IS NULL CREATE DATABASE [$name]"
         break
       fi
@@ -52,7 +41,7 @@ ensure_catalog_databases() {
   done
 }
 ensure_catalog_databases \
-  "$RM_SQL_ROOT" "$RM_DB_USER" "$RM_DB_PASSWORD" "$RM_DB_SERVER" "$RM_DB_PORT"
+  "$RM_SQL_ROOT" "$RM_DB_USER" "$RM_DB_PASSWORD" "$RM_DB_PORT"
 export RMIGD_SOCKET="${RMIGD_SOCKET:-$ROOT/.rmig/rmigd-sql-regression.sock}"
 LOCK_DIR="$ROOT/.rmig/sql-regression.lock"
 LOCK_PID="$LOCK_DIR/pid"

@@ -3,15 +3,13 @@ use crate::Config;
 use super::env_parse::{apply_tls, parse_bool, set_timeout};
 use super::TomlConfig;
 
-/// Builds a config with process environment taking precedence over typed TOML.
+/// Builds a config from typed TOML plus environment-only peer settings and secrets.
 pub fn build_config(file: &TomlConfig) -> Config {
     let mut cfg = Config::default();
     let get = |name: &str, value: Option<String>| std::env::var(name).ok().or(value);
     cfg.sql_root = get("RM_SQL_ROOT", file.paths.sql_root.clone()).unwrap_or_default();
     cfg.sql_base = get("RM_SQL_BASE", file.paths.sql_base.clone()).unwrap_or_default();
     cfg.report_dir = get("RM_REPORT_DIR", file.paths.report_dir.clone()).unwrap_or_default();
-    cfg.l1_cache_dir = get("RMIG_L1_CACHE_DIR", file.paths.l1_cache_dir.clone())
-        .unwrap_or(cfg.l1_cache_dir.clone());
     let report_sync_default = cfg.report_sync;
     cfg.report_sync = get(
         "RM_REPORT_SYNC",
@@ -20,11 +18,9 @@ pub fn build_config(file: &TomlConfig) -> Config {
     .map_or(report_sync_default, |v| parse_bool(&v));
     cfg.log_level =
         get("RM_LOG_LEVEL", file.execution.log_level.clone()).unwrap_or(cfg.log_level.clone());
-    cfg.server = get("RM_DB_SERVER", file.database.server.clone()).unwrap_or_default();
-    cfg.port =
-        get("RM_DB_PORT", file.database.port.map(|v| v.to_string())).unwrap_or(cfg.port.clone());
+    cfg.server = std::env::var("RM_DB_SERVER").unwrap_or_default();
+    cfg.port = std::env::var("RM_DB_PORT").unwrap_or(cfg.port.clone());
     cfg.database.clear();
-    cfg.db_auth = get("RM_DB_AUTH", file.database.auth.clone()).unwrap_or(cfg.db_auth.clone());
     cfg.user = std::env::var("RM_DB_USER").unwrap_or_default();
     cfg.password = std::env::var("RM_DB_PASSWORD").unwrap_or_default();
     let skip_git_default = cfg.skip_git;
@@ -46,12 +42,10 @@ pub fn build_config(file: &TomlConfig) -> Config {
     )
     .map_or(catalog_cache_default, |v| parse_bool(&v));
     let allow_adopt_default = cfg.allow_adopt;
-    cfg.allow_adopt = get(
-        "RMIG_ALLOW_ADOPT",
-        file.execution.allow_adopt.map(|v| v.to_string()),
-    )
-    .map_or(allow_adopt_default, |v| parse_bool(&v));
-    cfg.session_socket = get("RMIG_SESSION", file.session.socket.clone()).unwrap_or_default();
+    cfg.allow_adopt = std::env::var("RMIG_ALLOW_ADOPT")
+        .ok()
+        .map_or(allow_adopt_default, |v| parse_bool(&v));
+    cfg.session_socket = std::env::var("RMIG_SESSION").unwrap_or_default();
     cfg.session_token = std::env::var("RMIG_SESSION_TOKEN").unwrap_or_default();
     set_timeout(
         &get("RM_LOCK_TIMEOUT", file.execution.lock_timeout.clone()).unwrap_or_default(),
@@ -63,18 +57,7 @@ pub fn build_config(file: &TomlConfig) -> Config {
         "RM_COMMAND_TIMEOUT",
         &mut cfg.command_timeout,
     );
-    apply_tls(&mut cfg, file);
-    if let Ok(n) = get(
-        "RMIG_SLO_MAX_CLI_WALL_MS",
-        file.execution.slo_max_cli_wall_ms.map(|v| v.to_string()),
-    )
-    .unwrap_or_default()
-    .parse::<i64>()
-    {
-        if n > 0 {
-            cfg.slo_max_cli_wall_ms = n;
-        }
-    }
+    apply_tls(&mut cfg);
     cfg
 }
 

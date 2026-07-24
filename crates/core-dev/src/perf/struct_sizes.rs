@@ -4,9 +4,9 @@ use std::io;
 use std::mem::size_of;
 use std::path::Path;
 
-use migrator_core::config::{Config, ConfigCold};
-use migrator_core::domain::{ObjectEntry, ObjectRow, ScriptRow, Workspace, WorkspaceCold};
-use migrator_core::export::{MigrationPlan, PlanGitOff, PlanRow, PlanSummary, PlannedObject};
+use migrator_core::config::Config;
+use migrator_core::domain::{ObjectEntry, ScriptRow, Workspace};
+use migrator_core::export::{MigrationPlan, PlanSummary, PlannedObject};
 use migrator_core::gate::{PlanSnapshot, SnapshotObject};
 use migrator_core::timings::PhaseTimings;
 
@@ -15,19 +15,14 @@ use super::baseline::{StructSizeEntry, THRESHOLD_BYTES};
 pub fn collect_struct_sizes() -> Vec<StructSizeEntry> {
     let raw = [
         entry("export", "MigrationPlan", size_of::<MigrationPlan>()),
-        entry("export", "PlanRow", size_of::<PlanRow>()),
         entry("export", "PlannedObject", size_of::<PlannedObject>()),
         entry("export", "PlanSummary", size_of::<PlanSummary>()),
         entry("domain", "Workspace", size_of::<Workspace>()),
-        entry("domain", "WorkspaceCold", size_of::<WorkspaceCold>()),
         entry("domain", "ObjectEntry", size_of::<ObjectEntry>()),
-        entry("domain", "ObjectRow", size_of::<ObjectRow>()),
         entry("domain", "ScriptRow", size_of::<ScriptRow>()),
         entry("gate", "PlanSnapshot", size_of::<PlanSnapshot>()),
         entry("gate", "SnapshotObject", size_of::<SnapshotObject>()),
         entry("config", "Config", size_of::<Config>()),
-        entry("config", "ConfigCold", size_of::<ConfigCold>()),
-        entry("export", "PlanGitOff", size_of::<PlanGitOff>()),
         entry("timings", "PhaseTimings", size_of::<PhaseTimings>()),
     ];
     let mut out: Vec<_> = raw

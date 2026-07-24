@@ -26,14 +26,13 @@ pub enum MetadataMode {
 pub async fn execute_metadata_plan(
     cfg: &Config,
     conn: &mut TimingConn,
-    ws: &Workspace,
+    _ws: &Workspace,
     plan: &mut MigrationPlan,
     mode: MetadataMode,
 ) -> Result<ApplyResult> {
     if plan.blocked && mode != MetadataMode::RepairChecksum {
         return Err(Error::PlanBlocked);
     }
-    plan.ensure_objects_materialized(ws);
     let mut result = ApplyResult::default();
     let db_fp = audit::db_fingerprint(&cfg.server, &cfg.port, &cfg.user, &cfg.database);
     ensure_tables(conn, &db_fp).await?;

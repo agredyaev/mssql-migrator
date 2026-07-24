@@ -24,9 +24,10 @@ never produce a destructive operation. Deletion is not inferred from absence: an
 intentional drop must be authored explicitly as a table transition script under
 `_migrations/` (ADR-0015).
 
-First adoption: `baseline` (and the first `migrate`) record a checksum only for
-repo objects that already exist in the DB; DB-only objects are left unmanaged, not
-adopted.
+First adoption: `baseline` records repository objects that already exist in the
+database. `migrate` does the same only when the process operator sets
+`RMIG_ALLOW_ADOPT=1`; otherwise it fails closed with exit `10`. Database-only
+objects are always left unmanaged.
 
 ## Consequences
 
@@ -34,6 +35,21 @@ adopted.
   did not create, and cannot delete by omission.
 - A removed repo file leaves its DB object standing (orphaned) — operators must
   drop deliberately via an authored transition, never accidentally.
+- Name-only adoption during `migrate` requires a process-level opt-in. Repository
+  TOML cannot grant it.
 - Cost: the tool never reconciles unmanaged drift/cruft; out of scope by design.
 - Duplicate keys (two files → same `schema/kind/name`, incl. case-only) are a
   hard scan error (exit `8`) before any DB contact.
+
+## Verification
+
+- `crates/core/tests/unmanaged_objects_test.rs`
+- `crates/core/tests/apply_integrity_integration.rs`
+- `crates/core/tests/existing_db_adoption_integration.rs`
+- `make check-e2e`
+
+## References
+
+- `docs/repository-contract.md`
+- `docs/migration-flow.md`
+- `adr/0020-config-env-over-toml-secrets-env-only.md`

@@ -79,8 +79,6 @@ pub async fn prepare_blocked_table_change(cfg: &Config) -> Result<(BlockedSetup,
         &blocked_cfg.database,
     );
     invalidate_audit_cache(&fp);
-    let l1 = migrator_core::cache::l1::L1Cache::new(&blocked_cfg.l1_cache_dir);
-    let _ = l1.invalidate_all(&fp);
 
     Ok((BlockedSetup { blocked_cfg, guard }, setup_apply_ms))
 }
@@ -124,7 +122,7 @@ pub async fn run_blocked_table_plan(cfg: &Config) -> Result<E2EBlockedReport> {
                 "expected blocked plan after column change (actions={:?})",
                 plan.objects
                     .iter()
-                    .map(|o| (o.normalized_key.as_ref(), o.planned_action))
+                    .map(|o| (o.normalized_key.as_str(), o.planned_action))
                     .collect::<Vec<_>>()
             )
             .into(),

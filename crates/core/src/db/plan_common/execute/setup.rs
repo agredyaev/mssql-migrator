@@ -4,8 +4,7 @@ use crate::audit;
 use crate::config::Config;
 use crate::db::plan_db_trace::{PlanDbPath, PlanDbTrace};
 use crate::db::state::CatalogState;
-use crate::domain::is_module_kind_code;
-use crate::domain::Workspace;
+use crate::domain::{is_module_kind_code, kind_code, Workspace};
 use crate::driver::TimingConn;
 use crate::error::Result;
 use crate::gate::{resolve_changed_paths, ChangedPathsResult};
@@ -58,7 +57,8 @@ pub(super) async fn prepare_execute(
 
     let clean_git_tree =
         git.paths.is_empty() && matches!(git.source, "git-head" | "git-merge-base");
-    let has_modules = (0..ws.object_count()).any(|i| is_module_kind_code(ws.row(i).kind_code));
+    let has_modules =
+        (0..ws.object_count()).any(|i| is_module_kind_code(kind_code(ws.entry_key(i).kind_part())));
     let try_cache = !has_modules
         && !bypass
         && cfg.catalog_cache
